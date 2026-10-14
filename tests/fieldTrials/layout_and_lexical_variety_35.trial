@@ -1,0 +1,75 @@
+Room A
+Room A. A desk and a till. Room B is north.
+You can see a red purse, a blue purse and a desk here.
+> probe
+copy 4 11 15 7 12
+pass 9 13 calls 3
+order true false true true false true -4 4
+run 10 0 13 9
+chain 36 9 12
+pick 3 worth 3 13 13 12
+loop 14 pickF 17 14
+pairs false 9 3 -4 10
+plus 12 23 4 mk 40 30 50
+band 2..20 width 18 holds true false
+bonus 4 2
+bonus copy 5 7 2 plain 5 same true
+ptr 1 50
+ptr after 53
+ptr copy 9 1 54
+> tally
+till 3 7 12 5
+total 27 float 54 last 3 count 4 over 4
+purses 8 0 levels 0 0 paid 0
+history
+> audit
+sorted 3 5 7 12
+desc 12 7 5 3
+first 3 last 5 big 12
+take 2 skip 7 while 2
+any false true all true
+spare 6 77 10 till 3 distinct 5
+spare sorted 3 3 5 10 12 77
+spare desc 4 77 5 cheap 2 true
+index 2 -1 has true
+after loop 3 7 12 5
+after ref 3 107 12 5
+last 4
+> table
+table 2 3 2 sum 36 cells 6 30 row 33
+local 3 4 12 4 eq true total 20
+local after 1 12
+trio 3 6 cmp false true false
+desk 9 1 54 tip 4 12 2
+> pay red purse
+The red purse takes $3; it holds 11 (level 1), paid 3.
+> pay red purse
+The red purse takes $5; it holds 16 (level 2), paid 8.
+> pay blue purse
+The blue purse takes $12; it holds 12 (level 1), paid 20.
+> tally
+till 107
+total 107 float 54 last 12 count 1 over 1
+purses 16 12 levels 2 1 paid 20
+history 3 5
+> mint
+Chit 1 shows 12; made 1; fee 5.
+> jot
+note fee 5/5 copy *fee 5/17 same false true has false : last 12=12 fee 5=6
+> mint
+Chit 2 shows 12; made 2; fee 6.
+> pin red purse
+The red purse is pinned at 16.
+> pin red purse
+The red purse pin moves; held 17, pinned 17.
+> pay red purse
+The red purse cannot take $107.
+> jot
+full; note fee 6/6 copy *fee 6/18 same false true has true : last 12=13 fee 6=6
+> pin red purse
+The red purse pin moves; held 18, pinned 18.
+> shift
+history 5 26 grid 21 paid 25 held 22 pin 22 0
+match false true 0
+> jot
+full; note fee 6/6 copy *fee 6/18 same false true has true : fee 6=7 fee 6=6

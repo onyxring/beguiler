@@ -832,8 +832,22 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
                 if(!fm || fm->isStatic || fm->isPrePassStub || isHeaderMember(fm->name)) continue;
                 if(fm->type.name == "attributelist") continue;
                 if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
+                if(auto* ad = dynamic_cast<arrayDeclaration*>(fm)){
+                    // A word array is emptied: every word of its property, the length word included.
+                    classDef* ec = languageService.findClass(ad->elementType);
+                    if(ad->isByteArray || ad->isRefLocal || ad->isPromoted || ad->arraySize <= 0) continue;
+                    string prop = fm->i6name.empty() ? fm->dName() : fm->i6name;
+                    // Value-class elements are instances the words point at: only the length word empties it.
+                    if(ec != nullptr && isValueClass(ec)){
+                        if(languageService.arrayInUse && !ad->isRaw) out << format("{0}{1}.&{2}-->{3} = 0;\n", indent, inst, prop, ad->arraySize);
+                        continue;
+                    }
+                    int words = ad->arraySize + (languageService.arrayInUse && !ad->isRaw ? 1 : 0);
+                    if(words > 64) continue;
+                    for(int k = 0; k < words; k++) out << format("{0}{1}.&{2}-->{3} = 0;\n", indent, inst, prop, k);
+                    continue;
+                }
                 if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive && !ft->isUnion()) continue;   // compile-time members (parent, children): no property
-                if(dynamic_cast<arrayDeclaration*>(fm)) continue;   // inline property data: not a single word
                 if(classDef* owned = ownedFieldClass(fm, visited)){
                     visited.insert(owned);
                     resetFields(owned, format("_bglField_{0}_{1}", inst, fm->dName()));
@@ -3354,6 +3368,7 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
         indent);
     if(!fi->elementConversion.empty()){
         string el = spillName(fi->elementVar);
+        if(!fi->elementDefault.empty()) out << indent << "    if (" << el << " == 0) " << el << " = " << fi->elementDefault << ";\n";
         out << indent << "    " << el << " = " << replaceWord(fi->elementConversion, "@@ELEM@@", el) << ";\n";
     }
     if(fi->body != nullptr)
@@ -3881,7 +3896,20 @@ classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef
         return storesFields ? fieldCls : nullptr;
 }
 
-string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited){
+void i6Emitter::appendInitValues(string& clause, objectDef* init){
+    if(init == nullptr) return;
+    for(typeMember* m : init->members)
+        if(auto* fv = dynamic_cast<variableDeclaration*>(m); fv && fv->declaredExpressionValue != nullptr){
+            string val = staticText(fv->declaredExpressionValue);
+            if(val.empty()) continue;
+            string prop = fv->i6name.empty() ? fv->dName() : fv->i6name;
+            if(clause.find(" " + prop + " ") != string::npos) continue;   // a nested backing already holds it
+            clause += clause.empty() ? "with " : ", ";
+            clause += prop + " " + val;
+        }
+}
+
+string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited, objectDef* init){
     string clause;
     bool first = true;
     // The class's own members and the ones it inherits (a nearer class's member of a name hides a farther one's).
@@ -3910,8 +3938,15 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
             generateI6(c);
         };
         emitFirst(fieldCls);
+        // The initializer's value for this field (`lo = Coins{ … }`) is the nested backing's starting value.
+        objectDef* fieldInit = nullptr;
+        if(init != nullptr)
+            for(typeMember* im : init->members)
+                if(auto* fv = dynamic_cast<variableDeclaration*>(im); fv && fv->name == vd->name && fv->declaredExpressionValue != nullptr)
+                    fieldInit = languageService.findObjectType(fv->declaredExpressionValue->text());
         visited.insert(fieldCls);
-        string subClause = synthesizeFieldBackings(fieldCls, backingName, visited);
+        string subClause = synthesizeFieldBackings(fieldCls, backingName, visited, fieldInit);
+        appendInitValues(subClause, fieldInit);
         visited.erase(fieldCls);
         out << format("{0} {1}", fieldCls->i6Name(), backingName);
         if(!subClause.empty()) out << " " << subClause;
@@ -4280,22 +4315,11 @@ auto consider = [&](variableDeclaration* vd){
     // 0 and anything reached through it writes to nothing. File-scope variables already
     // got this; object members were emitted bare, so nesting stopped after one level.
     set<classDef*> nestedVisited;
-    string nestedClause = synthesizeFieldBackings(cls, backing, nestedVisited);
     // A class-body initializer (`coins price = coins{ cents = 3; };`) is every instance's starting
-    // value: each backing takes its fields.
-    if(vd->declaredExpressionValue != nullptr)
-        if(objectDef* init = languageService.findObjectType(vd->declaredExpressionValue->text())){
-            set<string> nestedNames;
-            for(typeMember* m : init->members)
-                if(auto* fv = dynamic_cast<variableDeclaration*>(m); fv && fv->declaredExpressionValue != nullptr){
-                    string val = staticText(fv->declaredExpressionValue);
-                    if(val.empty()) continue;
-                    string prop = fv->i6name.empty() ? fv->dName() : fv->i6name;
-                    if(nestedClause.find(" " + prop + " ") != string::npos) continue;   // a nested backing already holds it
-                    nestedClause += nestedClause.empty() ? "with " : ", ";
-                    nestedClause += prop + " " + val;
-                }
-        }
+    // value: each backing takes its fields, nested ones included.
+    objectDef* init = vd->declaredExpressionValue != nullptr ? languageService.findObjectType(vd->declaredExpressionValue->text()) : nullptr;
+    string nestedClause = synthesizeFieldBackings(cls, backing, nestedVisited, init);
+    appendInitValues(nestedClause, init);
     out << format("{0} {1}", cls->i6Name(), backing);
     if(!nestedClause.empty()) out << " " << nestedClause;
     out << ";\n";
@@ -4937,6 +4961,22 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                             for(int k = 0; k <= fad->arraySize; k++)
                                 createInject += format("{0}.&{1}-->{2} = 0;\n", path, fi6, k);
                         continue;
+                    }
+                    // A field whose class manages its storage (`stringObj`) gets its own at create, through `init`,
+                    // and gives it back at destroy, through `deinit`.
+                    if(classDef* fc = languageService.findClass(fvd->type.name); fc != nullptr && fc->isEmitterClass){
+                        auto body = [&](const char* nm) -> string {
+                            for(typeMember* m : fc->members)
+                                if(auto* f = dynamic_cast<functionDef*>(m); f && f->isEmitter && f->name == nm && f->params.empty())
+                                    if(auto* blk = dynamic_cast<i6Block*>(f->body)) return blk->i6Body;
+                            return "";
+                        };
+                        string in = body("init"), de = body("deinit");
+                        if(!in.empty()){
+                            createInject += replaceWord(in, "$self", path + "." + fi6) + ";\n";
+                            if(!de.empty()) destroyInject += replaceWord(de, "$self", path + "." + fi6) + "; " + path + "." + fi6 + " = 0;\n";
+                            continue;
+                        }
                     }
                     string def = fvd->declaredExpressionValue ? staticText(fvd->declaredExpressionValue) : "0";
                     if(init != nullptr)

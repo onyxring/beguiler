@@ -1,0 +1,218 @@
+Room A
+Room A. A rack stands here. A ladder leads up to Room B.
+You can see a rack (on which are a red tray (which is empty), a blue tray (which is empty) and a green tray (which is empty)) and a brass token here.
+> trays
+tray 1: 0 loaded, level 0, total 0, next 2.
+tray 2: 0 loaded, level 0, total 0, next 3.
+tray 3: 0 loaded, level 0, total 0, next 1.
+Loads: 0 0 0. Touched 0, passes 0.
+> chain
+Around: 1, 1, 2.
+None busy.
+Heaviest: tray 3; lightest level 0.
+Code 9 falls back to 3; code 2 is at level 0.
+Labels: 6 chars, TRAY 2.
+> spots
+Spot 0: tray 1 with 0, held 3, on rack.
+Spot 1: tray 2 with 0, held 1, on rack.
+Spot 2: tray 3 with 0, held 2, on rack.
+Cursor 0, moves 0, current 3.
+> gauges
+tray 1: 0 room 9 (empty).
+tray 2: 0 room 9 (empty).
+tray 3: 0 room 9 (empty).
+> seal
+Code 4 is sealed 7; pick 3 is 1.
+Seal 7, extra 5, link 1.
+sealed 7, tray 4: 0 loaded, level 0, total 0, next 1.
+tray 4: 0 loaded, level 0, total 0, next 1.
+tray 4: 0 loaded, level 0, total 0, next 1.
+sealed 7, tray 4: 0 loaded, level 0, total 0, next 1.
+Red's spare is sealed 7, extra 5.
+> compare
+Heavier of red and blue: tray 1: 0 loaded, level 0, total 0, next 2.
+More loads: tray 3 with 0.
+Pairs: 7, 5, 8.
+Red pair 0/0; ring pairs 0, 0, 0.
+> load red tray
+The red tray holds 2; the last is 2, level 2.
+> load red tray
+The red tray holds 4; the last is 4, level 4.
+> load blue tray
+The blue tray holds 2; the last is 3, level 2.
+> trays
+tray 1: 4 loaded, level 4, total 10, next 2.
+tray 2: 2 loaded, level 2, total 5, next 3.
+tray 3: 0 loaded, level 0, total 0, next 1.
+Loads: 4 2 0. Touched 6, passes 0.
+> chain
+Around: 1, 1, 2.
+2 busy; first busy is 1.
+Heaviest: tray 1; lightest level 0.
+Code 9 falls back to 3; code 2 is at level 2.
+Labels: 6 chars, TRAY 2.
+> pass red tray
+You pass 4 to tray 2, which holds 3.
+> pass red tray
+You pass 3 to tray 2, which holds 4.
+> trays
+tray 1: 2 loaded, level 2, total 3, next 2.
+tray 2: 4 loaded, level 4, total 12, next 3.
+tray 3: 0 loaded, level 0, total 0, next 1.
+Loads: 4 4 0. Touched 8, passes 2.
+> pair red tray
+Pair 1 and 2: sum 3, swapped first 2.
+> pair green tray
+Pair 0 and 1: sum 1, swapped first 1.
+> compare
+Heavier of red and blue: tray 2: 4 loaded, level 4, total 12, next 3.
+More loads: tray 1 with 4.
+Pairs: 7, 5, 8.
+Red pair 1/2; ring pairs 3, 0, 1.
+> mark blue tray
+Notes: 0, x, 0.
+You mark the blue tray: plain, checked.
+> spin rack
+The rack turns to spot 1: tray 1, level 3, first 1.
+> spin rack
+The rack turns to spot 2: tray 2, level 9, first 2.
+> spin rack
+The rack turns to spot 0: tray 3, level 1, first 0.
+> spin rack
+The rack turns to spot 1: tray 1, level 4, first 1.
+> spots
+Spot 0: tray 1 with 4, held 3, on rack.
+Spot 1: tray 2 with 4, held 1, on rack.
+Spot 2: tray 3 with 1, held 2, on rack.
+Cursor 1, moves 4, current 1.
+> shift red tray
+Level 8; the one after is now 7, set 6 times.
+> shift green tray
+Level 5; the one after is now 4, set 11 times.
+> gauges
+tray 1: 4 room 5 (high).
+tray 2: 7 room 2 (high).
+tray 3: 5 room 4 (high).
+> stack
+Red first 9, green holds 2 summing 4, blue pair 9/1.
+Green contains 4: true; red index of 9: 0.
+> bin red tray
+Bins of tray 1: 13 and 1, rows 2, row 1 holds 3.
+> bin red tray
+Bins of tray 1: 13 and 2, rows 2, row 1 holds 3.
+> walk
+Along: 3, 2, 3, 2.
+Red second 10, blue first 10, green first 0.
+Instance 2 is 2; lowest total 3; high spots 3.
+Red bin 5, green level 6, room after red 2.
+Hops to red: 2.
+> trays
+tray 1: 4 loaded, level 4, total 21, next 2.
+tray 2: 4 loaded, level 7, total 20, next 3.
+tray 3: 2 loaded, level 6, total 4, next 1.
+Loads: 6 4 2. Touched 11, passes 2.
+> take token
+Taken.
+> put red tray in green tray
+(first taking the red tray)
+Only the token fits the green tray.
+> put token in green tray
+The token drops into the green tray, which now holds 3.
+> trays
+tray 1: 4 loaded, level 4, total 21, next 2.
+tray 2: 4 loaded, level 7, total 20, next 3.
+tray 3: 3 loaded, level 7, total 13, next 1.
+Loads: 6 4 3. Touched 12, passes 2.
+> tip blue tray
+You tip the blue tray. 20 spills out.
+> tip blue tray
+The blue tray is already empty.
+> load token
+You can't load the brass token.
+> copy green tray
+The gray tray now holds 3, first 0, last 9.
+> copy token
+You can't copy the brass token.
+> trim
+You trim 3 from the rack. Last twos: 19, 0, 4.
+> spots
+Spot 0: tray 1 with 2, held 3, on yourself.
+Spot 1: tray 2 with 0, held 1, on rack.
+Spot 2: tray 3 with 2, held 2, on rack.
+Cursor 1, moves 4, current 1.
+> load red tray
+The red tray holds 4; the last is 8, level 6.
+> load red tray
+The red tray holds 4; the last is 8, level 9.
+[The score has just gone up by 1 point.]
+> gauges
+tray 1: 9 room 0 full (high).
+tray 2: 0 room 9 (empty).
+tray 3: 7 room 2 (high).
+> take red tray
+You already have it.
+> up
+Room B
+Room B. A scale stands here. A ladder leads down.
+You can see a gray tray (which is empty) and a scale here.
+> put token on scale
+You can't see any such thing.
+> put red tray on scale
+The scale reads 34. Next along: tray 2 at level 0.
+[The score has just gone up by 1 point.]
+> seal
+Code 4 is sealed 7; pick 3 is 1.
+Seal 7, extra 5, link 1.
+sealed 7, tray 4: 3 loaded, level 0, total 13, next 1.
+tray 4: 3 loaded, level 0, total 13, next 1.
+tray 4: 3 loaded, level 0, total 13, next 1.
+sealed 7, tray 4: 3 loaded, level 0, total 13, next 1.
+Red's spare is sealed 7, extra 5.
+> chain
+Around: 1, 1, 2.
+2 busy; first busy is 1.
+Heaviest: tray 1; lightest level 0.
+Code 9 falls back to 3; code 2 is at level 0.
+Labels: 6 chars, TRAY 2.
+> bin gray tray
+Bins of tray 1: 34 and 6, rows 2, row 1 holds 3.
+> copy gray tray
+You can't copy the gray tray.
+> score
+You have so far scored 2 out of a possible 2, in 33 turns.
+> probe
+Red is above green.
+Red and blue levels add to 9; held 1 has 4, cursor slot 10.
+1 spots past two, paired yes, first before a high level 2.
+Rack loads 7; find 1 next holds 0; held 0 next is tray 1.
+Marks: CHECKED, 7, checked.
+Fallback first slot 9, red pair 109.
+> down
+Room A
+You can see a rack (on which are a blue tray (which is empty) and a green tray (which contains a brass token)) here.
+> nudge green tray
+8 is the level; first 6, next pair 8, ahead 24.
+> nudge red tray
+You can't see any such thing.
+> nudge blue tray
+2 is the level; first 7, next pair 7, ahead 12.
+> probe
+Red is not above green.
+Red and blue levels add to 9; held 1 has 4, cursor slot 10.
+1 spots past two, paired yes, first before a high level 2.
+Rack loads 8; find 1 next holds 1; held 0 next is tray 1.
+Marks: CHECKED, 7, checked.
+Fallback first slot 2, red pair 809.
+> trays
+tray 1: 4 loaded, level 7, total 27, next 2.
+tray 2: 1 loaded, level 2, total 7, next 3.
+tray 3: 2 loaded, level 8, total 6, next 1.
+Loads: 8 5 3. Touched 15, passes 2.
+> walk
+Along: 3, 2, 3, 7.
+Red second 3, blue first 3, green first 2.
+Instance 2 is 2; lowest total 2; high spots 2.
+Red bin 5, green level 9, room after red 7.
+Hops to red: 2.
+> trim
+You trim 2 from the rack. Last twos: 5, 3, 6.

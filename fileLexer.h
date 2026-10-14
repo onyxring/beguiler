@@ -47,6 +47,12 @@ class fileLexer{
         // here so the next getToken() delivers it. Everywhere else ">>" stays a shift
         // operator — only the type parser (parseFuncType) ever requests the split.
         bool  hasPendingToken = false;
+        // While an interpolation span is parsed: its brace depth, and whether its `}` has been read. A
+        // token past that `}` is the string's own text, so the lexer reports end of input there.
+        int   interpSpanDepth = -1;
+        bool  interpSpanClosed = false;
+        size_t interpSpanStream = 0;   // the source the span is read from; text opened inside it doesn't count
+        size_t streamDepth() const { return files.size(); }
         token pendingToken;
         // Running count of '{' minus '}' tokens delivered through getToken() (and consumed by
         // getRawTextThroughClosingBrace). Used by LSP error recovery to unwind nested blocks

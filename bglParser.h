@@ -770,6 +770,7 @@ class bglParser {
         string propertyNameAsEmitted(const string& name);
         void preScanClassBody(classDef* cls);
         bool processCallSubscriptStatement(token head, StatementContext& sc);
+        void endInterpolatedStatement();   // `;` after an interpolated string, or the no-value error
         string typeAliasTarget(const string& name);
         void rejectMethodBesideField(class classDef& cls, const string& name, const string& shown, bool addingMethod);
         bool rewriteComputedReceiverStatement(const string& head, int depth, StatementContext& sc, const string& prefixOp = "");
@@ -1311,6 +1312,7 @@ class bglParser {
         string lastCandidatesReceiver;   // set by collectMethodCandidates, cleared by collectGlobalCandidates
         string propertyArgOwner;         // while parsing a `property` argument: the receiver's type
         string defaultArgReceiver;       // while filling a method call's defaults: the receiver's text
+        string verbMemberHint;           // the member a path reads off a name being resolved (a verb's own)
         // Gather candidate callees by name (globals) or by receiver type + name (methods), mirroring
         // the candidate-gathering in resolveGlobalCall / resolveMethod (collection only, no scoring).
         vector<functionDef*> collectGlobalCandidates(const string& name);

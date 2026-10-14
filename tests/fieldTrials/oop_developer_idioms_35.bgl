@@ -1,0 +1,576 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-fifth pass: a climate panel built
+// out of properties. A named accessor class for a clamped reading with a getter, an int setter, a copy
+// operator, `==`/`!=` by an int, `<=>` by an int and by its own class (orderings derived), its own `+=`,
+// a postfix `?` and methods of its own; a named string accessor over a stringObj with its own `+=`; a
+// named accessor holding a reference to a pooled zone, read through `?.` and `??`; a pooled zone class
+// whose members are those accessors plus an inline `auto` accessor with a static of its own; a subclass
+// that hides the int setter (written through an ancestor cast); an object whose inline accessors reach
+// it through `outer`, one declaring its own `<=>`, one cascading into another; accessors added by
+// `extend` on the object and on the class; global accessor-class variables, one with an inline-object
+// starting value; a `ref` member bound to one accessor and rebound to another; a static method swapping
+// two accessors through `ref`; global initializers reading accessors at startup. Accessors are read and
+// written from routines declared above their object and class, passed to `ref` parameters, bound to `ref` locals, passed by value (copied)
+// and as int arguments, used as default and named argument values, compared with their class's
+// operators against ints, against each other and across objects, changed with `+=`, `-=`, `++`, `--`,
+// read in `if`/`while`/`for`/`switch`/ternaries, in lambdas and `<linq>` chains, returned by value and
+// as int, and printed through interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Routines that reach accessors declared further down ---------------------------------------------------
+
+int StartSetpoint = Thermostat.Setpoint;
+int StartOutdoor = Panel.Outdoor + 1;
+bool StartAlarm = Thermostat.Alarm;
+
+int ReadSetpoint() { return Thermostat.Setpoint; }
+
+void NudgeSetpoint(int by) { Thermostat.Setpoint += by; }
+
+bool IsAboveSetpoint(Zone z) { return z.Temp > Thermostat.Setpoint; }
+
+bool SameReading(Zone a, Zone b) { return a.Temp == b.Temp; }
+
+int Warmest(Zone a, Zone b) { return a.Temp > b.Temp ? a.Temp : b.Temp; }
+
+void Bump(ref Reading r, int by) { r += by; }
+
+void ResetTo(ref Reading r, int v = Thermostat.Setpoint) { r = v; }
+
+int Peek(Reading r) {
+    r = 0;                          // a copy: the caller's reading is unchanged
+    return r;
+}
+
+int Twice(int n) { return n * 2; }
+
+void Show(string label, int value = Thermostat.Setpoint) { printLine($"{label}: {value}"); }
+
+int OpenDamper(Zone z, int by) {
+    z.Damper += by;
+    return z.Damper;
+}
+
+Zone Lookup(string title) {
+    for (Zone z in Zones) if (z.Label == title) return z;
+    return null;
+}
+
+string Band(Zone z) {
+    switch (z.Temp) {
+        case 0 to 15:  return "cold";
+        case 16 to 22: return "mild";
+        default:       return "hot";
+    }
+}
+
+void ToggleAlarm() { Thermostat.Alarm = !Thermostat.Alarm; }
+
+//-- A named accessor: a reading clamped to a range --------------------------------------------------------
+
+value class Reading {
+    int _v;
+    int _lo;
+    int _hi = 40;
+    int _writes;
+    static int AllWrites;
+
+    int operator () { return _v; }
+
+    void operator = (int v) { Store(v); }
+
+    Reading operator = (Reading o) {
+        _v = o._v;
+        _lo = o._lo;
+        _hi = o._hi;
+        _writes = o._writes;
+        return self;
+    }
+
+    void operator += (int by) { Store(_v + by); }
+
+    bool operator == (int n) { return _v == n; }
+    bool operator != (int n) { return _v != n; }
+    int operator <=> (int n) { return _v - n; }
+    int operator <=> (Reading o) { return _v - o._v; }
+
+    emitter eBool operator ? () { ($self._writes ~= 0) }
+
+    void Store(int v) {
+        _writes++;
+        AllWrites++;
+        if (v < _lo) v = _lo;
+        if (v > _hi) v = _hi;
+        _v = v;
+    }
+
+    static void Swap(ref Reading a, ref Reading b) {
+        int lhs = a;
+        int rhs = b;
+        a = rhs;
+        b = lhs;
+    }
+
+    int Writes() { return _writes; }
+    int Headroom() { return _hi - _v; }
+    void Limit(int lo, int hi) { _lo = lo; _hi = hi; Store(_v); }
+}
+
+//-- A named string accessor -------------------------------------------------------------------------------
+
+value class Caption {
+    stringObj _text;
+    int _edits;
+
+    stringObj operator () { return _text; }
+
+    void operator = (string v) {
+        _text = v;
+        _edits++;
+    }
+
+    void operator += (string tail) {
+        _text += tail;
+        _edits++;
+    }
+
+    void operator += (char c) {
+        _text += c;
+        _edits++;
+    }
+
+    int Edits() { return _edits; }
+}
+
+//-- A named accessor holding a reference ------------------------------------------------------------------
+
+value class ZoneLink {
+    Zone _z;
+    int _hops;
+
+    Zone operator () { return _z; }
+
+    void operator = (Zone z) {
+        _z = z;
+        _hops++;
+    }
+
+    int Hops() { return _hops; }
+}
+
+//-- The pooled zone class ---------------------------------------------------------------------------------
+
+class Zone[4] : object {
+    Reading Temp;
+    Caption Label;
+    ZoneLink Next;
+    auto Fan = {
+        int _speed;
+        static int Changes;
+        int operator () { return _speed; }
+        void operator = (int v) {
+            if (v != _speed) Changes++;
+            _speed = v < 0 ? 0 : (v > 3 ? 3 : v);
+        }
+        int TotalChanges() { return Changes; }
+    }
+
+    void create(string title, int degrees) {
+        Label = title;
+        Temp = degrees;
+    }
+
+    Reading Snapshot() { return Temp; }
+
+    void Warm(int by) { Bump(Temp, by); }
+
+    int Peak(int other) { return Temp > other ? Temp : other; }
+
+    int Comfort() {
+        if (Temp > Thermostat.Setpoint + 2) return 1;
+        if (Temp < Thermostat.Setpoint - 2) return -1;
+        return 0;
+    }
+
+    void print() { print(Label); }
+}
+
+class SealedZone[1] : Zone {
+    hide Temp.operator = (int);
+}
+
+//-- An object with inline accessors -----------------------------------------------------------------------
+
+object Thermostat {
+    "thermostat";
+    int Changes;
+    int Heating;
+    int Cooling;
+    auto Setpoint = {
+        int _sp = 20;
+        int operator () { return _sp; }
+        void operator = (int v) {
+            if (v == _sp) return;
+            outer.Changes++;
+            _sp = v;
+            outer.Mode = v;
+        }
+        int operator <=> (int n) { return _sp - n; }
+    }
+    auto Mode = {
+        int _m;
+        int operator () { return _m; }
+        void operator = (int sp) {
+            _m = sp >= 24 ? 2 : (sp <= 16 ? 1 : 0);
+            if (_m == 1) outer.Heating++;
+            if (_m == 2) outer.Cooling++;
+        }
+    }
+    auto Alarm = {
+        bool _on;
+        static int Raised;
+        bool operator () { return _on; }
+        void operator = (bool v) {
+            if (v && !_on) Raised++;
+            _on = v;
+            if (v) outer.Setpoint = 18;
+        }
+        int Count() { return Raised; }
+    }
+    string ModeName() {
+        switch (Mode) {
+            case 1: return "heat";
+            case 2: return "cool";
+            default: return "auto";
+        }
+    }
+}
+
+extend Thermostat {
+    auto Humidity = {
+        int _h = 45;
+        int operator () { return _h; }
+        void operator = (int v) { _h = v; if (v > 60) outer.Setpoint = outer.Setpoint - 1; }
+    }
+}
+
+extend class Zone {
+    auto Damper = {
+        int _open = 100;
+        int operator () { return _open; }
+        void operator = (int v) { _open = v > 100 ? 100 : (v < 0 ? 0 : v); }
+    }
+}
+
+//-- Globals ------------------------------------------------------------------------------------------------
+
+Zone Lounge;
+Zone Kitchen;
+Zone Hall;
+SealedZone Vault;
+array<Zone> Zones[4];
+
+object Panel {
+    "panel";
+    ZoneLink Focus;
+    Reading Outdoor = Reading{ _lo = -20; _hi = 45; };
+    ref Reading Watched;
+}
+
+Reading Spare;
+Reading Narrow = Reading{ _hi = 10; };
+
+//-- Verbs -------------------------------------------------------------------------------------------------
+
+void Line(Zone z) {
+    printLine($"{z}: temp {z.Temp}, fan {z.Fan}, damper {z.Damper}, writes {z.Temp.Writes()}, comfort {z.Comfort()}");
+}
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        Lounge = new Zone("lounge", 21);
+        Kitchen = new Zone("kitchen", 25);
+        Hall = new Zone("hall", 50);
+        Vault = new SealedZone("vault", 12);
+        Zones.append(Lounge);
+        Zones.append(Kitchen);
+        Zones.append(Hall);
+        Zones.append(Vault);
+        Lounge.Next = Kitchen;
+        Kitchen.Next = Hall;
+        for (Zone z in Zones) Line(z);
+        printLine($"Setpoint {ReadSetpoint()}, mode {Thermostat.ModeName()}, all writes {Reading.AllWrites}.");
+        printLine($"At start: setpoint {StartSetpoint}, outdoor {StartOutdoor}, alarm {StartAlarm}.");
+    }
+}
+
+verb Forward {
+    grammar = {.forward};
+    void handler() {
+        NudgeSetpoint(2);
+        printLine($"Nudged to {Thermostat.Setpoint}, changes {Thermostat.Changes}.");
+        NudgeSetpoint(3);
+        printLine($"Mode {Thermostat.Mode} ({Thermostat.ModeName()}), cooling {Thermostat.Cooling}.");
+        Thermostat.Setpoint -= 9;
+        printLine($"Down to {Thermostat.Setpoint} ({Thermostat.ModeName()}), heating {Thermostat.Heating}.");
+        Thermostat.Setpoint++;
+        Thermostat.Setpoint++;
+        Thermostat.Setpoint--;
+        printLine($"Stepped to {Thermostat.Setpoint}, changes {Thermostat.Changes}.");
+        Thermostat.Setpoint = 21;
+        for (Zone z in Zones) {
+            printLine($"{z} above {Thermostat.Setpoint}: {IsAboveSetpoint(z)}");
+        }
+        Thermostat.Humidity = 70;
+        printLine($"Humidity {Thermostat.Humidity}, setpoint {Thermostat.Setpoint}, mode {Thermostat.ModeName()}.");
+        Thermostat.Humidity += 5;
+        printLine($"Humidity {Thermostat.Humidity}, setpoint {Thermostat.Setpoint}.");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        printLine($"lounge == 21: {Lounge.Temp == 21}, != 21: {Lounge.Temp != 21}");
+        printLine($"kitchen > lounge: {Kitchen.Temp > Lounge.Temp}, kitchen < lounge: {Kitchen.Temp < Lounge.Temp}");
+        printLine($"hall >= 40: {Hall.Temp >= 40}, hall <= 39: {Hall.Temp <= 39}, hall <=> 30: {Hall.Temp <=> 30}");
+        printLine($"lounge <=> kitchen: {Lounge.Temp <=> Kitchen.Temp}");
+        printLine($"same lounge/kitchen: {SameReading(Lounge, Kitchen)}, warmest {Warmest(Lounge, Kitchen)}");
+        if (Thermostat.Setpoint < 22 && Thermostat.Setpoint >= 20) printLine("Setpoint in band.");
+        int setRel = Thermostat.Setpoint <=> 25;
+        printLine($"Setpoint <=> 25: {setRel}");
+        printLine($"Lounge vs setpoint: {Lounge.Temp == Thermostat.Setpoint}");
+        int sum = Lounge.Temp + Kitchen.Temp;
+        int tw = Twice(Kitchen.Temp);
+        printLine($"Sum {sum}, twice {tw}, headroom {Hall.Temp.Headroom()}.");
+        string verdict = Hall.Temp > Thermostat.Setpoint ? "hot" : "ok";
+        printLine($"Hall is {verdict}, outdoor {Panel.Outdoor}, outdoor set {Panel.Outdoor?}.");
+        Panel.Outdoor = -30;
+        printLine($"Outdoor {Panel.Outdoor}, set {Panel.Outdoor?}, writes {Panel.Outdoor.Writes()}.");
+    }
+}
+
+verb Refs {
+    grammar = {.refs};
+    void handler() {
+        Bump(Lounge.Temp, 3);
+        printLine($"Bumped lounge {Lounge.Temp}, writes {Lounge.Temp.Writes()}.");
+        Bump(Hall.Temp, 10);
+        printLine($"Bumped hall {Hall.Temp} (clamped), writes {Hall.Temp.Writes()}.");
+        ResetTo(Kitchen.Temp);
+        printLine($"Kitchen reset to {Kitchen.Temp}.");
+        ResetTo(Kitchen.Temp, 19);
+        printLine($"Kitchen reset to {Kitchen.Temp}.");
+        int seen = Peek(Lounge.Snapshot());
+        printLine($"Peek {seen}, lounge still {Lounge.Temp}.");
+
+        ref Reading r := Kitchen.Temp;
+        r += 4;
+        r++;
+        r = r + 1;
+        printLine($"Through ref: kitchen {Kitchen.Temp}, r {r}, writes {r.Writes()}.");
+        r := Panel.Outdoor;
+        r += 15;
+        printLine($"Rebound: outdoor {Panel.Outdoor}, kitchen {Kitchen.Temp}.");
+
+        Reading copy = Lounge.Snapshot();
+        copy = 5;
+        printLine($"Snapshot {copy}, lounge {Lounge.Temp}.");
+        Reading held;
+        held = Hall.Temp;
+        printLine($"Held {held}, headroom {held.Headroom()}.");
+
+        ((Zone)Vault).Temp = 33;
+        printLine($"Vault through base {Vault.Temp}.");
+        Vault.Temp += 2;
+        printLine($"Vault after += {Vault.Temp}.");
+        Show("Default");
+        Show("Lounge", Lounge.Temp);
+        Show(value: Kitchen.Temp, label: "Kitchen");
+    }
+}
+
+verb Chains {
+    grammar = {.chains};
+    void handler() {
+        Panel.Focus = Lounge;
+        printLine($"Focus {Panel.Focus}, next {Panel.Focus?.Next ?? Panel.Focus}.");
+        stringObj nm = Panel.Focus?.Next?.Next?.Label ?? "none";
+        printLine($"Two on: {nm}.");
+        Panel.Focus = Hall;
+        stringObj after = Panel.Focus?.Next?.Label ?? "none";
+        printLine($"After hall: {after}, hops {Panel.Focus.Hops()}.");
+        Zone z = Panel.Focus;
+        int t = z?.Temp ?? -1;
+        printLine($"Focus temp {t}.");
+        Panel.Focus = null;
+        Zone none = Panel.Focus;
+        printLine($"Cleared: {none == null}, hops {Panel.Focus.Hops()}.");
+
+        Lounge.Label += "-east";
+        Lounge.Label += '!';
+        printLine($"Renamed {Lounge.Label}, edits {Lounge.Label.Edits()}, length {Lounge.Label.length}.");
+        stringObj label = Lounge.Label;
+        label += "?";
+        printLine($"Copy {label}, original {Lounge.Label}.");
+    }
+}
+
+verb Loops {
+    grammar = {.loops};
+    void handler() {
+        int steps = 0;
+        while (Hall.Temp > Thermostat.Setpoint) {
+            Hall.Temp -= 4;
+            steps++;
+        }
+        printLine($"Hall cooled to {Hall.Temp} in {steps} steps.");
+        for (Lounge.Fan = 0; Lounge.Fan < 3; Lounge.Fan++) print($"[{Lounge.Fan}]");
+        printLine($" fan {Lounge.Fan}, changes {Lounge.Fan.TotalChanges()}.");
+        Kitchen.Fan = 2;
+        Kitchen.Damper -= 30;
+        Kitchen.Damper += 50;
+        for (Zone z in Zones) {
+            switch (z.Comfort()) {
+                case 1:  z.Fan++;
+                case -1: z.Damper = z.Damper / 2;
+                default: z.Fan = z.Fan;
+            }
+            Line(z);
+        }
+        printLine($"Fan changes {Hall.Fan.TotalChanges()}.");
+        for (int i = 0; i < Kitchen.Fan; i++) print("*");
+        printLine("");
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    void handler() {
+        int warm = Zones.filter((Zone z) => z.Temp > Thermostat.Setpoint).count();
+        bool anyFan = Zones.any((Zone z) => z.Fan > 0);
+        bool allOpen = Zones.all((Zone z) => z.Damper >= 50);
+        printLine($"Warm {warm}, any fan {anyFan}, all open {allOpen}.");
+        stringObj order = "By temp:";
+        for (Zone z in Zones.orderBy((Zone a, Zone b) => a.Temp <=> b.Temp)) order += $" {z}={z.Temp}";
+        printLine(order);
+        array<var> temps = Zones.map((Zone z) => z.Temp);
+        int total = 0;
+        for (var v in temps) total += v;
+        printLine($"Total {total} over {temps.length}.");
+        Zone hot = Zones.filter((Zone z) => z.Temp >= Thermostat.Setpoint).first();
+        printLine($"First warm {hot?.Label ?? "none"}.");
+        printLine($"All writes {Reading.AllWrites}, setpoint changes {Thermostat.Changes}.");
+    }
+}
+
+verb Extras {
+    grammar = {.extras};
+    void handler() {
+        printLine($"Bands: {Band(Lounge)} {Band(Hall)} {Band(Vault)}; damper {OpenDamper(Hall, 20)}.");
+        Lookup("hall")?.Temp += 3;
+        Zone found = Lookup("hall");
+        printLine($"Found {found?.Label ?? "none"} at {found.Temp}, writes {Lookup("hall")?.Temp.Writes()}.");
+        Zones[0].Temp -= 1;
+        Zones[0].Fan--;
+        --Zones[0].Fan;
+        ++Kitchen.Fan;
+        printLine($"First {Zones[0]} temp {Zones[0].Temp}, fan {Zones[0].Fan}; kitchen fan {Kitchen.Fan}.");
+        Panel.Focus = Kitchen;
+        Panel.Focus.Fan = 1;
+        Panel.Focus.Temp *= 2;
+        ((Zone)Panel.Focus).Damper %= 30;
+        printLine($"Kitchen via focus: fan {Kitchen.Fan}, temp {Kitchen.Temp}, damper {Kitchen.Damper}.");
+        array<string> modeNames = { "auto", "heat", "cool" };
+        printLine($"Mode name by index: {modeNames[Thermostat.Mode]}.");
+        ToggleAlarm();
+        printLine($"Alarm {Thermostat.Alarm}, raised {Thermostat.Alarm.Count()}, setpoint {Thermostat.Setpoint}.");
+        if (!Thermostat.Alarm) printLine("Not reached.");
+        ToggleAlarm();
+        if (Thermostat.Alarm || Thermostat.Setpoint > Lounge.Temp) printLine("Alarm or warm setpoint.");
+        else printLine($"Quiet: setpoint {Thermostat.Setpoint} under lounge {Lounge.Temp}.");
+        printLine($"Hall {(Hall.Temp > Thermostat.Setpoint ? "above" : "at or below")} setpoint, outdoor {(Panel.Outdoor? ? Panel.Outdoor : 99)}.");
+        Thermostat.Setpoint <<= 1;
+        printLine($"Doubled setpoint {Thermostat.Setpoint} ({Thermostat.ModeName()}).");
+        Thermostat.Setpoint /= 2;
+        print(Thermostat.Setpoint);
+        print(" ");
+        print(Lounge.Temp);
+        printLine("");
+    }
+}
+
+verb Bound {
+    grammar = {.bound};
+    void handler() {
+        Panel.Watched := Hall.Temp;
+        Panel.Watched += 1;
+        Panel.Watched++;
+        printLine($"Watched {Panel.Watched}, hall {Hall.Temp}, writes {Panel.Watched.Writes()}.");
+        Panel.Watched := Vault.Temp;
+        Panel.Watched = 4;
+        printLine($"Rebound watched {Panel.Watched}, vault {Vault.Temp}, hall {Hall.Temp}.");
+        Spare = 12;
+        Narrow = 12;
+        Spare += Narrow;
+        printLine($"Spare {Spare}, narrow {Narrow}, narrow headroom {Narrow.Headroom()}.");
+        Reading.Swap(Lounge.Temp, Hall.Temp);
+        printLine($"Swapped: lounge {Lounge.Temp}, hall {Hall.Temp}.");
+        Reading.Swap(Spare, Panel.Watched);
+        printLine($"Swapped: spare {Spare}, vault {Vault.Temp}.");
+        Lounge.Warm(5);
+        printLine($"Lounge warmed {Lounge.Temp}, peak vs 30 {Lounge.Peak(30)}, vs 10 {Lounge.Peak(10)}.");
+        int k = 0;
+        while (Vault.Temp.Headroom() > 5 && k < 10) {
+            Vault.Warm(10);
+            k++;
+        }
+        printLine($"Vault {Vault.Temp} after {k}, headroom {Vault.Temp.Headroom()}.");
+    }
+}
+
+verb Release {
+    grammar = {.release};
+    void handler() {
+        Zones.remove(1);
+        delete Kitchen;
+        Zone fresh = new Zone("annex", 17);
+        printLine($"Annex temp {fresh.Temp}, fan {fresh.Fan}, damper {fresh.Damper}, writes {fresh.Temp.Writes()}, edits {fresh.Label.Edits()}.");
+        fresh.Next = Lounge;
+        Zones.append(fresh);
+        printLine($"Annex next {fresh.Next?.Label ?? "none"}, comfort {fresh.Comfort()}.");
+        for (Zone z in Zones) Line(z);
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,31 @@
+// run_target5_values — a class member's default value-class literal with nested value-class members, and
+// calls through `func<>` values (an operator reference, a function reference, a lambda) given two
+// value-class call results as arguments.
+// EXPECT_OUTPUT: 1 30 4 8 1 30 4 7 7 7 7 6
+#beguilerSettings { target = z5; informName = "none"; }
+value class Coins {
+    int cents;
+    Coins operator = (Coins o) { cents = o.cents; return self; }
+    static int operator <=> (Coins a, Coins b) { return a.cents - b.cents; }
+}
+value class Span { Coins lo; Coins hi; int tag; Span operator = (Span o) { lo = o.lo; hi = o.hi; tag = o.tag; return self; } }
+class Purse : object { Span range = Span{ lo = Coins{ cents = 1; }; hi = Coins{ cents = 30; }; tag = 4; }; Coins held = Coins{ cents = 8; }; }
+Purse purseA { }
+Purse purseB { }
+Coins make(int n) { Coins r; r.cents = n; return r; }
+int diff(Coins a, Coins b) { return a.cents - b.cents; }
+func<int, Coins, Coins> viaOp = Coins::operator <=>;
+func<int, Coins, Coins> viaFn = diff;
+void main() {
+    bglInit();
+    print(purseA.range.lo.cents); print(" "); print(purseA.range.hi.cents); print(" ");
+    print(purseA.range.tag); print(" "); print(purseA.held.cents); print(" ");
+    print(purseB.range.lo.cents); print(" "); print(purseB.range.hi.cents); print(" "); print(purseB.range.tag); print(" ");
+    func<int, Coins, Coins> lam = (Coins a, Coins b) => a.cents - b.cents;
+    Coins x = make(3);
+    print(viaOp(make(9), make(2))); print(" ");
+    print(viaFn(make(9), make(2))); print(" ");
+    print(lam(make(9), make(2))); print(" ");
+    print(diff(make(9), make(2))); print(" ");
+    print(viaFn(make(9), x));
+}

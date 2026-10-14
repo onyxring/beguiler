@@ -1,0 +1,590 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fastener ledger whose every type is reached through a namespace object. `pk` holds
+// type aliases for two enums, a value class, a value class owning two of it, an object-backed part
+// class and a pooled subclass; a value alias to a superposed rules object, a value alias to a class
+// of static members, an `auto` runtime member for a stock object, and methods typed with its own bare
+// aliases; `lib` holds `pk` by `auto` and a tables object by value alias, three steps from a type; a
+// later `extend pk` adds a type alias and a value alias used above it; an emitter class composes two
+// unit classes through alias members. Paths appear in tables of value-class rows (nested bare
+// initializers), an array of func<> taking and returning the aliased value class, object declarations
+// typed through a path with positional enum and value members, class members, static members,
+// operators, parameters (by value, `ref`, defaults naming enum values through the path, named
+// arguments), returns, locals, casts of children and call results, `is()` with full, imported and
+// partial paths, `new` through a path and through an import, generic arguments of array<> and func<>,
+// lambda parameters in <linq> chains, switch cases written through the path, the import and the enum,
+// ternaries and interpolation. `#using pk` imports types, methods, the value aliases and the auto
+// member; `#using lib` gives partial paths; `#using pk.math` imports static members through a value
+// alias; `#using pkTools` imports the emitter alias members, chained two hops. A second namespace `shop`
+// aliases the first one's paths (as types, a value alias and an auto member) and takes func<> filters
+// over its own aliases; an `extend pk` before the import adds methods naming the aliases bare; an
+// `extend class` after it adds a member typed through the alias an `extend pk` adds after the import; static
+// methods reached through a value alias and through the import are held as func<> values.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+//-- Constants -------------------------------------------------------------------
+
+const int ROW_MAX = 8;
+const int NONE = -1;
+
+enum ePkKind { bolt, nut, washer, spring }
+enum ePkFinish { bare, zinc, brass }
+
+//-- Value classes, typed through the namespace declared below --------------------
+
+value class PkLen {
+    inline int mm;
+    pk.len operator = (pk.len o) { mm = o.mm; return self; }
+    bool operator == (pk.len o) { return mm == o.mm; }
+    bool operator != (pk.len o) { return mm != o.mm; }
+    int operator <=> (pk.len o) { return mm - o.mm; }
+    pk.len operator + (pk.len o) { return pk.len{ mm + o.mm }; }
+    pk.len operator - (pk.len o) { return pk.len{ mm - o.mm }; }
+    pk.len operator * (int n) { return pk.len{ mm * n }; }
+    pk.len operator += (pk.len o) { mm += o.mm; return self; }
+}
+
+value class PkSpan {
+    inline pk.len lo;
+    inline pk.len hi;
+    inline string label;
+    PkSpan operator = (PkSpan o) { lo = o.lo; hi = o.hi; label = o.label; return self; }
+    bool holds(pk.len l) { return l >= lo && l <= hi; }
+    pk.len width() { return hi - lo + pk.len{ 1 }; }
+}
+
+value class PkTally {
+    array<pk.len> seen[4];
+    int hits;
+    PkTally operator = (PkTally o) { seen = o.seen; hits = o.hits; return self; }
+    void log(pk.len l) {
+        if (seen.length == 4) seen.remove(0);
+        seen += l;
+        hits++;
+    }
+    pk.len sum() {
+        pk.len t;
+        for (pk.len l in seen) t += l;
+        return t;
+    }
+}
+
+//-- Part classes -----------------------------------------------------------------
+
+class PkPart : object {
+    inline pk.kind kind;
+    inline pk.len size;
+    inline string tag;
+    pk.finish finish = pk.finish.bare;
+    int count;
+    static int made;
+    static pk.len longest;
+
+    pk.part restock(int n, pk.finish f = pk.finish.zinc) {
+        count += n;
+        finish = f;
+        return self;
+    }
+    pk.len total() { return size * count; }
+    bool fits(pk.span s) { return s.holds(size); }
+}
+
+class PkCrate[3] : PkPart {
+    void create(pk.kind k, pk.len l, int n = 1) {
+        kind = k;
+        size = l;
+        tag = "crate";
+        count = n;
+        PkPart.made++;
+        if (l > PkPart.longest) PkPart.longest = l;
+    }
+}
+
+//-- Namespace objects -------------------------------------------------------------
+
+object pk {
+    alias kind for ePkKind;
+    alias finish for ePkFinish;
+    alias len for PkLen;
+    alias span for PkSpan;
+    alias part for PkPart;
+    alias crate for PkCrate;
+    alias rules = _pkRules;
+    alias math = PkMath;
+    auto stock = pkStock;
+
+    len widest(len a, len b) { return a > b ? a : b; }
+    kind kindOf(part p) { return p.kind; }
+    // Typed by an alias the later `extend pk` adds.
+    tally fresh(len first) {
+        tally t;
+        t.log(first);
+        return t;
+    }
+    span bandFor(len l) {
+        for (span s in pkTables.bands)
+            if (s.holds(l)) return s;
+        return pkTables.bands[0];
+    }
+}
+
+object pkTables {
+    //                  lo      hi      label
+    array<pk.span> bands[4] = {
+        { { 0 },  { 6 },  "small" },
+        { { 7 },  { 11 }, "medium" },
+        { { 12 }, { 99 }, "large" }
+    };
+}
+
+// Methods added to the namespace in an extension name its aliases bare.
+extend pk {
+    len doubled(len l) { return l * 2; }
+    bool sameBand(len a, span s, len b = len{ 8 }) { return s.holds(a) == s.holds(b); }
+    finish best(part a, part b) { return (int)a.finish > (int)b.finish ? a.finish : b.finish; }
+}
+
+superposed object _pkRules {
+    int bandOf(pk.len l) {
+        for (int i in 0 to pkTables.bands.length - 1)
+            if (pkTables.bands[i].holds(l)) return i;
+        return NONE;
+    }
+    bool pairs(pk.part a, pk.part b) {
+        return a.kind == pk.kind.bolt && b.kind == pk.kind.nut && a.size == b.size;
+    }
+    string finishName(pk.finish f = pk.finish.bare) {
+        switch (f) {
+            case pk.finish.zinc: return "zinc";
+            case ePkFinish.brass: return "brass";
+            default: return "bare";
+        }
+    }
+}
+
+class PkMath {
+    static int calls;
+    static int clamp(int v, int lo, int hi) {
+        calls++;
+        return v < lo ? lo : v > hi ? hi : v;
+    }
+    static pk.len roundUp(pk.len l, int step = 2) {
+        calls++;
+        return pk.len{ (l.mm + step - 1) / step * step };
+    }
+}
+
+object pkStock {
+    pk.len total;
+    PkTally tally;
+    array<pk.len> moves[4];
+    int moveCount;
+
+    void take(pk.part p, int n) {
+        p.count -= n;
+        p.drawn.log(p.size * n);
+        total += p.size * n;
+        tally.log(p.size);
+        if (moves.length == 4) moves.remove(0);
+        moves += p.size;
+        moveCount++;
+    }
+}
+
+object lib { }
+extend lib {
+    auto parts = pk;
+    alias tables = pkTables;
+}
+
+// Emitter namespace composed of unit classes.
+emitter class pkMetric { int perCm { 10 } }
+emitter class pkImperial { int perInch { 25 } }
+emitter class pkGauge { int perThou { 1000 } }
+emitter class pkUnits { pkGauge gauge; }
+emitter class pkTools { }
+extend class pkTools {
+    pkMetric metric;
+    pkImperial imperial;
+    pkUnits units;
+}
+
+//-- Tables ------------------------------------------------------------------------
+
+array<string> kindNames = { "bolt", "nut", "washer", "spring" };
+array<dictionaryWord> kindWords = { .bolt, .nut, .washer, .spring };
+
+array<pk.len> stdSizes = { { 6 }, { 8 }, { 10 }, { 12 } };
+
+array<func<pk.len, pk.len>> adjusters = {
+    (pk.len l) => pk.math.roundUp(l),
+    (pk.len l) => l + pk.len{ 1 },
+    (pk.len l) => pk.widest(l, stdSizes[1]),
+    (pk.len l) => pk.math.roundUp(l, step: 5)
+};
+array<string> adjusterNames = { "even", "plus one", "at least 8", "fives" };
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object binRow { "bin row"; }
+
+pk.part boltA { pk.kind.bolt, { 8 }, "M8 bolt", "bolt A"; count = 40; parent = binRow; }
+PkPart nutA { ePkKind.nut, { 8 }, "M8 nut", "nut A"; count = 55; parent = binRow; }
+pk.part washerA { pk.kind.washer, { 10 }, "M10 washer", "washer A"; count = 12; finish = pk.finish.brass; parent = binRow; }
+pk.part boltB { pk.kind.bolt, { 12 }, "M12 bolt", "bolt B"; count = 8; parent = binRow; }
+pk.part springA { pk.kind.spring, { 5 }, "5mm spring", "spring A"; count = 3; parent = binRow; }
+
+//-- Using imports ---------------------------------------------------------------
+
+#using pk
+
+extend pk {
+    alias tally for PkTally;
+    alias tables = pkTables;
+}
+
+// A part keeps a tally of its draws, typed through the alias added just above.
+extend class PkPart {
+    tally drawn;
+    len lastDrawn() { return drawn.hits == 0 ? len{ 0 } : drawn.seen[drawn.seen.length - 1]; }
+}
+
+// A second namespace whose aliases name the first one's paths.
+object shop {
+    alias size for pk.len;
+    alias item for pk.part;
+    alias grade for kind;
+    alias rules = _pkRules;
+    auto store = pkStock;
+
+    item pick(array<item> from, func<bool, item> want) {
+        for (item i in from)
+            if (want(i)) return i;
+        return null;
+    }
+    size spread(array<size> sizes) {
+        size lo = sizes[0];
+        size hi = sizes[0];
+        for (size z in sizes) {
+            if (z < lo) lo = z;
+            if (z > hi) hi = z;
+        }
+        return hi - lo;
+    }
+}
+
+// Helpers written against the imported names.
+string nameOf(kind k) { return kindNames[(int)k - 1]; }
+
+len sumOf(array<part> a) {
+    len t = len{ 0 };
+    for (part p in a) t += p.total();
+    return t;
+}
+
+void grow(ref len l, len by = len{ 1 }, int times = 1) {
+    for (int i in 1 to times) l += by;
+}
+
+part largest(array<part> a) {
+    part best = a[0];
+    for (part p in a)
+        if (p.size > best.size) best = p;
+    return best;
+}
+
+int gatherParts(ref array<part> into) {
+    for (object o in binRow.children)
+        if (o.is(part)) into += (part)o;
+    return into.length;
+}
+
+kind parseKindNumber(int n) { return (kind)math.clamp(n, 1, 4); }
+
+int parseKind() {
+    int at = kindWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at + 1;
+    return 1;
+}
+
+void padTo(ref stringObj s, int w) {
+    while (s.length < w) s += " ";
+}
+
+#using lib
+#using pk.math
+#using pkTools
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb PartsTest {
+    grammar = {.parts};
+    void handler() {
+        for (object o in binRow.children) {
+            if (!o.is(pk.part)) continue;
+            pk.part p = (pk.part)o;
+            stringObj row = "";
+            row += p.tag;
+            padTo(row, 12);
+            row += $"{nameOf(p.kind)} {p.size.mm}mm x{p.count}";
+            padTo(row, 30);
+            int b = rules.bandOf(p.size);
+            row += b == NONE ? "-" : tables.bands[b].label;
+            row += $" {rules.finishName(p.finish)}";
+            row.print();
+            print("^");
+        }
+        array<part> all[ROW_MAX];
+        int n = gatherParts(all);
+        print($"{n} parts, {sumOf(all).mm}mm in all; largest {largest(all).tag}.^");
+    }
+}
+
+verb KindsTest {
+    grammar = {.kinds};
+    void handler() {
+        stringObj line = "Kinds:";
+        for (object o in binRow.children) {
+            switch (pk.kindOf((pk.part)o)) {
+                case pk.kind.bolt: line += " B";
+                case kind.nut: line += " N";
+                case ePkKind.washer: line += " W";
+                default: line += " ?";
+            }
+        }
+        line += ".";
+        line.print();
+        print("^");
+        kind k = parseKindNumber(9);
+        pk.kind first = kindOf(boltA);
+        print($"Clamped kind {nameOf(k)}; first {nameOf(first)}; equal to bolt: {first == kind.bolt ? "yes" : "no"}.^");
+    }
+}
+
+verb BandsTest {
+    grammar = {.bands};
+    void handler() {
+        array<part> all[ROW_MAX];
+        gatherParts(all);
+        for (span s in lib.tables.bands) {
+            int n = all.filter((pk.part p) => p.fits(s)).count();
+            stringObj row = s.label;
+            padTo(row, 8);
+            row += $"{s.lo.mm}-{s.hi.mm} ({s.width().mm}): {n}";
+            row.print();
+            print("^");
+        }
+        pk.span mid = bandFor(len{ 9 });
+        span big = pk.bandFor(stdSizes[3]);
+        print($"9mm is {mid.label}; 12mm is {big.label}; same band: {mid.label == big.label ? "yes" : "no"}.^");
+    }
+}
+
+verb DrawTest {
+    grammar = {.draw, parseKind, NUMBER};
+    void handler() {
+        kind k = (kind)(int)noun;
+        int want = (int)second;
+        array<part> all[ROW_MAX];
+        gatherParts(all);
+        array<part> ofKind[ROW_MAX] = all.filter((part p) => p.kind == k && p.count >= want);
+        if (ofKind.length == 0) {
+            print($"No {nameOf(k)} with {want} left.^");
+            return;
+        }
+        part p = ofKind.orderBy((part a, part b) => a.size <=> b.size).first();
+        stock.take(p, want);
+        print($"Took {want} of {p.tag}; {p.count} left; moved {pk.stock.total.mm}mm in {lib.parts.stock.moveCount} moves.^");
+    }
+}
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        stringObj line = "Moves:";
+        for (len l in parts.stock.moves) line += $" {l.mm}";
+        PkTally snap = stock.tally;
+        pk.tally copy = snap;
+        copy.log(len{ 100 });
+        line += $"; tally {stock.tally.hits} sum {stock.tally.sum().mm}, copy {copy.hits} sum {copy.sum().mm}.";
+        line.print();
+        print("^");
+    }
+}
+
+verb AdjustTest {
+    grammar = {.adjust, NUMBER};
+    void handler() {
+        len start = len{ (int)noun };
+        for (int i in 0 to adjusters.length - 1) {
+            func<pk.len, pk.len> f = adjusters[i];
+            pk.len r = f(start);
+            print($"{adjusterNames[i]}: {r.mm}^");
+        }
+        print($"Math calls {calls}, by path {pk.math.calls}.^");
+    }
+}
+
+verb GrowTest {
+    grammar = {.grow, NUMBER};
+    void handler() {
+        len a = len{ (int)noun };
+        grow(a);
+        grow(a, pk.len{ 2 });
+        grow(a, times: 3);
+        grow(a, by: stdSizes[0], times: 2);
+        ref pk.len r := boltB.size;
+        grow(r, len{ 1 });
+        print($"Grown to {a.mm}; M12 bolt now {boltB.size.mm}, total {boltB.total().mm}.^");
+        grow(boltB.size, by: len{ -1 });
+    }
+}
+
+verb CratesTest {
+    grammar = {.crates};
+    void handler() {
+        pk.crate a = new pk.crate(pk.kind.washer, len{ 4 });
+        crate b = new crate(kind.spring, pk.len{ 20 }, n: 6);
+        if (a == null || b == null) {
+            print("No crates.^");
+            return;
+        }
+        a.restock(10);
+        b.restock(1, f: finish.brass);
+        part asPart = b;
+        bool isCrate = asPart.is(crate);
+        bool isPart = a.is(pk.part);
+        print($"Crate a {nameOf(a.kind)} {a.size.mm}mm x{a.count} {rules.finishName(a.finish)}; ");
+        print($"b {nameOf(b.kind)} {b.size.mm}mm x{b.count} {rules.finishName(b.finish)}; ");
+        print($"crate: {isCrate ? "yes" : "no"}, part: {isPart ? "yes" : "no"}; made {PkPart.made}, longest {part.longest.mm}.^");
+        delete a;
+        delete b;
+    }
+}
+
+verb PairsTest {
+    grammar = {.pairs};
+    void handler() {
+        array<part> all[ROW_MAX];
+        gatherParts(all);
+        int n = 0;
+        for (part a in all)
+            for (part b in all)
+                if (pk.rules.pairs(a, b)) {
+                    n++;
+                    print($"{a.tag} fits {b.tag}.^");
+                }
+        bool anyBrass = all.any((pk.part p) => p.finish == pk.finish.brass);
+        part firstSmall = all.filter((part p) => rules.bandOf(p.size) == 0).first();
+        print($"{n} pairs; brass: {anyBrass ? "yes" : "no"}; first small {firstSmall.tag}.^");
+    }
+}
+
+verb RestockTest {
+    grammar = {.restock, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        ((pk.part)binRow.child).restock(n).restock(1, pk.finish.brass);
+        pk.part p = boltA.restock(0);
+        print($"{boltA.tag} x{boltA.count} {rules.finishName(boltA.finish)}; returned {p.tag}.^");
+        print($"Default finish name: {rules.finishName()}.^");
+    }
+}
+
+verb MixTest {
+    grammar = {.mix, NUMBER};
+    void handler() {
+        pk.len l = pk.len{ (int)noun };
+        pk.len d = pk.doubled(l);
+        len d2 = doubled(d);
+        func<int, int, int, int> cl = pk.math.clamp;
+        func<int, int, int, int> cl2 = clamp;
+        func<pk.len, pk.len, int> ru = pk.math.roundUp;
+        tally t = pk.fresh(l);
+        t.log(d);
+        pk.tally u = fresh(d2);
+        print($"Doubled {d.mm}, again {d2.mm}; clamped {cl(d.mm, 0, 20)} {cl2(d2.mm, 0, 20)}; rounded {ru(l, 4).mm}; ");
+        print($"tallies {t.hits}/{t.sum().mm} and {u.hits}/{u.sum().mm}.^");
+        span s = lib.tables.bands[1];
+        bool same = sameBand(l, s);
+        bool same2 = pk.sameBand(l, s, b: len{ 20 });
+        finish f = best(boltA, washerA);
+        pk.finish f2 = pk.best(nutA, boltB);
+        ref pk.len m := pk.stock.moves[0];
+        if (pk.stock.moves.length > 0) m += len{ 0 };
+        switch (shop.grade.washer) {
+            case shop.grade.bolt: print("bolt ");
+            case pk.kind.washer: print("washer ");
+            default: print("other ");
+        }
+        print($"same band as 8: {same ? "yes" : "no"}, as 20: {same2 ? "yes" : "no"}; best finishes {rules.finishName(f)} {pk.rules.finishName(f2)}; first move {m.mm}.^");
+    }
+}
+
+verb UnitsTest {
+    grammar = {.units, NUMBER};
+    void handler() {
+        int mm = (int)noun;
+        print($"{mm}mm is {mm / metric.perCm} cm and {mm / pkTools.imperial.perInch} in; ");
+        print($"widest of it and 8: {widest(len{ mm }, stdSizes[1]).mm}.^");
+    }
+}
+
+verb ShopTest {
+    grammar = {.shop};
+    void handler() {
+        array<shop.item> all[ROW_MAX];
+        gatherParts(all);
+        shop.item nut = shop.pick(all, (pk.part p) => p.kind == shop.grade.nut);
+        shop.item big = shop.pick(all, (shop.item p) => p.size > shop.size{ 10 });
+        pk.part none = shop.pick(all, (part p) => p.count > 1000);
+        print($"Pick nut {nut?.tag ?? "-"}, big {big.tag}, none {none == null ? "null" : "found"}.^");
+        array<shop.size> sizes = { { 9 }, { 4 }, { 15 } };
+        array<pk.len> std[4] = stdSizes;
+        print($"Spread {shop.spread(sizes).mm}, of standard {shop.spread(std).mm}; band of 15 {shop.rules.bandOf(sizes[2])}.^");
+        int n = 0;
+        for (object o in binRow.children) {
+            if (o.is(parts.part) && o.is(shop.item) && !o.is(crate)) n++;
+        }
+        parts.crate c = new parts.crate(parts.kind.nut, parts.len{ 3 });
+        bool both = c.is(pk.crate) && c.is(lib.parts.part);
+        print($"{n} plain parts; crate {c.tag} {(int)c.kind} {c.size.mm}mm both {both ? "yes" : "no"}; store moves {shop.store.moveCount}.^");
+        delete c;
+        array<pk.kind> order = { pk.kind.spring, kind.washer, parts.kind.nut, ePkKind.bolt };
+        stringObj line = "Order:";
+        for (shop.grade g in order) line += $" {nameOf(g)}";
+        line += $"; last drawn bolt {boltA.lastDrawn().mm}, washer {washerA.lastDrawn().mm}, nut {nutA.lastDrawn().mm}.";
+        line.print();
+        print("^");
+        print($"Thous per mm {units.gauge.perThou}, by path {pkTools.units.gauge.perThou}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

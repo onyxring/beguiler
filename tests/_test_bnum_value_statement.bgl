@@ -1,0 +1,9 @@
+/* a bnum value alone as a statement */
+// EXPECT_ERROR: 'newline' is a value, which does nothing as a statement
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; includePaths = "../../inform6/stdlib"; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+object roomA { "Room A"; attributes = {light}; }
+bool Initialise() { location = roomA; print("a"); newline; print("b^"); rtrue; }
+#includeI6 "grammar"

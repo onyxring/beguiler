@@ -1,0 +1,551 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5 whose names meet the library's and each other's. A Dial
+// class with members named like library properties (number, capacity), library globals (second,
+// score, location), a library array (buffer), the program's globals (count, a static total, a member
+// array readings), #defines (step, cap; their initializers read the symbols) and a const (span), the
+// library's enum values (current, id), the library attribute locked and the verb Tally (`tally`, added
+// by `extend class`); methods named like library routines (Refers, Identical, EnglishNumber calling
+// `::EnglishNumber`), library verbs (Set, Turn, Push, with `case ::Turn` and `::Set` in `before`), an
+// enum value (stopped) and a global variable (Tick beside `tick`); a static method reading bare
+// `score` and `count` (the globals) and one with a parameter named like the property; parameters and
+// locals hiding members, reached with `self.`; `::second`, `::count`, `::total`, `::locked`,
+// `::stopped`, `::Dial`, `::wn`, `::selfobj`, `::a()`, `::the()`; a global function Push beside the
+// library verb Push (`action == Push` in GamePreRoutine), a routine named like LibraryExtensions'
+// RunAll, the TimePasses entry point beside a tracker method of that name, called bare from its
+// daemon; a tracker whose members location, turns, score, buffer, dial (like the class) and second
+// (added by `extend` below its use) meet library globals, with a timer (time_left, time_out); a
+// ledger imported with #using; a verb Step named like a #define, a verb with a member named like a
+// global; a value class whose fields are named like library globals and the property number;
+// parameters with defaults and named arguments named like library globals and the #define
+// (`turns = ::turns`, `score:`, `by: STEP`); locals named like library globals, an attribute
+// (general), a verb (spin), a class (`Dial dial`), the print rules a and the, a library object
+// (selfobj) and a parser global (wn, in parse_name); loop and lambda variables named like library
+// globals, and a lambda capturing a local named like one; reads in other letter cases
+// (`DIALA.Number`, `Tracker.LOCATION`, `DIALA.IDENTICAL()`, `::englishNumber`); native Spin, Zero,
+// Nudge and Step verbs and meta Tally and Names verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define STEP 2
+#define CAP 6
+const int SPAN = 4;
+const int MAX_SCORE = 3;
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- globals the members are named after
+
+int count = 0;                          // settings made, all dials
+int total = 0;                          // sum of every setting made
+int tick = 0;                           // ticks of any dial
+array<int> readings[4];                 // settings made, by dial number
+enum eMode { idle, run, stopped }
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A panel of three dials. Room B is east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. A ledger lies on a desk. Room A is west.";
+    object w_to = roomA;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- the dials
+
+class Dial : object {
+    int number;                         // the library property
+    int current;                        // like the colour value eColor.current
+    int second;                         // the setting before this one; like the library global
+    int score;                          // times set to span; like the library global
+    int count;                          // times set; like the program global
+    static int total;                   // sum of settings, all dials; like the program global
+    int span = SPAN;                    // like the const
+    int step = STEP;                    // like the #define
+    int cap = CAP;                      // the highest setting it goes back to; like the #define and the routine Cap
+    int id;                             // like eListStyle.id
+    bool locked;                        // held at its setting; like the attribute
+    eMode mode = eMode.idle;
+    array<int> readings[4];             // settings, oldest first; like the global array
+    array<int> buffer[2];               // first and last setting; like the library's input buffer
+    object location;                    // where it was last set from; like the library global
+    int capacity = 9;                   // the highest setting; the library property
+    dictionaryWord letter;
+
+    int parse_name() {
+        int n = 0;
+        while (true) {
+            int wn = ::wn;              // a local named like the parser's word number
+            dictionaryWord w = NextWord();
+            if (w == .dial || (w != null && w == letter)) {
+                n++;
+                continue;
+            }
+            if (w == null && TryNumber(wn) == number) {
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+
+    void Set(int current) {             // like the library verb; the parameter hides the member
+        if (locked) {
+            print($"{cThe(self)} is held at {self.current}.^");
+            return;
+        }
+        if (current > capacity) current = capacity;
+        if (current < 0) current = 0;
+        second = self.current;
+        self.current = current;
+        count++;
+        ::count++;
+        total += current;
+        ::total += current;
+        if (self.count <= 4) readings[self.count - 1] = current;
+        ::readings[number] = ::readings[number] + 1;
+        if (count == 1) buffer[0] = current;
+        buffer[1] = current;
+        location = ::location;
+        tracker.dial = self;
+        if (current == span) score++;
+        if (current == 0) mode = stopped;
+        else mode = run;
+    }
+
+    void Turn(int by = STEP) {          // like the library verb; the default is this member, not the #define
+        Set(current + by);
+    }
+
+    void Push() {                       // like the library verb
+        Set(::STEP);
+        Tick();                         // the method, beside the global variable tick
+    }
+
+    bool Refers(int number) {           // like the library routine; the parameter hides the property
+        return self.number == number;
+    }
+
+    bool Identical(Dial other) {        // like the library routine
+        return other.current == current && other.score == score;
+    }
+
+    void EnglishNumber() {              // like the library routine, which this one calls
+        print("dial ");
+        ::EnglishNumber(number);
+    }
+
+    bool stopped() {                    // like the enum value
+        return mode == ::stopped;
+    }
+
+    void Zero() {
+        Set(0);
+    }
+
+    void description() {
+        print($"Dial {number} reads {current} of {capacity} (before that {second}), set {count} of {::count} times");
+        if (cap != ::CAP) print($", cap {cap}");
+        switch (mode) {
+            case idle:      print(", idle");
+            case ::stopped: print(", stopped");
+            case run:       if (stopped()) print(", stuck");
+        }
+        if (score > 0) print($", {score} at {span}");
+        if (locked) print(", held");
+        if (self.has(::locked)) print(", latched");
+        print(".^");
+    }
+
+    bool before() {
+        switch (action) {
+            case ::Turn:
+                Turn();
+                print($"You turn {the(self)} to {current}.^");
+                rtrue;
+            case ::Push:
+                Push();
+                print($"{cThe(self)} clicks to {current}.^");
+                rtrue;
+            case ::Set:
+                locked = !locked;
+                if (locked) {
+                    give(::locked);
+                    rtrue($"You latch {the(self)} at {current}.^");
+                }
+                ungive(::locked);
+                rtrue($"You free {the(self)}.^");
+        }
+        rfalse;
+    }
+}
+
+extend class Dial {
+    int tally;                          // like the verb Tally
+    void Tick() {                       // like the global variable
+        tally++;
+        ::tick++;
+    }
+
+    static int Points() {               // bare score and count here are the globals, not the members
+        return score * 100 + count;
+    }
+
+    static Dial ByNumber(int number) {  // the parameter is named like the property
+        for (Dial d in dials) {
+            if (d.number == number) return d;
+        }
+        return null;
+    }
+}
+
+Dial dialA {
+    short_name = "dial A";
+    letter = .a;
+    parent = roomA;
+    number = 1;
+    id = 101;
+    attributes = {static};
+}
+
+Dial dialB {
+    short_name = "dial B";
+    letter = .b;
+    parent = roomA;
+    number = 2;
+    id = 102;
+    capacity = 6;
+    cap = 3;
+    attributes = {static};
+}
+
+Dial dialC {
+    short_name = "dial C";
+    letter = .c;
+    parent = roomA;
+    number = 3;
+    id = 103;
+    attributes = {static};
+}
+
+array<Dial> dials = {dialA, dialB, dialC};
+
+// ---------------------------------------------------------------- a reading
+
+value class Reading {
+    int number;                         // like the property and eParserError.number
+    int score;                          // like the library global
+    int turns;                          // like the library global
+    Reading operator = (Reading o) {
+        number = o.number;
+        score = o.score;
+        turns = o.turns;
+        return self;
+    }
+    void Take(Dial dial) {              // a parameter named like its class
+        number = dial.number;
+        score = dial.current;
+        turns = ::turns;
+        if (!dial.is(::Dial)) number = 0;   // the parameter hides the class
+    }
+}
+
+Reading last;
+
+// ---------------------------------------------------------------- the tracker
+
+object tracker {
+    object location;                    // the room the player was last in
+    int turns;                          // turns it has run
+    int score;                          // dials it has seen set
+    array<object> buffer[3];            // the last three rooms
+    Dial dial;                          // the dial set last; a member named like the class
+    int time_left;
+    int moves;
+
+    void TimePasses() {                 // like the entry point
+        turns++;
+        if (location != ::location) {
+            buffer[2] = buffer[1];
+            buffer[1] = buffer[0];
+            buffer[0] = ::location;
+            moves++;
+        }
+        location = ::location;
+    }
+
+    void daemon() {
+        TimePasses();                   // the member
+    }
+
+    int LastDial() {
+        if (dial == null || !dial.is(::Dial)) return 0;
+        return dial.number;
+    }
+
+    void time_out() {                   // the second it chimes is kept below
+        second = ::turns;
+        print("^The tracker chimes.^");
+        score = score + ::score;
+    }
+}
+
+extend tracker {
+    int second;                         // the turn the timer ran out; like the library global
+}
+
+// ---------------------------------------------------------------- the ledger
+
+object ledger {
+    short_name = "ledger";
+    name = {.ledger, .book};
+    parent = roomB;
+    int entries;
+    int lastTurn;
+    void Note(Dial d, int turns = ::turns, int score = 0) {
+        entries++;
+        lastTurn = turns;
+        d.score = d.score + score;
+    }
+    void EnglishNumber(int n) {         // like the library routine, which this one doesn't call
+        print($"No. {n}");
+    }
+    void description() {
+        print($"{entries} entries, the last at turn {lastTurn}.^");
+    }
+}
+
+#using ledger;
+
+// ---------------------------------------------------------------- routines
+
+bool Initialise() {
+    location = roomA;
+    tracker.location = roomA;
+    StartDaemon(tracker);
+    StartTimer(tracker, 4);
+    rfalse;
+}
+
+void TimePasses() {                     // the entry point
+    if (tracker.turns < 0) tracker.TimePasses();
+}
+
+void Push(Dial d) {                     // a global function named like the library verb
+    d.Push();
+    d.Tick();
+}
+
+void Award(int score) {                 // a parameter named like the library global
+    ::score = ::score + score;
+    if (::score >= MAX_SCORE) deadflag = 2;
+}
+
+int Spread() {
+    int score = 0;                      // a local named like the library global
+    int total = 0;                      // and one like the program global
+    for (Dial noun in dials) {          // a loop variable named like the library global
+        total = total + noun.current;
+        if (noun.current > score) score = noun.current;
+    }
+    return score * 10 + total;
+}
+
+Dial Highest() {
+    Dial dial = dialA;                  // a local named like the class
+    for (Dial second in dials) {
+        if (second.current > dial.current) dial = second;
+    }
+    Dial best = dial;                   // the class still declares types
+    return best;
+}
+
+int Advance(Dial d, int step = ::STEP, int span = SPAN) {   // parameters named like the #define and the const
+    int spin = d.current + step;        // a local named like the verb
+    if (spin > span) spin = span;
+    d.Set(spin);
+    return spin;
+}
+
+void Report(Dial d) {
+    Reading r;
+    r.Take(d);
+    last = r;
+    print($"[{r.number}:{r.score}]");
+}
+
+int StepDefine() {
+    return STEP;
+}
+
+void RunAll(int by = 1) {               // named like a method of the library's LibraryExtensions
+    for (Dial d in dials) {
+        if (!d.locked) d.Set(d.current + by);
+    }
+}
+
+bool GamePreRoutine() {
+    if (action == Push && noun == dialC && dialC.locked) {
+        print("Dial C is latched.^");
+        rtrue;
+    }
+    rfalse;
+}
+
+bool Matched() {
+    bool general = dialA.current == dialB.current; // a local named like the attribute
+    if (general) dialA.give(::general);
+    else dialA.ungive(::general);
+    return dialA.has(::general);
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Spin {
+    grammar = {.spin, NOUN, .to, NUMBER};
+    void handler() {
+        if (!noun.is(Dial)) {
+            print("Only a dial spins.^");
+            return;
+        }
+        Dial dial = (Dial)noun;         // the local hides the class from here on
+        Dial same = (Dial)noun;
+        int n = (int)second;
+        if (same != dial) return;
+        if (dial.Refers(n)) print("(its own number) ");
+        dial.Set(n);
+        dial.Tick();
+        Note(dial, score: 0);
+        Report(dial);
+        print($" {cThe(dial)} reads {dial.current}.^");
+        if (dial.current == dial.span && dial.score == 1) Award(1);
+    }
+}
+
+verb Zero {
+    grammar = {.zero, NOUN};
+    void handler() {
+        if (!noun.is(Dial)) {
+            print("Only a dial zeroes.^");
+            return;
+        }
+        ((Dial)noun).Zero();
+        Note((Dial)noun, turns: 0);
+        print($"{cThe(noun)} drops to 0.^");
+    }
+}
+
+verb Step {                             // named like the #define
+    grammar = {.step};
+    void handler() {
+        RunAll();
+        RunAll(by: STEP);
+        print($"The free dials step on by {1 + STEP}.^");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        if (!noun.is(Dial)) {
+            print("Only a dial nudges.^");
+            return;
+        }
+        Dial d = (Dial)noun;
+        int got = Advance(d);
+        Push(d);
+        Note(d, score: 1, turns: ::turns);
+        print($"{cThe(d)} goes to {got}, then clicks to {d.current}.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    int count;                          // times typed; like the global
+    int Uses() {
+        return count;
+    }
+    void handler() {
+        count++;
+        print($"Count {::count}, total {total}, Dial.total {Dial.total}, by dial");
+        for (int i = 1; i <= 3; i++) print($" {readings[i]}");
+        print(".^");
+        for (Dial score in dials) {
+            print($"{score.number}: {score.current} ({score.second}) count {score.count} score {score.score} tally {score.tally} id {score.id} mode {(int)score.mode}");
+            print(" readings");
+            for (int i = 0; i < 4; i++) print($" {score.readings[i]}");
+            print($" buffer {score.buffer[0]}/{score.buffer[1]}");
+            if (score.location != null) print($" from {score.location.short_name}");
+            if (score.stopped()) print(" stopped");
+            print(".^");
+        }
+        print($"Spread {Spread()}, highest {Highest().number}, matched {Matched()}.^");
+        print($"Last reading {last.number}:{last.score} at {last.turns}.^");
+        print($"Score {score} of {MAX_SCORE}; turns {turns}; points {Dial.Points()}.^");
+    }
+}
+
+verb Names {
+    grammar = {.names};
+    meta = true;
+    void handler() {
+        object location = tracker.location;     // a local named like the library global
+        print($"Tracker: in {location.short_name} (now {::location.short_name}), moves {tracker.moves}, turns {tracker.turns}, score {tracker.score}, timer {tracker.time_left}, chimed {tracker.second}, last dial {tracker.LastDial()}.^");
+        print("Rooms:");
+        for (int i = 0; i < 3; i++) {
+            object o = Tracker.BUFFER[i];
+            if (o == null) print(" -");
+            else print($" {o.short_name}");
+        }
+        print(".^");
+        int ledger = ::ledger.entries;  // a local named like the #using target
+        print($"Ledger: {ledger} entries ({entries}), last {lastTurn}; ");
+        ::ledger.EnglishNumber(2);
+        print("; ");
+        dialB.EnglishNumber();
+        print(".^");
+        print($"Values: current {current}, id {(int)id}, number {(int)eParserError.number}, idle {(int)idle} run {(int)eMode.run} stopped {(int)::stopped}.^");
+        print($"Cases: {DIALA.Number} {DialB.NUMBER} {dialc.number}, {Tracker.LOCATION.short_name}, {DIALA.Span} {dialA.STEP} {StepDefine()} {SPAN}.^");
+        int running = dials.filter((Dial noun) => noun.current > 0).count();
+        bool held = dials.any((Dial second) => second.locked);
+        int score = 3;                  // a local named like the library global, captured below
+        int over = dials.filter((Dial d) => d.current > score).count();
+        Dial top = dials.filter((Dial location) => location.current >= SPAN).first();
+        print($"Running {running}, held {held}, at span {(top == null ? 0 : top.number)}, over {score} {over}.^");
+        print($"Same: {dialA.Identical(dialB)} {DIALA.IDENTICAL(dialA)}; refers {dialC.Refers(3)} {DialC.refers(1)}; ");
+        ::englishNumber(Dial.BYNUMBER(3).NUMBER);
+        print($"; {dialB.Location == ::LOCATION}.^");
+        int tally = 0;                  // a local named like the verb
+        tally = ::Tally.Uses();
+        print($"Tally typed {tally} times.^");
+        Dial dial = dialC;
+        int a = dial.number;            // locals named like the print rules a() and the()
+        int the = a + 1;
+        print($"Rules: {a} {the} {::a(dial)}, {::the(dial)}, {cThe(dial)}.^");
+        object selfobj = player;        // a local named like the library object
+        print($"Is: {dial.is(::Dial)} {tracker.is(::Dial)} {selfobj == ::selfobj}; ticks {tick}; by number {Dial.ByNumber(2).short_name}.^");
+    }
+}
+
+#includeI6 "grammar"

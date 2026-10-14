@@ -1,0 +1,1321 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-fifth first-time-programmer program, a measuring bench where rods are
+// measured, joined, marked and sorted, written by a beginner who has just found overloading and
+// gives every helper several shapes "so it works with anything". Global functions overloaded on int,
+// char, string, bool, an enum, a value class, a reference class and its subclasses (most specific
+// wins, a declared object matching its class exactly), with a var fallback, a conversion operator
+// match and a union parameter; overloads that differ only in arity, picked by default arguments and
+// by named arguments; a `replace` of one overload calling `replaced()`; emitter overloads; overloaded
+// methods on a class, inherited by subclasses that add overloads beside them and replace one of them;
+// overloaded methods on objects and on an object of a class; static method overloads; an object used
+// as a namespace whose overloaded methods are imported with #using and called bare; a value class
+// with instance operators overloaded by operand type (+, -, ==, !=, +=, *) and static <=>; a reference
+// class hierarchy with instance == and + overloads and a static <=> used by sort; operator references
+// (Length::operator ==(int), Rod::operator <=>) held in func<> variables and passed to sort; overload
+// calls nested as arguments of other overloads, in returns, conditions, ?: branches, loops and
+// interpolation spans; overloads added by `extend class` (methods, operators, emitter methods) and
+// a subclass ordering operator over an inherited static <=>; a value subclass using its base's
+// operator overloads beside its own, sorted and searched in an array; a program print(Length)
+// overload reached from interpolation and printLine; compound assignment and ++ falling back to
+// overloaded + - * on locals, members and array elements; ref and func<> parameters, array
+// parameters and stringObj picking overloads; overloads in default-argument values, ?: arguments
+// and switch subjects; an explicit conversion beside an implicit one; and verbs (bench, measure,
+// join, sort, mark, marks, units, picks, shapes, more, gaps, odds) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+// ===== COUNTS =====
+
+// how many rods fit on the rack
+const int RACK_SIZE = 6;
+// how many times something was noted
+int noteCount = 0;
+
+// the shape of a rod
+enum eShape { straight, bent, coiled }
+
+// ===== LENGTHS =====
+
+// a length in centimetres
+value class Length {
+    inline int cm;
+
+    Length operator = (Length o) {
+        cm = o.cm;
+        return self;
+    }
+    // adding another length
+    Length operator + (Length o) {
+        Length r;
+        r.cm = cm + o.cm;
+        return r;
+    }
+    // adding some centimetres
+    Length operator + (int n) {
+        Length r;
+        r.cm = cm + n;
+        return r;
+    }
+    // taking away another length
+    Length operator - (Length o) {
+        Length r;
+        r.cm = cm - o.cm;
+        return r;
+    }
+    // taking away some centimetres
+    Length operator - (int n) {
+        Length r;
+        r.cm = cm - n;
+        return r;
+    }
+    Length operator * (int n) {
+        Length r;
+        r.cm = cm * n;
+        return r;
+    }
+    Length operator += (Length o) {
+        cm = cm + o.cm;
+        return self;
+    }
+    Length operator += (int n) {
+        cm = cm + n;
+        return self;
+    }
+    bool operator == (Length o) {
+        return cm == o.cm;
+    }
+    bool operator == (int n) {
+        return cm == n;
+    }
+    bool operator != (Length o) {
+        return cm != o.cm;
+    }
+    bool operator != (int n) {
+        return cm != n;
+    }
+    static int operator <=> (Length a, Length b) {
+        return a.cm - b.cm;
+    }
+    static bool operator == (Length a, int n) {
+        return a.cm == n;
+    }
+    static bool operator == (Length a, Length b) {
+        return a.cm == b.cm;
+    }
+
+    // makes a length from centimetres
+    static Length make(int n) {
+        Length r;
+        r.cm = n;
+        return r;
+    }
+    // makes a length from metres and centimetres
+    static Length make(int m, int n) {
+        Length r;
+        r.cm = m * 100 + n;
+        return r;
+    }
+    // twice as long, made with make()
+    Length doubled() {
+        return make(cm * 2);
+    }
+    // this length with metres and centimetres added
+    Length plus(int m, int n) {
+        return make(m, n) + self;
+    }
+    // makes a length from another one, made longer
+    static Length make(Length l, int more) {
+        Length r;
+        r.cm = l.cm + more;
+        return r;
+    }
+}
+
+// ===== GAUGES =====
+
+// a gauge reads as a number of centimetres
+class Gauge {
+    int reading = 0;
+    int operator () {
+        return reading;
+    }
+    explicit string operator () {
+        if (reading > 90) {
+            return "nearly a metre";
+        }
+        return "short";
+    }
+}
+
+// ===== RODS =====
+
+class Rod : object {
+    // what it is called
+    string what;
+    // how long it is
+    Length len;
+    // how many marks are on it
+    int marks = 0;
+    string description;
+
+    // marks it once
+    void mark() {
+        marks++;
+    }
+    // marks it some times
+    void mark(int times) {
+        marks = marks + times;
+    }
+    // marks it at a place, and says where
+    void mark(string at) {
+        marks++;
+        print($"(mark at {at}) ");
+    }
+    // the shape it has
+    eShape shape() {
+        return straight;
+    }
+    // two rods are the same when they are as long
+    bool operator == (Rod o) {
+        return len == o.len;
+    }
+    bool operator != (Rod o) {
+        return len != o.len;
+    }
+    // the same as a number of centimetres
+    bool operator == (int n) {
+        return len == n;
+    }
+    bool operator != (int n) {
+        return len != n;
+    }
+    // the length of two rods end to end
+    int operator + (Rod o) {
+        return len.cm + o.len.cm;
+    }
+    // the length with a bit added
+    int operator + (int n) {
+        return len.cm + n;
+    }
+    // shorter rods sort first
+    static int operator <=> (Rod a, Rod b) {
+        return a.len.cm - b.len.cm;
+    }
+
+    bool before() {
+        if (action == Examine) {
+            print($"{what}: ");
+            say(len);
+            print($", {marks} marks, ");
+            say(shape());
+            print(".^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a rod with a bend in it
+class BentRod : Rod {
+    // how far it is bent
+    int angle = 90;
+    replace eShape shape() {
+        return bent;
+    }
+    // marks it on the bend
+    void mark(bool onBend) {
+        if (onBend) {
+            marks = marks + 2;
+        } else {
+            marks++;
+        }
+    }
+    // a bent rod's end to end length loses a little
+    replace int operator + (int n) {
+        return len.cm + n - 1;
+    }
+}
+
+// a rod wound into a coil
+class Coil : Rod {
+    // how many turns it has
+    int turns = 3;
+    replace eShape shape() {
+        return coiled;
+    }
+    // marking a coil marks every turn
+    replace void mark(int times) {
+        marks = marks + times * turns;
+    }
+    // marks it at a turn
+    void mark(int times, int turn) {
+        marks = marks + times;
+        print($"(turn {turn}) ");
+    }
+}
+
+// ===== THE RACK =====
+
+// rods put on the rack
+array<Rod> rack[RACK_SIZE];
+
+// lengths written down
+array<Length> notes[RACK_SIZE];
+
+// ===== SAY: ONE NAME FOR EVERYTHING =====
+
+void say(int n) {
+    print(n);
+}
+
+void say(char c) {
+    print("'");
+    print(c);
+    print("'");
+}
+
+void say(string s) {
+    print(s);
+}
+
+void say(bool b) {
+    if (b) {
+        print("yes");
+    } else {
+        print("no");
+    }
+}
+
+void say(eShape s) {
+    switch (s) {
+        case straight: print("straight");
+        case bent: print("bent");
+        case coiled: print("coiled");
+    }
+}
+
+void say(Length l) {
+    print($"{l.cm}cm");
+}
+
+void say(Rod r) {
+    print($"the {r.what} rod");
+}
+
+void say(Coil c) {
+    print($"the {c.what} coil of {c.turns} turns");
+}
+
+// anything else
+void say(var v) {
+    print("something");
+}
+
+// ===== KIND: WHAT SORT OF THING IT IS =====
+
+string kind(int n) {
+    return "a number";
+}
+
+string kind(string s) {
+    return "some text";
+}
+
+string kind(Length l) {
+    return "a length";
+}
+
+string kind(Rod r) {
+    return "a rod";
+}
+
+string kind(BentRod r) {
+    return "a bent rod";
+}
+
+string kind(var v) {
+    return "a thing";
+}
+
+// text or a length
+string kind2(string | Length x) {
+    return "text or a length";
+}
+
+string kind2(int n) {
+    return "a number";
+}
+
+// ===== NOTE: WRITES DOWN A LENGTH =====
+
+void note(int n) {
+    noteCount++;
+    say(n);
+}
+
+void note(Length l) {
+    noteCount++;
+    say(l);
+}
+
+void note(Length l, string unit) {
+    noteCount++;
+    print($"{l.cm} {unit}");
+}
+
+// a note of a plain number gets a hash in front
+replace void note(int n) {
+    print("#");
+    replaced(n);
+}
+
+// ===== LABEL: DEFAULT AND NAMED ARGUMENTS =====
+
+// a number with a unit, cm when none is given
+void label(int n, string unit = "cm") {
+    print($"{n}{unit}");
+}
+
+// a word with brackets round it
+void label(string word, bool loud = false) {
+    if (loud) {
+        print($"[{word}!]");
+    } else {
+        print($"[{word}]");
+    }
+}
+
+// a length with how many decimal places
+void label(Length l, int places, char sep = '.') {
+    print(l.cm / 100);
+    print(sep);
+    if (places > 1 && l.cm % 100 < 10) {
+        print("0");
+    }
+    print(l.cm % 100);
+    print("m");
+}
+
+// ===== EMITTER OVERLOADS =====
+
+emitter int twice(int n) { ($n * 2) }
+emitter int twice(Length l) { ($i6Expr($l.cm) * 2) }
+
+// ===== HOW LONG: OVERLOADS RETURNING LENGTHS =====
+
+Length howLong(Rod r) {
+    return r.len;
+}
+
+Length howLong(Rod a, Rod b) {
+    return a.len + b.len;
+}
+
+Length howLong(int n) {
+    return Length.make(n);
+}
+
+Length howLong(Gauge g) {
+    return Length.make(g.reading);
+}
+
+// the longer of two
+Length longer(Length a, Length b) {
+    return a > b ? a : b;
+}
+
+Rod longer(Rod a, Rod b) {
+    return a > b ? a : b;
+}
+
+int longer(int a, int b) {
+    return a > b ? a : b;
+}
+
+// ===== THE UNITS NAMESPACE =====
+
+object units {
+    // prints centimetres as metres
+    void inM(int n) {
+        print($"{n / 100}.{n % 100 / 10}m");
+    }
+    void inM(Length l) {
+        inM(l.cm);
+    }
+    void inM(Rod r) {
+        inM(r.len);
+    }
+    // how many of the small one fit in the big one
+    int fits(Length big, Length small) {
+        if (small.cm == 0) {
+            return 0;
+        }
+        return big.cm / small.cm;
+    }
+    int fits(Rod big, Length small) {
+        return fits(big.len, small);
+    }
+    int fits(Rod big, Rod small) {
+        return fits(big.len, small.len);
+    }
+}
+
+#using units
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The bench.";
+    attributes = {light};
+}
+
+// ===== THE RODS =====
+
+Rod oakRod {
+    "oak rod";
+    parent = roomA;
+    name = {.oak, .rod};
+    what = "oak";
+    len = Length{ 120 };
+    description = "A rod.";
+    // the oak rod can also be marked with a letter
+    void mark(char c) {
+        marks++;
+        print($"(mark {c}) ");
+    }
+}
+
+Rod ashRod {
+    "ash rod";
+    parent = roomA;
+    name = {.ash, .rod};
+    what = "ash";
+    len = Length{ cm = 80; };
+    description = "A rod.";
+}
+
+BentRod ironRod {
+    "iron rod";
+    parent = roomA;
+    name = {.iron, .rod};
+    what = "iron";
+    len = Length{ 150 };
+    angle = 45;
+    description = "A rod.";
+}
+
+Coil wireCoil {
+    "wire coil";
+    parent = roomA;
+    name = {.wire, .coil};
+    what = "wire";
+    len = Length{ 80 };
+    turns = 4;
+    description = "A coil.";
+}
+
+// the bench itself, with its own overloads
+object bench {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    string description = "The bench.";
+    attributes = {static};
+    // how many things went on it
+    int puts = 0;
+
+    // puts a rod on the rack
+    void put(Rod r) {
+        puts++;
+        if (rack.length < RACK_SIZE) {
+            rack += r;
+        }
+    }
+    // puts a rod on the rack, then marks it
+    void put(Rod r, int times) {
+        put(r);
+        r.mark(times);
+    }
+    // writes a length in the notes
+    void put(Length l) {
+        puts++;
+        notes += l;
+    }
+    // writes a number in the notes
+    void put(int n) {
+        put(Length.make(n));
+    }
+}
+
+// a gauge on the bench
+Gauge tape { reading = 95; }
+
+// ===== WORK FUNCTIONS =====
+
+// the total length of the rack
+Length rackLength() {
+    Length total;
+    for (Rod r in rack) {
+        total += r.len;
+    }
+    return total;
+}
+
+// how many rods on the rack are a given length
+int countLength(int n) {
+    int c = 0;
+    for (int i = 0; i < rack.length; i++) {
+        if (rack[i] == n) {
+            c++;
+        }
+    }
+    return c;
+}
+
+int countLength(Length l) {
+    return countLength(l.cm);
+}
+
+// uses a function to test a length
+bool test(func<bool, Length, int> check, Length l, int n) {
+    return check(l, n);
+}
+
+// uses a function to order two rods
+int order(func<int, Rod, Rod> cmp, Rod a, Rod b) {
+    return cmp(a, b);
+}
+
+// ===== MORE OVERLOADS, ADDED LATER =====
+
+// more ways to mark a rod, and ways to cut it
+extend class Rod {
+    // marks it at a length from the end
+    void mark(Length at) {
+        marks++;
+        print($"(mark at {at.cm}cm) ");
+    }
+    // a part of the rod, by centimetres
+    Length part(int n) {
+        if (n > len.cm) {
+            return len;
+        }
+        return Length.make(n);
+    }
+    // a part of the rod, by name
+    string part(string which) {
+        if (which == "end") {
+            return "the end";
+        }
+        return "the middle";
+    }
+    // the same as a length
+    bool operator == (Length l) {
+        return len == l;
+    }
+    bool operator != (Length l) {
+        return len != l;
+    }
+    emitter int scaled(int n) { ($self.len.cm * $n) }
+    emitter int scaled(Length l) { ($self.len.cm * $l.cm) }
+}
+
+// a coil compares turns as well
+extend class Coil {
+    bool operator == (Coil o) {
+        return len == o.len && turns == o.turns;
+    }
+    bool operator != (Coil o) {
+        return !(len == o.len && turns == o.turns);
+    }
+    // a coil is shorter than a rod when one turn of it is
+    bool operator < (Rod o) {
+        return len.cm / turns < o.len.cm;
+    }
+    // marks every turn, calling the other marks
+    void markAll() {
+        mark();
+        mark(1);
+        mark("the top");
+        mark(Length.make(5));
+        mark(2, turns);
+    }
+}
+
+// a stringObj is said with quotes round it
+void say(stringObj s) {
+    print($"~{s}~");
+}
+
+// the total of some lengths
+Length total(array<Length> list) {
+    Length t;
+    for (Length l in list) {
+        t += l;
+    }
+    return t;
+}
+
+// the total of some rods
+Length total(array<Rod> list) {
+    Length t;
+    for (Rod r in list) {
+        t = t + r.len;
+    }
+    return t;
+}
+
+// does a sum on a number
+int apply(func<int, int> f, int n) {
+    return f(n);
+}
+
+// does a sum on a length
+Length apply(func<Length, Length> f, Length l) {
+    return f(l);
+}
+
+// makes a length longer, where it is
+void stretch(ref Length l, int n) {
+    l += n;
+}
+
+// makes a rod longer
+void stretch(Rod r, int n) {
+    stretch(r.len, n);
+}
+
+// a rod with a gap after it, so many times
+int spaced(Rod r, Length gap = Length{ 5 }, int times = 1) {
+    return (r.len.cm + gap.cm) * times;
+}
+
+// a length, so many times
+int spaced(Length l, int times = 2) {
+    return l.cm * times;
+}
+
+// the area of a box, or of a square
+int area(int w, int h) {
+    return w * h;
+}
+
+int area(int side, bool doubled) {
+    if (doubled) {
+        return side * side * 2;
+    }
+    return side * side;
+}
+
+// which is longer, as words
+string compare(Rod a, Rod b) {
+    if (a == b) {
+        return "the same";
+    }
+    return a < b ? "shorter" : "longer";
+}
+
+string compare(Length a, Length b) {
+    if (a == b) {
+        return "the same";
+    }
+    return a < b ? "shorter" : "longer";
+}
+
+string compare(Rod a, int n) {
+    return compare(a.len, Length.make(n));
+}
+
+// ===== GAPS: A LENGTH WITH A NAME =====
+
+// a gap between two rods
+value class Gap : Length {
+    string side = "left";
+    Gap operator = (Gap o) {
+        side = o.side;
+        (Length)self = o;
+        return self;
+    }
+    // two gaps make a wider gap on the first one's side
+    Gap operator + (Gap o) {
+        Gap r;
+        r.side = side;
+        r.cm = cm + o.cm;
+        return r;
+    }
+    bool operator == (Gap o) {
+        return cm == o.cm && side == o.side;
+    }
+    bool operator != (Gap o) {
+        return !(cm == o.cm && side == o.side);
+    }
+}
+
+// gaps put down between rods
+array<Gap> gaps[4];
+
+// a length prints in centimetres
+void print(Length l) {
+    print(l.cm);
+    print("cm");
+}
+
+// says a gap
+void say(Gap g) {
+    print($"{g.side} gap of {g.cm}cm");
+}
+
+// a rod's length with something added, the extra worked out by another overload
+int padded(Rod r, int extra = twice(5)) {
+    return r.len.cm + extra;
+}
+
+int padded(Length l, Length extra = Length.make(twice(2))) {
+    return l.cm + extra.cm;
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// BENCH - the overloaded helpers, one after another
+verb ShowBench {
+    grammar = {.bench};
+    void handler() {
+        say(5);
+        print(" ");
+        say('k');
+        print(" ");
+        say("text");
+        print(" ");
+        say(true);
+        print(" ");
+        say(bent);
+        print(" ");
+        say(Length{ 30 });
+        print(" ");
+        say(oakRod);
+        print(" ");
+        say(wireCoil);
+        print(" ");
+        say(ironRod);
+        print(" ");
+        say(roomA);
+        print(".^");
+
+        Rod r = wireCoil;
+        print("Through a Rod variable: ");
+        say(r);
+        print(". Through a cast: ");
+        say((Coil)r);
+        print(".^");
+
+        print($"Kinds: {kind(3)}, {kind("x")}, {kind(oakRod.len)}, {kind(oakRod)}, {kind(ironRod)}, {kind(wireCoil)}, {kind(bench)}.^");
+        print($"Gauge: {kind(tape)}. Union: {kind2("x")}, {kind2(oakRod.len)}, {kind2(7)}.^");
+
+        print("Notes: ");
+        note(7);
+        print(" ");
+        note(ashRod.len);
+        print(" ");
+        note(ashRod.len + 5, "centimetres");
+        print(" ");
+        note(Length.make(1, 25));
+        print($". Count: {noteCount}.^");
+
+        print("Labels: ");
+        label(40);
+        print(" ");
+        label(40, "mm");
+        print(" ");
+        label(unit: "in", n: 12);
+        print(" ");
+        label("oak");
+        print(" ");
+        label(word: "ash", loud: true);
+        print(" ");
+        label(loud: false, word: "elm");
+        print(" ");
+        label(ironRod.len, 2);
+        print(" ");
+        label(Length.make(2, 5), places: 2, sep: ',');
+        print(" ");
+        label(l: Length.make(305), places: 1);
+        print(".^");
+
+        print($"Twice: {twice(21)} {twice(oakRod.len)} {twice(twice(3))}.^");
+    }
+}
+
+// MEASURE <rod> - measures one rod every way there is
+verb MeasureRod {
+    grammar = {.measure, NOUN};
+    void handler() {
+        if (!(noun.is(Rod))) {
+            print("Only a rod can be measured.^");
+            return;
+        }
+        Rod r = (Rod)noun;
+        print("It is ");
+        say(howLong(r));
+        print(", ");
+        inM(r);
+        print(", ");
+        inM(howLong(r) + 5);
+        print($". With the oak: {r + oakRod}cm, plus ten: {r + 10}cm.^");
+        print("Same as the oak? ");
+        say(r == oakRod);
+        print(". Is it 80cm? ");
+        say(r == 80);
+        print(". Not 80cm? ");
+        say(r != 80);
+        print(".^");
+        print("It fits the tape ");
+        say(fits(r, howLong(tape)));
+        print(" times and the ash ");
+        say(fits(r, ashRod));
+        print(" times. Longer of it and the tape: ");
+        say(longer(howLong(r), howLong(tape)));
+        print(".^");
+    }
+}
+
+// JOIN - adds lengths up with the operators
+verb JoinRods {
+    grammar = {.join};
+    void handler() {
+        Length a = oakRod.len + ashRod.len;
+        Length b = oakRod.len + 30;
+        Length c = a - b;
+        Length d = (a - 50) * 2;
+        print("Sums: ");
+        say(a);
+        print(" ");
+        say(b);
+        print(" ");
+        say(c);
+        print(" ");
+        say(d);
+        print(".^");
+        Length run = Length.make(10);
+        run += 5;
+        run += ashRod.len;
+        run += Length.make(Length.make(1, 0), 5);
+        print("Running: ");
+        say(run);
+        print($". Equal to 200? {run == 200 ? "yes" : "no"}. To the oak and ash? {run != a ? "no" : "yes"}.^");
+        print($"Whole rack would be {howLong(oakRod, ashRod).cm + howLong(ironRod, wireCoil).cm}cm.^");
+        print($"Longest number: {longer(3, longer(9, 4))}. Longest rod: {longer(ashRod, ironRod).what}.^");
+        print("Ash and coil the same? ");
+        say(ashRod == wireCoil);
+        print(". Oak and ash? ");
+        say(oakRod == ashRod);
+        print(". Iron plus ten: ");
+        say(ironRod + 10);
+        print(". Iron plus oak: ");
+        say(ironRod + oakRod);
+        print(".^");
+        print("Shorter first: ");
+        say(oakRod < ironRod);
+        print(", ");
+        say(Length.make(3) < Length.make(2));
+        print(", ");
+        say(oakRod.len >= ashRod.len + 40);
+        print(".^");
+    }
+}
+
+// SORT - puts the rods on the rack and sorts them
+verb SortRods {
+    grammar = {.sort};
+    void handler() {
+        rack.clear();
+        notes.clear();
+        bench.put(oakRod);
+        bench.put(ironRod);
+        bench.put(ashRod);
+        bench.put(wireCoil);
+        bench.put(300);
+        bench.put(oakRod.len);
+        bench.put(Length.make(0, 45));
+        rack.sort();
+        print("Rack: ");
+        for (Rod r in rack) {
+            say(r.what);
+            print(" ");
+        }
+        print($"({rackLength().cm}cm). 80cm rods: {countLength(80)}, 120cm: {countLength(Length.make(120))}.^");
+        notes.sort();
+        print("Notes: ");
+        for (Length l in notes) {
+            note(l);
+            print(" ");
+        }
+        print($"Puts: {bench.puts}.^");
+
+        func<bool, Length, int> eq = Length::operator ==(int);
+        print("Oak is 120 by reference: ");
+        say(eq(oakRod.len, 120));
+        print(". Ash is 120: ");
+        say(test(eq, ashRod.len, 120));
+        print(".^");
+
+        func<int, Rod, Rod> cmp = Rod::operator <=>;
+        print($"Iron against oak: {cmp(ironRod, oakRod)}. Ash against coil: {order(cmp, ashRod, wireCoil)}.^");
+        rack.sort(Rod::operator <=>);
+        print("Sorted again: ");
+        for (int i = 0; i < rack.length; i++) {
+            print(rack[i].what);
+            if (i < rack.length - 1) {
+                print(", ");
+            }
+        }
+        print(".^");
+    }
+}
+
+// MARK <rod> - marks a rod in all the ways it can be marked
+verb MarkRod {
+    grammar = {.mark, NOUN};
+    void handler() {
+        if (!(noun.is(Rod))) {
+            print("Only a rod can be marked.^");
+            return;
+        }
+        Rod r = (Rod)noun;
+        r.mark();
+        r.mark(2);
+        r.mark("the end");
+        if (r.is(BentRod)) {
+            BentRod b = (BentRod)r;
+            b.mark(true);
+            b.mark(false);
+            b.mark(1);
+        }
+        if (r.is(Coil)) {
+            Coil c = (Coil)r;
+            c.mark(1);
+            c.mark(1, 2);
+            ((Rod)c).mark(1);
+        }
+        print($"Marks on the {r.what}: {r.marks}.^");
+    }
+}
+
+// MARKS - the marks on every rod
+verb ShowMarks {
+    grammar = {.marks};
+    void handler() {
+        array<Rod> all = { oakRod, ashRod, ironRod, wireCoil };
+        for (Rod r in all) {
+            print($"{r.what}: {r.marks} ");
+            say(r.shape());
+            print(". ");
+        }
+        printLine();
+    }
+}
+
+// UNITS - the namespace's overloads, bare and by path
+verb ShowUnits {
+    grammar = {.units};
+    void handler() {
+        inM(250);
+        print(" ");
+        inM(Length.make(1, 50));
+        print(" ");
+        inM(oakRod);
+        print(" ");
+        units.inM(wireCoil);
+        print(" ");
+        units.inM(75 + 25);
+        print(".^");
+        print($"Fits: {fits(Length.make(300), Length.make(40))} {units.fits(ironRod, ashRod)} {fits(oakRod, Length{ 30 })} {fits(Length.make(5), Length.make(0))}.^");
+        int total = 0;
+        for (int i = 1; i <= 3; i++) {
+            total = total + fits(Length.make(i * 100), ashRod.len);
+        }
+        print($"Ash lengths in 1m, 2m and 3m: {total}.^");
+        if (fits(oakRod, ashRod) == 1 && fits(ironRod.len, howLong(30)) == 5) {
+            print("The fits add up.^");
+        }
+    }
+}
+
+// PICKS - overloads chosen by the type of what is passed
+verb ShowPicks {
+    grammar = {.picks};
+    void handler() {
+        Length small = Length.make(25);
+        int n = 25;
+        char c = 'z';
+        string s = "word";
+        bool flag = false;
+        eShape sh = coiled;
+        Rod rod = ironRod;
+        BentRod br = ironRod;
+        say(small);
+        print(" ");
+        say(n);
+        print(" ");
+        say(c);
+        print(" ");
+        say(s);
+        print(" ");
+        say(flag);
+        print(" ");
+        say(sh);
+        print(" ");
+        say(rod);
+        print(" ");
+        say(br);
+        print(".^");
+        print($"Kinds: {kind(small)} / {kind(n)} / {kind(s)} / {kind(rod)} / {kind(br)} / {kind(c)}.^");
+        int k = 0;
+        while (k < 3) {
+            label(k * 10, k == 2 ? "m" : "cm");
+            print(" ");
+            k++;
+        }
+        print("/ ");
+        for (Rod r in rack) {
+            label(r.what, loud: r.len.cm > 100);
+            print(" ");
+        }
+        printLine();
+        print("Longer each time: ");
+        Length best = Length.make(0);
+        for (Length l in notes) {
+            best = longer(best, l);
+            say(best);
+            print(" ");
+        }
+        printLine();
+    }
+}
+
+// SHAPES - every rod's shape, through the base class
+verb ShowShapes {
+    grammar = {.shapes};
+    void handler() {
+        for (Rod r in rack) {
+            say(r);
+            print(" is ");
+            say(r.shape());
+            print(". ");
+        }
+        printLine();
+    }
+}
+
+// MORE - overloads added by extend, on objects, with refs, funcs and arrays
+verb ShowMore {
+    grammar = {.more};
+    void handler() {
+        print("Oak marks: ");
+        oakRod.mark('x');
+        oakRod.mark(Length.make(30));
+        oakRod.mark(1);
+        print($"now {oakRod.marks}.^");
+        print("Coil marks all: ");
+        wireCoil.markAll();
+        print($"now {wireCoil.marks}.^");
+
+        print($"Parts: {oakRod.part(50).cm} {oakRod.part(500).cm} {oakRod.part("end")} {ironRod.part("x")} {oakRod.part(20) == 20 ? "twenty" : "not"}.^");
+        print($"Scaled: {ashRod.scaled(2)} {ashRod.scaled(Length.make(3))} {wireCoil.scaled(wireCoil.turns)}.^");
+
+        print("Ash is 80cm long: ");
+        say(ashRod == Length.make(80));
+        print(". Ash is not 90cm: ");
+        say(ashRod != Length{ 90 });
+        print(". Ash is the coil: ");
+        say(ashRod == wireCoil);
+        print(". Coil is the ash: ");
+        say(wireCoil == ashRod);
+        print(". Coil is the coil: ");
+        say(wireCoil == wireCoil);
+        print(". Coil is 80: ");
+        say(wireCoil == 80);
+        print(".^");
+
+        stringObj so = "oak";
+        so += " and ash";
+        say(so);
+        print(" ");
+        say("plain");
+        print(" ");
+        say(so.length);
+        print(".^");
+
+        array<Length> some = { Length{ 10 }, Length{ 20 }, Length{ 30 } };
+        array<Rod> two = { oakRod, ashRod };
+        print("Totals: ");
+        say(total(some));
+        print(" ");
+        say(total(two));
+        print(" ");
+        say(total(rack));
+        print(".^");
+
+        print($"Applied: {apply((int x) => x * 3, 7)} ");
+        say(apply((Length x) => x + 1, Length.make(9)));
+        print(" ");
+        say(apply((Length x) => x * 2, oakRod.len));
+        print(".^");
+
+        Length keep = Length.make(40);
+        int count = 3;
+        stretch(keep, 2);
+        count = count + 4;
+        stretch(ashRod, 10);
+        stretch(notes[0], 5);
+        print("Stretched: ");
+        say(keep);
+        print($" {count} {ashRod.len.cm} {notes[0].cm}.^");
+        ashRod.len += -10;
+        oakRod.len += Length.make(0);
+        print($"Ash back to {ashRod.len.cm}, oak still {oakRod.len.cm}.^");
+
+        print($"Spaced: {spaced(oakRod)} {spaced(oakRod, Length{ 10 })} {spaced(oakRod, times: 2)} {spaced(r: ashRod, times: 3, gap: Length{ 0 })} {spaced(Length.make(15))} {spaced(times: 4, l: Length.make(15))}.^");
+        print($"Areas: {area(3, 4)} {area(3, true)} {area(side: 5, doubled: false)} {area(h: 2, w: 6)}.^");
+        print($"Judged: {compare(oakRod, ashRod)}, {compare(ashRod, wireCoil)}, {compare(ashRod.len, ironRod.len)}, {compare(oakRod, 200)}, {compare(ironRod, 150)}.^");
+
+        int i = 0;
+        while (compare(Length.make(i * 50), oakRod.len) == "shorter") {
+            i++;
+        }
+        print($"Steps of 50 to reach the oak: {i}. Longest of three: {longer(longer(oakRod, ashRod), ironRod).what}.^");
+        if (longer(oakRod.len, ashRod.len) == oakRod.len && howLong(ironRod) != 120) {
+            print("Overloads in a condition work.^");
+        }
+    }
+}
+
+// GAPS - a value subclass with the base's operators and its own
+verb ShowGaps {
+    grammar = {.gaps};
+    void handler() {
+        Gap a;
+        a.cm = 10;
+        Gap b;
+        b.cm = 15;
+        b.side = "right";
+        Gap c = a + b;
+        Length d = a + 5;
+        Length e = b - a;
+        print("Gaps: ");
+        say(a);
+        print(", ");
+        say(b);
+        print(", ");
+        say(c);
+        print(", ");
+        say(d);
+        print(", ");
+        say((Length)c);
+        print(".^");
+        print($"Is a 10? {a == 10 ? "yes" : "no"}. a is b? {a == b ? "yes" : "no"}. a is not b? {a != b ? "yes" : "no"}. b over a: {b > a ? "yes" : "no"}. Kind: {kind(a)}.^");
+        gaps.clear();
+        gaps += c;
+        gaps += a;
+        gaps += b;
+        gaps.sort();
+        print("Gaps sorted: ");
+        for (Gap g in gaps) {
+            print($"{g.cm} ");
+        }
+        print($"/ {gaps.indexOf(b)} {gaps.contains(c) ? "has c" : "no c"}.^");
+        print($"Printed: {oakRod.len} and {Length.make(1, 1)} and {e}.^");
+        printLine(howLong(ironRod));
+        print(d);
+        printLine();
+        print($"Padded: {padded(oakRod)} {padded(oakRod, 1)} {padded(extra: 2, r: ashRod)} {padded(oakRod.len)} {padded(ashRod.len, Length{ 1 })}.^");
+        bool first = true;
+        say(first ? oakRod : ironRod);
+        print(" / ");
+        say(!first ? 'a' : 'b');
+        print(" / ");
+        say(first ? oakRod.len : ashRod.len);
+        print(" / ");
+        rack[0]?.mark(0);
+        say(rack[0]);
+        print(" / ");
+        say(kind(rack.length > 0 ? rack[0] : ironRod));
+        print(".^");
+    }
+}
+
+// ODDS - fallbacks to overloaded operators, references and conversions
+verb ShowOdds {
+    grammar = {.odds};
+    void handler() {
+        Length z = Length.make(3);
+        z++;
+        z += 2;
+        z -= 1;
+        z -= Length.make(1);
+        z *= 3;
+        print("z: ");
+        say(z);
+        notes[1] += Length.make(1);
+        notes[1]++;
+        gaps[0] += 5;
+        print(", note: ");
+        say(notes[1]);
+        print(", gap: ");
+        say(gaps[0]);
+        oakRod.len++;
+        oakRod.len -= 1;
+        print($", oak: {oakRod.len.cm}.^");
+
+        func<bool, Length, Length> same = Length::operator ==(Length);
+        func<bool, Length, int> sameAs = Length::operator ==(int);
+        func<int, Length, Length> cmpL = Length::operator <=>;
+        func<int, Gap, Gap> cmpG = Gap::operator <=>;
+        Gap g1;
+        g1.cm = 7;
+        Gap g2;
+        g2.cm = 9;
+        print($"Refs: {same(oakRod.len, Length.make(120)) ? "same" : "not"} {sameAs(ashRod.len, 80) ? "same" : "not"} {cmpL(ashRod.len, oakRod.len)} {cmpG(g2, g1)}.^");
+        Gap made = Gap.make(1, 5);
+        print("Made through Gap: ");
+        say(made);
+        print(".^");
+
+        print($"Coil under ash: {wireCoil < ashRod ? "yes" : "no"}. Ash under coil: {ashRod < wireCoil ? "yes" : "no"}. Coil over ash: {wireCoil > ashRod ? "yes" : "no"}.^");
+        print($"Doubled: {ashRod.len.doubled().cm}. Plus: {ashRod.len.plus(1, 5).cm}. Chain: {Length.make(2).doubled().plus(0, 1).doubled().cm}.^");
+        for (int i = 0; i < 3; i++) {
+            switch (i == 0 ? kind(i) : i == 1 ? kind(oakRod) : kind(ironRod)) {
+                case "a number": print("N");
+                case "a rod": print("R");
+                case "a bent rod": print("B");
+                default: print("?");
+            }
+        }
+        print("^");
+        print("Tape: ");
+        say(tape);
+        print(" / ");
+        say((string)tape);
+        print(" / ");
+        say(howLong(tape) + tape);
+        print(".^");
+    }
+}

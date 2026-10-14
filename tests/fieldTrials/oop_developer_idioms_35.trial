@@ -1,0 +1,106 @@
+Room A
+Room A.
+
+> setup
+lounge: temp 21, fan 0, damper 100, writes 1, comfort 0
+kitchen: temp 25, fan 0, damper 100, writes 1, comfort 1
+hall: temp 40, fan 0, damper 100, writes 1, comfort 1
+vault: temp 12, fan 0, damper 100, writes 1, comfort -1
+Setpoint 20, mode auto, all writes 4.
+At start: setpoint 20, outdoor 1, alarm false.
+
+> forward
+Nudged to 22, changes 1.
+Mode 2 (cool), cooling 1.
+Down to 16 (heat), heating 1.
+Stepped to 17, changes 6.
+lounge above 21: false
+kitchen above 21: true
+hall above 21: true
+vault above 21: false
+Humidity 70, setpoint 20, mode auto.
+Humidity 75, setpoint 19.
+
+> compare
+lounge == 21: true, != 21: false
+kitchen > lounge: true, kitchen < lounge: false
+hall >= 40: true, hall <= 39: false, hall <=> 30: 10
+lounge <=> kitchen: -4
+same lounge/kitchen: false, warmest 25
+Setpoint <=> 25: -6
+Lounge vs setpoint: false
+Sum 46, twice 50, headroom 0.
+Hall is hot, outdoor 0, outdoor set false.
+Outdoor -20, set true, writes 1.
+
+> refs
+Bumped lounge 24, writes 2.
+Bumped hall 40 (clamped), writes 2.
+Kitchen reset to 19.
+Kitchen reset to 19.
+Peek 0, lounge still 24.
+Through ref: kitchen 25, r 25, writes 6.
+Rebound: outdoor -5, kitchen 25.
+Snapshot 5, lounge 24.
+Held 40, headroom 0.
+Vault through base 33.
+Vault after += 35.
+Default: 19
+Lounge: 24
+Kitchen: 25
+
+> chains
+Focus lounge, next kitchen.
+Two on: hall.
+After hall: none, hops 2.
+Focus temp 40.
+Cleared: true, hops 3.
+Renamed lounge-east!, edits 3, length 12.
+Copy lounge-east!?, original lounge-east!.
+
+> loops
+Hall cooled to 16 in 6 steps.
+[0][1][2] fan 3, changes 3.
+lounge-east!: temp 24, fan 3, damper 100, writes 2, comfort 1
+kitchen: temp 25, fan 3, damper 100, writes 6, comfort 1
+hall: temp 16, fan 0, damper 50, writes 8, comfort -1
+vault: temp 35, fan 1, damper 100, writes 3, comfort 1
+Fan changes 7.
+***
+
+> report
+Warm 3, any fan true, all open true.
+By temp: hall=16 lounge-east!=24 kitchen=25 vault=35
+Total 100 over 4.
+First warm lounge-east!.
+All writes 24, setpoint changes 9.
+
+> extras
+Bands: hot mild hot; damper 70.
+Found hall at 19, writes 9.
+First lounge-east! temp 23, fan 1; kitchen fan 3.
+Kitchen via focus: fan 1, temp 40, damper 10.
+Mode name by index: auto.
+Alarm true, raised 1, setpoint 18.
+Quiet: setpoint 18 under lounge 23.
+Hall above setpoint, outdoor -5.
+Doubled setpoint 36 (cool).
+18 23
+
+> bound
+Watched 21, hall 21, writes 11.
+Rebound watched 4, vault 4, hall 21.
+Spare 22, narrow 10, narrow headroom 0.
+Swapped: lounge 21, hall 23.
+Swapped: spare 4, vault 22.
+Lounge warmed 26, peak vs 30 30, vs 10 26.
+Vault 40 after 2, headroom 0.
+
+> release
+Annex temp 17, fan 0, damper 100, writes 1, edits 1.
+Annex next lounge-east!, comfort 0.
+lounge-east!: temp 26, fan 1, damper 100, writes 5, comfort 1
+hall: temp 23, fan 0, damper 70, writes 12, comfort 1
+vault: temp 40, fan 1, damper 100, writes 7, comfort 1
+annex: temp 17, fan 0, damper 100, writes 1, comfort 0
+

@@ -99,11 +99,16 @@ bool bglParser::queryIsPostfix(token after){
 bool bglParser::takesOwnOperand(classDef* cls, const string& op){
     if(cls == nullptr || !isValueClass(cls)) return false;
     bool ordering = op == "<" || op == ">" || op == "<=" || op == ">=";
+    auto isA = [&](classDef* pc){   // the class or one of its ancestors: an inherited operator takes it too (not the roots')
+        if(pc == nullptr || pc->name == "_bglobject" || pc->name == "_bglprimitive") return false;
+        for(classDef* c = cls; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]) if(c == pc) return true;
+        return false;
+    };
     return findMemberInHierarchy(cls, [&](typeMember* m){
         auto* f = dynamic_cast<functionDef*>(m);
         if(f == nullptr || (f->name != op && !(ordering && f->name == "<=>"))) return false;
-        if(!f->isStatic) return f->params.size() == 1 && getDispatchClass(f->params[0]->type.name) == cls;
-        return f->params.size() == 2 && getDispatchClass(f->params[1]->type.name) == cls;   // `static operator <=>(T a, T b)`
+        if(!f->isStatic) return f->params.size() == 1 && isA(getDispatchClass(f->params[0]->type.name));
+        return f->params.size() == 2 && isA(getDispatchClass(f->params[1]->type.name));   // `static operator <=>(T a, T b)`
     }) != nullptr;
 }
 
@@ -428,7 +433,13 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
             else if(pk.is(token::parenClose) || pk.is(token::braceClose) || pk.is(token::bracketClose)){ if(depth == 0) break; depth--; }
             else if(depth == 0 && (pk.is(token::comma) || pk.is(token::endStatement))) break;
             else if(depth == 0 && assignOps.count(pk.value)) assigns = true;
-            if(pk.is("$") && file.peekToken(k + 1).is(eTokenType::quote)){ hasInterpolation = true; break; }
+            // An interpolation after an operator is an operand: the expression parse says it has no value.
+            if(pk.is("$") && file.peekToken(k + 1).is(eTokenType::quote)){
+                token before = k == 0 ? token() : k == 1 ? bodyStart : file.peekToken(k - 1);
+                static const set<string> binary = {"+", "-", "*", "/", "%", "?", ":", "&&", "||", "==", "!=", "<", ">", "<=", ">=", "??"};
+                hasInterpolation = !binary.count(before.value);
+                break;
+            }
         }
         if(hasInterpolation){
             vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
@@ -476,9 +487,14 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
             }
             if(retExpr->resolvedType == "void" || assigns){
                 // `=> print("…")`: a call with no value is the body itself, not something to return.
-                i6RawNode* stmt = new i6RawNode();
-                stmt->text = retExpr->text() + ";";
-                lambdaBody->statements.push_back(stmt);
+                // What a `?.` chain leaves is its temporary, already run: no statement of its own.
+                string text = retExpr->text();
+                bool bare = !text.empty() && all_of(text.begin(), text.end(), [](char c){ return isalnum((unsigned char)c) || c == '_'; });
+                if(!bare){
+                    i6RawNode* stmt = new i6RawNode();
+                    stmt->text = text + ";";
+                    lambdaBody->statements.push_back(stmt);
+                }
                 for(statement* inj : innerAfter) lambdaBody->statements.push_back(inj);
                 fd.returnType.name = "void";
             } else {
@@ -1241,7 +1257,8 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
                 }
         };
         if(currentObject != nullptr) noteOverloads(currentObject->members);
-        for(classDef* c = currentClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses.front())
+        classDef* selfClass = currentClass != nullptr ? currentClass : currentObject != nullptr ? currentObject->objectClass : nullptr;
+        for(classDef* c = selfClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses.front())
             noteOverloads(c->members);
         if(currentFunc != nullptr && currentFunc->name == canonName) noteOverloads({currentFunc});   // not in the class yet
         bool overloaded = signatures.size() > 1;
@@ -1419,6 +1436,10 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     vector<string> argTexts;
     vector<pair<string*, string>> operands;
     for(expression* a : pal.args) argTexts.push_back(a->text());
+    // A call through a func<> value has no definition to settle its arguments: a value-class result each
+    // argument returns is kept apart, as finalizeCallArgs does for a direct call.
+    if(resolvedGlobal == nullptr && selfTarget == nullptr && staticSelf == nullptr && pal.args.size() > 1)
+        for(size_t i = 0; i < pal.args.size(); i++) argTexts[i] = keepValueResult(argTexts[i], pal.args[i]->resolvedType);
     for(size_t i = 0; i < pal.args.size(); i++) operands.push_back({&argTexts[i], pal.args[i]->resolvedType});
     // A union parameter takes no copy of its argument, so a temporary passed to one is held for the call.
     bool toUnion = false;
@@ -1999,20 +2020,41 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
                 if(outer.empty()) outer = file.peekToken(k + 1).value;
                 inner = file.peekToken(k + 1).value;
                 casts++; k += 3;
+            } else if(file.peekToken(k).is(token::parenOpen) && file.peekToken(k + 1).is(eTokenType::identifier)
+                      && file.peekToken(k + 2).is(token::parenClose) && file.peekToken(k + 3).is(eTokenType::name)
+                      && languageService.findObjectType(file.peekToken(k + 1).value) != nullptr
+                      && !qualifyFromParams(file.peekToken(k + 1).value, func) && !qualifyFromBodyLocals(file.peekToken(k + 1).value, body)
+                      && [&]{ int q = k + 3; while(file.peekToken(q + 1).is(token::period) && file.peekToken(q + 2).is(eTokenType::name)) q += 2;
+                              return file.peekToken(q + 1).is(token::parenOpen) || file.peekToken(q + 1).is(token::bracketOpen); }()){
+                // An object is its own type: a call or element receiver (`((trayD)pick().spare).extra`) casts as under a class name.
+                if(outer.empty()) outer = file.peekToken(k + 1).value;
+                inner = file.peekToken(k + 1).value;
+                casts++; k += 3;
             } else if(casts > 0 && file.peekToken(k).is(token::parenOpen)){
                 groups++; k++;
             } else break;
         }
         // `((Base)row[i]).m()`: an element receiver cast to an ancestor runs that ancestor's method.
         // The element may be reached by a path (`board.slots[i]`).
+        // A call receiver (`((Tray)pick()).m()`, `((Sealed)pick().next()).seal`) and a path after either go the same way.
         int kp = k;
         while(file.peekToken(kp).is(eTokenType::name) && file.peekToken(kp + 1).is(token::period) && file.peekToken(kp + 2).is(eTokenType::name)) kp += 2;
-        if(casts >= 1 && groups == 0 && file.peekToken(k).is(eTokenType::name) && file.peekToken(kp + 1).is(token::bracketOpen)){
+        if(casts >= 1 && groups == 0 && file.peekToken(k).is(eTokenType::name)
+           && (file.peekToken(kp + 1).is(token::bracketOpen) || file.peekToken(kp + 1).is(token::parenOpen))){
             int e = kp + 1, depth = 0;
-            for(; e < k + 200; e++){
+            for(; e < k + 400; e++){
                 token pk = file.peekToken(e);
-                if(pk.is(token::bracketOpen)) depth++;
-                else if(pk.is(token::bracketClose) && --depth == 0) break;
+                if(pk.is(token::bracketOpen) || pk.is(token::parenOpen)) depth++;
+                else if((pk.is(token::bracketClose) || pk.is(token::parenClose)) && --depth == 0){
+                    // A further `.name` or group belongs to the same operand.
+                    token after = file.peekToken(e + 1);
+                    if(after.is(token::bracketOpen) || after.is(token::parenOpen)) continue;
+                    int f = e;
+                    while(file.peekToken(f + 1).is(token::period) && file.peekToken(f + 2).is(eTokenType::name)) f += 2;
+                    if(f != e && (file.peekToken(f + 1).is(token::bracketOpen) || file.peekToken(f + 1).is(token::parenOpen))){ e = f; continue; }
+                    e = f;
+                    break;
+                }
                 else if(pk.is(eTokenType::eof) || pk.is(token::endStatement)) break;
             }
             // `((Panel)board.slots[i]).code`: a member read off the cast element goes on as a typed value.
@@ -2773,9 +2815,13 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
                 expression* innerIndex = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 rejectConstantIndexOutside(memberArr, innerIndex, member.originalValue);
                 if(!expr->tokens.empty()) expr->tokens.pop_back();
-                expr->tokens.push_back(checkedMemberSlot("(" + recv + ")", memberI6Name(elemType, member.value),
-                                                         innerIndex->text(), false, memberArrayDeclTracked(memberArr)));
+                expr->tokens.push_back(valueSlotText(checkedMemberSlot("(" + recv + ")", memberI6Name(elemType, member.value),
+                                                                       innerIndex->text(), false, memberArrayDeclTracked(memberArr)), memberArr->elementType));
                 expr->resolvedType = memberArr->elementType;
+                if(file.peekToken().is(token::bracketOpen) && isArrayOfArraysElement(memberArr->elementType)){   // `ring[0].grid[0][1]`
+                    string row = expr->tokens.back();
+                    chainSubscripts(expr, row, func, body);
+                }
                 return ExprStep::Advance;
             }
             // An emitter value or a getter on the element (`grid[0].length`) reads through its
@@ -2964,6 +3010,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
         }
         lhsName.clear(); for(const auto& t : expr->tokens) lhsName += t;
         st.chainRecvText.clear(); st.chainRecvType.clear();
+        resultCast = castType;   // `(T)a.next?.x`: a cast written before the path is the chain's result's
     } else {
         // A cast before the chain applies to its result, as before a `.` path (§4.11).
         resultCast = castType;
@@ -3398,7 +3445,17 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     bool receiverIsVerb = objName.find('.') == string::npos && actualType != "verb"
                        && verbShadowedByMember(objName, actualType, methName);
     if(receiverIsVerb){ actualType = "verb"; if(castType.empty()) objType = "verb"; }
-    if(func != nullptr && !receiverIsVerb){
+    // A verb's own method (`Probe.uses2()`) is sent to the verb object, not its action.
+    verbObjectDef* ownVerb = nullptr;
+    bool globalQualified = objName.rfind("::", 0) == 0;   // `::Tally` names the verb past a local that hides it
+    string verbName = globalQualified ? objName.substr(2) : objName;
+    if(verbName.find('.') == string::npos && castType.empty()
+       && (globalQualified || !(func != nullptr && (qualifyFromParams(objName, func) || qualifyFromBodyLocals(objName, body) || qualifyFromAncestorBlocks(objName, body)))))
+        for(verbObjectDef* v : languageService.verbs)
+            if(v->name == verbName && !v->i6name.empty()
+               && any_of(v->members.begin(), v->members.end(), [&](typeMember* m){ return m->name == methName; })){ ownVerb = v; break; }
+    if(ownVerb != nullptr){ objName = (globalQualified ? "::" : "") + ownVerb->name; if(explicitCast.empty()) actualType = objType = "verb"; }
+    else if(func != nullptr && !receiverIsVerb){
         string qualified = qualifyIdentifier(objName, func, body, methName);
         if(!qualified.empty()) objName = qualified;
     } else if(func == nullptr){
@@ -3511,6 +3568,7 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     method = bindMethodCall(objType, objName, methName,
                                            callArgs, pal.namedArgNames, pal.interpSegmentsPerArg,
                                            recvElemType);
+    if(ownVerb != nullptr){ objName = ownVerb->i6name; rawObjName = objName; }   // sent to the verb object
 
     // `hide` enforcement: is this method hidden on the receiver's static type?
     // objType is cast-aware, so `(Base)obj.m()` checks against Base — the door.
@@ -3654,6 +3712,8 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     if(!lastRefBacks.empty() && !expr->tokens.empty()) expr->tokens.back() = wrapRefBacks(expr->tokens.back());
     // A cast whose target can't be a receiver type applies to what the call RETURNED — the last
     // call of a chain.
+    // `(T)a.f()?.g`: the `?.` chain that follows takes the cast for its result.
+    if(!resultCast.empty() && file.peekToken().is("?.")){ castType = resultCast; resultCast.clear(); }
     if(!resultCast.empty() && file.peekToken().is(token::period) && file.peekToken(3).is(token::parenOpen)){
         st.chainResultCast = resultCast; resultCast.clear();
     }
@@ -3841,8 +3901,9 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     if(!objText.empty() && (castType.empty() || !castGoesOn)){
         string veRet;
         string veText = expandMemberValueEmitter(objText, cur.value, recvType, member.value, func, body, veRet);
-        // `(Chip)self.child`: the cast applies to the value the emitter reads.
-        if(!veText.empty() && !castType.empty()){
+        // `(Chip)self.child`: the cast applies to the value the emitter reads (a `?.` chain after it takes it instead).
+        bool chainNext = st.prefetched ? st.prefetched->is("?.") : file.peekToken().is("?.");
+        if(!veText.empty() && !castType.empty() && !chainNext){
             expr->tokens.push_back(applyCastConversion(veText, veRet, castType));
             expr->resolvedType = castType;
             castType = "";
@@ -3891,6 +3952,22 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                 expr->resolvedType = t + ">";
                 return ExprStep::Advance;
             }
+    // A verb's own member (`::Probe.uses`, or `Probe.uses` where nothing nearer has the name) is the verb object's.
+    if(propType.empty() && castType.empty()){
+        bool global = cur.value.rfind("::", 0) == 0;
+        string head = global ? cur.value.substr(2) : cur.value;
+        bool hidden = !global && func != nullptr && (qualifyFromParams(head, func) || qualifyFromBodyLocals(head, body)
+                                                     || qualifyFromAncestorBlocks(head, body));
+        if(!hidden)
+            for(verbObjectDef* v : languageService.verbs)
+                if(v->name == head && !v->i6name.empty())
+                    for(typeMember* m : v->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == member.value && !vd->isStatic){
+                            expr->tokens.push_back(v->i6name + "." + (vd->i6name.empty() ? vd->dName() : vd->i6name));
+                            if(expr->resolvedType.empty()) expr->resolvedType = vd->type.name;
+                            return ExprStep::Advance;
+                        }
+    }
     if(objText.empty()){
         // Receiver didn't resolve. Outside loose mode, a dotted access on an
         // unknown object is an error, just like a bare undeclared identifier —
@@ -3946,7 +4023,7 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                              : resolveIdentifierType(cur.value, func, body);
         enforceHidden(getDispatchClass(hideRecvType), member.value, "", {}, cur.value);
     }
-    string memberOwnerType = !receiverCastType.empty() ? receiverCastType : resolveIdentifierType(cur.value, func, body);
+    string memberOwnerType = !receiverCastType.empty() ? receiverCastType : resolveIdentifierType(cur.value, func, body, member.value);
     string accessText = computedProp.empty()
         ? objText + "." + memberI6Name(memberOwnerType, member.value)
         : objText + ".(" + computedProp + ")";
@@ -3996,7 +4073,8 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
     // For bit-compatible casts (uint↔int) this is a no-op text change; for
     // float casts it materializes a temp via the conversion emitter.
     // A path that goes on (`(int)o.part.width`) casts its end, so the cast waits for the last member.
-    bool pathGoesOn = st.prefetched ? st.prefetched->is(token::period) : file.peekToken().is(token::period);
+    bool pathGoesOn = st.prefetched ? (st.prefetched->is(token::period) || st.prefetched->is("?."))
+                                    : (file.peekToken().is(token::period) || file.peekToken().is("?."));
     // A getter returning an enum or bnum is read first, and its value is cast.
     if(!castType.empty() && !pathGoesOn && !readGoesOn && plainMember && !readingForBind)
         if(functionDef* fn = nativeGetterOf(propType); fn != nullptr && fn->returnType.name != castType
@@ -4104,15 +4182,17 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
     // a class (Cls.member) or an object instance (obj.member, e.g. bgl.wordsize),
     // so we try classDef members first, then objectDef members.
     bool isValueEmitterAccess = false;
+    string valueEmitterType;
     auto tryInlineValueEmitter = [&](vector<typeMember*>& members) -> bool {
         for(typeMember* m : members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
                 if(fd->name == member.value && fd->isValueEmitter && fd->isEmitter){
                     if(auto* blk = dynamic_cast<i6Block*>(fd->body)){
-                        emitterBindings vb; vb.self = cur.value; vb.val = cur.value; vb.trim = emitterTrim::wsSemi;
+                        emitterBindings vb; vb.self = objectI6Name(cur.value); vb.val = vb.self; vb.trim = emitterTrim::wsSemi;
                         vb.selfType = cur.value;   // `$i6Expr($self.rows > 3)` types `$self` as the object
                         expr->tokens.push_back(expandEmitterBody(blk, vb));
                         if(expr->resolvedType.empty()) expr->resolvedType = fd->returnType.name;
+                        valueEmitterType = fd->returnType.name;
                         return true;
                     }
                     return false;
@@ -4125,6 +4205,12 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
         objectDef* maybeObj = languageService.findObjectType(cur.value);
         if(maybeObj != nullptr)
             isValueEmitterAccess = tryInlineValueEmitter(maybeObj->members);
+    }
+    // `(Nd)crate.child`: a cast before the path applies to the value the emitter reads.
+    if(isValueEmitterAccess && !castType.empty() && !afterMember.is(token::period) && !afterMember.is("?.") && !expr->tokens.empty()){
+        expr->tokens.back() = applyCastConversion(expr->tokens.back(), valueEmitterType, castType);
+        expr->resolvedType = castType;
+        castType = "";
     }
     // Alias member on emitter class: transparent resolution — continue chaining as the alias type
     bool isAliasMember = false;
@@ -4544,6 +4630,7 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
                    || (!next.is(token::period) && declaresOwnOperator(idType, next.value)
                        && (!next.is("?") || queryIsPostfix(file.peekToken())))))
                 getter = nullptr;   // `Level._v` reads the accessor's own member; `level + 2` uses its own `+`
+            if(getter != nullptr && readingForBind && !next.is(token::period)) getter = nullptr;   // `ref R r := Temp;` binds the accessor
             if(!read.empty()){
                 if(expr->resolvedType.empty() || expr->tokens.empty()) expr->resolvedType = readRet;
                 expr->tokens.push_back(read);
@@ -5102,6 +5189,11 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             replaceReceiver(expr, valueSlotText(checkedMemberSlot(owner, memberI6Name(expr->resolvedType, member.value), indexExpr->text(),
                                                                   false, memberArrayDeclTracked(ad)), ad->elementType));
             expr->resolvedType = ad->elementType;
+            // `pick().grid[1][2]`: a row, subscripted on.
+            if(file.peekToken().is(token::bracketOpen) && isArrayOfArraysElement(ad->elementType)){
+                string row = expr->tokens.back();
+                chainSubscripts(expr, row, func, st.body);
+            }
             cur = exprNext(st);
             return ExprStep::Continue;
         }
@@ -5669,6 +5761,20 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
         if(!cur.isString() && cur.isNot(eTokenType::charLiteral) && (cur.value == "~" || cur.value == "~~"))
             parsingError(format("'{0}' is an Inform 6 operator; Beguile's logical not is '!', and it has no bitwise not.",
                                 cur.value));
+        // `kit.watt::operator <=>`: a type alias reached by path names its class.
+        if((cur.is(eTokenType::identifier) || cur.is(eTokenType::dataType)) && file.peekToken(1).is(token::period)){
+            int k = 1;
+            string path = cur.value;
+            while(file.peekToken(k).is(token::period) && file.peekToken(k + 1).is(eTokenType::name)){ path += "." + file.peekToken(k + 1).value; k += 2; }
+            if(file.peekToken(k).value == "::operator" || (file.peekToken(k).value == "::" && file.peekToken(k + 1).value == "operator")){
+                string t = typeAliasTarget(path);
+                if(t.empty()) t = resolveNamespacedType(path);
+                if(!t.empty()){
+                    for(int i = 1; i < k; i++) file.getToken();
+                    cur.value = t; cur.originalValue = languageService.getType(t).dName(); cur.tokenType = eTokenType::dataType;
+                }
+            }
+        }
         if((cur.is(eTokenType::identifier) || cur.is(eTokenType::dataType))
            && (file.peekToken(1).value == "::operator"
                || (file.peekToken(1).value == "::" && file.peekToken(2).value == "operator"))) step = parseExprOperatorRef(st);

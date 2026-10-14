@@ -2107,6 +2107,22 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     }
     // An `extend … replace` above the object: the object's own declaration, still to come, is what it replaces.
     if(isReplace && obj.isPrePassStub && !funcDef.isEmitter) funcDef.isForwardReplace = true;
+    // A new signature beside its class's method of the name is an overload: a property of its own, so the
+    // class's method stays the object's too.
+    if(!funcDef.isEmitter && funcDef.i6name.empty() && obj.objectClass != nullptr && isalpha((unsigned char)(funcDef.name.empty() ? '_' : funcDef.name[0]))){
+        bool classHasName = false;
+        functionDef* sameSig = nullptr;
+        mangleOverloadSetForReceiver(obj.objectClass->name, funcDef.name);
+        for(classDef* c = obj.objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
+            for(typeMember* m : c->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == funcDef.name && !fd->isEmitter){
+                    classHasName = true;
+                    if(sameSig == nullptr && sameParamTypes(fd, &funcDef)) sameSig = fd;
+                }
+        // The same signature overrides the class's method under its routine name; a new one is an overload of its own.
+        if(sameSig != nullptr){ if(!sameSig->i6name.empty()) funcDef.i6name = sameSig->i6name; }
+        else if(classHasName) funcDef.i6name = mangleObjectMethodName(&funcDef);
+    }
     if(!replaceStubMember(obj.members, funcDef)){
         // Signature-aware duplicate check: same name + same arity + same param types.
         // Same-arity-different-types is an overload, not a duplicate (mirrors the class-
@@ -2982,6 +2998,9 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
                 parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)", aliasName.value, path));
             typeTok.value = t;
         }
+        // `alias grade for kind;` where `kind` is itself a type alias (imported, or the object's own).
+        if(!languageService.isClassType(typeTok.value) && languageService.findEnum(typeTok.value) == nullptr)
+            if(string t = typeAliasTarget(typeTok.value); !t.empty()) typeTok.value = t;
         if(!languageService.isClassType(typeTok.value))
             parsingError(format("alias member '{0}': '{1}' is not a declared type (class or enum)",
                 aliasName.value, typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue));
@@ -3010,6 +3029,10 @@ void bglParser::parseAliasMember(token aliasName, std::vector<typeMember*>& memb
             aliasName.value, context));
     }
     file.getToken(token::endStatement);
+    // The pre-scan's stub of the alias gives way to it (the stub's type may be a name it couldn't resolve).
+    if(aliasDef.isAlias)
+        for(auto& m : members)
+            if(m->name == aliasDef.name && m->isPrePassStub && dynamic_cast<variableDeclaration*>(m) != nullptr){ m = &aliasDef; return; }
     members.push_back(&aliasDef);
 }
 
@@ -3275,7 +3298,9 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
     auto memberError = [&](const string& msg){ if(memberSrc.line > 0) currentStatementSrc = memberSrc; parsingError(msg); };
     Qualifiers q = parseQualifiers(tok);
     // A member typed by a namespace path (`Units.mode m;`) or a `#using`-imported alias, as in a class.
-    if(tok.is(eTokenType::identifier) && file.peekToken().is(token::period) && isNamespacedTypePath(tok))
+    // An alias's own name is never read as the type it stands for.
+    if(q.isAlias) {}
+    else if(tok.is(eTokenType::identifier) && file.peekToken().is(token::period) && isNamespacedTypePath(tok))
         tok = consumeTypeToken(tok);
     else if(tok.is(eTokenType::identifier) && (file.peekToken().is(eTokenType::identifier) || file.peekToken().is(eTokenType::dataType)))
         tok = consumeTypeToken(tok);
@@ -3401,7 +3426,8 @@ objectDef* bglParser::pushOwnTypeAliases(objectDef& obj){
 void bglParser::syncOwnTypeAliases(objectDef& obj, objectDef* view){
     view->members.clear();
     for(typeMember* m : obj.members)
-        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias && !vd->isPrePassStub
+        // A stub counts too: an alias a later `extend` adds is named in the body above it.
+        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias
            && (languageService.isClassType(vd->type.name) || languageService.findEnum(vd->type.name) != nullptr))
             view->members.push_back(m);
 }
@@ -3981,8 +4007,12 @@ bool bglParser::processObjectExtension(token nameTok){
     // Not a verb or object — a previously-declared array? Route to the declarative
     // build-time array editor (inject / remove / move).
     if(!obj){
-        if(auto* arr = languageService.findGlobalAs<arrayDeclaration>(lower))
+        if(auto* arr = languageService.findGlobalAs<arrayDeclaration>(lower)){
+            if(arr->isPrePassStub)
+                parsingError(format("extend '{0}': the array is declared further down; an array must be declared before it is extended.",
+                                    nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
             return processArrayExtension(arr);
+        }
     }
     if(!obj)
         parsingError(format("extend '{0}': no previously declared object or array with that name",

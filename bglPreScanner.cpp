@@ -2115,6 +2115,18 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
         typeName += "." + seg.value;
     }
     token nameTok = file.getToken();
+    // A function named like a type (an error the main pass reports): step over its parameters and body.
+    if(!nameTok.is(eTokenType::identifier) && file.peekToken().is(token::parenOpen)){
+        int depth = 0;
+        do {
+            token t = file.getToken();
+            if(t.is(token::parenOpen)) depth++;
+            else if(t.is(token::parenClose)) depth--;
+            else if(t.is(eTokenType::eof)) return;
+        } while(depth > 0);
+        if(file.peekToken().is(token::braceOpen)){ file.getToken(); file.getRawTextThroughClosingBrace(); }
+        return;
+    }
     if(!nameTok.is(eTokenType::identifier)){ preScanSkipToSemicolon(); return; }
     string nameStr = nameTok.value;
     transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
@@ -2536,4 +2548,18 @@ void bglParser::resolveStubParamAliases(){
                     for(paramDef* p : fd->params) resolve(p->type);
                     resolve(fd->returnType);
                 }
+                // A field an `extend class` adds, typed by an alias (`meter log;`), for a use above it.
+                else if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isPrePassStub && !vd->isAlias
+                        && dynamic_cast<arrayDeclaration*>(vd) == nullptr)
+                    resolve(vd->type);
+    // A member array's element type written as a path or an alias (`array<ns.len> sizes`).
+    auto resolveElements = [&](vector<typeMember*>& members){
+        for(typeMember* m : members)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && ad->isPrePassStub)
+                ad->elementType = resolveName(ad->elementType);
+    };
+    for(typeDef* t : languageService.objectTypes)
+        if(auto* cd = dynamic_cast<classDef*>(t)) resolveElements(cd->members);
+    for(typeDef* g : languageService.globals)
+        if(auto* od = dynamic_cast<objectDef*>(g)) resolveElements(od->members);
 }

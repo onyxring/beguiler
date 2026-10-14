@@ -1,0 +1,630 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a route-lookup kit whose public surface hands back things that may be absent, and a
+// consumer that reaches everything through `?.`, `??` and postfix `?`. The kit has a value class of
+// spans with its own `operator ?` (present when it has width), copy operator and stringObj show();
+// a stop class with next/back links, a string note, a member array of side stops, a func<> member,
+// an enum kind, a span, an inline accessor with a static write count, overloaded mark() methods, a
+// fluent tag() returning self, recursive ahead()/last()/first()/path()/tally() built from `?.` and
+// `??`, a hopOr() with a default, a selfNext() through `self?.`, a default label() and a static
+// pick() that may give null; a gate subclass whose pass() may give null; a pooled ticket class whose
+// fluent punch() and hop() return self, with a stop member and a stringObj memo. A namespace object
+// (type aliases, a head and spare, a member array of stops, an inline accessor whose setter falls
+// back with `??` and counts through `outer`, counted lookups and fallbacks so the evaluation of `??`
+// right sides and of `?.` receivers is visible) imported with #using; `extend class` adding a
+// chained method; `extend` on the namespace adding two more. The consumer chains `?.` on calls, call
+// results, static calls, casts of calls, elements of global, local and member arrays, member-array
+// elements of chain results, func<> call results, func<> members, `new`, `self` and the object tree
+// (child, sibling, parent); `?.` with default and named arguments and overloads; `?.` statements
+// with =, compound assignment, prefix and postfix ++/-- on fields, accessors, member-array elements,
+// value-class members and stringObj members (+= of chars, strings and interpolations); `??` on
+// classes, objects, strings, value classes, accessors and `new`, parenthesized as a receiver,
+// right-nested, in a local array's initializer and only evaluated when needed; chains in default
+// arguments, returns, lambdas (value and void), <linq> filter/first/any/count/orderBy, switch subjects
+// (enum and string), for/while/do conditions, `&&`/`||`/`!`, ?: conditions and branches, arithmetic,
+// `== null`, interpolation, is() and string/stringObj method chains (toUpper, left, length, contains,
+// startsWith, print).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== The kit. ====
+
+/// How far a path is drawn by default.
+const int LA35_DEPTH = 4;
+
+/// What a stop is.
+enum eLa35Kind { plain, gate, sink }
+
+/// A span between two marks; present when it has width.
+value class La35Span {
+    int lo;
+    int hi;
+
+    La35Span operator = (La35Span o) {
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+    emitter eBool operator ? () { ($self.hi > $self.lo) }
+
+    /// The width of the span.
+    int width() { return hi - lo; }
+    /// The span drawn as lo..hi.
+    stringObj show() {
+        stringObj s = $"{lo}..{hi}";
+        return s;
+    }
+}
+
+/// A stop on a route.
+class La35Stop : object {
+    La35Stop next;
+    La35Stop back;
+    string note;
+    int hits;
+    eLa35Kind kind = eLa35Kind.plain;
+    La35Span span;
+    array<La35Stop> side[3];
+    func<int, int> weigh;
+    auto load = {
+        int _l;
+        static int writes = 0;
+        int operator () { return _l; }
+        void operator = (int v) {
+            _l = v < 0 ? 0 : v;
+            writes++;
+        }
+        int writeCount() { return writes; }
+    }
+
+    default string label() { return note ?? "stop"; }
+
+    /// Counts one hit.
+    void mark() { hits++; }
+    /// Counts several hits.
+    void mark(int n) { hits += n; }
+    /// Counts a hit and takes a note.
+    void mark(string n) {
+        hits++;
+        note = n;
+    }
+
+    /// Sets the kind and gives the stop back, so calls can follow.
+    La35Stop tag(eLa35Kind k = eLa35Kind.sink) {
+        kind = k;
+        return self;
+    }
+
+    /// The stop some steps on, or null when the route ends first.
+    La35Stop ahead(int steps = 1) {
+        if (steps <= 0) return self;
+        return next?.ahead(steps - 1);
+    }
+    /// The last stop of the route from here.
+    La35Stop last() { return next?.last() ?? self; }
+    /// The first stop of the route up to here.
+    La35Stop first() { return back?.first() ?? self; }
+    /// Hits from here to the end.
+    int tally() { return hits + (next? ? next.tally() : 0); }
+    /// The labels from here, joined, up to a depth.
+    stringObj path(string sep = "-", int depth = LA35_DEPTH) {
+        stringObj s = label();
+        if (depth > 1 && next?) {
+            s += sep;
+            s += next?.path(sep, depth - 1);
+        }
+        return s;
+    }
+    /// Links this stop to another, both ways.
+    void link(La35Stop to) {
+        next?.back = null;
+        next = to;
+        to?.back = self;
+    }
+
+    /// The stop after this one, or another.
+    La35Stop hopOr(La35Stop alt = back) { return next ?? alt; }
+    /// The stop after this one, reached through self.
+    La35Stop selfNext() { return self?.next; }
+
+    /// The first stop of a kind on the route from the namespace's head.
+    static La35Stop pick(eLa35Kind k) {
+        for (La35Stop s = la35Route.head; s?; s = s?.next) {
+            if (s.kind == k) return s;
+        }
+        return null;
+    }
+}
+
+/// A stop that may refuse to let a route pass.
+class La35Gate : La35Stop {
+    bool shut;
+    replace string label() { return shut ? "gate(shut)" : "gate"; }
+    /// The stop beyond, or null while shut.
+    La35Stop pass() { return shut ? null : next; }
+}
+
+/// A ticket for a stop, made with new: punched as it is used.
+class La35Ticket[3] : object {
+    La35Stop at;
+    stringObj memo;
+    int punches;
+    static int live = 0;
+
+    void create(La35Stop s) {
+        at = s;
+        memo = s?.label() ?? "nowhere";
+        live++;
+    }
+    void destroy() { live--; }
+
+    /// Punches the ticket and gives it back, so calls can follow.
+    La35Ticket punch(int by = 1, bool hit = true) {
+        punches += by;
+        if (hit) at?.hits += by;
+        return self;
+    }
+    /// Moves the ticket on, or leaves it where the route ends.
+    La35Ticket hop(int steps = 1) {
+        at = at?.ahead(steps) ?? at;
+        memo += '>';
+        memo += at?.label() ?? "?";
+        return self;
+    }
+}
+
+/// The route namespace: lookups that may come back empty, counted.
+object la35Route {
+    alias stop for La35Stop;
+    alias gate for La35Gate;
+    alias kind for eLa35Kind;
+    La35Stop head;
+    La35Stop spare;
+    array<La35Stop> lineup[4];
+    int lookups = 0;
+    int fallbacks = 0;
+    int moves = 0;
+    auto cursor = {
+        La35Stop _c;
+        La35Stop operator () { return _c; }
+        void operator = (La35Stop s) {
+            _c = s ?? outer.spare;
+            outer.moves++;
+        }
+    }
+
+    /// The stop with a note, or null.
+    stop find(string n) {
+        lookups++;
+        for (stop s = head; s?; s = s.next) {
+            if (s.note? && s.note == n) return s;
+        }
+        return null;
+    }
+    /// The spare stop, counted.
+    stop fallback() {
+        fallbacks++;
+        return spare;
+    }
+    /// The stop at a position on the route, counted.
+    stop at(int i) {
+        lookups++;
+        return head?.ahead(i);
+    }
+    /// A ticket for a named stop, or null when the pool is out.
+    La35Ticket issue(string n) { return new La35Ticket(find(n)); }
+}
+
+/// Stops learn to hand back the gate beyond them.
+extend class La35Stop {
+    /// The next gate from here (not counting this stop), or null.
+    La35Gate nextGate() {
+        if (next?.is(La35Gate)) return (La35Gate)next;
+        return next?.nextGate();
+    }
+}
+
+/// The namespace learns to report a stop with a fallback text.
+extend la35Route {
+    /// A stop's label, or a stand-in.
+    string nameOf(La35Stop s, string none = "none") { return s?.label() ?? none; }
+    /// Marks the stop after the head, and the one after that.
+    void touchNext(int n = 1) {
+        head?.next?.hits += n;
+        head?.next?.next?.mark(n);
+    }
+}
+
+// ==== The consumer. ====
+
+#using la35Route;
+
+/// The reference verbs: they take no time.
+class La35Info : verb {
+    meta = true;
+}
+
+/// A ticket kept between turns.
+La35Ticket la35Kept;
+/// The stops in the order they were made.
+array<La35Stop> la35Stops[6];
+/// Steps one stop on; a func<> whose result is chained.
+func<La35Stop, La35Stop> la35Step = (La35Stop s) => s?.next;
+/// A stop's note or a dash.
+func<string, La35Stop> la35Note = (La35Stop s) => s?.note ?? "-";
+/// Marks a stop if there is one.
+func<void, La35Stop> la35Bump = (La35Stop s) => s?.mark();
+
+La35Stop la35DefaultStop() { return la35Route.head?.next; }
+string la35DefaultTag() { return la35Route.spare?.note ?? "none"; }
+
+/// Reports a stop; the defaults are themselves chains.
+void la35Report(La35Stop s = la35DefaultStop(), string tag = la35DefaultTag()) {
+    print($"[{s?.label() ?? "nothing"}/{tag}]");
+}
+
+/// Twice a number.
+int la35Double(int n) { return n * 2; }
+
+/// The hits of the stop some steps from the head, or -1.
+int la35HitsAt(int i) {
+    La35Stop s = at(i);
+    return s? ? s.hits : -1;
+}
+
+/// The kind of a stop as a word.
+string la35KindWord(La35Stop s) {
+    switch (s?.kind) {
+        case eLa35Kind.plain: return "plain";
+        case eLa35Kind.gate:  return "gate";
+        case eLa35Kind.sink:  return "sink";
+        default:              return "absent";
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    la35Route.head = stopA;
+    la35Route.spare = stopS;
+    stopA.link(stopB);
+    stopB.link(gateG);
+    gateG.link(stopC);
+    gateG.kind = eLa35Kind.gate;
+    stopA.span.lo = 2;
+    stopA.span.hi = 7;
+    stopC.span.lo = 4;
+    stopC.span.hi = 4;
+    la35Route.lineup[0] = stopA;
+    la35Route.lineup[1] = gateG;
+    la35Route.lineup[2] = null;
+    la35Route.lineup[3] = stopC;
+    stopA.side[0] = stopS;
+    stopB.side[1] = stopC;
+    la35Stops.append(stopA);
+    la35Stops.append(stopB);
+    la35Stops.append(gateG);
+    la35Stops.append(stopC);
+    la35Stops.append(stopS);
+    stopA.weigh = la35Double;
+    gateG.weigh = (int n) => n + 100;
+    rfalse;
+}
+
+La35Info La35Routes {
+    grammar = {.routes};
+    void handler() {
+        print($"path {head?.path()}; arrows {head?.path(sep: ">")}; short {head?.path(depth: 2)}; ");
+        print($"loud {head?.path(">", 3)?.toUpper()}; left {head?.next?.path()?.left(3)}; len {head?.path()?.length}^");
+        print($"last {head?.last()?.label()}, first of C {stopC.first()?.label()}, two on {head?.ahead(2)?.label()}");
+        print($", ten on {head?.ahead(10)?.label() ?? "off the end"}, back of A {stopA.back?.label() ?? "none"}^");
+        print($"gate from A {stopA.nextGate()?.label() ?? "none"}, from C {stopC.nextGate()?.label() ?? "none"}");
+        print($", pass {stopA.nextGate()?.pass()?.label() ?? "blocked"}, pick sink {La35Stop.pick(eLa35Kind.sink)?.label() ?? "none"}");
+        print($", pick gate {La35Stop.pick(la35Route.kind.gate)?.label() ?? "none"}^");
+        gateG.shut = true;
+        print($"shut: pass {stopA.nextGate()?.pass()?.label() ?? "blocked"}, path {head?.path()}, ");
+        print($"has C {head?.path()?.contains("C")}, kind of gate {la35KindWord(stopA.nextGate())}, of nothing {la35KindWord(stopC.next)}^");
+        gateG.shut = false;
+    }
+}
+
+La35Info La35Lookups {
+    grammar = {.lookups};
+    void handler() {
+        lookups = 0;
+        fallbacks = 0;
+        La35Stop b = find("B") ?? fallback();
+        La35Stop z = find("Z") ?? fallback();
+        La35Stop y = find("Y") ?? find("Z") ?? find("C") ?? fallback();
+        print($"b {b.label()}, z {z.label()}, y {y.label()}; lookups {lookups} fallbacks {fallbacks}^");
+        string n = find("Q")?.note ?? find("A")?.note ?? "none";
+        stringObj s = find("C")?.label() ?? "none";
+        s += find("Z")?.label() ?? "+none";
+        print($"n {n}, s {s}, name {nameOf(find("B"))} {nameOf(find("Z"))} {nameOf(null, "nil")} {nameOf(none: "x", s: find("Z"))}");
+        print($"; lookups {lookups} fallbacks {fallbacks}^");
+        at(1)?.hits += 2;
+        at(1)?.hits++;
+        at(7)?.hits++;
+        at(0)?.mark();
+        at(0)?.mark(3);
+        at(9)?.mark(3);
+        at(3)?.mark("C2");
+        print($"hits {la35HitsAt(0)} {la35HitsAt(1)} {la35HitsAt(3)} {la35HitsAt(8)}, note {stopC.note}; lookups {lookups}^");
+        stopC.note = "C";
+        object o = noun ?? roomA;
+        La35Stop hd = la35Route.head ?? stopS;
+        print($"o {o}, hd {hd.label()}, sp {(la35Route.spare ?? hd).label()}, tagged {(find("Z") ?? stopS)?.tag()?.label()} {la35KindWord(stopS)}^");
+        stopS.kind = eLa35Kind.plain;
+    }
+}
+
+La35Info La35Sets {
+    grammar = {.sets};
+    void handler() {
+        head?.next?.load = 4;
+        head?.next?.load += 3;
+        head?.next?.load++;
+        head?.ahead(3)?.load = -5;
+        head?.ahead(9)?.load = 1;
+        print($"loads {stopB.load} {stopC.load}, writes {stopB.load.writeCount()}; ");
+        head?.next?.next?.hits = 10;
+        head?.next?.next?.hits -= 4;
+        head?.next?.next?.hits--;
+        head?.ahead(5)?.hits = 99;
+        print($"gate hits {gateG.hits}; ");
+        head?.side[2] = head?.next;
+        head?.side[2]?.hits += 1;
+        head?.next?.side[1]?.hits++;
+        print($"sides A {head?.side[0]?.label()} {head?.side[1]?.label() ?? "-"} {head?.side[2]?.label()}, B1 {stopB.side[1]?.label()}");
+        print($", hits B {stopB.hits} C {stopC.hits}^");
+        stopB.span = stopA.span;
+        head?.next?.span.hi += 5;
+        stopS?.span = stopC.span ?? stopB.span;
+        print($"spans A {stopA.span.show()} B {stopB.span.show()} S {stopS.span.show()}; ");
+        print($"widths {stopA.span?.width()} {stopC.span?.width()}, present {stopA.span?} {stopC.span?}; ");
+        La35Span w = stopC.span ?? stopA.span;
+        La35Span v = stopA.span ?? stopC.span;
+        print($"w {w.show()} v {v.show()}^");
+    }
+}
+
+La35Info La35Tickets {
+    grammar = {.tickets};
+    void handler() {
+        La35Ticket t = issue("B");
+        La35Ticket u = issue("Z");
+        La35Ticket x = issue("C");
+        La35Ticket gone = issue("A");
+        print($"live {La35Ticket.live}, memos {t?.memo} {u?.memo} {x?.memo}, fourth {gone?.memo ?? "none"}^");
+        t?.punch()?.punch(by: 2)?.punch(hit: false, by: 5);
+        print($"t punches {t?.punches}, B hits {stopB.hits}; ");
+        print($"hop {t?.hop()?.hop(steps: 1)?.memo}, at {t?.at?.label()}, u at {u?.hop()?.at?.label() ?? "nowhere"}^");
+        print($"chained label {x?.punch(3)?.at?.ahead()?.label() ?? "end"}, C hits {stopC.hits}; ");
+        delete u;
+        La35Ticket w = (issue("A") ?? t)?.punch(hit: false);
+        La35Ticket v = issue("B") ?? x;
+        print($"w {w?.memo}, v {v?.memo}, live {La35Ticket.live}^");
+        la35Kept = la35Kept ?? t;
+        delete w;
+        delete x;
+        print($"kept {la35Kept?.memo}, live {La35Ticket.live}; ");
+        la35Kept?.punch()?.hop(steps: 9);
+        print($"kept at {la35Kept?.at?.label()}, punches {la35Kept?.punches}^");
+        delete la35Kept;
+        la35Kept = null;
+        print($"after {la35Kept?.memo ?? "no ticket"}, live {La35Ticket.live}^");
+    }
+}
+
+La35Info La35Walks {
+    grammar = {.walks};
+    void handler() {
+        stringObj line;
+        for (La35Stop s = head; s?; s = s?.next) line += s.label().left(1);
+        print($"for {line}; ");
+        int n = 0;
+        La35Stop at = head;
+        while (at?.next?) {
+            at = at.next;
+            n++;
+        }
+        print($"while {n} to {at?.label()}; ");
+        La35Stop back = stopC;
+        stringObj rev;
+        do {
+            rev += back?.label() ?? "?";
+            back = back?.back;
+        } while (back?);
+        print($"do {rev}^");
+        if (head?.next? && head?.next?.next?.kind == eLa35Kind.gate || stopS.next?) print("A has a gate two on");
+        else print("no gate two on");
+        if (!stopS.next? && !stopS.back?) print(", S stands alone");
+        print($", {stopC.next? ? "C goes on" : "C ends"}, {(head?.ahead(3)? ? head?.ahead(3) : stopS)?.label()}");
+        print($", {gateG.shut ? stopA.label() : gateG.pass()?.label() ?? "blocked"}^");
+        for (int i = 0; i < 4; i++) {
+            print($"{i}:{lineup[i]?.label() ?? "empty"}/{lineup[i]?.next?.label() ?? "end"}/{lineup[i]?.side[1]?.label() ?? "-"} ");
+        }
+        print($"total {head?.tally()}^");
+    }
+}
+
+La35Info La35Lambdas {
+    grammar = {.lambdas};
+    void handler() {
+        print($"step {la35Step(stopA)?.label()} {la35Step(stopC)?.label() ?? "end"} {la35Step(la35Step(stopA))?.next?.label()}; ");
+        print($"note {la35Note(stopB)} {la35Note(gateG)} {la35Note(null)}; ");
+        la35Report();
+        la35Report(stopC);
+        la35Report(tag: "t", s: stopA.ahead(9));
+        print("^");
+        print($"gated next {la35Stops.filter((La35Stop s) => s?.next?.kind == eLa35Kind.gate).first()?.label() ?? "none"}");
+        print($", any span {la35Stops.any((La35Stop s) => s.span?)}, with sides {la35Stops.filter((La35Stop s) => s.side[0]? || s.side[1]?).count()}");
+        print($", ended {la35Stops.filter((La35Stop s) => !s.next?).count()}, notes {la35Stops.filter((La35Stop s) => s.note?.contains('S')).first()?.label() ?? "none"}^");
+        array<La35Stop> by = la35Stops.orderBy((La35Stop a, La35Stop b) => (a.next ?? a).hits - (b.next ?? b).hits);
+        stringObj line = "by next hits";
+        for (La35Stop s in by) line += $" {s.label()}";
+        print(line);
+        print($"; first back {la35Stops.filter((La35Stop s) => s.back?).first()?.back?.label() ?? "none"}^");
+        la35Bump(stopS);
+        la35Bump(stopA.back);
+        la35Bump(find("C"));
+        la35Route.touchNext(2);
+        print($"bumped S {stopS.hits} C {stopC.hits}, touched B {stopB.hits} gate {gateG.hits}^");
+    }
+}
+
+La35Info La35Cursors {
+    grammar = {.cursors};
+    void handler() {
+        la35Route.cursor = find("B");
+        print($"cursor {la35Route.cursor?.label()}, on {la35Route.cursor?.next?.label()}, bare {cursor?.label()}");
+        la35Route.cursor?.mark(2);
+        la35Route.cursor = find("Z");
+        print($", reset {la35Route.cursor?.label() ?? "none"}, moves {moves}, B hits {stopB.hits}^");
+        la35Route.cursor = stopC.next ?? stopC.back;
+        find("B")?.print();
+        print($" then {la35Route.cursor?.label()}; ");
+        switch (find("C")?.note) {
+            case "A": print("note A");
+            case "C": print("note C");
+            default:  print("note other");
+        }
+        switch (find("Z")?.note) {
+            case "C": print(", note C");
+            default:  print(", no note");
+        }
+        print($"; upper {stopC.note?.toUpper()}, len {gateG.note?.length}, has {stopS.note?.startsWith("S")}");
+        print($", present {(find("Z") ?? stopS)?}, {find("Z")?}, self {stopB.selfNext()?.label()} {stopC.selfNext()?.label() ?? "none"}^");
+        stringObj trail = "trail";
+        for (La35Stop s = stopA; s?; s = s.nextGate() ?? s.next) trail += $" {s.label()}({s.nextGate()?.label() ?? "-"})";
+        print(trail);
+        print($"; nested {(stopA.next?.next? ? stopA.next?.next?.next?.label() : "short") ?? "none"}");
+        print($", deep {stopA.side[0]?.side[0]?.label() ?? stopA.side[0]?.label() ?? "none"}^");
+        La35Stop firstStop = (La35Stop)roomA.child?.sibling;
+        object holder = ((La35Stop)roomA.child)?.parent ?? rope;
+        print($"tree {roomA.child?.sibling ?? roomA}, next {firstStop?.next?.label() ?? "none"}, cast {((La35Stop)(gateG.sibling))?.label() ?? "none"}");
+        print($", far {((La35Stop)(stopS.sibling?.sibling))?.label() ?? "none"}, holder {holder}^");
+    }
+}
+
+La35Info La35Picks {
+    grammar = {.picks};
+    void handler() {
+        array<La35Stop> picks = { find("B") ?? spare, find("Z") ?? spare, stopC.next ?? stopC.back, la35Route.lineup[2] ?? la35Route.lineup[3] };
+        stringObj line = "picks";
+        for (La35Stop p in picks) line += $" {p.label()}";
+        print(line);
+        La35Ticket t = (new La35Ticket(s: picks[2]) ?? la35Kept)?.punch(by: 2, hit: false);
+        print($"; ticket {t?.memo} {t?.punches} {t?.at?.next?.label()}, live {La35Ticket.live}");
+        delete t;
+        ((La35Gate)at(2))?.shut = true;
+        print($"; gate {((La35Gate)at(2))?.label()} pass {((La35Gate)at(2))?.pass()?.label() ?? "blocked"}");
+        ((La35Gate)at(2))?.shut = false;
+        print($", hop {stopB.hopOr()?.label()} {stopC.hopOr()?.label()} {stopC.hopOr(stopS)?.label()}");
+        picks[3]?.back?.hits = 0;
+        picks[1]?.side[0]?.load = 2;
+        print($", gate hits {gateG.hits}, picks {picks.filter((La35Stop p) => p?.back?.hits == 0).count()}^");
+    }
+}
+
+La35Info La35Sums {
+    grammar = {.sums};
+    void handler() {
+        print($"weigh {find("A")?.weigh(4)} {at(2)?.weigh(at(0)?.hits)} {stopA.nextGate()?.weigh(1)}");
+        print($", sum {find("A")?.hits + find("Z")?.hits + at(1)?.hits}, none {find("Z")?.next == null}, ends {stopC.next?.next == null}");
+        if (!find("C")?.next?) print(", C ends");
+        print($", compare {(at(1)?.hits > at(0)?.hits ? "B over A" : "A over B")}^");
+        int t = 0;
+        t += find("B")?.next?.hits;
+        t -= find("Z")?.hits;
+        t += at(2)?.weigh(t);
+        ++la35Route.head?.next?.hits;
+        --la35Route.head?.hits;
+        la35Kept = issue("C");
+        la35Kept?.memo += '!';
+        la35Kept?.memo += $"{t}";
+        la35Kept?.hop(-1)?.memo += "<";
+        print($"t {t}, B {stopB.hits} A {stopA.hits}, memo {la35Kept?.memo} ({la35Kept?.memo?.length}), upper {la35Kept?.at?.path(sep: "+")?.toUpper()}^");
+        la35Kept?.memo?.print();
+        delete la35Kept;
+        la35Kept = null;
+        print($", live {La35Ticket.live}^");
+    }
+}
+
+/// Pokes a stop: chains off the noun.
+verb La35Poke {
+    grammar = {.poke, NOUN};
+    void handler() {
+        La35Stop s = noun.is(La35Stop) ? (La35Stop)noun : null;
+        s?.mark();
+        print($"Poked {s?.label() ?? "nothing on the route"}; next {s?.next?.label() ?? "none"}; hits {s? ? s.hits : 0}");
+        print($"; gate {(noun?.is(La35Gate) ? "yes" : "no")}");
+        if (noun?.is(La35Gate)) print($", shut {((La35Gate)noun)?.shut}, pass {((La35Gate)noun)?.pass()?.label() ?? "none"}");
+        print($"; in {noun?.parent}.^");
+    }
+}
+
+// ==== The world. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La35Stop stopA {
+    "stop A";
+    parent = roomA;
+    name = {.stop, .a};
+    note = "A";
+}
+
+La35Stop stopB {
+    "stop B";
+    parent = roomA;
+    name = {.stop, .b};
+    note = "B";
+}
+
+La35Gate gateG {
+    "gate G";
+    parent = roomA;
+    name = {.gate, .g};
+}
+
+La35Stop stopC {
+    "stop C";
+    parent = roomA;
+    name = {.stop, .c};
+    note = "C";
+}
+
+La35Stop stopS {
+    "stop S";
+    parent = roomA;
+    name = {.stop, .s, .spare};
+    note = "S";
+}
+
+object rope {
+    "rope";
+    parent = roomA;
+    name = {.rope};
+}
+
+#includeI6 "grammar"

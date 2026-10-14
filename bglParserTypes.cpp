@@ -377,6 +377,10 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         }
     };
 
+    // An object's own methods come before its class's: its exact fit wins over the class's by conversion.
+    if(objectDef* od = languageService.findObjectType(typeName); od != nullptr && cls != nullptr && od != dynamic_cast<objectDef*>(cls))
+        for(typeMember* m : od->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m)) checkMethod(fd);
     // Step 1: search class hierarchy. A base's exact fit beats a nearer one that fits only by conversion.
     if(cls != nullptr){
         std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
@@ -408,8 +412,11 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         // (c) self inside an object body
         else if(lowerPath == "self" && currentObject != nullptr)
             targetObj = currentObject;
-        // (b) objPath names a global objectDef
-        else
+        // (b) objPath names a global objectDef — `::name`, or a name no local or parameter of the routine has
+        else if(lowerPath.rfind("::", 0) == 0){
+            if(auto* od = languageService.findGlobalAs<objectDef>(lowerPath.substr(2))) targetObj = od;
+        }
+        else if(!(currentFunc != nullptr && (qualifyFromParams(lowerPath, currentFunc) || qualifyFromAncestorBlocks(lowerPath, nullptr))))
             if(auto* od = languageService.findGlobalAs<objectDef>(lowerPath)) targetObj = od;
         if(targetObj != nullptr){
             varFallback = nullptr;
@@ -659,6 +666,9 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
             // exception: its value is an action, typed by its verb class, which grammar and action
             // emission key on.
             ct = dynamic_cast<verbObjectDef*>(od) != nullptr && od->objectClass != nullptr ? od->objectClass->name : od->name;
+            // A member the verb declares itself (`Probe.count`) is reached on the verb object.
+            if(dynamic_cast<verbObjectDef*>(od) != nullptr && !verbMemberHint.empty())
+                for(typeMember* m : od->members) if(m->name == verbMemberHint){ ct = od->name; break; }
             origin = format("global object '{0}'", g->name);
         }
         else if(dynamic_cast<classDef*>(g) || dynamic_cast<enumDef*>(g)){
@@ -913,7 +923,9 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
                 break;
             }
     }
+    verbMemberHint = memberHint;
     collectTypeCandidatesFromGlobals(name, candidates);
+    verbMemberHint.clear();
     // Action constants (extern verb Take etc.)
     for(verbObjectDef* vd : languageService.verbs){
         string lower = vd->name;
@@ -939,6 +951,10 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
             if(currentExpectedType != "property")
                 candidates.erase(remove_if(candidates.begin(), candidates.end(),
                     [](const TypeCandidate& c){ return c.type == "property"; }), candidates.end());
+            // `::NAME` reaches the symbol unless a file-scope variable has the name (a routine or verb doesn't count).
+            bool variableOfName = any_of(candidates.begin(), candidates.end(),
+                [](const TypeCandidate& c){ return c.origin.rfind("global variable", 0) == 0; });
+            if(forceGlobalScope && !variableOfName) candidates.clear();
             if(!forceGlobalScope || candidates.empty())
                 candidates.push_back({defineLiteral(it->second).second, format("#define symbol '{0}'", name), false});
         }
@@ -1115,9 +1131,11 @@ string bglParser::resolveArrayElementTypeDottedRaw(const string& objNameIn, cons
         objName += "." + propName.substr(0, d);
         propName = propName.substr(d + 1);
     }
-    // Find objName's class — walk objectInstances + globals
+    // Find objName's class — walk objectInstances + globals. A local or parameter of the name is nearer.
     classDef* cls = nullptr;
-    for(typeDef* t : languageService.objectInstances)
+    bool local = func != nullptr && objName.find('.') == string::npos
+              && (qualifyFromParams(objName, func) || qualifyFromBodyLocals(objName, body) || qualifyFromAncestorBlocks(objName, body));
+    for(typeDef* t : local ? vector<typeDef*>{} : languageService.objectInstances)
         if(auto* od = dynamic_cast<objectDef*>(t))
             if(od->name == objName || (!od->i6name.empty() && od->i6name == objName)) {   // an emitted name (`_box`) too
                 for(typeMember* m : od->members)
@@ -1127,7 +1145,7 @@ string bglParser::resolveArrayElementTypeDottedRaw(const string& objNameIn, cons
                 break;
             }
     // A verb, named by its Beguile name (an inline accessor's `outer`) or its I6 one.
-    if(!cls)
+    if(!cls && !local)
         for(verbObjectDef* v : languageService.verbs){
             string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
             string low = objName; transform(low.begin(), low.end(), low.begin(), ::tolower);
@@ -2308,6 +2326,24 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
             continue;
         }
 
+        // A parameter named without its `$` (`$i6Expr(l.cm)`) would reach I6 as a bare word.
+        if(b.fn != nullptr){
+            string src = out.substr(open + 1, close - open - 1);
+            for(size_t i = 0; i < src.size(); ){
+                if(!(isalpha((unsigned char)src[i]) || src[i] == '_')){ i++; continue; }
+                size_t j = i;
+                while(j < src.size() && (isalnum((unsigned char)src[j]) || src[j] == '_')) j++;
+                char before = i > 0 ? src[i - 1] : ' ';
+                string w = src.substr(i, j - i);
+                transform(w.begin(), w.end(), w.begin(), ::tolower);
+                if(before != '$' && before != '.')
+                    for(paramDef* p : b.fn->params)
+                        if(p->name == w)
+                            parsingError(format("$i6Expr({0}) — '{1}' is this emitter's parameter; name it as `${1}`.", src, src.substr(i, j - i)));
+                i = j;
+            }
+        }
+
         // Sub-parse. The lexer keeps a stack of streams, so pushing one mid-parse is safe, but its
         // scratch state (a peeked token, the brace depth) belongs to the OUTER stream and has to be
         // put back exactly as it was.
@@ -2323,6 +2359,7 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         };
         string emitted;
         size_t injectionsBefore = pendingInjections.size();
+        size_t postInjectionsBefore = postInjections.size();
         // The payload is an expression, not a statement, so give the parser the terminator it
         // expects rather than letting it read off the end of the stream.
         file.openText(payload + ";", "$i6Expr", 0);
@@ -2355,8 +2392,11 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         for(auto& [ph, text] : restore) emitted = i6Emitter::replaceWord(emitted, ph, text);
         // Set-up statements (a `??` temporary) go into the caller's routine, where no token is
         // filled later: they take the bound text itself.
-        for(size_t n = injectionsBefore; n < pendingInjections.size(); n++){
-            auto* raw = dynamic_cast<i6RawNode*>(pendingInjections[n]);
+        // A lambda's copy-back after the call (`_bglxpr1_ = _bglCap4`) is one of them too.
+        vector<statement*> setUp(pendingInjections.begin() + injectionsBefore, pendingInjections.end());
+        setUp.insert(setUp.end(), postInjections.begin() + min(postInjectionsBefore, postInjections.size()), postInjections.end());
+        for(statement* st : setUp){
+            auto* raw = dynamic_cast<i6RawNode*>(st);
             if(raw == nullptr) continue;
             for(auto& [ph, tokenName] : restore){
                 if(findTokenCI(raw->text, ph, 0) == string::npos) continue;
@@ -2371,6 +2411,10 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
                                               out.substr(open + 1, close - open - 1), tokenName));
                 else raw->text = i6Emitter::replaceWord(raw->text, ph, *text);
             }
+            // A copy-back to a value that isn't a variable (`3 = _bglCap1`, an argument written as a literal) has nowhere to go.
+            static const regex copyBack(R"(^\s*(.+?)\s*=\s*_bglCap\d+\s*;\s*$)");
+            static const regex literal(R"(^\(?\s*(-?\d+|\$[0-9A-Fa-f]+|'[^']*'|"[^"]*"|true|false|nothing)\s*\)?$)", regex::icase);
+            if(smatch cm; regex_match(raw->text, cm, copyBack) && regex_match(cm[1].str(), literal)) raw->text = "";
         }
         out.replace(at, close - at + 1, emitted);
         at += emitted.size();
@@ -2848,7 +2892,8 @@ optional<string> bglParser::qualifyDottedHeadViaUsingAlias(const DottedPath& p, 
             for(objectDef* imp : usingObjectImports)
                 for(typeMember* m : imp->members)
                     if(auto* avd = dynamic_cast<variableDeclaration*>(m))
-                        if(avd->name == head){
+                        // Only a namespace hook redirects; a plain member (`Stop head`) is the receiver itself.
+                        if(avd->name == head && (avd->isNamespaceAlias() || avd->declaredExpressionValue != nullptr)){
                             string tgt = avd->declaredExpressionValue ? avd->declaredExpressionValue->text() : avd->type.name;
                             if(!tgt.empty()
                                && (languageService.findClass(tgt) != nullptr
@@ -3399,6 +3444,12 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
                 origin = format("#using-imported member '{0}.{1}'", imp->name, name);
                 matched = true;
             }
+            // A local or parameter named like the imported object would take the path's head: name it globally.
+            if(matched && func != nullptr && qual.rfind(imp->name + ".", 0) == 0
+               && (qualifyFromParams(imp->name, func) || qualifyFromBodyLocals(imp->name, body) || qualifyFromAncestorBlocks(imp->name, body))){
+                (currentFunc != nullptr ? currentFunc : func)->globalEscapes.insert(imp->name);
+                qual = kGlobalEscapeMarker + (imp->i6name.empty() ? imp->name : imp->i6name) + qual.substr(imp->name.size());
+            }
             if(matched){ candidates.push_back({qual, ct, origin, false, /*isObject=*/false, isFn}); break; }
         }
     }
@@ -3768,6 +3819,9 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
                 candidates.erase(remove_if(candidates.begin(), candidates.end(),
                     [](const QualifyCandidate& c){ return c.type == "property"; }), candidates.end());
         }
+        if(forceGlobalScope && it != definedSymbols.end() && !it->second.empty() && !definesExternGlobal(name)
+           && none_of(candidates.begin(), candidates.end(), [](const QualifyCandidate& c){ return c.origin.rfind("global variable", 0) == 0; }))
+            candidates.clear();
         if(it != definedSymbols.end() && !it->second.empty() && !definesExternGlobal(name)
            && (!forceGlobalScope || candidates.empty())){
             auto [text, ct] = defineLiteral(it->second);
@@ -4750,6 +4804,20 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
         args.push_back(defExpr);
         if(interpSegmentsPerArg.size() < args.size()) interpSegmentsPerArg.push_back({});
     }
+    // A class parameter (`is(Dial)`) takes a class's name: a variable holding an instance names no class.
+    for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
+        if(args[i] == nullptr || fd->params[i]->type.name != "bglclass") continue;
+        string t = args[i]->text();
+        if(t.empty() || !all_of(t.begin(), t.end(), [](char c){ return isalnum((unsigned char)c) || c == '_'; })) continue;
+        functionDef* f = currentFunc;
+        bool variable = f != nullptr && (qualifyFromParams(t, f) || qualifyFromAncestorBlocks(t, nullptr)
+                                         || qualifyFromBodyLocals(t, dynamic_cast<statementBlock*>(f->body)));
+        if(!variable)
+            if(auto* gv = languageService.findGlobalAs<variableDeclaration>(t); gv && gv->type.name != "property" && !gv->isNamespaceAlias()) variable = true;
+        if(variable && args[i]->resolvedType != "bglclass" && args[i]->resolvedType != "var")
+            parsingError(format("'{0}' is a value, not a class: '{1}' takes a class's name (write `::ClassName` if a local hides it).",
+                                t, fd->dName()));
+    }
     // A value-class parameter given another type its class's `operator =` takes (`show(7.5)`) gets
     // an instance made from the value, as a declaration `Volume a = 2.5;` does.
     for(size_t i = 0; i < args.size() && i < fd->params.size(); i++)
@@ -4978,7 +5046,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     // (an i6Verb's handler() runs the I6 action routine).
     if(objType == "verb")
         for(verbObjectDef* v : languageService.verbs)
-            if(v->name == objPath && v->objectClass != nullptr){ objType = v->objectClass->name; break; }
+            if(v->name == (objPath.rfind("::", 0) == 0 ? objPath.substr(2) : objPath) && v->objectClass != nullptr){ objType = v->objectClass->name; break; }
     // On an `array<literal T>` receiver, the methods that store an element (declared `literal T`)
     // take only literal values; finalizeCallArgs reads this while binding.
     struct LiteralElementsGuard {
@@ -5031,7 +5099,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
         if(functionDef* synth = synthesizeFuncPropertyCall(objType, methodName)) return synth;
         // A verb's name types as its action: its own members are the verb object's.
         if(objType == "verb" && objPath.find('.') == string::npos){
-            string path = objPath; transform(path.begin(), path.end(), path.begin(), ::tolower);
+            string path = objPath.rfind("::", 0) == 0 ? objPath.substr(2) : objPath; transform(path.begin(), path.end(), path.begin(), ::tolower);
             for(verbObjectDef* v : languageService.verbs){
                 string i6 = v->i6name; transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
                 if(v->name != path && i6 != path) continue;
@@ -5708,7 +5776,10 @@ std::string bglParser::resolvePathTypeRaw(std::string path, functionDef* func, s
     transform(lowerHead.begin(), lowerHead.end(), lowerHead.begin(), ::tolower);
     string currentType = headType;
     string remaining = tail;
-    string instanceContext = lowerHead;   // for hop 1, may match a specific global object
+    // for hop 1, may match a specific global object — unless a local or parameter has the head's name
+    bool headIsLocal = func != nullptr && (resolveTypeFromParams(lowerHead, func) || resolveTypeFromBodyLocals(lowerHead, body)
+                                           || resolveTypeFromAncestorBlocks(lowerHead, body));
+    string instanceContext = headIsLocal ? string() : lowerHead;
     while(true){
         size_t segDot = remaining.find('.');
         string segment = (segDot == string::npos) ? remaining : remaining.substr(0, segDot);
@@ -6009,4 +6080,14 @@ void bglParser::emitDeferredConversions(){
         languageService.globals.push_back(raw);
     }
     deferredConversions.clear();
+}
+
+// An interpolated string is the whole right side of its statement: an operator after it means it was
+// used as a value, which it has none of.
+void bglParser::endInterpolatedStatement(){
+    if(!file.peekToken().is(token::endStatement) && file.peekToken().is(eTokenType::oper))
+        parsingError("An interpolated string has no value, so it can't be part of an expression "
+                     "such as a ?: branch or an operand. Pass it straight to print() or an emitter that takes "
+                     "interpolatedStringLiteral, or assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
+    file.getToken(token::endStatement);
 }

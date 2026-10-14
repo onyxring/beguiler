@@ -33,6 +33,7 @@ std::string mangleOperatorName(const std::string& opName);
 // without any return is inferred `void`; otherwise the inferred type is `var`.
 bool hasReturn(statementBlock* blk);
 bool sameParamTypes(functionDef* a, functionDef* b);
+string mangleObjectMethodName(functionDef* fd);   // a method overload's routine name: name, arity, parameter types
 std::vector<std::string> funcSignatureArgs(const std::string& t);   // a func<…> type's top-level arguments
 string missingReturnMessage(functionDef& fd);
 

@@ -409,7 +409,7 @@ size_t bglParser::findInfEndDirective(const std::string& text){
 // `_<paramTypeName>` for each parameter. Template arguments are kept (`func<int, int>` →
 // `func_int_int`), since overloads may differ only in them. Used by mangleOverloadSet below
 // and (via the same helper) by call-site emission paths.
-static string mangleObjectMethodName(functionDef* fd){
+string mangleObjectMethodName(functionDef* fd){
     string safe = fd->name + "_" + to_string(fd->params.size());
     for(paramDef* p : fd->params){
         string t;
@@ -1108,8 +1108,9 @@ void bglParser::mangleGlobalOverloadSet(const string& name){
     set<string> signatures;
     for(functionDef* fd : group) signatures.insert(mangleObjectMethodName(fd));
     if(signatures.size() < 2) return;
+    // A name renamed only to keep clear of a library name (`_compare`) takes its overload's name instead.
     for(functionDef* fd : group)
-        if(fd->i6name.empty()) fd->i6name = mangleObjectMethodName(fd);
+        if(fd->i6name.empty() || fd->i6name == "_" + fd->dName()) fd->i6name = mangleObjectMethodName(fd);
 }
 
 void bglParser::assignGlobalFunctionOverloadMangling(){
@@ -2932,8 +2933,13 @@ bool bglParser::processParameterList(functionDef& funcDef){
             string savedExpectedDef = currentExpectedType;
             currentExpectedType = param.type.name;
             token defFirst = file.getToken();
+            size_t setUpBefore = pendingInjections.size();
             expression* defExpr = parseExpression(defFirst, {token::comma, token::parenClose}, nullptr, nullptr);
             currentExpectedType = savedExpectedDef;
+            // A default is one value at each call; `?.` and `??` need statements to run first.
+            if(pendingInjections.size() != setUpBefore)
+                parsingError(format("The default of '{0}' needs statements to run before it (a `?.` or `??`); give the "
+                                    "parameter a plain default and work it out inside the routine.", param.name));
             param.defaultValue = defExpr->text();
             // As written, for display: a one-token default (`fixed`, `null`) reads better than its
             // emitted value (`16`, `nothing`). Longer defaults show the emitted text.
@@ -3146,9 +3152,14 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             allowVoidReturnExpr = true;
             expression* exprNode = nullptr;
             int savedBraceDepth = file.braceDepth;
+            int savedSpanDepth = file.interpSpanDepth; bool savedSpanClosed = file.interpSpanClosed;
+            size_t savedSpanStream = file.interpSpanStream;
+            file.interpSpanDepth = 0; file.interpSpanClosed = exprFirst.is(token::braceClose); file.interpSpanStream = file.streamDepth();
             try {
                 exprNode = parseExpression(exprFirst, {"}"}, func, body);
+                file.interpSpanDepth = savedSpanDepth; file.interpSpanClosed = savedSpanClosed; file.interpSpanStream = savedSpanStream;
             } catch(...) {
+                file.interpSpanDepth = savedSpanDepth; file.interpSpanClosed = savedSpanClosed; file.interpSpanStream = savedSpanStream;
                 // Leave the reader past the whole string, so recovery doesn't start inside it.
                 allowVoidReturnExpr = savedAllowVoid;
                 file.braceDepth = savedBraceDepth;

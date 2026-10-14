@@ -1,0 +1,63 @@
+Room A
+> parts
+M8 bolt     bolt 8mm x40      medium bare
+M8 nut      nut 8mm x55       medium bare
+M10 washer  washer 10mm x12   medium brass
+M12 bolt    bolt 12mm x8      large bare
+5mm spring  spring 5mm x3     small bare
+5 parts, 991mm in all; largest M12 bolt.
+> kinds
+Kinds: B N W B ?.
+Clamped kind spring; first bolt; equal to bolt: yes.
+> bands
+small   0-6 (7): 1
+medium  7-11 (5): 3
+large   12-99 (88): 1
+9mm is medium; 12mm is large; same band: no.
+> draw bolt 5
+Took 5 of M8 bolt; 35 left; moved 40mm in 1 moves.
+> draw nut 100
+No nut with 100 left.
+> draw washer 2
+Took 2 of M10 washer; 10 left; moved 60mm in 2 moves.
+> stock
+Moves: 8 10; tally 2 sum 18, copy 3 sum 118.
+> adjust 7
+even: 8
+plus one: 8
+at least 8: 8
+fives: 10
+Math calls 3, by path 3.
+> grow 3
+Grown to 21; M12 bolt now 13, total 104.
+> crates
+Crate a washer 4mm x11 zinc; b spring 20mm x7 brass; crate: yes, part: yes; made 2, longest 20.
+> crates
+Crate a washer 4mm x11 zinc; b spring 20mm x7 brass; crate: yes, part: yes; made 4, longest 20.
+> pairs
+M8 bolt fits M8 nut.
+1 pairs; brass: yes; first small 5mm spring.
+> restock 2
+M8 bolt x38 zinc; returned M8 bolt.
+Default finish name: bare.
+> units 50
+50mm is 5 cm and 2 in; widest of it and 8: 50.
+> shop
+Pick nut M8 nut, big M12 bolt, none null.
+Spread 11, of standard 6; band of 15 2.
+5 plain parts; crate crate 2 3mm both yes; store moves 2.
+Order: spring washer nut bolt; last drawn bolt 40, washer 20, nut 0.
+Thous per mm 1000, by path 1000.
+> mix 7
+Doubled 14, again 28; clamped 14 20; rounded 8; tallies 2/21 and 1/28.
+washer same band as 8: yes, as 20: no; best finishes brass bare; first move 8.
+> mix 3
+Doubled 6, again 12; clamped 6 12; rounded 4; tallies 2/9 and 1/12.
+washer same band as 8: no, as 20: yes; best finishes brass bare; first move 8.
+> parts
+M8 bolt     bolt 8mm x38      medium zinc
+M8 nut      nut 8mm x55       medium bare
+M10 washer  washer 10mm x10   medium brass
+M12 bolt    bolt 12mm x8      large bare
+5mm spring  spring 5mm x3     small bare
+5 parts, 955mm in all; largest M12 bolt.

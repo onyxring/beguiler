@@ -1,0 +1,48 @@
+Room A
+Room A.
+You can see a stop A, a stop B, a gate G, a stop C, a stop S and a rope here.
+> routes
+path A-B-gate-C; arrows A>B>gate>C; short A-B; loud A>B>GATE; left B-g; len 10
+last C, first of C A, two on gate, ten on off the end, back of A none
+gate from A gate, from C none, pass C, pick sink none, pick gate gate
+shut: pass blocked, path A-B-gate(shut)-C, has C true, kind of gate gate, of nothing absent
+> lookups
+b B, z S, y C; lookups 5 fallbacks 1
+n A, s C+none, name B none nil x; lookups 12 fallbacks 1
+hits 4 3 1 -1, note C2; lookups 23
+o Room A, hd A, sp S, tagged S sink
+> sets
+loads 8 0, writes 4; gate hits 5; sides A S - B, B1 C, hits B 4 C 2
+spans A 2..7 B 2..12 S 2..12; widths 5 0, present true false; w 2..7 v 2..7
+> tickets
+live 3, memos B nowhere C, fourth none
+t punches 8, B hits 7; hop B>gate>C, at C, u at nowhere
+chained label end, C hits 5; w A, v C, live 3
+kept B>gate>C, live 1; kept at C, punches 9
+after no ticket, live 0
+> walks
+for ABgC; while 3 to C; do CgateBA
+A has a gate two on, S stands alone, C ends, C, C
+0:A/B/- 1:gate/C/- 2:empty/end/- 3:C/end/- total 22
+> lambdas
+step B end C; note B - -; [B/S][C/S][nothing/t]
+gated next B, any span true, with sides 2, ended 2, notes S
+by next hits S B gate C A; first back A
+bumped S 1 C 7, touched B 9 gate 7
+> cursors
+cursor B, on gate, bare B, reset S, moves 2, B hits 11
+stop B then gate; note C, no note; upper C, len 0, has true, present true, false, self gate none
+trail A(gate) gate(-) C(-); nested C, deep S
+tree stop A, next B, cast C, far none, holder Room A
+> picks
+picks B S gate C; ticket gate 2 C, live 1; gate gate(shut) pass blocked, hop gate gate S, gate hits 0, picks 2
+> sums
+weigh 8 104 101, sum 15, none true, ends true, C ends, compare B over A
+t 100, B 12 A 3, memo C!100>C< (8), upper C
+C!100>C<, live 0
+> poke stop a
+Poked A; next B; hits 4; gate no; in Room A.
+> poke gate
+Poked gate; next C; hits 1; gate yes, shut false, pass C; in Room A.
+> poke rope
+Poked nothing on the route; next none; hits 0; gate no; in Room A.

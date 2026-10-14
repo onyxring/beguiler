@@ -926,7 +926,11 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
                       && classHasStoredFields(classType) && !isReferenceBacked(classType)){
                 if(assignOp->i6name.empty()) assignOp->i6name = mangleOperatorName(assignOp->name);
                 string paramName = assignOp->params[0]->name;
-                varDecl.initEmitterBody  = format("$target.{0}(${1});", assignOp->i6name, paramName);
+                // An ancestor's operator (`Gap g = aLength;` takes Length's) is called as that class's own.
+                string routine = assignOp->i6name;
+                if(classDef* owner = classType->declaringClass(assignOp); owner != nullptr && owner != classType)
+                    routine = owner->i6Name() + "::" + routine;
+                varDecl.initEmitterBody  = format("$target.{0}(${1});", routine, paramName);
                 varDecl.initEmitterParam = paramName;
             }
             // Mirror the assignment-statement check: TypeCompatible fallback with no
@@ -1030,7 +1034,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
         } else if(first.is("$") && file.peekToken(1).is(eTokenType::quote)){
             // Interpolated string literal initializer: string s = $"..."
             varDecl.interpSegments = parseInterpolatedSegments(func, body);
-            file.getToken(token::endStatement);  // consume ';'
+            endInterpolatedStatement();
             expression* rhs = new expression();
             rhs->resolvedType = "interpolatedstringliteral";
             varDecl.declaredExpressionValue = rhs;

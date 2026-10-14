@@ -1,0 +1,458 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, two purses, a till, a desk
+// and a pooled chit, written so that value classes are everywhere. A value class `Coins` with a
+// positional member, a copy operator, `+`, `-`, `*` by int, two `+=` overloads, `==`, `!=`, an
+// instance and a static `<=>` (the orderings derived from it), a method returning a copy and one
+// returning `selfType`, chained; a value subclass `Bonus` that chains its copy operator with
+// `(Coins)self = o`, assigned to and compared with its base; a value class `Span` that owns two
+// `Coins` members, built with nested inline objects, positional and named; a named accessor value
+// class that clamps, as a member; a value class holding a `ref Coins` bound with `:=`; globals,
+// locals, parameters, `ref` parameters and `ref` locals of these, bound to globals, members and array
+// elements, rebound, and written through; a routine returning `Coins` called recursively, as an
+// argument, inside interpolation and as a `?:` branch; copies proved independent after `=`, after
+// passing and after a for-in; owned members of a reference class and of objects (with inline-object
+// starting values), a member array of `Coins` written by subscript, and a `static` member; a pooled
+// class whose owned member resets on `new`; a value class `Note` holding a `stringObj` and a `Coins`,
+// copied, compared and kept in an array sorted by a lambda; a default parameter that is an inline
+// object; `ref` arguments that are array elements, nested-array elements, member-array elements, a
+// static member and a bound `ref` member; call results of `Coins` as both operands of operators and
+// as arguments to routines, `func<>` values and lambdas; global `array<Coins>` filled from a list of positional,
+// named and bare inline objects, appended to with `+=`, copied whole, searched with `indexOf` and
+// `contains`, pruned with `remove` and `-=`, and sorted by `<=>` and by a comparator; a local
+// `array<Coins>` with a capacity; an `array<array<Coins>>` table; <linq> `filter`, `orderBy`,
+// `first`, `last`, `take`, `skip`, `takeWhile`, `distinct`, `count`, `any` and `all` with lambdas
+// taking `Coins`; a `func<int, Coins>` and an operator reference `Coins::operator <=>`; mixed-case
+// keywords, Allman, K&R and one-line braces, tab indentation in one routine, comments between tokens
+// and declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 24 ; }
+#include <string>
+#include <array>
+#include <linq>
+
+#using bgl.printRules ;
+
+// ---- value classes --------------------------------------------------------------------------------
+
+value class Coins
+{
+    inline int cents ;
+    Coins operator =   ( Coins o ) { cents = o.cents ; return self ; }
+    Coins operator +   ( Coins o ) { Coins r ; r.cents = cents + o.cents ; return r ; }
+    Coins operator -   ( Coins o ) { Coins r ; r.cents = cents - o.cents ; return r ; }
+    Coins operator *   ( int k )   { Coins r ; r.cents = cents * k ; return r ; }
+    Coins operator +=  ( Coins o ) { cents += o.cents ; return self ; }
+    Coins operator +=  ( int c )   { cents += c ; return self ; }
+    bool  operator ==  ( Coins o ) { return cents == o.cents ; }
+    bool  operator !=  ( Coins o ) { return cents != o.cents ; }
+    int   operator <=> ( Coins o ) { return cents - o.cents ; }
+    static int operator <=> ( Coins a , Coins b ) { return a.cents - b.cents ; }
+    Coins doubled () { Coins r = self ; r.cents = cents * 2 ; return r ; }
+    selfType add ( int c ) { cents += c ; return self ; }
+    static Coins of ( int n ) { Coins r ; r.cents = n ; return r ; }
+}
+
+VALUE CLASS Bonus : Coins
+{
+    int extra ;
+    Bonus operator = ( Bonus o ) { extra = o.extra ; ( Coins ) self = o ; return self ; }
+}
+
+value class Span {
+    Coins lo ;
+    Coins hi ;
+    Span operator = ( Span o ) { lo = o.lo ; hi = o.hi ; return self ; }
+    bool holds ( Coins c ) { return c >= lo && c <= hi ; }
+    Coins width () { return hi - lo ; }
+}
+
+/// A count held between 0 and 9.
+value class Gauge
+{
+	int _g = 0 ;
+	int  operator () { return _g ; }
+	void operator = ( int v )
+	{
+		if      ( v > 9 ) _g = 9 ;
+		else if ( v < 0 ) _g = 0 ;
+		else              _g = v ;
+	}
+}
+
+value class Pointer
+{
+    int  hops ;
+    ref Coins at ;
+    Pointer operator = ( Pointer o ) { hops = o.hops ; at := o.at ; return self ; }
+}
+
+value class Note
+{
+    stringObj text ;
+    Coins     worth ;
+    Note operator =  ( Note o ) { text = o.text ; worth = o.worth ; return self ; }
+    bool operator == ( Note o ) { return text == o.text && worth == o.worth ; }
+    bool operator != ( Note o ) { return !( self == o ) ; }
+}
+
+// ---- globals --------------------------------------------------------------------------------------
+
+Coins     gFloat = Coins{ 50 } ;
+Coins     gLast ;
+Bonus     gBonus = Bonus{ cents = 4 ; extra = 2 ; } ;
+Span      gBand  = Span{ lo = Coins{ 2 } ; hi = Coins{ cents = 20 ; } ; } ;
+Pointer   gPtr ;
+int       gCalls = 0 ;
+array<Note> notes[ 3 ] ;
+
+array<Coins> till[ 8 ] = { Coins{ 3 } , Coins{ cents = 7 ; } , { 12 } , Coins{ 5 } } ;
+array<Coins>
+          spare[ 8 ] ;
+array<array<Coins>> grid = { { Coins{ 1 } , Coins{ 2 } , Coins{ 3 } } , { Coins{ 10 } , Coins{ 20 } } } ;
+
+func<int , Coins>         worth   = ( Coins c ) => c.cents ;
+func<int , Coins , Coins> compare = Coins::operator <=> ;
+func<bool , Coins>        cheap   = ( Coins c ) => c < Coins{ 6 } ;
+
+// ---- routines -------------------------------------------------------------------------------------
+
+/// The sum of the first n cents, built recursively.
+Coins runUp ( int n )
+{
+    Coins here ;
+    here.cents = n ;
+    if ( n <= 0 ) return here ;
+    return here + runUp( n - 1 ) ;
+}
+
+Coins bigger ( Coins a , Coins b ) { return a > b ? a : b ; }
+
+Coins plus ( Coins a , Coins b = Coins{ 2 } ) { return a + b ; }
+
+void spoil ( Coins c ) { c.cents = 999 ; gCalls++ ; }
+
+void topUp ( ref Coins c , int by = 5 ) { c += by ; gCalls++ ; }
+
+Coins total ( array<Coins> list )
+{
+    Coins t ;
+    for ( Coins c in list ) t += c ;
+    return t ;
+}
+
+int countOver( Coins line ) {
+    return till.filter( ( Coins c ) => c > gBand.lo ).count() ;
+}
+
+Note noteOf ( string t , Coins c ) { Note n ; n.text = t ; n.text += $" {c.cents}" ; n.worth = c ; return n ; }
+
+stringObj show ( Coins c )
+{
+    stringObj s ;
+    if ( c.cents < 0 ) s = "-" ;
+    s += "$" ;
+    if ( c.cents < 0 ) s += $"{-c.cents}" ; else s += $"{c.cents}" ;
+    return s ;
+}
+
+void showTill ( string head )
+{
+    print( head ) ;
+    FOR ( int i = 0 ; i < till.length ; i++ ) print( $" {till[ i ].cents}" ) ;
+    printLine( "" ) ;
+}
+
+bool Initialise ()
+{
+    location = roomA ;
+    gLast    = till[ 0 ] ;
+    gPtr.at := gFloat ;
+    gPtr.hops = 1 ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- classes and objects --------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+class Purse : object
+{
+    Coins   held ;
+    Span    range = Span{ lo = Coins{ 1 } ; hi = Coins{ 30 } ; } ;
+    Gauge   level ;
+    ref Coins pinned ;
+    array<Coins> history[ 4 ] ;
+    static Coins paid ;
+    string description = "A cloth purse." ;
+
+    Coins take ( Coins c )
+    {
+        held += c ;
+        history[ level ] = c ;
+        level += 1 ;
+        paid += c ;
+        return held ;
+    }
+    bool fits ( Coins c ) { return range.holds( held + c ) ; }
+}
+
+class Chit[ 3 ] : object
+{
+    Coins face = Coins{ 6 } ;
+    int  serial = 0 ;
+    static int made = 0 ;
+    void create ( int add ) { face += add ; made++ ; serial = made ; }
+}
+
+Room roomA { "Room A" ; description = "Room A. A desk and a till. Room B is north." ; object n_to = roomB ; }
+
+Room roomB
+{
+    "Room B" ;
+    description = "Room B. Bare walls. Room A is south." ;
+    object s_to = roomA ;
+}
+
+Purse purseA { "red purse" ; name = { .red , .purse } ; parent = roomA ; held = Coins{ 8 } ; }
+Purse purseB
+{
+    "blue purse" ;
+    name   = { .blue , .purse } ;
+    parent = roomA ;
+    range  = Span{ lo = Coins{ 5 } ; hi = Coins{ 15 } ; } ;
+}
+
+object desk
+{
+    "desk" ;
+    parent     = roomA ;
+    name       = { .desk } ;
+    attributes = { static , supporter } ;
+    string description = "A plain desk." ;
+    Coins fee  = Coins{ 4 } ;
+    Bonus tip ;
+    array<Coins> drawer[ 3 ] = { Coins{ 9 } , Coins{ 1 } } ;
+    Coins weigh ( Purse p ) { return p.held + fee ; }
+}
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb Pay
+{
+    grammar = { .pay , NOUN } ;
+    void handler ()
+    {
+        if ( !noun.is( Purse ) ) { printLine( "That is not a purse." ) ; return ; }
+        Purse p = ( Purse ) noun ;
+        Coins coin = till.orderBy().first() ;
+        if ( !p.fits( coin ) ) { printLine( $"{cThe(p)} cannot take {show( coin )}." ) ; return ; }
+        Coins now = p.take( coin ) ;
+        till -= coin ;
+        gLast = coin ;
+        printLine( $"{cThe(p)} takes {show( coin )}; it holds {now.cents} (level {p.level}), paid {Purse.paid.cents}." ) ;
+    }
+}
+
+verb Tally
+{
+    meta = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        showTill( "till" ) ;
+        Coins t = total( till ) ;
+        printLine( $"total {t.cents} float {gFloat.cents} last {gLast.cents} count {till.count()} over {countOver( gBand.lo )}" ) ;
+        printLine( $"purses {purseA.held.cents} {purseB.held.cents} levels {purseA.level} {purseB.level} paid {Purse.paid.cents}" ) ;
+        print( "history" ) ;
+        for ( int i = 0 ; i < purseA.level ; i++ ) print( $" {purseA.history[ i ].cents}" ) ;
+        printLine( "" ) ;
+    }
+}
+
+verb Probe
+{
+    meta = TRUE ;
+    grammar = { .probe } ;
+    void handler ()
+    {
+        Coins a = Coins{ 4 } ;
+        Coins b = a ;
+        b.cents = 11 ;
+        printLine( $"copy {a.cents} {b.cents} {( a + b ).cents} {( b - a ).cents} {( a * 3 ).cents}" ) ;
+        spoil( a ) ;
+        topUp( a ) ;
+        topUp( by: 2 , c: b ) ;
+        printLine( $"pass {a.cents} {b.cents} calls {gCalls}" ) ;
+        printLine( $"order {a < b} {a > b} {a <= b} {b >= a} {a == b} {a != b} {a <=> b} {compare( b , a )}" ) ;
+        printLine( $"run {runUp( 4 ).cents} {runUp( 0 ).cents} {bigger( a , b ).cents} {bigger( runUp( 3 ) , a ).cents}" ) ;
+        Coins t = a ;
+        printLine( $"chain {a.doubled().doubled().cents} {a.cents} {t.add( 1 ).add( 2 ).cents}" ) ;
+        a.add( 1 ) ;
+        Coins pick = a.cents > 20 ? a : runUp( 2 ) ;
+        printLine( $"pick {pick.cents} worth {worth( pick )} {worth( Coins{ 13 } )} {( a > b ? a : b ).cents} {Coins.of( 6 ).doubled().cents}" ) ;
+        func<Coins , Coins , Coins> pickF = bigger ;
+        Coins acc = Coins.of( 1 ) ;
+        while ( acc < gBand.hi ) acc += 3 ;
+        do { acc = acc - Coins.of( 2 ) ; } until ( acc <= Coins{ 15 } ) ;
+        printLine( $"loop {acc.cents} pickF {pickF( acc , Coins.of( 17 ) ).cents} {bigger( b: acc , a: gBand.lo ).cents}" ) ;
+        func<Coins , int> mk = ( int n ) => Coins.of( n * 10 ) ;
+        printLine( $"pairs {runUp( 3 ) == runUp( 2 )} {( runUp( 2 ) + runUp( 3 ) ).cents} {compare( runUp( 3 ) , runUp( 2 ) )} {runUp( 3 ) <=> runUp( 4 )} {bigger( runUp( 2 ) , runUp( 4 ) ).cents}" ) ;
+        printLine( $"plus {plus( a ).cents} {plus( a , b ).cents} {plus( b: Coins{ 1 } , a: runUp( 2 ) ).cents} mk {mk( 4 ).cents} {( mk( 1 ) + mk( 2 ) ).cents} {worth( mk( 5 ) )}" ) ;
+        printLine( $"band {gBand.lo.cents}..{gBand.hi.cents} width {gBand.width().cents} holds {gBand.holds( a )} {gBand.holds( Coins{ 30 } )}" ) ;
+        printLine( $"bonus {gBonus.cents} {gBonus.extra}" ) ;
+        Bonus copy = gBonus ;
+        copy.extra = 7 ;
+        copy += 1 ;
+        Coins plain = copy ;
+        printLine( $"bonus copy {copy.cents} {copy.extra} {gBonus.extra} plain {plain.cents} same {plain == copy}" ) ;
+        printLine( $"ptr {gPtr.hops} {gPtr.at.cents}" ) ;
+        gPtr.at += 3 ;
+        printLine( $"ptr after {gFloat.cents}" ) ;
+        Pointer q = gPtr ;
+        q.at += 1 ;
+        q.hops = 9 ;
+        printLine( $"ptr copy {q.hops} {gPtr.hops} {gFloat.cents}" ) ;
+    }
+}
+
+verb Audit
+{
+    meta = true ; grammar = { .audit } ;
+    void handler ()
+    {
+        array<Coins> sorted[ 8 ] ;
+        sorted = till.orderBy() ;
+        print( "sorted" ) ; for ( Coins c in sorted ) print( $" {c.cents}" ) ; printLine( "" ) ;
+        print( "desc" ) ;
+        for ( Coins c in till.orderBy( ( Coins x , Coins y ) => y <=> x ) ) print( $" {c.cents}" ) ;
+        printLine( "" ) ;
+        printLine( $"first {till.first().cents} last {till.last().cents} big {till.orderBy().last().cents}" ) ;
+        printLine( $"take {till.take( 2 ).count()} skip {till.skip( 1 ).first().cents} while {till.takeWhile( ( Coins c ) => c.cents < 10 ).count()}" ) ;
+        printLine( $"any {till.any( ( Coins c ) => c == gFloat )} {till.any( ( Coins c ) => c.cents == 12 )} all {till.all( ( Coins c ) => c > Coins{ 0 } )}" ) ;
+        spare = till ;
+        spare += Coins{ 3 } ;
+        spare += gLast ;
+        spare[ 0 ].cents = 77 ;
+        topUp( spare[ 1 ] , 3 ) ;
+        printLine( $"spare {spare.length} {spare[ 0 ].cents} {spare[ 1 ].cents} till {till[ 0 ].cents} distinct {spare.distinct().count()}" ) ;
+        spare.sort( compare ) ;
+        print( "spare sorted" ) ; for ( Coins c in spare ) print( $" {c.cents}" ) ; printLine( "" ) ;
+        spare.removeValue( Coins.of( 3 ) ) ;
+        spare.sort( ( Coins x , Coins y ) => compare( y , x ) ) ;
+        printLine( $"spare desc {spare.length} {spare[ 0 ].cents} {spare.last().cents} cheap {till.filter( cheap ).count()} {spare.any( cheap )}" ) ;
+        printLine( $"index {till.indexOf( Coins{ 12 } )} {till.indexOf( gFloat )} has {till.contains( Coins{ 5 } )}" ) ;
+        for ( Coins c in till ) c.cents = 0 ;
+        showTill( "after loop" ) ;
+        ref Coins r := till[ 1 ] ;
+        r += 100 ;
+        r := gLast ;
+        r += 1 ;
+        showTill( "after ref" ) ;
+        printLine( $"last {gLast.cents}" ) ;
+    }
+}
+
+verb Table
+{
+    meta = true ;
+    grammar = { .table } ;
+    void handler ()
+    {
+        Coins sum ;
+        for ( array<Coins> row in grid )
+        {
+            for ( Coins c in row ) sum += c ;
+        }
+        grid[ 1 ][ 0 ] = runUp( 3 ) ;
+        grid[ 0 ][ 2 ].cents = 30 ;
+        printLine( $"table {grid.length} {grid[ 0 ].length} {grid[ 1 ].length} sum {sum.cents} cells {grid[ 1 ][ 0 ].cents} {grid[ 0 ][ 2 ].cents} row {total( grid[ 0 ] ).cents}" ) ;
+        array<Coins> local[ 4 ] ;
+        local += desk.fee ;
+        local += desk.drawer[ 0 ] ;
+        local += Coins{ 2 } * 2 ;
+        local[ 1 ] = desk.weigh( purseA ) ;
+        printLine( $"local {local.length} {local[ 0 ].cents} {local[ 1 ].cents} {local[ 2 ].cents} eq {local[ 0 ] == local[ 2 ]} total {total( local ).cents}" ) ;
+        local -= Coins{ 4 } ;
+        printLine( $"local after {local.length} {local[ 0 ].cents}" ) ;
+        desk.drawer[ 2 ] = gFloat ;
+        desk.tip = gBonus ;
+        desk.tip.extra += 10 ;
+        array<Coins> trio = { Coins{ 1 } , Coins.of( 2 ) , { 3 } } ;
+        printLine( $"trio {trio.length} {total( trio ).cents} cmp {desk.drawer[ 0 ] > desk.fee && grid[ 0 ][ 0 ] != desk.drawer[ 1 ]} {grid[ 0 ][ 0 ] == desk.drawer[ 1 ]} {purseA.held == trio[ 2 ] * 3}" ) ;
+        printLine( $"desk {desk.drawer[ 0 ].cents} {desk.drawer[ 1 ].cents} {desk.drawer[ 2 ].cents} tip {desk.tip.cents} {desk.tip.extra} {gBonus.extra}" ) ;
+    }
+}
+
+verb Mint
+{
+    grammar = { .mint } ;
+    void handler ()
+    {
+        Chit k = new Chit( 2 ) ;
+        if ( k == null ) { printLine( "No chit is left." ) ; return ; }
+        k.face += gBonus ;
+        Coins f = k.face ;
+        topUp( desk.fee , 1 ) ;
+        printLine( $"Chit {k.serial} shows {f.cents}; made {Chit.made}; fee {desk.fee.cents}." ) ;
+        delete k ;
+    }
+}
+
+verb Pin
+{
+    grammar = { .pin , NOUN } ;
+    void handler () {
+        if ( !noun.is( Purse ) ) { printLine( "That is not a purse." ) ; return ; }
+        Purse p = ( Purse ) noun ;
+        if ( !p.pinned ) { p.pinned := p.held ; printLine( $"{cThe(p)} is pinned at {p.pinned.cents}." ) ; return ; }
+        p.pinned += 1 ;
+        printLine( $"{cThe(p)} pin moves; held {p.held.cents}, pinned {p.pinned.cents}." ) ;
+    }
+}
+
+verb Shift
+{
+    Grammar = { .shift } ;
+    void handler ()
+    {
+        ref Coins h := purseA.history[ 1 ] ;
+        ref Coins g := grid[ 1 ][ 1 ] ;
+        topUp( purseA.history[ 0 ] , 2 ) ;
+        topUp( Purse.paid ) ;
+        topUp( g , 1 ) ;
+        h += g ;
+        if ( purseA.pinned ) topUp( purseA.pinned , 4 ) ;
+        printLine( $"history {purseA.history[ 0 ].cents} {purseA.history[ 1 ].cents} grid {grid[ 1 ][ 1 ].cents} paid {Purse.paid.cents} held {purseA.held.cents} pin {purseA.pinned?.cents} {purseB.pinned?.cents}" ) ;
+        printLine( $"match {till.any( ( Coins c ) => c == Purse.paid )} {spare.all( ( Coins c ) => c != Purse.paid )} {purseA.history.length}" ) ;
+    }
+}
+
+verb Jot {
+    grammar = { .jot } ;
+    void handler () {
+        Note n = noteOf( "fee" , desk.fee ) ;
+        Note m = n ;
+        m.text = m.text.prepend( '*' ) ;
+        m.worth += gLast ;
+        notes += n ;
+        if ( !notes.append( noteOf( "last" , gLast ) ) ) print( "full; " ) ;
+        if ( notes.length > 2 ) notes.remove( 0 ) ;
+        notes[ 0 ].worth.cents++ ;
+        print( $"note {n.text}/{n.worth.cents} copy {m.text}/{m.worth.cents} same {n == m} {n != m} has {notes.contains( n )} :" ) ;
+        for ( Note x in notes.orderBy( ( Note a , Note b ) => b.worth <=> a.worth ) ) print( $" {x.text}={x.worth.cents}" ) ;
+        printLine( "" ) ;
+    }
+}

@@ -39,8 +39,8 @@ types, globals, array element types, base class lists and casts. Inside the obje
 type aliases are also named bare, as a nested type is inside the C# type that holds it.
 
 When the aliased type is an enum or bnum, one further segment names a value of it; the path is
-resolved as the enum value itself. A path ending at a class alias cannot continue into static or
-member access.
+resolved as the enum value itself. When it is a class, the path goes on into the class's static
+members as the class's name does (`ns.part.made`, `ns.part.twice(3)`).
 
 Type aliases may be imported with `#using` (§10.4), which shortens the path a use site must write.
 

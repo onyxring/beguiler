@@ -1,0 +1,743 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-fifth PunyInform program that leans on members reached through computed
+// receivers: two rooms (Room A with a rack of three trays and a brass token, Room B with a scale and a
+// sealed tray); a `Tray` class with a member `array<int>`, a member `array<string>`, a member
+// `array<array<int>>`, a `stringObj` note, a `Gauge` accessor (named value class with a clamping
+// setter, a copy operator, `+=`, methods and a backing counter), an owned value class `Pair`, `link`
+// and `spare` trays, `operator []`/`[]=` and an `operator +` that walks the ring, fluent methods
+// returning `self`, a method returning `stringObj`, a static finder over `bgl.world.instances`, and a
+// `default` report overridden by `SealedTray`, which calls the base through `((Tray)self)`; members,
+// member arrays, accessors and methods reached through casts (`((Tray)noun).slots[i]`,
+// `((Tray)rack.spots[i]).level -= 1`, `((Tray)token.parent).fill(9)`, an instance cast
+// `((trayD)o).extra`, `((SealedTray)Tray.find(4)).seal`, ancestor and identity casts on objects,
+// locals and call results), through call results (`pick(1).slots[0] = 9`, `pick(0).level += 2`,
+// `pick(0).next().next().code`, `pick(2).slots += 4`, `pick(0).label().length`, `Tray.find(2).level`,
+// `mkPair(2, 5).swapped().a`, `lastTwo(pick(0)).sum()`, `(trayA + 2).code`, `f(0).next()[0]` through a
+// `func<>`), through array elements (`ring[i].best.a`, `rack.held[rack.cursor].slots[1]`,
+// `ring[1][0] = ring[0][1]`, `bgl.world.instances(Tray)[1]`), through <linq> results
+// (`ring.filter(…).first().code`, `ring.orderBy(…)[0].code`, lambdas casting `rack.spots` elements),
+// through ternaries and `??` (`(x ? trayA : trayB).bins[0][1] = 5`, `(found ?? trayC).level += 1`) and
+// through `?.`; compound assignment and `++` on member-array elements, accessors and owned members of
+// computed receivers; a `ref Pair` and a `ref Gauge` bound to members of computed receivers; `for … in`
+// over a member array of a call result; `switch` on an accessor read through a cast; `do`/`while` on a
+// call chain; an inline `auto` cursor on the rack, used as an index; and verbs load, tip, pass, pair,
+// mark, spin, shift, stack, nudge, bin, copy, trim, putting trays on the scale, and the meta verbs
+// trays, chain, spots, gauges, seal, compare, probe and walk.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#i6 { Constant bglStringPoolReserve 16; }
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 2;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object u_to;
+    object d_to;
+}
+
+extern bool scope_modified;
+
+// --- shared values ----------------------------------------------------------------------------------
+
+const int GAUGE_MAX  = 9;
+const int SLOT_COUNT = 4;
+
+value class Gauge {
+    int _v   = 0;
+    int sets = 0;
+
+    int  operator ()        { return _v; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > GAUGE_MAX) v = GAUGE_MAX;
+        _v = v;
+        sets++;
+    }
+    void operator = (Gauge o) {
+        _v = o._v;
+        sets++;
+    }
+    void operator += (int n) {
+        _v = _v + n;
+        if (_v > GAUGE_MAX) _v = GAUGE_MAX;
+        sets++;
+    }
+
+    bool full() { return _v >= GAUGE_MAX; }
+    int  room() { return GAUGE_MAX - _v; }
+}
+
+value class Pair {
+    int a = 0;
+    int b = 0;
+
+    Pair operator = (Pair o) {
+        a = o.a;
+        b = o.b;
+        return self;
+    }
+
+    int sum()    { return a + b; }
+    int bigger() { return a > b ? a : b; }
+
+    Pair swapped() {
+        Pair p;
+        p.a = b;
+        p.b = a;
+        return p;
+    }
+}
+
+Pair mkPair(int a, int b) {
+    Pair p;
+    p.a = a;
+    p.b = b;
+    return p;
+}
+
+int passes  = 0;
+int weighs = 0;
+bool wasFull = false;
+
+int showInt(int n) {
+    print(n);
+    return n;
+}
+
+// --- trays ------------------------------------------------------------------------------------------
+
+class Tray : object {
+    int code  = 0;
+    int loads = 0;
+    array<int>    slots[SLOT_COUNT];
+    array<string> marks = {"plain", "plain"};
+    Gauge level;
+    Pair  best;
+    Tray  link;
+    Tray  spare;
+    stringObj note;
+    array<array<int>> bins = { {0, 0}, {0, 0, 0} };
+    static int touched = 0;
+    name = {.tray};
+    attributes = {container, open};
+
+    Tray next() {
+        return link;
+    }
+
+    int  operator [] (int i)        { return at(i); }
+    void operator []= (int i, int v) { if (i >= 0 && i < slots.length) slots[i] = v; }
+
+    // The tray n places along the ring.
+    Tray operator + (int n) {
+        Tray t = self;
+        for (int i = 0; i < n; i++) t = t.link;
+        return t;
+    }
+
+    // Loads one value and hands the tray back, so loads chain.
+    Tray fill(int v) {
+        if (!slots.append(v)) {
+            level = GAUGE_MAX;
+            return self;
+        }
+        loads++;
+        level += 1;
+        touched++;
+        return self;
+    }
+
+    int at(int i) {
+        if (i < 0 || i >= slots.length) return -1;
+        return slots[i];
+    }
+
+    int total() {
+        int t = 0;
+        for (int v in slots) t += v;
+        return t;
+    }
+
+    stringObj label() {
+        stringObj s;
+        s = $"tray {code}";
+        return s;
+    }
+
+    static Tray find(int c) {
+        for (object o in bgl.world.instances(Tray)) {
+            if (((Tray)o).code == c) return (Tray)o;
+        }
+        return null;
+    }
+
+    int ahead() {
+        return link.link.code * 10 + next().slots.length;
+    }
+
+    void push(int n) {
+        next().level += n;
+        link.slots[0] = n;
+    }
+
+    default void report() {
+        print($"{label()}: {slots.length} loaded, level {level}, total {total()}, next {next().code}");
+    }
+
+    void description() {
+        report();
+        printLine(".");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun != token) rtrue($"Only the token fits {the(self)}.^");
+                if (slots.length == SLOT_COUNT) rtrue($"{cThe(self)} is full.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                ((Tray)token.parent).fill(9);
+                rtrue($"The token drops into {the(token.parent)}, which now holds {((Tray)token.parent).slots.length}.^");
+        }
+        rfalse;
+    }
+}
+
+class SealedTray : Tray {
+    int seal = 7;
+
+    void report() {
+        print($"sealed {seal}, ");
+        ((Tray)self).report();
+    }
+}
+
+array<Tray> ring = {trayA, trayB, trayC};
+
+Tray pick(int n) {
+    return ring[n % ring.length];
+}
+
+SealedTray grayTray() {
+    return trayD;
+}
+
+value class Batch {
+    array<int> vals[3];
+
+    Batch operator = (Batch o) {
+        vals = o.vals;
+        return self;
+    }
+
+    int sum() {
+        int t = 0;
+        for (int v in vals) t += v;
+        return t;
+    }
+}
+
+// The last two loads of a tray, as a batch.
+Batch lastTwo(Tray t) {
+    Batch b;
+    int n = t.slots.length;
+    if (n > 1) b.vals += t.slots[n - 2];
+    if (n > 0) b.vals += t.slots[n - 1];
+    return b;
+}
+
+Tray heavier(Tray x, Tray y) {
+    return x.total() >= y.total() ? x : y;
+}
+
+int byTotal(Tray x, Tray y) {
+    return bgl.util.math.sign(x.total() - y.total());
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A rack stands here. A ladder leads up to Room B.";
+    u_to = roomB;
+    attributes = {light};
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A scale stands here. A ladder leads down.";
+    d_to = roomA;
+    attributes = {light};
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object rack {
+    "rack";
+    parent = roomA;
+    name = {.rack};
+    description = "A wooden rack with three spots.";
+    array<object> spots = {trayA, trayB, trayC};
+    array<Tray>   held[3];
+    int moves = 0;
+    attributes = {supporter, static};
+
+    auto cursor = {
+        int _i = 0;
+        int  operator ()        { return _i; }
+        void operator = (int v) {
+            while (v >= 3) v -= 3;
+            while (v < 0) v += 3;
+            _i = v;
+            outer.moves++;
+        }
+    }
+
+    Tray current() {
+        return held[cursor];
+    }
+
+    Tray spot(int i) {
+        return (Tray)spots[i];
+    }
+}
+
+Tray trayA {
+    "red tray";
+    parent = rack;
+    name = {.red};
+    code = 1;
+    link = trayB;
+    spare = trayD;
+}
+
+Tray trayB {
+    "blue tray";
+    parent = rack;
+    name = {.blue};
+    code = 2;
+    link = trayC;
+}
+
+Tray trayC {
+    "green tray";
+    parent = rack;
+    name = {.green};
+    code = 3;
+    link = trayA;
+}
+
+object token {
+    "brass token";
+    parent = roomA;
+    name = {.token, .brass};
+    description = "A brass token.";
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+SealedTray trayD {
+    "gray tray";
+    parent = roomB;
+    name = {.gray};
+    code = 4;
+    link = trayA;
+    int extra = 5;
+}
+
+object scale {
+    "scale";
+    parent = roomB;
+    name = {.scale};
+    description = "A flat scale.";
+    attributes = {supporter, static};
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Tray)) rtrue("Only trays go on the scale.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                weighs++;
+                Tray t = (Tray)noun;
+                if (weighs == 1) score++;
+                rtrue($"The scale reads {((Tray)noun).total()}. Next along: {t.next().label()} at level {t.next().level}.^");
+        }
+        rfalse;
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Load {
+    grammar = {.load, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't load {the(noun)}.");
+            return;
+        }
+        int n = ((Tray)noun).loads + ((Tray)noun).code;
+        ((Tray)noun).fill(n).fill(n + 1);
+        int last = ((Tray)noun).slots[((Tray)noun).slots.length - 1];
+        if (((Tray)noun).level.full() && !wasFull) {
+            wasFull = true;
+            score++;
+        }
+        printLine($"{cThe(noun)} holds {((Tray)noun).slots.length}; the last is {last}, level {((Tray)noun).level}.");
+    }
+}
+
+verb Tip {
+    grammar = {.tip, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't tip {the(noun)}.");
+            return;
+        }
+        if (((Tray)noun).slots.length == 0) {
+            printLine($"{cThe(noun)} is already empty.");
+            return;
+        }
+        int was = ((Tray)noun).total();
+        ((Tray)noun).slots.clear();
+        ((Tray)noun).level = 0;
+        printLine($"You tip {the(noun)}. {was} spills out.");
+    }
+}
+
+verb Pass {
+    grammar = {.pass, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't pass {the(noun)}.");
+            return;
+        }
+        if (((Tray)noun).slots.length == 0) {
+            printLine($"{cThe(noun)} has nothing to pass.");
+            return;
+        }
+        int v = ((Tray)noun).slots.popEnd();
+        ((Tray)noun).next().fill(v);
+        ((Tray)noun).level -= 1;
+        passes++;
+        printLine($"You pass {v} to {((Tray)noun).next().label()}, which holds {((Tray)noun).next().slots.length}.");
+    }
+}
+
+verb PairUp {
+    grammar = {.pair, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't pair {the(noun)}.");
+            return;
+        }
+        ((Tray)noun).best = mkPair(((Tray)noun).at(0), ((Tray)noun).next().at(0));
+        ref Pair p := ((Tray)noun).best;
+        if (p.a < 0) p.a = 0;
+        if (p.b < 0) p.b = 0;
+        printLine($"Pair {((Tray)noun).best.a} and {((Tray)noun).best.b}: sum {((Tray)noun).best.sum()}, swapped first {((Tray)noun).best.swapped().a}.");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't mark {the(noun)}.");
+            return;
+        }
+        ((Tray)noun).marks[1] = "checked";
+        ((Tray)noun).note += "x";
+        int c = ((Tray)noun).code;
+        printLine($"Notes: {pick(0).note.length}, {ring[1].note}, {((Tray)rack.spots[2]).note.length}.");
+        printLine($"You mark {the(noun)}: {Tray.find(c).marks[0]}, {Tray.find(c).marks[1]}.");
+    }
+}
+
+verb Spin {
+    grammar = {.spin, .rack};
+    void handler() {
+        rack.cursor += 1;
+        rack.current().fill(rack.cursor);
+        printLine($"The rack turns to spot {rack.cursor}: {rack.current().label()}, level {rack.held[rack.cursor].level}, first {rack.held[rack.cursor].at(0)}.");
+    }
+}
+
+verb Trays {
+    meta = true;
+    grammar = {.trays};
+    void handler() {
+        for (int i = 0; i < ring.length; i++) {
+            ring[i].report();
+            printLine(".");
+        }
+        print("Loads:");
+        for (int i = 0; i < 3; i++) print($" {pick(i).loads}");
+        printLine($". Touched {Tray.touched}, passes {passes}.");
+    }
+}
+
+verb Chain {
+    meta = true;
+    grammar = {.chain};
+    void handler() {
+        printLine($"Around: {pick(0).next().next().next().code}, {pick(1).link.link.code}, {trayD.next().next().code}.");
+        int busy = ring.filter((Tray t) => t.slots.length > 0).count();
+        Tray firstBusy = ring.filter((Tray t) => t.slots.length > 0).first();
+        if (firstBusy?) printLine($"{busy} busy; first busy is {ring.filter((Tray t) => t.slots.length > 0).first().code}.");
+        else printLine("None busy.");
+        printLine($"Heaviest: {ring.orderBy(byTotal).last().label()}; lightest level {ring.orderBy(byTotal).first().level}.");
+        Tray found = Tray.find(9);
+        printLine($"Code 9 falls back to {(found ?? trayC).code}; code 2 is at level {Tray.find(2)?.level}.");
+        printLine($"Labels: {pick(0).label().length} chars, {pick(1).label().toUpper()}.");
+    }
+}
+
+verb RackInfo {
+    meta = true;
+    grammar = {.spots};
+    void handler() {
+        for (int i = 0; i < rack.spots.length; i++) {
+            print($"Spot {i}: {((Tray)rack.spots[i]).label()} with {((Tray)rack.spots[i]).slots.length}");
+            print($", held {rack.held[i].code}");
+            print($", on {rack.spot(i).parent}");
+            printLine(".");
+        }
+        printLine($"Cursor {rack.cursor}, moves {rack.moves}, current {rack.current().code}.");
+    }
+}
+
+verb Gauges {
+    meta = true;
+    grammar = {.gauges};
+    void handler() {
+        for (int i = 0; i < 3; i++) {
+            print($"{pick(i).label()}: ");
+            showInt(pick(i).level);
+            print($" room {pick(i).level.room()}");
+            if (pick(i).level.full()) print(" full");
+            switch (((Tray)rack.spots[i]).level) {
+                case 0: print(" (empty)");
+                case 1, 2, 3: print(" (low)");
+                default: print(" (high)");
+            }
+            printLine(".");
+        }
+    }
+}
+
+verb Seal {
+    meta = true;
+    grammar = {.seal};
+    void handler() {
+        object o = trayD;
+        printLine($"Code 4 is sealed {((SealedTray)Tray.find(4)).seal}; pick 3 is {pick(3).code}.");
+        printLine($"Seal {((SealedTray)o).seal}, extra {((trayD)o).extra}, link {((Tray)o).link.code}.");
+        trayD.report();
+        printLine(".");
+        ((Tray)trayD).report();
+        printLine(".");
+        ((Tray)grayTray()).report();
+        printLine(".");
+        ((Tray)Tray.find(4)).report();
+        printLine(".");
+        printLine($"Red's spare is sealed {((SealedTray)pick(0).spare).seal}, extra {((trayD)pick(0).spare).extra}.");
+    }
+}
+
+verb Compare {
+    meta = true;
+    grammar = {.compare};
+    void handler() {
+        print("Heavier of red and blue: ");
+        heavier(trayA, trayB).report();
+        printLine(".");
+        bool redMore = trayA.loads > trayC.loads;
+        printLine($"More loads: {(redMore ? trayA : trayC).label()} with {(redMore ? trayA : trayC).loads}.");
+        printLine($"Pairs: {mkPair(2, 5).sum()}, {mkPair(2, 5).swapped().a}, {mkPair(3, 8).swapped().bigger()}.");
+        Pair best = ring[0].best;
+        printLine($"Red pair {best.a}/{best.b}; ring pairs {ring[0].best.sum()}, {ring[1].best.sum()}, {ring[2].best.sum()}.");
+    }
+}
+
+verb Shift {
+    grammar = {.shift, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't shift {the(noun)}.");
+            return;
+        }
+        ref Gauge g := ((Tray)noun).level;
+        g = g + 3;
+        pick(((Tray)noun).code).level = ((Tray)noun).level;
+        ring[((Tray)noun).code - 1].level++;
+        printLine($"Level {((Tray)noun).level}; the one after is now {((Tray)noun).next().level}, set {((Tray)noun).next().level.sets} times.");
+    }
+}
+
+verb Stack {
+    grammar = {.stack};
+    void handler() {
+        pick(0).slots[0] = 9;
+        pick(2).slots += 4;
+        pick(2).loads++;
+        pick(1).best.a = pick(0).at(0);
+        pick(1).best.b++;
+        for (int i = 0; i < 3; i++) ring[i].marks[0] = "stacked";
+        int sum = 0;
+        for (int v in pick(2).slots) sum += v;
+        printLine($"Red first {pick(0).slots[0]}, green holds {pick(2).slots.length} summing {sum}, blue pair {pick(1).best.a}/{pick(1).best.b}.");
+        printLine($"Green contains 4: {pick(2).slots.contains(4)}; red index of 9: {pick(0).slots.indexOf(9)}.");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't nudge {the(noun)}.");
+            return;
+        }
+        if (((Tray)noun).slots.length == 0) ((Tray)noun).fill(1);
+        ((Tray)noun).slots[0] += 5;
+        ((Tray)noun).slots[0]++;
+        ((Tray)noun).next().best.a *= 2;
+        ((Tray)noun).next().best.a += ((Tray)noun).slots[0];
+        ((Tray)noun).push(2);
+        for (int i = 0; i < rack.spots.length; i++) {
+            if (rack.spots[i] != noun) ((Tray)rack.spots[i]).level -= 1;
+        }
+        ((Tray)noun)?.level++;
+        showInt(((Tray)noun).level);
+        printLine($" is the level; first {((Tray)noun).slots[0]}, next pair {((Tray)noun).next().best.a}, ahead {((Tray)noun).ahead()}.");
+    }
+}
+
+verb Probe {
+    meta = true;
+    grammar = {.probe};
+    void handler() {
+        if (pick(0).level > pick(2).level) printLine("Red is above green.");
+        else printLine("Red is not above green.");
+        int both = pick(0).level + pick(1).level;
+        printLine($"Red and blue levels add to {both}; held 1 has {rack.held[1].slots.length}, cursor slot {rack.held[rack.cursor].slots[1]}.");
+        int high = rack.spots.filter((object o) => ((Tray)o).slots.length > 2).count();
+        bool paired = ring.any((Tray t) => t.best.sum() > 3);
+        Tray up = ring.filter((Tray t) => t.next().level > 2).first();
+        printLine($"{high} spots past two, paired {paired ? "yes" : "no"}, first before a high level {up?.code}.");
+        int loads = 0;
+        for (object o in rack.children) loads += ((Tray)o).loads;
+        printLine($"Rack loads {loads}; find 1 next holds {Tray.find(1).next().slots.length}; held 0 next is {rack.held[0].next().label()}.");
+        printLine($"Marks: {pick(1).marks[1].toUpper()}, {ring[2].marks[0].length}, {pick(0)?.next()?.marks[1] ?? "none"}.");
+        Tray none = Tray.find(9);
+        printLine($"Fallback first slot {(none ?? trayA).slots[0]}, red pair {firstPair(ring[0])}.");
+    }
+}
+
+int firstPair(Tray t) {
+    return t.best.a * 100 + t.next().best.bigger();
+}
+
+verb Bin {
+    grammar = {.bin, NOUN};
+    void handler() {
+        if (!noun.is(Tray)) {
+            printLine($"You can't bin {the(noun)}.");
+            return;
+        }
+        int c = ((Tray)noun).code;
+        pick(c - 1).bins[1][2] += c;
+        pick(c - 1).bins[0][0] = pick(c - 1).total();
+        printLine($"Bins of {pick(c - 1).label()}: {pick(c - 1).bins[0][0]} and {pick(c - 1).bins[1][2]}, rows {pick(c - 1).bins.length}, row 1 holds {pick(c - 1).bins[1].length}.");
+    }
+}
+
+verb Copy {
+    grammar = {.copy, NOUN};
+    void handler() {
+        if (!noun.is(Tray) || noun == trayD) {
+            printLine($"You can't copy {the(noun)}.");
+            return;
+        }
+        trayD.slots = ((Tray)noun).slots;
+        printLine($"The gray tray now holds {trayD.slots.length}, first {trayD[0]}, last {trayD[trayD.slots.length - 1]}.");
+    }
+}
+
+verb Trim {
+    grammar = {.trim};
+    void handler() {
+        int cut = 0;
+        for (int i = 0; i < rack.spots.length; i++) {
+            if (((Tray)rack.spots[i]).slots.length > 2) {
+                cut += ((Tray)rack.spots[i]).slots.length - 2;
+                ((Tray)rack.spots[i]).slots.length = 2;
+            }
+        }
+        printLine($"You trim {cut} from the rack. Last twos: {lastTwo(pick(0)).sum()}, {lastTwo(pick(1)).sum()}, {lastTwo(pick(2)).sum()}.");
+    }
+}
+
+verb Walk {
+    meta = true;
+    grammar = {.walk};
+    void handler() {
+        func<Tray, int> f = pick;
+        printLine($"Along: {(trayA + 2).code}, {(pick(1) + 2).next().code}, {f(2).code}, {f(0).next()[0]}.");
+        pick(0)[1] = pick(0)[0] + 1;
+        ring[1][0] = ring[0][1];
+        printLine($"Red second {trayA.slots[1]}, blue first {pick(1)[0]}, green first {((Tray)rack.spots[2])[0]}.");
+        printLine($"Instance 2 is {((Tray)bgl.world.instances(Tray)[1]).code}; lowest total {ring.orderBy(byTotal)[0].code}; high spots {rack.spots.filter((object o) => ((Tray)o).level > 2).count()}.");
+        bool redFirst = trayA.code < trayB.code;
+        (redFirst ? trayA : trayB).bins[0][1] = 5;
+        Tray none = Tray.find(8);
+        (none ?? trayC).level += 1;
+        printLine($"Red bin {trayA.bins[0][1]}, green level {trayC.level}, room after red {pick(0)?.next()?.level.room()}.");
+        int i = 0;
+        int hops = 0;
+        do {
+            hops++;
+            i++;
+        } while (pick(i).next().code != 1);
+        printLine($"Hops to red: {hops}.");
+    }
+}
+
+bool Initialise() {
+    rack.held += trayC;
+    rack.held += trayA;
+    rack.held += trayB;
+    rfalse;
+}

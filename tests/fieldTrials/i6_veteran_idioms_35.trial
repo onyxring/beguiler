@@ -1,0 +1,131 @@
+Room A
+Room A. A panel of three dials. Room B is east.
+You can see a dial A, a dial B and a dial C here.
+> tally
+Count 0, total 0, Dial.total 0, by dial 0 0 0.
+1: 0 (0) count 0 score 0 tally 0 id 101 mode 1 readings 0 0 0 0 buffer 0/0.
+2: 0 (0) count 0 score 0 tally 0 id 102 mode 1 readings 0 0 0 0 buffer 0/0.
+3: 0 (0) count 0 score 0 tally 0 id 103 mode 1 readings 0 0 0 0 buffer 0/0.
+Spread 0, highest 1, matched true.
+Last reading 0:0 at 0.
+Score 0 of 3; turns 0; points 0.
+> names
+Tracker: in Room A (now Room A), moves 0, turns 0, score 0, timer 4, chimed 0, last dial 0.
+Rooms: - - -.
+Ledger: 0 entries (0), last 0; No. 2; dial two.
+Values: current 0, id 8192, number 3, idle 1 run 2 stopped 3.
+Cases: 1 2 3, Room A, 4 2 2 4.
+Running 0, held false, at span 0, over 3 0.
+Same: true true; refers true false; three; false.
+Tally typed 1 times.
+Rules: 3 4 a dial C, the dial C, The dial C.
+Is: true false true; ticks 0; by number dial B.
+> x dial a
+Dial 1 reads 0 of 9 (before that 0), set 0 of 0 times, idle.
+> x dial 2
+Dial 2 reads 0 of 6 (before that 0), set 0 of 0 times, cap 3, idle.
+> spin dial a to 4
+[1:4] The dial A reads 4.
+[The score has just gone up by one point.]
+> spin dial b to 2
+(its own number) [2:2] The dial B reads 2.
+> spin dial c to 1
+[3:1] The dial C reads 1.
+The tracker chimes.
+> turn dial a
+You turn the dial A to 6.
+> push dial b
+The dial B clicks to 2.
+> tally
+Count 5, total 15, Dial.total 15, by dial 2 2 1.
+1: 6 (4) count 2 score 1 tally 1 id 101 mode 2 readings 4 6 0 0 buffer 4/6 from Room A.
+2: 2 (2) count 2 score 0 tally 2 id 102 mode 2 readings 2 2 0 0 buffer 2/2 from Room A.
+3: 1 (0) count 1 score 0 tally 1 id 103 mode 2 readings 1 0 0 0 buffer 1/1 from Room A.
+Spread 69, highest 1, matched false.
+Last reading 3:1 at 4.
+Score 1 of 3; turns 7; points 105.
+> nudge dial c
+The dial C goes to 3, then clicks to 2.
+> set dial b
+You latch the dial B at 2.
+> spin dial b to 5
+The dial B is held at 2.
+[2:2] The dial B reads 2.
+> x dial b
+Dial 2 reads 2 of 6 (before that 2), set 2 of 7 times, cap 3, held, latched.
+> set dial b
+You free the dial B.
+> zero dial b
+The dial B drops to 0.
+> set dial c
+You latch the dial C at 2.
+> push dial c
+Dial C is latched.
+> set dial c
+You free the dial C.
+> step
+The free dials step on by 3.
+> e
+Room B
+Room B. A ledger lies on a desk. Room A is west.
+You can see a ledger here.
+> x ledger
+6 entries, the last at turn 0.
+> w
+Room A
+Room A. A panel of three dials. Room B is east.
+You can see a dial A, a dial B and a dial C here.
+> wait
+Time passes.
+> names
+Tracker: in Room A (now Room A), moves 2, turns 21, score 1, timer 0, chimed 5, last dial 3.
+Rooms: Room A Room B -.
+Ledger: 6 entries (6), last 0; No. 2; dial two.
+Values: current 0, id 8192, number 3, idle 1 run 2 stopped 3.
+Cases: 1 2 3, Room A, 4 2 2 4.
+Running 3, held false, at span 1, over 3 2.
+Same: false true; refers true false; three; true.
+Tally typed 2 times.
+Rules: 3 4 a dial C, the dial C, The dial C.
+Is: true false true; ticks 7; by number dial B.
+> spin dial c to 4
+[3:4] The dial C reads 4.
+> spin dial b to 4
+[2:4] The dial B reads 4.
+[The score has just gone up by one point.]
+> tally
+Count 16, total 56, Dial.total 56, by dial 4 6 6.
+1: 9 (7) count 4 score 1 tally 1 id 101 mode 2 readings 4 6 7 9 buffer 4/9 from Room A.
+2: 4 (3) count 6 score 1 tally 4 id 102 mode 2 readings 2 2 0 1 buffer 2/4 from Room A.
+3: 4 (5) count 6 score 2 tally 4 id 103 mode 2 readings 1 3 2 3 buffer 1/4 from Room A.
+Spread 107, highest 1, matched false.
+Last reading 2:4 at 22.
+Score 2 of 3; turns 23; points 216.
+> spin dial a to 4
+[1:4] The dial A reads 4.
+> turn dial 1
+You turn the dial A to 6.
+> spin dial a to 4
+[1:4] The dial A reads 4.
+> x a
+(the dial A)
+Dial 1 reads 4 of 9 (before that 6), set 7 of 19 times, 3 at 4.
+> tally
+Count 19, total 70, Dial.total 70, by dial 7 6 6.
+1: 4 (6) count 7 score 3 tally 3 id 101 mode 2 readings 4 6 7 9 buffer 4/4 from Room A.
+2: 4 (3) count 6 score 1 tally 4 id 102 mode 2 readings 2 2 0 1 buffer 2/4 from Room A.
+3: 4 (5) count 6 score 2 tally 4 id 103 mode 2 readings 1 3 2 3 buffer 1/4 from Room A.
+Spread 52, highest 1, matched true.
+Last reading 1:4 at 25.
+Score 2 of 3; turns 27; points 219.
+> names
+Tracker: in Room A (now Room A), moves 2, turns 27, score 1, timer 0, chimed 5, last dial 1.
+Rooms: Room A Room B -.
+Ledger: 10 entries (10), last 25; No. 2; dial two.
+Values: current 0, id 8192, number 3, idle 1 run 2 stopped 3.
+Cases: 1 2 3, Room A, 4 2 2 4.
+Running 3, held false, at span 1, over 3 3.
+Same: false true; refers true false; three; true.
+Tally typed 4 times.
+Rules: 3 4 a dial C, the dial C, The dial C.
+Is: true false true; ticks 11; by number dial B.

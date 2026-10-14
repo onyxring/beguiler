@@ -1480,6 +1480,7 @@ token fileLexer::getToken(){
     // touching the stream.
     if(hasPendingToken){ hasPendingToken = false; return pendingToken; }
     token retval;
+    if(interpSpanClosed && files.size() == interpSpanStream){ retval.tokenType = eTokenType::eof; return retval; }
 
     readTokenSkippingComments(retval);
 
@@ -1521,6 +1522,10 @@ token fileLexer::getToken(){
     // Track brace depth for LSP error recovery — counts '{' and '}' tokens as they're emitted.
     if(retval.is(token::braceOpen)){ braceDepth++; braceLines.push_back(retval.src.line); }
     else if(retval.is(token::braceClose) && braceDepth > 0){ braceDepth--; if(!braceLines.empty()) braceLines.pop_back(); }
+    if(interpSpanDepth >= 0 && files.size() == interpSpanStream){
+        if(retval.is(token::braceOpen)) interpSpanDepth++;
+        else if(retval.is(token::braceClose)){ if(interpSpanDepth == 0) interpSpanClosed = true; else interpSpanDepth--; }
+    }
     return retval;
 }
 token fileLexer::peekToken(){
@@ -1537,6 +1542,7 @@ vector<token> fileLexer::peekTokens(int count, std::function<bool(token&)> stopA
     string savedLastTokenFile = lastTokenFile;
     bool savedHasPending = hasPendingToken;
     token savedPending = pendingToken;
+    int savedSpanDepth = interpSpanDepth; bool savedSpanClosed = interpSpanClosed;
     auto& [pStream, pName, pLine, pCol] = files.top();
     int saveLine = pLine;
     int saveCol  = pCol;
@@ -1553,6 +1559,7 @@ vector<token> fileLexer::peekTokens(int count, std::function<bool(token&)> stopA
     lastTokenLine = savedLastTokenLine;
     lastTokenFile = savedLastTokenFile;
     hasPendingToken = savedHasPending;
+    interpSpanDepth = savedSpanDepth; interpSpanClosed = savedSpanClosed;
     pendingToken = savedPending;
     pLine = saveLine;
     pCol  = saveCol;
@@ -1570,6 +1577,7 @@ token fileLexer::peekToken(int tokNum){
     string savedLastTokenFile = lastTokenFile;
     bool savedHasPending = hasPendingToken;
     token savedPending = pendingToken;
+    int savedSpanDepth = interpSpanDepth; bool savedSpanClosed = interpSpanClosed;
     // Save line/col from the current file's tuple (stream seek doesn't reset these)
     auto& [pStream, pName, pLine, pCol] = files.top();
     int saveLine = pLine;
@@ -1585,6 +1593,7 @@ token fileLexer::peekToken(int tokNum){
     lastTokenLine = savedLastTokenLine;
     lastTokenFile = savedLastTokenFile;
     hasPendingToken = savedHasPending;
+    interpSpanDepth = savedSpanDepth; interpSpanClosed = savedSpanClosed;
     pendingToken = savedPending;
     pLine = saveLine;
     pCol  = saveCol;

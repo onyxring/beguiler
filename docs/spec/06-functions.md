@@ -73,7 +73,8 @@ int  sign(int n)        { if (n < 0) return -1; }   // compile-time error: no re
 
 Parameters are local to the body. A parameter with a default value is optional; required parameters
 precede optional ones. A call must supply between the required count and the total count of
-arguments, or it is a compile-time error.
+arguments, or it is a compile-time error. A default is one value, worked out at each call that leaves
+its argument out; one that needs statements to run first (a `?.` chain, `??`) is a compile-time error.
 
 **Named arguments.** An argument may be passed as `name: value`. Named arguments may appear in any
 order and may be mixed with positional arguments: positional arguments fill the first unfilled

@@ -1,0 +1,68 @@
+// run_target5_namespaces — a member array whose element type is a path, on an object declared below its
+// use, casts to a path type of a `.child` read (member read and call chain), an `extend class` member
+// typed by a #using-imported alias used above the extend, `alias X for` an imported alias, an alias added
+// by a later `extend` used as a type in the object's own body, static members through a class alias
+// path, and a for-in over a value-class array whose last slot was never filled.
+// EXPECT_OUTPUT: 3 0 5 2 2 4 4 4 6 3 3 0
+#beguilerSettings { target = z5; informName = "none"; }
+enum eKind { bolt, nut }
+value class PLen { inline int mm; PLen operator = (PLen o) { mm = o.mm; return self; } }
+value class Counter { int hits; Counter operator = (Counter o) { hits = o.hits; return self; } void bump() { hits++; } }
+value class Tally { int hits; Tally operator = (Tally o) { hits = o.hits; return self; } }
+class Part : object {
+    int count;
+    static int made;
+    static int twice(int n) { return n * 2; }
+    Part add(int n) { count += n; return self; }
+}
+object ns {
+    alias kind for eKind;
+    alias len for PLen;
+    alias part for Part;
+    int sum() {
+        int t = 0;
+        for (len l in tbl.sizes) t += l.mm;
+        return t;
+    }
+    ledger fresh(int n) {
+        ledger t;
+        t.hits = n;
+        return t;
+    }
+}
+object tbl {
+    array<ns.len> sizes[3] = { { 1 }, { 2 } };
+}
+object user {
+    void use(Part p) { p.log.bump(); }
+}
+#using ns
+extend ns { alias meter for Counter; alias ledger for Tally; }
+extend class Part { meter log; }
+object shop {
+    alias grade for kind;
+    alias size for len;
+}
+object shelf { }
+Part boltA { parent = shelf; }
+array<PLen> sizes[3] = { { 1 }, { 2 } };
+void main() {
+    bglInit();
+    print(ns.sum()); print(" ");
+    int c = ((ns.part)shelf.child).count;
+    print(c); print(" ");
+    ((ns.part)shelf.child).add(2).add(3);
+    print(boltA.count); print(" ");
+    user.use(boltA);
+    user.use(boltA);
+    print(boltA.log.hits); print(" ");
+    shop.grade g = shop.grade.nut;
+    shop.size s = shop.size{ 4 };
+    print((int)g); print(" "); print(s.mm); print(" ");
+    print(ns.fresh(4).hits); print(" ");
+    ns.part.made = 4;
+    print(ns.part.made); print(" "); print(ns.part.twice(3)); print(" ");
+    int t = 0;
+    for (PLen l in sizes) t += l.mm;
+    print(t); print(" "); print(sizes.length); print(" "); print(sizes[2].mm);
+}

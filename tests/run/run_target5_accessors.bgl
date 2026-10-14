@@ -1,0 +1,79 @@
+// run_target5_accessors — an ordering derived from an inherited `<=>` on a subclass accessor member, an
+// accessor member as a `for` initializer and step (`++` and `= x + 1`) going through its setter, a
+// stringObj field of a value-class member on a pooled class, a host-class method passing its own accessor
+// member to a `ref` parameter or binding it with `ref :=`, and a declared `operator +=(int)` given a
+// value-class operand.
+// EXPECT_OUTPUT: 1 0 3 3 4 3 3 4 pooled 16 3 21
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Clamp {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+    Clamp operator = (Clamp o) { _v = o._v; return self; }
+    int operator <=> (Clamp o) { return _v - o._v; }
+}
+value class Wrap : Clamp {
+    replace void operator = (int v) { _v = v % 10; }
+}
+value class Level {
+    int _v = 0;
+    int _w = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; _w++; }
+}
+value class Caption {
+    stringObj _text;
+    stringObj operator () { return _text; }
+    void operator = (string v) { _text = v; }
+}
+value class Reading {
+    int _v;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+    void operator += (int by) { _v = _v + by; }
+}
+void bump(ref Reading r, int by) { r += by; }
+class Board : object { Clamp c; Wrap w; Level n; Level m; }
+class Tag[2] : object { Caption label; }
+class Zone : object {
+    Reading temp;
+    void warm(int by) { bump(temp, by); }
+    void heat(int by) { ref Reading mine := temp; mine += by; }
+}
+Board b1 { }
+Board b2 { }
+Zone z1 { }
+Reading ra;
+Reading rb;
+void main() {
+    bglInit();
+    b1.w = 13; b2.w = 2;
+    print(b1.w > b2.w ? 1 : 0); print(" ");
+    print(b1.w <= b2.w ? 1 : 0); print(" ");
+    int k = 0;
+    for (b1.n = 0; b1.n < 3; b1.n++) k++;
+    int nv = b1.n;
+    print(k); print(" "); print(nv); print(" "); print(b1.n._w); print(" ");
+    k = 0;
+    for (b1.m = 0; b1.m < 3; b1.m = b1.m + 1) k++;
+    int mv = b1.m;
+    print(k); print(" "); print(mv); print(" "); print(b1.m._w); print(" ");
+    Tag t = new Tag();
+    t.label = "pooled";
+    stringObj s = t.label;
+    print(s); print(" ");
+    z1.temp = 10;
+    z1.warm(5);
+    bump(z1.temp, 1);
+    int zv = z1.temp;
+    print(zv); print(" ");
+    ra = 1;
+    rb = 2;
+    ra += rb;
+    int av = ra;
+    print(av); print(" ");
+    z1.heat(5);
+    zv = z1.temp;
+    print(zv);
+}

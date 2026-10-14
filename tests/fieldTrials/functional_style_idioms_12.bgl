@@ -297,7 +297,7 @@ replace int vowelCount(array<char> a) {
 }
 
 //-- Strings --------------------------------------------------------------------------------
-emitter int longCount(array<string> a, int n) { $i6Expr($a.filter((string s) => s.length > n).count()) }
+emitter int longCount(array<string> a, int n) { $i6Expr($a.filter((string s) => s.length > $n).count()) }
 
 class Lexicon {
     static int calls = 0;

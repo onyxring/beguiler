@@ -1,0 +1,652 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a rail of four lamps drawn in a text grid split above the main window, with a text-buffer
+// log split to the right, written top-down so that almost every name is used above its declaration.
+// `extend` bodies above their targets: the rail object given a member array sized by a const declared
+// below, a func<void, Lamp> member initialized with a function declared at the very end and called
+// from a method, and methods walking a global array declared below; a namespace object given type
+// aliases (a class, an enum, a bnum, a value class) and a value alias of a class whose statics are
+// reached through it (a static func<int, int> member holding a function declared at the end, and a
+// const member read through instances). The lamp array is given an element declared below with `inject`.
+// Globals typed through those aliases and by a value class, a named union and a bnum declared below,
+// initialized with values read through alias paths; a global func<int, Lamp> holding a function
+// declared at the end; an array<func<void>> of functions that `perform()` verbs declared below them.
+// A class Lamp (instances declared above it, base class Fixture below it, subclass Strobe overriding a
+// `default` method) with a named accessor class Glow (setter clamping, `==`, `!=`, `<=>` against int)
+// as its level, a member array of past levels, a bnum flags member, an enum member, a static counter
+// and static method, a class emitter value, an instance `<=>` used directly, derived (`>`) and by a
+// no-argument <linq> orderBy; an `extend class` after the class adding a field the instances above set,
+// a method and `operator +=` used above as `lamp += n`. A value class Watt (copy, `+=` of an int, `==`,
+// `!=`, a static `<=>` passed as `Watt::operator <=>` to orderBy and derived to `<`) in a global, a
+// global array, a returned copy compared with another, and a `ref` parameter typed through an alias. A
+// pooled class Spark sized by a const below, made with `new` and freed with `delete`. Overloads (Lamp,
+// Strobe, Watt) declared at the end, chosen by casts and call results; default arguments naming a
+// const and an enum value declared below, and a named argument. An inline `auto` accessor on the rail
+// whose setter wraps through the length of the array declared below and writes an `outer` member
+// declared after it; a `replace` of a rail method from the extend above it; a switch over objects whose
+// cases are declared below, and over a primitive class Notch (declared below) through its
+// `operator switch`. A named union returned from a function and narrowed with typeof; bnum flags
+// combined and tested. Hyperlinks to a function and enum values declared below handled in
+// HandleGlkEvent; a replaced DrawStatusLine; a for over an enum list.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+// ---- additions to objects and arrays declared further down ------------------------------------------
+
+extend rail {
+    array<int> burns[SLOTS];
+    func<void, Lamp> onFlip = noteFlip;
+    int flips = 0;
+
+    void tally(Lamp l) {
+        burns[l.slot] += l.glow;
+        flips++;
+        onFlip(l);
+    }
+
+    Lamp brightest() {
+        Lamp best = null;
+        for (Lamp l in lampList) {
+            if (best == null || l > best) best = l;
+        }
+        return best;
+    }
+
+    replace stringObj caption() {
+        stringObj s = $"rail of {lampList.length}, aimed at {pointed.label}";
+        return s;
+    }
+
+    int burnTotal() {
+        int n = 0;
+        for (int i = 0; i < SLOTS; i++) n += burns[i];
+        return n;
+    }
+}
+
+extend kit {
+    alias lamp for Lamp;
+    alias tone for eTone;
+    alias flag for bLampFlag;
+    alias watt for Watt;
+    alias lamps = Lamp;
+}
+
+// ---- state typed by names declared further down -----------------------------------------------------
+
+kit.lamp current = null;
+Watt total;
+array<Watt> spans[SLOTS];
+func<int, Lamp> measure = wattsOf;
+array<func<void>> drills = { drillUp, drillDown, drillAim };
+kit.flag seen = kit.flag.lit;
+eTone mood = kit.tone.amber;
+lampOrNote lastPick = "none";
+int logged = 0;
+
+// ---- helpers ----------------------------------------------------------------------------------------
+
+kit.lamp asLamp(object o) {
+    if (o == null || !o.is(kit.lamp)) {
+        printLine("That is not a lamp.");
+        return null;
+    }
+    return (kit.lamp)o;
+}
+
+stringObj barFor(Lamp l, int width = BAR_W) {
+    stringObj s = "";
+    for (int i = 0; i < width; i++) s += i < l.glow ? l.mark : '.';
+    return s;
+}
+
+void logLine(stringObj text) {
+    logged++;
+    logPane?.printLine($"{logged}. {text}");
+}
+
+string slotName(object o) {
+    switch (o) {
+        case lampA: return "the first lamp";
+        case lampB: return "the second lamp";
+        case lampC: return "the strobe";
+        case rail:  return "the rail";
+    }
+    return "the last lamp";
+}
+
+Watt spanOf(Lamp l) { return spans[l.slot]; }
+
+void widen(ref kit.watt w, int by) {
+    w += by;
+}
+
+lampOrNote pickFor(int i) {
+    if (i >= 0 && i < lampList.length) return lampList[i];
+    return "nothing there";
+}
+
+void report(Lamp l, int width = BAR_W, eTone t = eTone.plain) {
+    printLine($"{l.label} [{barFor(l, width)}] {l.glow} = {measure(l)} mW, {pct(l.glow, GLOW_MAX)}% ({toneName(t)}) {show(l)}");
+}
+
+void shifted(Lamp l, int was) {
+    spans[l.slot] += l.glow;
+    total += l.glow;
+    current = l;
+    seen = seen | l.flags;
+    rail.tally(l);
+    printLine($"{cThe(l)} glows {l.glow}{l.glow == was ? " (no change)" : ""}{l.isHot ? ", hot" : ""}.");
+}
+
+void fire(Lamp l) {
+    Spark s = new Spark(l, l.glow);
+    if (s == null) {
+        printLine("No spark left.");
+        return;
+    }
+    printLine($"Spark from {s.origin.label} carries {s.charge} ({Spark.live} live).");
+    delete s;
+}
+
+// ---- drills: each performs a verb declared below ----------------------------------------------------
+
+void drillUp() {
+    for (Lamp l in lampList) Brighten.perform(l);
+}
+
+void drillDown() {
+    Dim.perform(lampList[rail.cursor]);
+}
+
+void drillAim() {
+    rail.cursor += 1;
+    printLine($"Aimed at {rail.pointed.label} (slot {rail.cursor}, {rail.moves} moves).");
+}
+
+// ---- drawing ----------------------------------------------------------------------------------------
+
+void drawBoard() {
+    if (board == null) return;
+    board.clear();
+    int row = 0;
+    for (kit.lamp l in lampList) {
+        board.moveCursor(0, row);
+        board.print($"{l == rail.pointed ? '>' : ' '}{l.label} {barFor(l)} {l.glow}{l.isHot ? " HOT" : ""}");
+        row++;
+    }
+    board.moveCursor(0, row);
+    board.print($"aim {rail.cursor} | flips {rail.flips} | burn {rail.burnTotal()} | {toneName(mood)}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | cur {current == null ? "-" : current.label} | total {total.text()}");
+    drawBoard();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        switch (value) {
+            case (int)eLinks.linkPlain: mood = eTone.plain;
+            case (int)eLinks.linkAmber: mood = kit.tone.amber;
+            case (int)eLinks.linkBlue:  mood = eTone.blue;
+            default: return 0;
+        }
+        drawBoard();
+    }
+    return 0;
+}
+
+// ---- verbs ------------------------------------------------------------------------------------------
+
+verb Brighten {
+    grammar = {.brighten, NOUN};
+    void handler() {
+        Lamp l = asLamp(noun);
+        if (l == null) return;
+        int was = l.glow;
+        l += STEP;
+        shifted(l, was);
+    }
+}
+
+verb Dim {
+    grammar = {.dim, NOUN};
+    void handler() {
+        if (asLamp(noun) == null) return;
+        int was = ((Lamp)noun).glow;
+        ((kit.lamp)noun).glow -= 2;
+        ((Lamp)noun).hist += ((Lamp)noun).glow;
+        ((Lamp)noun).trimHist();
+        shifted((Lamp)noun, was);
+    }
+}
+
+verb Tune {
+    grammar = {.tune, NOUN, .to, NUMBER};
+    void handler() {
+        kit.lamp l = asLamp(noun);
+        if (l == null) return;
+        int was = l.glow;
+        l.glow = (int)second;
+        l.raise(by: 0);
+        shifted(l, was);
+    }
+}
+
+verb Aim {
+    grammar = {.aim, NUMBER};
+    void handler() {
+        rail.cursor = (int)noun;
+        Notch at = rail.cursor;
+        switch (at) {
+            case 0:  printLine("At the near end.");
+            case 3:  printLine("At the far end.");
+            default: printLine($"At {slotName(rail.pointed)}.");
+        }
+        printLine($"Aimed at {rail.pointed.label} (slot {rail.cursor}, {rail.moves} moves).");
+    }
+}
+
+verb Drill {
+    grammar = {.drill, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 0 || n >= drills.length) {
+            printLine($"Drills are 0 to {drills.length - 1}.");
+            return;
+        }
+        func<void> d = drills[n];
+        d();
+    }
+}
+
+verb Spark {
+    grammar = {.spark, NOUN};
+    void handler() {
+        Lamp l = asLamp(noun);
+        if (l != null) fire(l);
+    }
+}
+
+verb Lamps {
+    grammar = {.lamps};
+    meta = true;
+    void handler() {
+        for (Lamp l in lampList) report(l);
+        report(lampD, t: kit.tone.blue);
+        report(lampC, 4);
+        printLine($"Strobe: {show((Strobe)lampC)}; lamp C as a lamp: {show((Lamp)lampC)}.");
+        array<Lamp> order[SLOTS];
+        order = lampList.orderBy();
+        stringObj line = "";
+        for (Lamp l in order) line += l.label;
+        int hotCount = lampList.filter((kit.lamp l) => l.isHot).count();
+        printLine($"Dimmest first: {line}; brightest {rail.brightest().label}; {hotCount} hot; flips {kit.lamps.flipsAll}.");
+        if (lampA > lampB) printLine("A is brighter than B.");
+        else printLine("A is not brighter than B.");
+    }
+}
+
+verb Ranges {
+    grammar = {.ranges};
+    meta = true;
+    void handler() {
+        for (int i = 0; i < SLOTS; i++) printLine($"{lampList[i].label}: {show(spans[i])} mean {spans[i].mean()}");
+        printLine($"total {show(total)}");
+        array<Watt> order[SLOTS];
+        order = spans.orderBy(Watt::operator <=>);
+        printLine($"smallest sum {order[0].text()}, largest {order[SLOTS - 1].text()}");
+        array<kit.watt> desc[SLOTS];
+        desc = spans.orderBy(kit.watt::operator <=>);
+        printLine($"by alias: {desc[0].sum} {desc[1].sum} {desc[2].sum} {desc[3].sum}; {show(spanOf(lampC))}; {show(rail.brightest())}; {show(rail.pointed)}");
+        widen(spans[3], 9);
+        printLine($"D widened to {spans[3].text()}, mean {spanOf(lampD).mean()}.");
+        printLine($"A and B spans {spanOf(lampA) == spanOf(lampB) ? "match" : "differ"}; A below C: {spans[0] < spans[2] ? "yes" : "no"}.");
+        Watt before = total;
+        widen(total, 0);
+        printLine($"widened total {before.text()} -> {total.text()}; changed {before != total ? "yes" : "no"}.");
+    }
+}
+
+verb Picks {
+    grammar = {.picks};
+    meta = true;
+    void handler() {
+        for (int i = 0; i <= SLOTS; i++) {
+            lampOrNote p = pickFor(i);
+            if (typeof(p) == eType.object) printLine($"{i}: lamp {((Lamp)p).label}, {slotName((Lamp)p)}{((Lamp)p).is(Strobe) ? " (strobe)" : ""}");
+            else printLine($"{i}: {(string)p}");
+            lastPick = p;
+        }
+        if (typeof(lastPick) == eType.string) printLine($"Last pick: {(string)lastPick}.");
+    }
+}
+
+verb ShowFlags {
+    grammar = {.flags};
+    meta = true;
+    void handler() {
+        for (Lamp l in lampList) printLine($"{l.label}: {flagText(l.flags)}");
+        printLine($"Seen: {flagText(seen)}.");
+        printLine($"boost of 3: {kit.lamps.boost(3)}, of the cap: {Lamp.boost(lampA.cap)}; B at cap: {lampB.glow == lampB.cap ? "yes" : "no"}.");
+        for (eTone t in {eTone.plain, kit.tone.amber, eTone.blue}) {
+            printLine($"tone {toneName(t)}{t == mood ? " (shown)" : ""}");
+        }
+    }
+}
+
+verb ShowBurns {
+    grammar = {.burns};
+    meta = true;
+    void handler() {
+        stringObj s = "";
+        for (int i = 0; i < SLOTS; i++) s += $" {rail.burns[i]}";
+        printLine($"Burns{s}; total {rail.burnTotal()}; flips {rail.flips}.");
+        printLine($"Caption: {rail.caption()}; brightest is {slotName(rail.brightest())}.");
+        kit.lamps.clearFlips();
+        printLine($"Lamp flips cleared: {Lamp.flipsAll}.");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    meta = true;
+    void handler() {
+        printLine($"Tone: {link("plain", eLinks.linkPlain)} {link("amber", eLinks.linkAmber)} {link("blue", eLinks.linkBlue)} {link("aim", drillAim)}");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    spans.length = SLOTS;
+    board = bgl.ui.mainWin.splitUpGrid(GRID_ROWS, fixed, border, styles: boardLook);
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_COLS, fixed);
+    stringObj note = $"rail ready, {lampList.length} lamps";
+    logLine(note);
+    rfalse;
+}
+
+// ---- constants, windows, looks, enums ---------------------------------------------------------------
+
+const int SLOTS = 4;
+const int HIST_SLOTS = 4;
+const int GLOW_MAX = 8;
+const int HOT = 6;
+const int STEP = 3;
+const int BAR_W = 8;
+const int SPARKS = 2;
+const int GRID_ROWS = 5;
+const int LOG_COLS = 28;
+
+emitter int pct(int a, int b) { ($a * 100 / $b) }
+
+textGridWindowHorz board = null;
+textBufferWindowVert logPane = null;
+
+styleSheet boardLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+enum eTone { plain, amber, blue }
+enum eLinks { linkPlain = 31, linkAmber, linkBlue }
+bnum bLampFlag { lit, warm, flagged }
+
+union lampOrNote = Lamp | string;
+
+primitive class Notch : int {
+    replace emitter Notch operator = (int v) { $self = $v }
+    emitter bool operator switch (int v) { ($self == $v) }
+}
+
+// ---- the rail and its lamps -------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A rail of four lamps is overhead.";
+    attributes = {light};
+}
+
+object rail {
+    "rail";
+    parent = roomA;
+    name = {.rail};
+    description = "A rail holding four lamps.";
+    attributes = {static, supporter};
+    children = { lampA, lampB, lampC, lampD };
+
+    auto cursor = {
+        int _c = 0;
+        int operator () { return _c; }
+        void operator = (int v) {
+            int n = lampList.length;
+            while (v < 0) v += n;
+            _c = v % n;
+            outer.pointed = lampList[_c];
+            outer.moves++;
+        }
+    }
+    Lamp pointed = lampA;
+    int moves = 0;
+
+    stringObj caption() {
+        stringObj s = "rail";
+        return s;
+    }
+}
+
+Lamp lampA { "lamp A"; name = {.lamp, .a}; label = "A"; mark = '#'; slot = 0; tone = eTone.amber; }
+Lamp lampB { "lamp B"; name = {.lamp, .b}; label = "B"; mark = '='; slot = 1; }
+Strobe lampC { "lamp C"; name = {.lamp, .c}; label = "C"; mark = '+'; slot = 2; rate = 3; }
+Lamp lampD { "lamp D"; name = {.lamp, .d}; label = "D"; mark = '%'; slot = 3; tone = kit.tone.blue; }
+
+array<Lamp> lampList = { lampA, lampB, lampC };
+
+extend lampList {
+    inject lampD;
+}
+
+// ---- classes ----------------------------------------------------------------------------------------
+
+class Lamp : Fixture {
+    Glow glow;
+    array<int> hist[HIST_SLOTS];
+    bLampFlag flags = 0;
+    eTone tone = eTone.plain;
+    static int flipsAll = 0;
+    static func<int, int> boost = doubled;
+    const int cap = GLOW_MAX;
+
+    emitter bool isHot { $i6Expr($self.glow >= HOT) }
+
+    static void clearFlips() { flipsAll = 0; }
+
+    default stringObj summary() {
+        stringObj s = $"{label} steady at {glow}";
+        return s;
+    }
+
+    void raise(int by = STEP) {
+        glow += by;
+        hist += glow;
+        trimHist();
+        flags = flags | bLampFlag.lit;
+        if (glow >= HOT) flags = flags | bLampFlag.warm;
+        if (glow == 0) flags = flags | bLampFlag.flagged;
+        flipsAll++;
+    }
+
+    int operator <=> (Lamp o) { return glow - o.glow; }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)}: {summary()}; {flagText(flags)}; tone {toneName(tone)}; last {latest()}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+class Strobe : Lamp {
+    int rate = 2;
+
+    stringObj summary() {
+        stringObj s = $"{label} pulsing every {rate} at {glow}";
+        return s;
+    }
+}
+
+extend class Lamp {
+    int slot = 0;
+
+    void trimHist() {
+        while (hist.length > HIST_SLOTS - 1) hist.remove(0);
+    }
+
+    Lamp operator += (int by) {
+        raise(by);
+        return self;
+    }
+
+    int latest() { return hist.length == 0 ? 0 : hist[hist.length - 1]; }
+}
+
+class Fixture : object {
+    attributeList attributes = {static};
+    string label = "?";
+    char mark = '*';
+}
+
+value class Glow {
+    int _g = 0;
+    int operator () { return _g; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > GLOW_MAX) v = GLOW_MAX;
+        _g = v;
+    }
+    bool operator == (int n) { return _g == n; }
+    bool operator != (int n) { return _g != n; }
+    int operator <=> (int n) { return _g - n; }
+}
+
+value class Watt {
+    int lo;
+    int hi;
+    int sum;
+    int n;
+
+    Watt operator = (Watt o) {
+        lo = o.lo;
+        hi = o.hi;
+        sum = o.sum;
+        n = o.n;
+        return self;
+    }
+
+    Watt operator += (int v) {
+        if (n == 0 || v < lo) lo = v;
+        if (n == 0 || v > hi) hi = v;
+        sum += v;
+        n++;
+        return self;
+    }
+
+    bool operator == (Watt o) { return sum == o.sum && n == o.n; }
+    bool operator != (Watt o) { return sum != o.sum || n != o.n; }
+    static int operator <=> (Watt a, Watt b) { return a.sum - b.sum; }
+
+    int mean() { return n == 0 ? 0 : sum / n; }
+
+    stringObj text() {
+        stringObj s = $"{lo}..{hi}/{n}";
+        return s;
+    }
+}
+
+class Spark[SPARKS] : object {
+    Lamp origin;
+    int charge = 0;
+    static int live = 0;
+
+    void create(Lamp l, int c) {
+        origin = l;
+        charge = c;
+        live++;
+    }
+
+    void destroy() { live--; }
+}
+
+object kit { }
+
+// ---- late helpers: used throughout the file above ---------------------------------------------------
+
+int doubled(int n) { return n * 2; }
+
+int wattsOf(Lamp l) { return l.glow * 10 + l.slot; }
+
+void noteFlip(Lamp l) {
+    stringObj note = $"{l.label} -> {l.glow}";
+    logLine(note);
+}
+
+stringObj show(Lamp l) {
+    stringObj s = $"lamp {l.summary()}";
+    return s;
+}
+
+stringObj show(Strobe s) {
+    stringObj t = $"strobe x{s.rate} {s.summary()}";
+    return t;
+}
+
+stringObj show(Watt w) {
+    stringObj s = $"span {w.text()} sum {w.sum}";
+    return s;
+}
+
+stringObj flagText(bLampFlag f) {
+    stringObj s = "";
+    if ((f & bLampFlag.lit) != 0) s += "lit ";
+    if ((f & kit.flag.warm) != 0) s += "warm ";
+    if ((f & bLampFlag.flagged) != 0) s += "zeroed ";
+    if (s.isEmpty()) s = "none";
+    else s = s.trim();
+    return s;
+}
+
+string toneName(kit.tone t) {
+    switch (t) {
+        case eTone.plain:    return "plain";
+        case kit.tone.amber: return "amber";
+        case eTone.blue:     return "blue";
+    }
+    return "?";
+}
+
+#includeI6 "grammar"

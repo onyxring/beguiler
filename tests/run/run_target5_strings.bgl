@@ -1,0 +1,25 @@
+// run_target5_strings — an interpolated string stored into an element of the array it reads (`.length`,
+// `.size`), and an emitter whose `$i6Expr` holds a lambda that captures one of the emitter's parameters,
+// passed a variable and a literal.
+// EXPECT_OUTPUT: e 1 n 2 s 4 2 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+#include <string>
+array<stringObj> log[4];
+emitter int longCount(array<string> a, int n) { $i6Expr($a.filter((string s) => s.length > $n).count()) }
+array<string> words = {"a", "abc", "abcd", "ab"};
+void main() {
+    bglInit();
+    log += "-";
+    log[0] = $"e {log.length}";
+    log += "-";
+    log[1] = $"n {log.length}";
+    log[2] = $"s {log.size}";
+    print(log[0]); print(" "); print(log[1]); print(" "); print(log[2]); print(" ");
+    int n = 2;
+    print(longCount(words, n)); print(" ");
+    n = 3;
+    print(longCount(words, n)); print(" ");
+    print(longCount(words, 3));
+}

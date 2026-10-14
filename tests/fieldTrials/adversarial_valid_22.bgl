@@ -1,0 +1,565 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small meter-board program, on Glulx, leaning on property
+// accessors whose getters return things other than int, reached from above their declarations.
+// Routines written above every class, object, array, alias, const and emitter value they use: a
+// value-class parameter given an accessor member (the getter reads it, the int setter fills the copy),
+// `ref` parameters of the accessor class and of a namespace alias of it (defaults from a const and an
+// emitter value declared below), returns of an accessor's enum and bool getters, `??` on an accessor
+// whose getter returns an object, and a subscript `b.lvl[i]` through the accessor class's own
+// `operator []`. Named accessor classes with two setters (int and bool), a copy operator, `==`/`!=`
+// taking int and the class, an instance `<=>` (derived orderings between two members), `operator +`,
+// `operator ?` and methods; a subclass accessor that replaces the int setter and chains its copy
+// operator; accessors whose getters return bool, an enum and a class reference (then chained: `.lvl`,
+// `?.glow`, written through and passed by `ref`); a value class holding two accessor members, owned by
+// a class and an object and copied whole; class-body inline accessors (one with a static counter, one
+// added by `extend class`); object-body inline accessors using `outer` members and a method declared
+// after them (one added by an `extend` written above its object, one returning an element of a global
+// array declared below); a pooled class with accessor members; a global of the accessor class assigned
+// from members and bound by a `ref` local; accessors as `for` loop variables, in `while`/`do`/`until`
+// conditions, `switch` on an enum getter, ternaries, interpolation, `!`, postfix `?`, lambdas in <linq>
+// any/all/filter/count/orderBy/first/last/map, and compound assignment through every path.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+#using bgl.printRules
+
+extend extern class object {
+    string description;
+}
+
+// ---- forward users: everything they name is declared further down ------------------------------------
+
+int lvlOf(Board b) { return b.lvl; }
+
+int peekCopy(Clamp c) {
+    c = c + STEP;
+    return c;
+}
+
+void nudge(ref Clamp c, int by = STEP) { c += by; }
+
+void nudgeVia(ref kit.gauge g, int by = bumpBy) { g = g + by; }
+
+bool anyGlowing() { return boards.any((Board b) => b.glow); }
+
+eMode modeOf(Board b) { return b.mode; }
+
+Board peerOr(Board b) { return b.peer ?? b; }
+
+string glowWord(Board b) { return b.glow ? "on" : "off"; }
+
+int digit(Board b, int i) { return b.lvl[i]; }
+
+string modeName(eMode m) {
+    switch (m) {
+        case eMode.slow: return "slow";
+        case eMode.fast: return "fast";
+    }
+    return "off";
+}
+
+int sumBand(Board b) { return b.band.lo + b.band.hi; }
+
+void setAll(int v) {
+    for (int i = 0; i < boards.length; i++) {
+        boards[i].lvl = v + i;
+        boards[i].dial = v * 3 + i;
+    }
+}
+
+void listBoards() {
+    for (Board b in boards) {
+        print($" {b}={b.lvl}/{b.dial} {glowWord(b)} {modeName(b.mode)}");
+        if (b.peer?) print($" ->{peerOr(b)}");
+    }
+    printLine(".");
+}
+
+extend rack {
+    auto spin = {
+        int _s = 0;
+        int operator () { return _s; }
+        void operator = (int v) {
+            _s = v;
+            outer.turns = outer.turns + 1;
+            outer.log(v);
+        }
+    };
+}
+
+Clamp spare;
+
+// ---- verbs --------------------------------------------------------------------------------------------
+
+#includeI6 "grammar"
+
+verb Meter {
+    grammar = {.meter};
+    void handler() {
+        print("Boards:");
+        listBoards();
+        printLine($"Spare {spare} (sets {spare.sets()}); glowing {anyGlowing() ? "yes" : "no"}; band A {sumBand(boardA)}.");
+    }
+}
+
+verb Preset {
+    grammar = {.preset, NUMBER};
+    void handler() {
+        setAll((int)noun);
+        print("Set:");
+        listBoards();
+    }
+}
+
+verb Prod {
+    grammar = {.nudge, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        int before = ((Board)noun).lvl;
+        int peek = peekCopy(((Board)noun).lvl);
+        nudge(((Board)noun).lvl);
+        nudge(by: 1, c: ((Board)noun).lvl);
+        nudgeVia(((Board)noun).lvl);
+        nudgeVia(((Board)noun).dial, by: 4);
+        printLine($"{cThe(noun)}: {before} -> {lvlOf((Board)noun)} (peek {peek}); dial {((Board)noun).dial}; sets {((Board)noun).lvl.sets()}.");
+    }
+}
+
+verb Wire {
+    grammar = {.wire, NOUN, .to, NOUN};
+    void handler() {
+        if (!noun.is(Board) || !second.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        ((Board)noun).peer = (Board)second;
+        Board p = ((Board)noun).peer;
+        p.lvl += 1;
+        ((Board)noun).peer.dial = ((Board)noun).peer.dial + 2;
+        print($"{noun} -> {peerOr((Board)noun)}: lvl {((Board)noun).peer.lvl}, dial {p.dial}");
+        printLine($", glow {((Board)noun).peer?.glow ? "on" : "off"}.");
+    }
+}
+
+verb Glow {
+    grammar = {.glow, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        b.glow = !b.glow;
+        if (b.glow) b.lvl = true;
+        else b.lvl = false;
+        b.glow = b.glow ? 1 : 0;
+        printLine($"{b} is {glowWord(b)}; lvl {b.lvl}; flips {b.glow.flips()}; busy {b.busy() ? "yes" : "no"}.");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        switch (b.mode) {
+            case eMode.off:  b.mode = eMode.slow;
+            case eMode.slow: b.mode = eMode.fast;
+            default:         b.mode = eMode.off;
+        }
+        bool same = modeOf(b) == b.mode;
+        printLine($"{b} now {modeName(modeOf(b))}; same {same ? "yes" : "no"}; fast {b.mode == eMode.fast ? "yes" : "no"}; busy {b.busy() ? "yes" : "no"}.");
+    }
+}
+
+verb Band {
+    grammar = {.band, NOUN, NUMBER};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        int n = (int)second;
+        b.band.lo = n;
+        b.band.hi = n + 4;
+        b.band.hi += b.band.lo;
+        rack.band = b.band;
+        rack.band.lo++;
+        printLine($"{b} band {b.band.lo}..{b.band.hi} span {b.band.span()}; rack {rack.band.lo}..{rack.band.hi}; sum {sumBand(b)}; hi sets {b.band.hi.sets()}.");
+    }
+}
+
+verb Spin {
+    grammar = {.spin, NUMBER};
+    void handler() {
+        rack.spin = (int)noun;
+        rack.spin += 2;
+        int laps = 0;
+        while (!rack.hot) {
+            rack.spin = rack.spin + 1;
+            laps++;
+        }
+        printLine($"Spin {rack.spin}; turns {rack.turns}; logged {rack.logged}; laps {laps}; hot {rack.hot ? "yes" : "no"}.");
+        rack.hot = false;
+        printLine($"Cooled: turns {rack.turns}; hot {rack.hot ? "yes" : "no"}.");
+    }
+}
+
+verb Top {
+    grammar = {.top, NUMBER};
+    void handler() {
+        rack.top = (int)noun;
+        rack.top.lvl = rack.top.lvl + 3;
+        nudge(rack.top.lvl);
+        rack.top.glow = true;
+        print($"Top {rack.top}: lvl {rack.top.lvl}, glow {rack.top?.glow ? "on" : "off"}");
+        printLine($", twice {rack.top.twice}, total {rack.top.total()}.");
+    }
+}
+
+verb Digits {
+    grammar = {.digits, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        b.lvl.cap(99);
+        b.lvl = 47;
+        printLine($"{b} digits {b.lvl[1]}{b.lvl[0]} / {digit(b, 1)} {digit(b, 0)}; top {b.lvl.top()}; plus {b.lvl + 3}.");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        print($"A==B {boardA.lvl == boardB.lvl ? "yes" : "no"}; A!=B {boardA.lvl != boardB.lvl ? "yes" : "no"}");
+        print($"; A<B {boardA.lvl < boardB.lvl ? "yes" : "no"}; A>=C {boardA.lvl >= boardC.lvl ? "yes" : "no"}");
+        print($"; A<=>B {boardA.lvl <=> boardB.lvl}; A==4 {boardA.lvl == 4 ? "yes" : "no"}");
+        print($"; !A {!boardA.lvl ? "yes" : "no"}; A? {boardA.lvl? ? "yes" : "no"}");
+        printLine($"; dials B>C {boardB.dial > boardC.dial ? "yes" : "no"}.");
+    }
+}
+
+verb Stash {
+    grammar = {.stash, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        spare = ((Board)noun).lvl;
+        spare += 1;
+        ref Clamp r := boardC.lvl;
+        int was = r;
+        r = spare;
+        r += 1;
+        int asInt = spare;
+        printLine($"Spare {asInt} top {spare.top()}; C was {was} now {boardC.lvl} top {boardC.lvl.top()}.");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        int lit = boards.filter((Board b) => b.glow).count();
+        int lim = 3;
+        bool allLow = boards.all((Board b) => b.lvl < lim);
+        bool anyFast = boards.any((Board b) => b.mode == eMode.fast);
+        Board low = boards.orderBy((Board a, Board b) => a.lvl <=> b.lvl).first();
+        Board high = boards.orderBy((Board a, Board b) => a.dial - b.dial).last();
+        int dbl = boards.map((Board b) => b.lvl * 2).last();
+        printLine($"Lit {lit}; all low {allLow ? "yes" : "no"}; any fast {anyFast ? "yes" : "no"}; low {low} {low.lvl}; high {high} {high.dial}; dbl {dbl}.");
+    }
+}
+
+verb Count {
+    grammar = {.count, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        int steps = 0;
+        for (b.lvl = 0; b.lvl < 5; b.lvl++)
+            steps++;
+        do {
+            b.dial -= 1;
+            steps++;
+        } until (b.dial == 0);
+        while (b.lvl?) {
+            b.lvl = b.lvl + -2;
+            steps++;
+        }
+        printLine($"{b} steps {steps}; lvl {b.lvl}; dial {b.dial}; sets {b.lvl.sets()}.");
+    }
+}
+
+verb Halves {
+    grammar = {.halves, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        for (Board b in boards) {
+            b.twice = n;
+            b.half = n;
+            n++;
+        }
+        int seen = boardA.twice + boardB.twice;
+        printLine($"Twice {boardA.twice}/{boardB.twice}/{boardC.twice}; half {boardA.half}/{boardC.half}; seen {seen}; reads {boardA.twice.readCount()}.");
+    }
+}
+
+verb Charge {
+    grammar = {.charge, NUMBER};
+    void handler() {
+        Chip c = new Chip();
+        if (c == null) {
+            printLine("No chips.");
+            return;
+        }
+        int start = c.charge;
+        c.charge = (int)noun;
+        nudge(c.charge, 3);
+        c.glow = c.charge > 5;
+        printLine($"Chip from {start} to {c.charge}; glow {c.glow ? "on" : "off"}; sets {c.charge.sets()}.");
+        delete c;
+    }
+}
+
+verb Relay {
+    grammar = {.relay, NOUN};
+    void handler() {
+        if (!noun.is(Board)) {
+            printLine("Only boards.");
+            return;
+        }
+        Board b = (Board)noun;
+        b.peer?.lvl = 7;
+        b.peer?.glow = true;
+        b.peer?.mode = eMode.fast;
+        printLine($"{b} relays to {b.peer ?? b}: lvl {lvlOf(peerOr(b))}, glow {glowWord(peerOr(b))}, mode {modeName(modeOf(b.peer ?? b))}, top {lvlOf(rack.top)}.");
+    }
+}
+
+// ---- types --------------------------------------------------------------------------------------------
+
+const int STEP = 2;
+
+emitter int bumpBy { 3 }
+
+enum eMode { off, slow, fast }
+
+value class Clamp {
+    int _v = 0;
+    int _top = 9;
+    int _sets = 0;
+    int operator () { return _v; }
+    void operator = (int v) {
+        _v = v < 0 ? 0 : (v > _top ? _top : v);
+        _sets++;
+    }
+    void operator = (bool b) {
+        _v = b ? _top : 0;
+        _sets++;
+    }
+    Clamp operator = (Clamp o) {
+        _v = o._v;
+        _top = o._top;
+        return self;
+    }
+    bool operator == (int n)   { return _v == n; }
+    bool operator != (int n)   { return _v != n; }
+    bool operator == (Clamp o) { return _v == o._v; }
+    bool operator != (Clamp o) { return _v != o._v; }
+    int  operator <=> (Clamp o) { return _v - o._v; }
+    int  operator + (int n)    { return _v + n; }
+    int  operator [] (int i) {
+        int d = _v;
+        for (int k = 0; k < i; k++) d = d / 10;
+        return d % 10;
+    }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+    void cap(int t) {
+        _top = t;
+        if (_v > t) _v = t;
+    }
+    int top()  { return _top; }
+    int sets() { return _sets; }
+}
+
+value class Wrap : Clamp {
+    replace void operator = (int v) {
+        int m = top() + 1;
+        _v = v % m;
+        if (_v < 0) _v = _v + m;
+        _sets++;
+    }
+    Wrap operator = (Wrap o) {
+        (Clamp)self = o;
+        return self;
+    }
+}
+
+value class Flag {
+    bool _on = false;
+    int _flips = 0;
+    bool operator () { return _on; }
+    void operator = (bool b) {
+        if (b != _on) _flips++;
+        _on = b;
+    }
+    void operator = (int n) {
+        bool b = n != 0;
+        if (b != _on) _flips++;
+        _on = b;
+    }
+    int flips() { return _flips; }
+}
+
+value class ModeBox {
+    eMode _m = eMode.off;
+    eMode operator () { return _m; }
+    void operator = (eMode m) { _m = m; }
+}
+
+value class Holder {
+    Board _b = null;
+    Board operator () { return _b; }
+    void operator = (Board b) { _b = b; }
+}
+
+value class Pair {
+    Clamp lo;
+    Clamp hi;
+    Pair operator = (Pair o) {
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+    int span() { return hi - lo; }
+}
+
+class Board : object {
+    Clamp lvl;
+    Wrap dial;
+    Flag glow;
+    ModeBox mode;
+    Holder peer;
+    Pair band;
+    auto twice = {
+        static int reads = 0;
+        int _t = 0;
+        int operator () {
+            reads++;
+            return _t * 2;
+        }
+        void operator = (int v) { _t = v; }
+        int readCount() { return reads; }
+    };
+    int total() { return lvl + dial + twice; }
+}
+
+extend class Board {
+    auto half = {
+        int _h = 0;
+        int operator () { return _h / 2; }
+        void operator = (int v) { _h = v; }
+    };
+    bool busy() { return glow && mode != eMode.off; }
+}
+
+class Chip[3] : object {
+    Clamp charge;
+    Flag glow;
+}
+
+object kit {
+    alias gauge for Clamp;
+}
+
+// ---- world --------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object rack {
+    "rack";
+    parent = roomA;
+    attributes = {static};
+    name = {.rack};
+    description = "A rack.";
+    auto hot = {
+        int _probes = 0;
+        bool operator () {
+            _probes++;
+            return outer.turns > outer.limit;
+        }
+        void operator = (bool b) {
+            if (b) outer.turns = outer.limit + 1;
+            else outer.turns = 0;
+        }
+    };
+    auto top = {
+        int _i = 0;
+        Board operator () { return boards[_i]; }
+        void operator = (int i) { _i = i % boards.length; }
+    };
+    Pair band;
+    int turns = 0;
+    int limit = 3;
+    int logged = 0;
+    void log(int v) { logged = logged + v; }
+}
+
+array<Board> boards = { boardA, boardB, boardC };
+
+Board boardA {
+    "board A";
+    parent = roomA;
+    attributes = {static};
+    name = {.board, .a};
+    description = "Board A.";
+}
+
+Board boardB {
+    "board B";
+    parent = roomA;
+    attributes = {static};
+    name = {.board, .b};
+    description = "Board B.";
+}
+
+Board boardC {
+    "board C";
+    parent = roomA;
+    attributes = {static};
+    name = {.board, .c};
+    description = "Board C.";
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    boardC.lvl.cap(5);
+    boardC.dial.cap(3);
+    rtrue;
+}

@@ -1,0 +1,74 @@
+// run_target5_receivers — a member array of arrays read through computed receivers (also in
+// interpolation), a whole member array copied from a computed or cast receiver, receiver casts of
+// member/call chains and of an element's parent, `.length =` on a cast receiver's member array, an
+// ancestor cast on a call result, and a value-class local's member array emptied at each routine entry.
+// EXPECT_OUTPUT: 5 5 2 3 5 3 3 3 3 7 7 7 1 base base 1 0 0 0 2 2 2 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Tray : object {
+    array<array<int>> grid = { {1, 2}, {3, 4, 5} };
+    array<int> slots[4];
+    Tray link;
+    int code = 1;
+    Tray next() { return link; }
+    default void report() { print("base"); }
+}
+class Sealed : Tray { int seal = 7; void report() { print("sealed"); } }
+Tray tA { link = tB; }
+Tray tB { link = tC; }
+Sealed tC { link = tA; }
+Tray tD { }
+Tray tE { }
+array<Tray> ring = {tA, tB};
+array<object> spots = {tD};
+array<Sealed> seals = {tC};
+Tray pick() { return tB; }
+Tray pickAt(int n) { return ring[n]; }
+Sealed sealedOne() { return tC; }
+object token { parent = tA; }
+object rack { array<object> spots = {token}; }
+value class Row {
+    int n;
+    array<int> cells[3];
+    Row operator = (Row o) { n = o.n; cells = o.cells; return self; }
+}
+Row mkRow(int a, int b) {
+    Row r;
+    r.cells += a;
+    r.cells += b;
+    return r;
+}
+void fill() {
+    Row r;
+    print(r.cells.length); print(" ");
+    r.n += 5;
+    r.cells += 1;
+}
+void main() {
+    bglInit();
+    int a = pickAt(0).grid[1][2];
+    int b = ring[0].grid[0][1];
+    int c = ((Tray)ring[0]).grid[1][0];
+    print(tA.grid[1][2]); print(" "); print(a); print(" "); print(b); print(" "); print(c); print(" ");
+    print($"{pickAt(0).grid[1][2]} ");
+    tA.slots += 1; tA.slots += 2; tA.slots += 3;
+    tD.slots = pickAt(0).slots;
+    tE.slots = ((Tray)ring[0]).slots;
+    print(tD.slots.length); print(" "); print(tD.slots[2]); print(" ");
+    print(tE.slots.length); print(" "); print(tE.slots[2]); print(" ");
+    int d = ((Sealed)pick().next()).seal;
+    int e = ((Sealed)pick().link).seal;
+    int f = ((Sealed)tA.link.next()).seal;
+    print(d); print(" "); print(e); print(" "); print(f); print(" ");
+    int g = ((Tray)rack.spots[0].parent).code;
+    print(g); print(" ");
+    ((Tray)spots[0]).slots.length = 1;
+    ((Tray)sealedOne()).report(); print(" ");
+    ((Tray)seals[0]).report(); print(" ");
+    print(tD.slots.length); print(" ");
+    fill(); fill(); fill();
+    print(mkRow(4, 5).cells.length); print(" ");
+    print(mkRow(7, 8).cells.length); print(" ");
+    Row x = mkRow(1, 2);
+    print(x.cells.length); print(" "); print(x.cells[0]);
+}

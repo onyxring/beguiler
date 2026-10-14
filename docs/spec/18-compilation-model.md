@@ -59,7 +59,8 @@ registers:
 - enums, bnums and unions, with their members;
 - objects, verbs and global variables, with the members declared in an object body;
 - global functions;
-- members added by `extend` bodies, whether the target is declared before or after the `extend`;
+- members added by `extend` bodies of objects, whether the object is declared before or after the
+  `extend` (a class or an array must be declared before it is extended);
 - `#declare` symbols, which are consequently visible to every `#if` in the program regardless of
   position (§14.2.3).
 

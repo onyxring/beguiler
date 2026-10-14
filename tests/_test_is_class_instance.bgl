@@ -1,0 +1,7 @@
+/* is() given a local of a class type, not a class name */
+// EXPECT_ERROR: 'd' is a value, not a class: 'is' takes a class's name
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Dial : object { int level; }
+Dial dialA { }
+object box { }
+void main() { Dial d = dialA; if (box.is(d)) print("y"); }

@@ -291,7 +291,9 @@ class i6Emitter{
         // `visited` carries the class-instantiation path to break cycles (including the
         // owner-class itself, so self-typed fields are left at default — these are
         // intended as references managed elsewhere).
-        string synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited);
+        string synthesizeFieldBackings(classDef* cls, const string& instanceName, set<classDef*>& visited, objectDef* init = nullptr);
+        // `with` values a backing takes from the object an initializer names (its plain fields).
+        void appendInitValues(string& clause, objectDef* init);
         classDef* ownedFieldClass(variableDeclaration* vd, const set<classDef*>& visited);
         void emitFunction(functionDef*);
         void emitStatement(statement*, string indent);

@@ -1,0 +1,67 @@
+// run_target5_overloads — two overloads of a global function named like a <string> library method, an
+// object-body overload chosen by exact match over the class's overloads, an object-body method of a new
+// signature beside the class's single method of the name, a base value-class value assigned to a
+// subclass declaration, and an object's `replace` of one overload of a class method.
+// EXPECT_OUTPUT: rods lengths char x int 5 bool true int 5 char x int 5 105 7 5 7 50 2 50 42 3
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+class Rod : object {
+    int n;
+    void mark(int n) { print("int "); print(n); print(" "); }
+    void mark(string s) { print("str "); print(s); print(" "); }
+}
+class Peg : object {
+    void mark(int n) { print("int "); print(n); print(" "); }
+}
+value class Length {
+    inline int cm;
+    Length operator = (Length o) { cm = o.cm; return self; }
+}
+value class Gap : Length {
+    int side = 7;
+    Gap operator = (Gap o) { side = o.side; (Length)self = o; return self; }
+}
+string compare(Rod a, Rod b) { return "rods"; }
+string compare(Length a, Length b) { return "lengths"; }
+Rod r1 { n = 1; }
+Length l1 = Length{ 3 };
+Rod oak {
+    void mark(char c) { print("char "); print(c); print(" "); }
+}
+Rod elm {
+    void mark(bool b) { print("bool "); print(b); print(" "); }
+}
+Peg ash {
+    void mark(char c) { print("char "); print(c); print(" "); }
+}
+Length makeLen(int n) { Length r; r.cm = n; return r; }
+class Account : object {
+    default int score(string s) { return 2; }
+    default int score(int n) { return n; }
+    int twice(int n) { return score(n) + score("x"); }
+}
+Account acc1 {
+    replace int score(int n) { return n * 10; }
+}
+Account acc2 {
+    replace int score(string s) { return 3; }
+}
+void main() {
+    bglInit();
+    print(compare(r1, r1)); print(" "); print(compare(l1, l1)); print(" ");
+    oak.mark('x');
+    oak.mark(5);
+    elm.mark(true);
+    elm.mark(5);
+    ash.mark('x');
+    ash.mark(5);
+    Length l = makeLen(105);
+    Gap g = l;
+    print(g.cm); print(" "); print(g.side); print(" ");
+    Gap h = makeLen(5);
+    print(h.cm); print(" "); print(h.side); print(" ");
+    print(acc1.score(5)); print(" "); print(acc1.score("x")); print(" ");
+    Account a = acc1;
+    print(a.score(5)); print(" "); print(a.twice(4)); print(" ");
+    print(acc2.score("x"));
+}

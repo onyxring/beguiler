@@ -1,0 +1,45 @@
+// run_target5_names — `::NAME` for a #define beside a member and a verb of the name, member-array
+// subscripts on a local and a parameter named like a verb or an object, a #using-imported member read
+// beside a local named like the import target, a verb's own members and methods read through the verb's
+// name, and `::Verb.member` where a parameter hides the verb.
+// EXPECT_OUTPUT: 6 2 2 5 5 5 7 1 1 2 1
+#beguilerSettings { target = z5; informName = "none"; }
+#define CAP 6
+#define STEP 2
+object box {
+    int cap = 1;
+    void show() { print(::CAP); }
+}
+object ledger { int entries = 5; }
+#using ledger;
+class Dial : object { array<int> readings[2]; }
+Dial dialA { }
+object tracker { int moves; }
+int count = 40;
+verb Step { grammar = {.step}; void handler() { } }
+verb Probe {
+    grammar = {.probe};
+    int count;
+    int uses;
+    int uses2() { return uses * 2; }
+    void handler() { }
+}
+int two() { return ::STEP; }
+void showReadings(Dial tracker) { print(tracker.readings[1]); }
+void showUses(int probe) { print(::Probe.uses); }
+void main() {
+    bglInit();
+    box.show(); print(" ");
+    print(two()); print(" "); print(STEP); print(" ");
+    dialA.readings[1] = 5;
+    Dial step = dialA;
+    print(step.readings[1]); print(" ");
+    showReadings(dialA); print(" ");
+    int ledger = 7;
+    print(entries); print(" "); print(ledger); print(" ");
+    Probe.count++;
+    Probe.uses++;
+    print(Probe.count); print(" "); print(Probe.uses); print(" ");
+    print(Probe.uses2()); print(" ");
+    showUses(1);
+}

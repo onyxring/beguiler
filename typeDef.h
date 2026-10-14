@@ -504,6 +504,7 @@ class forInStatement : public statement {
     public:
         string elementVar;   // iteration variable name, e.g. "item"
         string elementConversion;   // the element's conversion to the loop variable's type, @@ELEM@@ = the raw element
+        string elementDefault;      // an instance holding the class's defaults, read for a slot never filled
         string arrayVar;     // array name, e.g. "scores"
         string counterVar;   // unique index variable, e.g. "_bglfi0"
         bool isByteArray = false; // true when iterating array<char> — use byte for-in template

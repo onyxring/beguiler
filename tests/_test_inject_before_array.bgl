@@ -1,0 +1,8 @@
+/* extend ... inject above the array it extends */
+// EXPECT_ERROR: the array is declared further down; an array must be declared before it is extended
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object boxA { }
+object boxB { }
+extend things { inject boxB; }
+array<object> things = { boxA };
+void main() { print(things.size); }

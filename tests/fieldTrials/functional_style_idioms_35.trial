@@ -1,0 +1,307 @@
+Room A
+Room A.
+
+> slips
+AL: Alder [Alder] {Alder} label Alder, length 5
+BI: birch tree [birch tree] {birch tree} label birch tree, length 10
+CE: CE [CE] {CE} label unset, length 0
+DK:   dock   [  dock  ] {  dock  } label   dock  , length 8
+EL: level [level] {level} label level, length 5
+roster: Alder, birch tree, CE,   dock  , level
+roster/: Alder/birch tree/CE/  dock  /level
+initials: AbC l
+codes: #al #bi #ce #dk #el
+
+> view
+  AL: - / Alder.
+  BI: - / birch ~
+  CE: - / CE.
+  DK: - /   dock~
+  EL: - / level.
+shown: every slip, chars #Alder birch tree CE   dock   level
+captured [Room A.] 7, doubled [Room A. .A mooR]
+[Room A.]long
+0 written, longest body 
+
+> write alder
+AL wrote BLANK (5); body BLANK; count 1
+after: BLANK #1; again: ALDER
+twice through its pen: ALDER
+ledger: L:AL:2;AL:2;=5
+
+> write birch 3
+BI wrote eerht (5); body eerht; count 1
+after: eerht #1; again: eert hcrib
+twice through its pen: birch tree
+ledger: L:AL:2;AL:2;=5BI:2;BI:2;=10
+
+> write cedar
+CE wrote three! (6); body three!; count 1
+after: three! #1; again: nameless!
+twice through its pen: CE!!
+ledger: L:AL:2;AL:2;=5BI:2;BI:2;=10CE:2;CE:2;=9
+
+> write dock 7
+DK wrote seven (5); body seven; count 1
+after: seven #1; again: dock
+twice through its pen: dock
+ledger: L:AL:2;AL:2;=5BI:2;BI:2;=10CE:2;CE:2;=9DK:2;DK:2;=4
+
+> write elm
+EL wrote <seven> (7); body <seven>; count 1
+after: <seven> #1; again: <level>
+twice through its pen: <<level>>
+ledger: L:AL:2;AL:2;=5BI:2;BI:2;=10CE:2;CE:2;=9DK:2;DK:2;=4EL:2;EL:2;=7
+
+> view
+  AL: ALDER / Alder.
+  BI: eert hcrib / birch ~
+  CE: nameless! / CE.
+  DK: dock /   dock~
+  EL: <level> / level.
+shown: every slip, chars #Alder birch tree CE   dock   level
+captured [Room A.] 7, doubled [Room A. .A mooR]
+[Room A.]long
+5 written, longest body eert hcrib
+
+> view birch
+  BI: eert hcrib / birch ~
+shown: birch tree, chars #Alder birch tree CE   dock   level
+captured [Room A.] 7, doubled [Room A. .A mooR]
+[Room A.]long
+5 written, longest body eert hcrib
+
+> view dock
+  DK: dock /   dock~
+shown:   dock  , chars #Alder birch tree CE   dock   level
+captured [Room A.] 7, doubled [Room A. .A mooR]
+[Room A.]long
+5 written, longest body eert hcrib
+
+> pipe 0
+mask 0 (none):
+  [ birch oak] [ birch oak] same
+  [ alder oak] [ alder oak] same
+  [ elm oak] [ elm oak] same
+
+> pipe 2
+mask 2 (loud):
+  [ BIRCH OAK] [ BIRCH OAK] same
+  [ ALDER OAK] [ ALDER OAK] same
+  [ ELM OAK] [ ELM OAK] same
+
+> pipe 12
+mask 12 (quiet+mirror):
+  [kao hcrib ] [kao hcrib ] same
+  [kao redla ] [kao redla ] same
+  [kao mle ] [kao mle ] same
+
+> pipe 33
+mask 33 (plain+tidy):
+  [birch_oak] [birch_oak] same
+  [alder_oak] [alder_oak] same
+  [elm_oak] [elm_oak] same
+
+> pipe 63
+mask 63 (plain+loud+quiet+mirror+boxed+tidy):
+  [<kao_hcrib_>] [<kao_hcrib_>] same
+  [<kao_redla_>] [<kao_redla_>] same
+  [<kao_mle_>] [<kao_mle_>] same
+
+> pen 0
+pen 0: Room A, twice Room A, upper first X Y
+ Alder birch tree CE   dock   level
+
+> pen 3
+pen 3: A mooR, twice Room A, upper first Y X
+ redlA eert hcrib EC   kcod   level
+
+> pen 5
+pen 5: Room_A, twice Room_A, upper first X_Y
+ Alder birch_tree CE dock level
+
+> spell 7
+7: seven (5 letters, 5 2 vowels in the last)
+title case: Seven
+ends: seen, reversed neves
+padded: seven-------------------| plain pad: seven...|
+
+> spell 409
+409: four zero nine (14 letters, 5 2 vowels in the last)
+title case: Four zero nine
+ends: fone, reversed enin orez ruof
+padded: four zero nine----------| plain pad: nine....|
+
+> spell 1234
+1234: one two three four (18 letters, 5 2 vowels in the last)
+title case: One two three four
+ends: onur, reversed ruof eerht owt eno
+padded: one two three four------| plain pad: four....|
+
+> join
+rec: birch, alder, elm, cedar, ash, fir, oak
+rec from 4 by +: ash+fir+oak
+fold: BIRCH/alder/elm/cedar/ash/fir/oak
+fold seeded: #.birch.alder.elm
+first letters baecafo, 7 long, palindrome false
+long words: birch;alder;cedar;
+
+> sort
+abc: alder ash birch cedar elm fir oak
+by length: ash elm fir oak alder birch cedar
+first alder, last cedar
+any with 'r': true, all short: true
+with an a: 4, lengths: 5 5 3 5 3 3 3
+lo alder, hi oak, cmp -1, same as ELM true, false
+
+> log
+  entry 1 at 1 (alder)
+count 1, with 'entry 1' 1, last entry 1 at 1 (alder), any odd true
+
+> log again
+  entry 1 at 1 (alder)
+  entry 2 at 2 (elm)
+count 2, with 'entry 1' 1, last entry 2 at 2 (elm), any odd true
+
+> log
+  entry 1 at 1 (alder)
+  entry 2 at 2 (elm)
+  entry 3 at 3 (cedar)
+count 3, with 'entry 1' 1, last entry 3 at 3 (cedar), any odd true
+
+> log
+  entry 1 at 1 (alder)
+  entry 2 at 2 (elm)
+  entry 3 at 3 (cedar)
+  entry 4 at 4 (ash)
+count 4, with 'entry 1' 1, last entry 4 at 4 (ash), any odd true
+
+> log
+  entry 1 at 1 (alder)
+  entry 2 at 2 (elm)
+  entry 3 at 3 (cedar)
+  entry 4 at 4 (ash)
+  entry 5 at 5 (fir)
+count 5, with 'entry 1' 1, last entry 5 at 5 (fir), any odd true
+
+> log
+  entry 1 at 1 (alder)
+  entry 2 at 2 (elm)
+  entry 3 at 3 (cedar)
+  entry 4 at 4 (ash)
+  entry 5 at 5 (fir)
+  entry 6 at 6 (oak)
+count 6, with 'entry 1' 1, last entry 6 at 6 (oak), any odd true
+
+> log
+  entry 2 at 2 (elm)
+  entry 3 at 3 (cedar)
+  entry 4 at 4 (ash)
+  entry 5 at 5 (fir)
+  entry 6 at 6 (oak)
+  entry 7 at 6 (birch)
+count 6, with 'entry 1' 0, last entry 7 at 6 (birch), any odd true
+
+> mix alder
+Alder! ALDER* <AL>Alder (none) (Alder) [<AL>Alder]
+down: three>TWO>one>ZERO; from words 7: seven
+log 0: entry 2 at 2 (elm)(2)(1); same as first true
+named:AL true 5 nL
+
+> mix cedar
+no label! nameless!* <CE>CE (none) (CE) [<CE>CE]
+down: three>TWO>one>ZERO; from words 7: seven
+log 0: entry 2 at 2 (elm)(2)(1)(2)(1); same as first true
+coded:CE true 5 cE
+
+> shift alder 3
+Alder -> Doghu -> Alder; kept true
+compare: -1 1 -1
+
+> shift birch 25
+birch tree -> ahqbg sqdd -> birch tree; kept true
+compare: 1 -1 1
+
+> compare alder with birch
+Alder is before birch tree; <=> -1; ci false; codes false
+the first
+mix Alee, Alee, Alder & birch tree & AL
+measure 5 2 4
+
+> compare elm with elm
+level is same as level; <=> 0; ci true; codes true
+a palindrome
+mix leel, leel, level & level & EL
+measure 5 2 4
+
+> compare cedar with dock
+CE is after   dock  ; <=> 1; ci false; codes false
+label unset, code CE
+mix CE  , CE  , CE &   dock   & CE
+measure 2 2 4
+
+> compare birch with alder
+birch tree is after Alder; <=> 1; ci false; codes false
+a two-word label
+mix bier, bier, birch tree & Alder & BI
+measure 10 2 4
+
+> repeat alder 3
+Alder-Alder-Alder
+Alder + Alder + Alder
+***======***
+---AL--- 8
+
+> repeat cedar 1
+CE
+CE
+*==*
+-CE- 4
+
+> stack 4
+start(4)(3)(2)(1)
+cedar body cedar:(3)(2)(1), 15
+nest <<<<<>>>>>
+
+> stack 0
+start
+cedar body cedar:(3)(2)(1), 15
+nest <>
+
+> stack 11
+start(11)(10)(9)(8)(7)(6)(5)(4)(3)(2)(1)
+cedar body cedar:(3)(2)(1), 15
+nest <<<<<<<<<<<<>>>>>>>>>>>>
+
+> palin elm
+level: palindrome; code false; doubled true
+
+> palin dock
+  dock  : not; code false; doubled true
+
+> palin alder
+Alder: not; code false; doubled true
+
+> churn 20
+churned 20: total 206, last 19:FIR, ledger 19:FIR, roster Alderbirch treeCE  dock  level
+nested 120
+
+> churn 60
+churned 60: total 770, last 59:CED, ledger 59:CED, roster Alderbirch treeCE  dock  level
+nested 360
+
+> churn 150
+churned 150: total 2210, last 149:EL, ledger 149:EL, roster Alderbirch treeCE  dock  level
+nested 900
+
+> slips
+AL: Alder [Alder] {Alder} label Alder, length 5
+BI: birch tree [birch tree] {birch tree} label birch tree, length 10
+CE: CE [CE] {CE} label unset, length 0
+DK:   dock   [  dock  ] {  dock  } label   dock  , length 8
+EL: level [level] {level} label level, length 5
+roster: Alder, birch tree, CE,   dock  , level
+roster/: Alder/birch tree/CE/  dock  /level
+initials: AbC l
+codes: #al #bi #ce #dk #el
+

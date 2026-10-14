@@ -1,0 +1,521 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a slip-and-pen text pipeline written in a functional style on z5, leaning on string and
+// stringObj together. Pens are func<stringObj, stringObj> values (named functions and lambdas) held in
+// a global array, as object members given in definitions, passed as parameters with defaults, returned
+// from a switch, composed by a function that returns a lambda-free pipeline result, and applied in
+// <linq>-style folds written by hand. Slips are a class with a string label that may be unset, a
+// string code, a stringObj body and a pen member; methods return stringObj from `??` over strings,
+// from `?:` with stringObj branches, from recursion (`repeatTitle`), from prepend/append with chars,
+// and return self after appending to a `ref stringObj`. Pure helpers: a recursive number speller whose
+// `?:` mixes a string and a stringObj, a recursive join over an array<string>, a fold with a
+// func<stringObj, stringObj, string> step and string seed, a mapper func<stringObj, Slip>, a padder
+// taking a stringObj copy and a char default, a recursive char repeater, a Caesar shift writing s[i]
+// in place, a palindrome test against reverse(), a vowel counter reading s[i], a string | stringObj
+// union parameter narrowed with typeof, and format() with $0 $1 $2. Interpolation appears in print, in
+// stringObj declarations, assignments and `+=` on locals, members, ref parameters and array elements,
+// inside loops and recursion, inside lambda bodies, with spans holding method chains, held
+// temporaries (`a.left(2) + b.right(2)`), chars, ternaries, `??`, func calls and static methods.
+// Comparisons (==, !=, <, >, =~, <=>, compareTo), switch on a stringObj call result, `string::operator
+// <=>` as a sort key, <linq> over array<string> and array<stringObj> (filter, orderBy, any, all,
+// count, first, last, map), captureOutput, `+=` of a char on a local and a member, stringObj default
+// arguments given by name out of order, a `ref stringObj` bound to an array element, a func<stringObj,
+// int> local passed down a recursion, and loops and recursion that make and drop many stringObjs (pool
+// pressure: a recursion eleven deep holding two stringObjs a level, and loops of 150 passes).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXLOG = 6;
+#define SEP ", "
+
+//-- Pens -------------------------------------------------------------------------------------------
+
+stringObj plain(stringObj s) { return s; }
+stringObj loud(stringObj s) { return s.toUpper(); }
+stringObj quiet(stringObj s) { return s.toLower(); }
+stringObj mirror(stringObj s) { return s.reverse(); }
+stringObj boxed(stringObj s) { return s.prepend('<').append('>'); }
+stringObj tidy(stringObj s) { return s.trim().replaceAll(' ', '_'); }
+
+array<func<stringObj, stringObj>> pens = {plain, loud, quiet, mirror, boxed, tidy};
+array<string> penNames = {"plain", "loud", "quiet", "mirror", "boxed", "tidy"};
+
+func<stringObj, stringObj> penFor(int n) {
+    switch (n) {
+        case 1: return loud;
+        case 2: return quiet;
+        case 3: return mirror;
+        case 4: return boxed;
+        case 5: return tidy;
+        default: return plain;
+    }
+}
+
+// Applies every pen whose bit is set in mask, lowest bit first.
+stringObj pipeline(stringObj text, int mask) {
+    stringObj s = text;
+    for (int i = 0; i < pens.length; i++) {
+        if ((mask & (1 << i)) != 0) s = pens[i](s);
+    }
+    return s;
+}
+
+// The pipeline written as recursion over the pen index.
+stringObj pipeFrom(stringObj s, int mask, int i = 0) {
+    if (i >= pens.length) return s;
+    return pipeFrom((mask & (1 << i)) != 0 ? pens[i](s) : s, mask, i + 1);
+}
+
+stringObj applyTwice(func<stringObj, stringObj> f, stringObj s) { return f(f(s)); }
+
+//-- Slips ------------------------------------------------------------------------------------------
+
+class Slip : object {
+    attributeList attributes = {scenery};
+    string label;
+    string code;
+    int count;
+    stringObj body;
+    func<stringObj, stringObj> pen;
+
+    stringObj title() { return label ?? code; }
+
+    stringObj write(string text = "blank") {
+        body = pen(text);
+        count++;
+        return body;
+    }
+
+    stringObj tagged(char open = '[', char close = ']') { return title().prepend(open).append(close); }
+
+    stringObj repeatTitle(int n, string sep = "-") {
+        return n <= 1 ? title() : title() + sep + repeatTitle(n - 1, sep);
+    }
+
+    Slip appendTo(ref stringObj acc) {
+        acc += $"{code}:{count};";
+        return self;
+    }
+
+    static stringObj roster(string sep = SEP) {
+        stringObj out;
+        for (Slip s in slips) {
+            if (out.length > 0) out += sep;
+            out += s.title();
+        }
+        return out;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Slip alder { "alder slip"; name = {.alder, .slip}; label = "Alder"; code = "AL"; pen = loud; parent = roomA; }
+Slip birch { "birch slip"; name = {.birch, .slip}; label = "birch tree"; code = "BI"; pen = mirror; parent = roomA; }
+Slip cedar { "cedar slip"; name = {.cedar, .slip}; code = "CE"; pen = (stringObj s) => s.trim().append('!'); parent = roomA; }
+Slip dock  { "dock slip";  name = {.dock, .slip};  label = "  dock  "; code = "DK"; pen = tidy; parent = roomA; }
+Slip elm   { "elm slip";   name = {.elm, .slip};   label = "level"; code = "EL"; pen = boxed; parent = roomA; }
+
+array<Slip> slips = {alder, birch, cedar, dock, elm};
+array<string> words = {"birch", "alder", "elm", "cedar", "ash", "fir", "oak"};
+array<stringObj> log[MAXLOG];
+stringObj ledger;
+int logged = 0;
+
+//-- Pure helpers -----------------------------------------------------------------------------------
+
+string digitWord(int d) {
+    switch (d) {
+        case 0: return "zero";
+        case 1: return "one";
+        case 2: return "two";
+        case 3: return "three";
+        case 4: return "four";
+        case 5: return "five";
+        case 6: return "six";
+        case 7: return "seven";
+        case 8: return "eight";
+        default: return "nine";
+    }
+}
+
+stringObj spell(int n) {
+    return n < 10 ? digitWord(n) : spell(n / 10) + " " + digitWord(n % 10);
+}
+
+stringObj joinFrom(array<string> xs, int i, string sep = SEP) {
+    stringObj out;
+    if (i >= xs.length) return out;
+    out = xs[i];
+    if (i + 1 < xs.length) out += sep + joinFrom(xs, i + 1, sep);
+    return out;
+}
+
+stringObj fold(array<string> xs, func<stringObj, stringObj, string> step, string seed = "") {
+    stringObj acc = seed;
+    for (string x in xs) acc = step(acc, x);
+    return acc;
+}
+
+stringObj mapJoin(array<Slip> xs, func<stringObj, Slip> f, string sep = " ") {
+    stringObj out;
+    for (int i = 0; i < xs.length; i++) {
+        out += f(xs[i]);
+        if (i < xs.length - 1) out += sep;
+    }
+    return out;
+}
+
+stringObj pad(stringObj s, int width, char fill = '.') {
+    while (s.length < width) s += fill;
+    return s;
+}
+
+stringObj repeat(char c, int n) {
+    stringObj out;
+    if (n <= 0) return out;
+    return repeat(c, n - 1).append(c);
+}
+
+stringObj shift(stringObj s, int k) {
+    for (int i = 0; i < s.length; i++) {
+        char c = s[i];
+        if (c >= 'a' && c <= 'z') s[i] = (char)('a' + (c - 'a' + k) % 26);
+        else if (c >= 'A' && c <= 'Z') s[i] = (char)('A' + (c - 'A' + k) % 26);
+    }
+    return s;
+}
+
+bool isPalin(stringObj s) { return s.trim().toLower() == s.trim().toLower().reverse(); }
+
+int vowels(string s) {
+    int n = 0;
+    for (int i = 0; i < s.length; i++) {
+        switch (s[i]) {
+            case 'a', 'e', 'i', 'o', 'u': n++;
+        }
+    }
+    return n;
+}
+
+int measure(string | stringObj v) {
+    if (typeof(v) == eType.string) return ((string)v).length;
+    return ((stringObj)v).length;
+}
+
+// Appends n marks to acc, one per call level, each naming its depth.
+void stack(ref stringObj acc, int n) {
+    if (n <= 0) return;
+    stringObj here = $"{n}";
+    acc += here.prepend('(').append(')');
+    stack(acc, n - 1);
+}
+
+// Builds a stringObj of depth n where each level holds two pool slots until the one below returns.
+stringObj nest(int n) {
+    stringObj open = repeat('<', 1);
+    stringObj shut = repeat('>', 1);
+    if (n <= 0) return open + shut;
+    return open + nest(n - 1) + shut;
+}
+
+stringObj bracket(stringObj s = "none", char open = '(', string close = ")") {
+    return s.prepend(open) + close;
+}
+
+// Counts down into acc, alternating case by depth, via a func held in a local.
+void countDown(ref stringObj acc, int n, func<stringObj, int> word) {
+    if (n < 0) return;
+    acc += n % 2 == 0 ? word(n).toUpper() : word(n);
+    if (n > 0) acc += '>';
+    countDown(acc, n - 1, word);
+}
+
+int byLength(string a, string b) {
+    if (a.length != b.length) return a.length - b.length;
+    return a.compareTo(b);
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb SlipsVerb {
+    grammar = {{.slips}};
+    void handler() {
+        for (Slip s in slips) {
+            print($"{s.code}: {s.title()} {s.tagged()} {s.tagged('{', '}')} label {s.label ?? "unset"}, length {s.label?.length}^");
+        }
+        print($"roster: {Slip.roster()}^");
+        print($"roster/: {Slip.roster(sep: "/")}^");
+        print($"initials: {mapJoin(slips, (Slip s) => s.title().left(1), "")}^");
+        print($"codes: {mapJoin(slips, (Slip s) => s.code.toLower().prepend('#'))}^");
+    }
+}
+
+verb WriteVerb {
+    grammar = {{.write, NOUN}, {.write, NOUN, NUMBER}};
+    void handler() {
+        if (!noun.is(Slip)) {
+            print("That is not a slip.^");
+            return;
+        }
+        Slip s = (Slip)noun;
+        stringObj got = parsed_number > 0 ? s.write(digitWord(parsed_number)) : s.write();
+        print($"{s.code} wrote {got} ({got.length}); body {s.body}; count {s.count}^");
+        s.body += $" #{s.count}";
+        s.body = s.body.trim();
+        print($"after: {s.body}; again: {s.write(s.label ?? "nameless")}^");
+        print($"twice through its pen: {applyTwice(s.pen, s.title())}^");
+        s.appendTo(ledger).appendTo(ledger);
+        ledger += $"={s.body.length}";
+        print($"ledger: {ledger}^");
+    }
+}
+
+verb PipeVerb {
+    grammar = {{.pipe, NUMBER}};
+    void handler() {
+        int mask = parsed_number;
+        stringObj names;
+        for (int i = 0; i < pens.length; i++) {
+            if ((mask & (1 << i)) != 0) names += names.isEmpty() ? penNames[i] : "+" + penNames[i];
+        }
+        print($"mask {mask} ({names.isEmpty() ? "none" : names}):^");
+        for (string w in words.take(3)) {
+            stringObj src = $" {w} oak";
+            stringObj a = pipeline(src, mask);
+            stringObj b = pipeFrom(" " + w + " oak", mask);
+            print($"  [{a}] [{b}] {a == b ? "same" : "differ"}^");
+        }
+    }
+}
+
+verb PenVerb {
+    grammar = {{.pen, NUMBER}};
+    void handler() {
+        func<stringObj, stringObj> f = penFor(parsed_number);
+        stringObj s = f("Room A");
+        print($"pen {parsed_number}: {s}, twice {applyTwice(f, "Room A")}, upper first {f(loud("x y"))}^");
+        for (Slip t in slips) print($" {f(t.title())}");
+        print("^");
+    }
+}
+
+verb SpellVerb {
+    grammar = {{.spell, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        stringObj s = spell(n);
+        print($"{n}: {s} ({s.length} letters, {vowels("aeiou")} {vowels(digitWord(n % 10))} vowels in the last)^");
+        print($"title case: {s.left(1).toUpper() + s.mid(1, -1)}^");
+        print($"ends: {s.left(2) + s.right(2)}, reversed {s.reverse()}^");
+        stringObj padded = pad(spell(n), 24, '-');
+        print($"padded: {padded}| plain pad: {pad(digitWord(n % 10), 8)}|^");
+    }
+}
+
+verb JoinVerb {
+    grammar = {{.join}};
+    void handler() {
+        print($"rec: {joinFrom(words, 0)}^");
+        print($"rec from 4 by +: {joinFrom(words, 4, "+")}^");
+        print($"fold: {fold(words, (stringObj acc, string w) => acc.isEmpty() ? w.toUpper() : acc + "/" + w)}^");
+        print($"fold seeded: {fold(words.take(3), (stringObj acc, string w) => acc.append('.').append(w), "#")}^");
+        stringObj firsts = fold(words, (stringObj acc, string w) => acc.append(w[0]));
+        print($"first letters {firsts}, {firsts.length} long, palindrome {isPalin(firsts)}^");
+        print($"long words: {fold(words.filter((string w) => w.length > 3), (stringObj acc, string w) => acc + w + ";")}^");
+    }
+}
+
+verb SortVerb {
+    grammar = {{.sort}};
+    void handler() {
+        array<string> abc = words.orderBy(string::operator <=>);
+        print($"abc: {joinFrom(abc, 0, " ")}^");
+        array<string> byLen = words.orderBy(byLength);
+        print($"by length: {joinFrom(byLen, 0, " ")}^");
+        print($"first {words.orderBy(string::operator <=>).first()}, last {words.orderBy(byLength).last()}^");
+        print($"any with 'r': {words.any((string w) => w.contains('r'))}, all short: {words.all((string w) => w.length < 6)}^");
+        print($"with an a: {words.filter((string w) => w.indexOf('a') >= 0).count()}, lengths:");
+        array<var> lens = words.map((var w) => ((string)w).length);
+        for (var n in lens) print($" {n}");
+        print("^");
+        string lo = words[0];
+        for (string w in words) if (w < lo) lo = w;
+        string hi = words[0];
+        for (string w in words) if (w > hi) hi = w;
+        print($"lo {lo}, hi {hi}, cmp {lo <=> hi}, same as ELM {words[2] =~ "ELM"}, {words[2] != "elm"}^");
+    }
+}
+
+verb LogVerb {
+    grammar = {{.log, TOPIC}, {.log}};
+    void handler() {
+        if (log.length >= MAXLOG) log.remove(0);
+        int i = log.length;
+        logged++;
+        log += "";
+        log[i] = $"entry {logged} at {log.length}";
+        log[i] += $" ({words[logged % words.length]})";
+        for (stringObj e in log) print($"  {e}^");
+        print($"count {log.count()}, with 'entry 1' {log.filter((stringObj e) => e.startsWith("entry 1")).count()}, ");
+        print($"last {log.last()}, any odd {log.any((stringObj e) => e.contains("("))}^");
+    }
+}
+
+verb ShiftVerb {
+    grammar = {{.shift, NOUN, NUMBER}};
+    void handler() {
+        Slip s = (Slip)noun;
+        int k = parsed_number;
+        stringObj t = s.title();
+        stringObj moved = shift(t, k);
+        print($"{t} -> {moved} -> {shift(moved, 26 - k % 26)}; kept {t == shift(t, 0)}^");
+        print($"compare: {t.compareTo(moved)} {moved.compareTo(t)} {t.compareTo(moved.toLower(), true)}^");
+    }
+}
+
+verb CompareVerb {
+    grammar = {{.compare, NOUN, .with, NOUN}};
+    void handler() {
+        Slip a = (Slip)noun;
+        Slip b = (Slip)second;
+        stringObj x = a.title();
+        stringObj y = b.title();
+        string order = x < y ? "before" : x > y ? "after" : "same as";
+        print($"{x} is {order} {y}; <=> {x <=> y}; ci {x =~ y}; codes {a.code == b.code}^");
+        switch (a.title().trim().toLower()) {
+            case "alder":     print("the first^");
+            case "birch tree": print("a two-word label^");
+            case "level":     print("a palindrome^");
+            default:          print($"label {a.label ?? "unset"}, code {a.code}^");
+        }
+        stringObj both = x.left(2) + y.right(2);
+        print($"mix {both}, {a.title().left(2) + b.title().right(2)}, {x.format("$0 & $1 & $2", y, a.code)}^");
+        print($"measure {measure(x)} {measure(a.code)} {measure(both)}^");
+    }
+}
+
+verb RepeatVerb {
+    grammar = {{.repeat, NOUN, NUMBER}};
+    void handler() {
+        Slip s = (Slip)noun;
+        int n = parsed_number;
+        print($"{s.repeatTitle(n)}^");
+        print($"{s.repeatTitle(n, sep: " + ")}^");
+        print($"{repeat('*', n)}{repeat('=', n * 2)}{repeat('*', n)}^");
+        stringObj line = repeat('-', n) + s.code + repeat('-', n);
+        print($"{line} {line.length}^");
+    }
+}
+
+verb StackVerb {
+    grammar = {{.stack, NUMBER}};
+    void handler() {
+        stringObj acc = "start";
+        stack(acc, parsed_number);
+        print($"{acc}^");
+        ref stringObj b := cedar.body;
+        b = "cedar:";
+        stack(b, 3);
+        print($"cedar body {cedar.body}, {cedar.body.length}^");
+        print($"nest {nest(parsed_number)}^");
+    }
+}
+
+verb ChurnVerb {
+    grammar = {{.churn, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        int total = 0;
+        stringObj last;
+        for (int i = 0; i < n; i++) {
+            stringObj t = $"{i}:";
+            t += words[i % words.length].toUpper();
+            last = t.length > 6 ? t.left(6) : t + repeat('.', 6 - t.length);
+            total += pipeline(words[i % words.length], i % 64).length + spell(i).length;
+            if (i % 2 == 0) continue;
+            ledger = last;
+        }
+        print($"churned {n}: total {total}, last {last}, ledger {ledger}, roster {Slip.roster("")}^");
+        int used = 0;
+        for (int i = 0; i < n; i++) used += nest(i % 5).length;
+        print($"nested {used}^");
+    }
+}
+
+verb PalinVerb {
+    grammar = {{.palin, NOUN}};
+    void handler() {
+        Slip s = (Slip)noun;
+        func<bool, stringObj> test = isPalin;
+        print($"{s.title()}: {test(s.title()) ? "palindrome" : "not"}; code {isPalin(s.code)}; ");
+        print($"doubled {isPalin(s.title() + s.title().reverse())}^");
+    }
+}
+
+verb ViewVerb {
+    grammar = {{.view}, {.view, NOUN}};
+    void handler() {
+        func<void, Slip> line = (Slip s) => print($"  {s.code}: {s.body.isEmpty() ? "-" : s.body} / {s.label?.length > 6 ? s.title().left(6) + '~' : s.title() + '.'}^");
+        Slip only = noun != null && noun.is(Slip) ? (Slip)noun : null;
+        for (Slip s in slips) {
+            if (only? && s != only) continue;
+            line(s);
+        }
+        string pick = only?.label ?? only?.code ?? "every slip";
+        print($"shown: {pick}, chars {Slip.roster(" ").prepend('#')}^");
+        stringObj said;
+        said.captureOutput(roomA, description);
+        print($"captured [{said}] {said.length}, doubled [{said + ' ' + said.reverse()}]^");
+        stringObj quoted = said.prepend('[').append(']').append(said.length > 3 ? "long" : "short");
+        print($"{quoted}^");
+        int busy = slips.filter((Slip s) => !s.body.isEmpty()).count();
+        print($"{busy} written, longest body {slips.orderBy((Slip a, Slip b) => b.body.length - a.body.length).first()?.body ?? "none"}^");
+    }
+}
+
+verb MixVerb {
+    grammar = {{.mix, NOUN}};
+    void handler() {
+        Slip s = (Slip)noun;
+        stringObj t = s.label ?? "no label";
+        t += '!';
+        s.body += '*';
+        stringObj both = "<" + s.code + ">" + s.title();
+        print($"{t} {s.body} {both} {bracket()} {bracket(s.title())} {bracket(close: "]", open: '[', s: both)}^");
+        func<stringObj, int> word = spell;
+        stringObj down;
+        countDown(down, 3, word);
+        print($"down: {down}; from words {words.length}: {word(words.length)}^");
+        stack(log[0], 2);
+        print($"log 0: {log[0]}; same as first {log[0] == log.first()}^");
+        string prefix = s.label? ? "named" : "coded";
+        stringObj tag = prefix + ":" + s.code;
+        tag = tag.length > 8 ? tag.left(8) : tag;
+        print($"{tag} {tag.endsWith(s.code)} {tag.indexOf(':')} {tag[0]}{tag[tag.length - 1]}^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    ledger = "L:";
+    location = roomA;
+    rfalse;
+}

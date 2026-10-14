@@ -1,0 +1,91 @@
+Room A
+Room A. The bench.
+You can see an oak rod, an ash rod, an iron rod, a wire coil and a bench here.
+> bench
+5 'k' text yes bent 30cm the oak rod the wire coil of 4 turns the iron rod something.
+Through a Rod variable: the wire rod. Through a cast: the wire coil of 4 turns.
+Kinds: a number, some text, a length, a rod, a bent rod, a rod, a thing.
+Gauge: a number. Union: text or a length, text or a length, a number.
+Notes: #7 80cm 85 centimetres 125cm. Count: 4.
+Labels: 40cm 40mm 12in [oak] [ash!] [elm] 1.50m 2,05m 3.5m.
+Twice: 42 240 12.
+> measure oak
+It is 120cm, 1.2m, 1.2m. With the oak: 240cm, plus ten: 130cm.
+Same as the oak? yes. Is it 80cm? no. Not 80cm? yes.
+It fits the tape 1 times and the ash 1 times. Longer of it and the tape: 120cm.
+> measure iron
+It is 150cm, 1.5m, 1.5m. With the oak: 270cm, plus ten: 159cm.
+Same as the oak? no. Is it 80cm? no. Not 80cm? yes.
+It fits the tape 1 times and the ash 1 times. Longer of it and the tape: 150cm.
+> measure coil
+It is 80cm, 0.8m, 0.8m. With the oak: 200cm, plus ten: 90cm.
+Same as the oak? no. Is it 80cm? yes. Not 80cm? no.
+It fits the tape 0 times and the ash 1 times. Longer of it and the tape: 95cm.
+> join
+Sums: 200cm 150cm 50cm 300cm.
+Running: 200cm. Equal to 200? yes. To the oak and ash? yes.
+Whole rack would be 430cm.
+Longest number: 9. Longest rod: iron.
+Ash and coil the same? yes. Oak and ash? no. Iron plus ten: 159. Iron plus oak: 270.
+Shorter first: yes, no, yes.
+> sort
+Rack: ash wire oak iron (430cm). 80cm rods: 2, 120cm: 1.
+Notes: 45cm 120cm 300cm Puts: 7.
+Oak is 120 by reference: yes. Ash is 120: no.
+Iron against oak: 30. Ash against coil: 0.
+Sorted again: ash, wire, oak, iron.
+> mark oak
+(mark at the end) Marks on the oak: 4.
+> mark iron
+(mark at the end) Marks on the iron: 8.
+> mark coil
+(mark at the end) (turn 2) Marks on the wire: 16.
+> marks
+oak: 4 straight. ash: 0 straight. iron: 8 bent. wire: 16 coiled.
+> units
+2.5m 1.5m 1.2m 0.8m 1.0m.
+Fits: 7 1 4 0.
+Ash lengths in 1m, 2m and 3m: 6.
+The fits add up.
+> picks
+25cm 25 'z' word no coiled the iron rod the iron rod.
+Kinds: a length / a number / some text / a rod / a bent rod / a number.
+0cm 10cm 20m / [ash] [wire] [oak!] [iron!]
+Longer each time: 45cm 120cm 300cm
+> shapes
+the ash rod is straight. the wire rod is coiled. the oak rod is straight. the iron rod is bent.
+> more
+Oak marks: (mark x) (mark at 30cm) now 7.
+Coil marks all: (mark at the top) (mark at 5cm) (turn 4) now 25.
+Parts: 50 120 the end the middle twenty.
+Scaled: 160 240 320.
+Ash is 80cm long: yes. Ash is not 90cm: yes. Ash is the coil: yes. Coil is the ash: yes. Coil is the coil: yes. Coil is 80: yes.
+"oak and ash" plain 11.
+Totals: 60cm 200cm 430cm.
+Applied: 21 10cm 240cm.
+Stretched: 42cm 7 90 50.
+Ash back to 80, oak still 120.
+Spaced: 125 130 250 240 30 60.
+Areas: 12 18 25 12.
+Judged: longer, the same, shorter, shorter, the same.
+Steps of 50 to reach the oak: 3. Longest of three: iron.
+Overloads in a condition work.
+> gaps
+Gaps: left gap of 10cm, right gap of 15cm, left gap of 25cm, 15cm, 25cm.
+Is a 10? yes. a is b? no. a is not b? yes. b over a: yes. Kind: a length.
+Gaps sorted: 10 15 25 / 1 has c.
+Printed: 120cm and 101cm and 5cm.
+150cm
+15cm
+Padded: 130 121 82 124 81.
+the oak rod / 'b' / 120cm / the ash rod / a rod.
+> odds
+z: 12cm, note: 122cm, gap: left gap of 15cm, oak: 120.
+Refs: same same -40 2.
+Made through Gap: left gap of 105cm.
+Coil under ash: yes. Ash under coil: no. Coil over ash: no.
+Doubled: 160. Plus: 185. Chain: 10.
+NRB
+Tape: 95 / nearly a metre / 190cm.
+> measure bench
+Only a rod can be measured.

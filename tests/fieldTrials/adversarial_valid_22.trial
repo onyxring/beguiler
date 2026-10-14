@@ -1,0 +1,63 @@
+Room A
+> meter
+Boards: board A=0/0 off off board B=0/0 off off board C=0/0 off off.
+Spare 0 (sets 0); glowing no; band A 0.
+> preset 2
+Set: board A=2/6 off off board B=3/7 off off board C=4/0 off off.
+> nudge board a
+The board A: 2 -> 8 (peek 4); dial 9; sets 4.
+> nudge board c
+The board C: 4 -> 5 (peek 6); dial 3; sets 4.
+> nudge rack
+Only boards.
+> wire board a to board b
+board A -> board B: lvl 4, dial 9, glow off.
+> wire board c to board a
+board C -> board A: lvl 9, dial 1, glow off.
+> meter
+Boards: board A=9/1 off off ->board B board B=4/9 off off board C=5/3 off off ->board A.
+Spare 0 (sets 0); glowing no; band A 0.
+> glow board a
+board A is on; lvl 9; flips 1; busy no.
+> glow board a
+board A is off; lvl 0; flips 2; busy no.
+> glow board b
+board B is on; lvl 9; flips 1; busy no.
+> cycle board a
+board A now slow; same yes; fast no; busy no.
+> cycle board a
+board A now fast; same yes; fast yes; busy no.
+> cycle board c
+board C now slow; same yes; fast no; busy no.
+> band board a 2
+board A band 2..8 span 6; rack 3..8; sum 10; hi sets 2.
+> spin 1
+Spin 5; turns 4; logged 13; laps 2; hot yes.
+Cooled: turns 0; hot no.
+> top 1
+Top board B: lvl 9, glow on, twice 0, total 18.
+> top 5
+Top board C: lvl 5, glow on, twice 0, total 8.
+> digits board c
+board C digits 47 / 4 7; top 99; plus 50.
+> compare
+A==B no; A!=B yes; A<B yes; A>=C no; A<=>B -9; A==4 no; !A yes; A? no; dials B>C yes.
+> stash board b
+Spare 9 top 9; C was 47 now 9 top 9.
+> tally
+Lit 2; all low no; any fast yes; low board A 0; high board B 9; dbl 18.
+> count board b
+board B steps 17; lvl 0; dial 0; sets 14.
+> halves 3
+Twice 6/8/10; half 1/2; seen 14; reads 9.
+> charge 4
+Chip from 0 to 7; glow on; sets 2.
+> charge 1
+Chip from 0 to 4; glow off; sets 2.
+> relay board c
+board C relays to board A: lvl 7, glow on, mode fast, top 9.
+> relay board b
+board B relays to board B: lvl 0, glow on, mode off, top 9.
+> meter
+Boards: board A=7/1 on fast ->board B board B=0/0 on off board C=9/3 on slow ->board A.
+Spare 9 (sets 2); glowing yes; band A 10.

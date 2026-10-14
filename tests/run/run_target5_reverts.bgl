@@ -1,0 +1,46 @@
+// run_target5_reverts — an object named as a cast over a call-then-member receiver, a value-class
+// local's array of value-class elements emptied on each call, and an accessor written (`=`, `+=`)
+// through a path that starts at a #using-imported member.
+// EXPECT_OUTPUT: 7 7 1 1 6 9 9
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Tray { int code; Tray spare; }
+class SealedTray : Tray { int seal = 3; }
+SealedTray trayD { int extra = 7; code = 4; }
+Tray trayA { code = 1; spare = trayD; }
+Tray pick(int i) { return trayA; }
+value class Len {
+    inline int mm;
+    Len operator = (Len o) { mm = o.mm; return self; }
+}
+value class Tally { array<Len> seen[4]; }
+int fresh() {
+    Tally t;
+    t.seen += Len{ 1 };
+    return t.seen.length;
+}
+class Stop {
+    Stop next;
+    auto load = {
+        int _l;
+        int operator () { return _l; }
+        void operator = (int v) { _l = v; }
+    }
+}
+Stop stopA { }
+Stop stopB { }
+object route { Stop head; }
+#using route;
+void main() {
+    bglInit();
+    print(((trayD)pick(0).spare).extra); print(" ");
+    print(((trayD)trayA.spare).extra); print(" ");
+    print(fresh()); print(" "); print(fresh()); print(" ");
+    route.head = stopA; stopA.next = stopB;
+    head.load = 6;
+    print(head.load); print(" ");
+    head.next.load = 4;
+    head.next.load += 5;
+    print(head.next.load); print(" ");
+    print(route.head.next.load);
+}

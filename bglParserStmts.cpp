@@ -426,6 +426,14 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
         pendingInjections.clear();
         initText = loopVarName + " = " + (initExpr ? initExpr->text() : "");
+    } else if(!loopVarName.empty() && tt.is(token::period) && func != nullptr && !file.hasPendingToken){
+        // `obj.member = v`: a member is set as a statement sets it (its accessor's setter, its class's
+        // operator =), ahead of the loop.
+        string text = loopVarName + "." + file.getRawTextToStatementEnd() + ";";
+        file.openText(text, stmtLoc.file, stmtLoc.line);
+        try { processStatementDispatch(file.getToken(), *func); } catch(...) { file.close(); throw; }
+        file.close();
+        initText = "";
     } else {
         if(tt.is(token::endStatement) && !loopVarName.empty()) initText = "";   // declared with no value: nothing runs
         while(tt.isNot(token::endStatement)){
@@ -460,8 +468,11 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         classDef* stepCls = varCls;
         if(!target.empty() && func != nullptr && (loopVarName.empty() || strcasecmp(target.c_str(), loopVarName.c_str()) != 0))
             stepCls = getDispatchClass(resolveIdentifierType(target, func, body));
-        if(!target.empty() && stepCls != nullptr && !stepCls->isPrimitive && !isWordArrayType(stepCls->name)
-           && refNotApplicable(stepCls, stepCls->name).empty())
+        // A step through a member path (`dial.pos++`) is a statement too: the member's accessor or class decides.
+        size_t afterTarget = a == string::npos ? string::npos : stepText.find_first_not_of(" \t\r\n", a + target.size());
+        bool memberStep = !target.empty() && afterTarget != string::npos && stepText[afterTarget] == '.' && func != nullptr;
+        if(memberStep || (!target.empty() && stepCls != nullptr && !stepCls->isPrimitive && !isWordArrayType(stepCls->name)
+           && refNotApplicable(stepCls, stepCls->name).empty()))
             deferredStep = stepText;
         else {
             file.openText(stepText + ")", stmtLoc.file, stmtLoc.line);
@@ -907,6 +918,15 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                 languageService.registerInstance(*backing);
                 func->ownBackings.push_back({name, vc->name});
                 fi.elementConversion = format("({0}.{1}(@@ELEM@@) * 0 + {0})", name, op->i6name);
+                // A slot nothing has filled holds no instance: the loop variable takes the class's defaults.
+                string zero = name + "_zero";
+                auto* zb = new variableDeclaration();
+                zb->name = zero; zb->displayName = zero;
+                zb->type = languageService.getType(vc->name);
+                zb->src = stmtLoc;
+                zb->isInstanceBacking = true;
+                languageService.registerInstance(*zb);
+                fi.elementDefault = zero;
             }
     if(auto* ga = languageService.findGlobalAs<arrayDeclaration>(arrName); ga != nullptr && !ga->i6name.empty()) arrName = ga->i6name;
     fi.arrayVar   = arrName;
@@ -1024,11 +1044,13 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         token typed = first;
         bool isType = false;
         if(file.peekToken().is(token::period) && isNamespacedTypePath(first)){ typed = consumeTypeToken(first); isType = true; }
-        else if(file.peekToken().is(eTokenType::identifier) && file.peekToken(2).is("in")){
+        else if(file.peekToken().is(eTokenType::identifier)
+                && (file.peekToken(2).is("in") || file.peekToken(2).is(token::assignment) || file.peekToken(2).is(token::endStatement))){
             auto aliasIn = [&](const vector<typeMember*>& members){
                 for(typeMember* m : members)
                     if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-                        if(vd->isAlias && vd->name == first.value && languageService.isClassType(vd->type.name)){
+                        if(vd->isAlias && vd->name == first.value
+                           && (languageService.isClassType(vd->type.name) || languageService.findEnum(vd->type.name) != nullptr)){
                             typed.value = vd->type.name; typed.tokenType = eTokenType::dataType; isType = true; return;
                         }
             };
@@ -1275,6 +1297,7 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
             file.getToken(":");
         } else {
             tt.assert("case", "Expected 'case' or 'default' inside switch.");
+            currentStatementSrc = tt.src;   // a diagnostic about the label is the case's own
             auto parseCaseExpr = [&]() -> expression* {
                 // Bias case-value resolution toward the condition's type so an ambiguous name
                 // resolves the right way — e.g. `switch(action){ case Open: }` picks the `Open`
@@ -1815,6 +1838,11 @@ token bglParser::parseStatementPath(token& tok, StatementContext& sc){
             // Optional chaining at statement level: emit if(nullTest){ as pre-injection, } as post-injection
             string pathSoFar = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
             if(pathSoFar.empty()) pathSoFar = tok.value;
+            // The head as its path (`self.head`, `ns.head` for an import): the steps after it go on from there.
+            if(tok.value.find('.') == string::npos && pathSoFar != tok.value && pathSoFar.find('.') != string::npos
+               && all_of(pathSoFar.begin(), pathSoFar.end(), [](char c){ return isalnum((unsigned char)c) || c == '_' || c == '.'; })
+               && !resolvePathType(pathSoFar, func, body).empty())
+                tok.value = pathSoFar;
             string pathType = resolveIdentifierType(tok.value, func, body);
             if(pathType.empty()) pathType = resolvePathType(tok.value, func, body);
             // `panel.focus?.n += 1`: an accessor is tested, and written through, as what its getter reads.
@@ -1895,6 +1923,10 @@ bool bglParser::processValueEmitterStatement(token tok, StatementContext& sc){
         } catch(...){ file.close(); throw; }
         file.close();
     }
+    // A constant (an enum value, a #define) does nothing as a statement.
+    if(!qualified.empty() && qualified != ident && qualified.find_first_not_of("0123456789-$ ") == string::npos)
+        parsingError(format("'{0}' is a value, which does nothing as a statement: assign it or pass it to a call.",
+                            tok.originalValue.empty() ? ident : tok.originalValue));
     if(!qualified.empty() && qualified != ident){
         // qualifyIdentifier expanded a value emitter — emit as raw I6
         i6RawNode& node = *(new i6RawNode());
@@ -2801,6 +2833,18 @@ bool bglParser::rewriteComputedReceiverStatement(const string& head, int depth, 
     bool writes = opAt != string::npos || !post.empty() || !prefixOp.empty();
     if(dot == string::npos || dot == 0) return fail();
     string recv = lhs.substr(0, dot), member = lhs.substr(dot + 1);
+    // `((Tray)o).slots.length = 1`: an array's length is written through its owner, so the owner is the receiver.
+    if(member == "length" || member == "size"){
+        size_t prev = string::npos;
+        d = 0;
+        for(size_t i = 0; i < recv.size(); i++){
+            char c = recv[i];
+            if(c == '(' || c == '[' || c == '{') d++;
+            else if(c == ')' || c == ']' || c == '}') d--;
+            else if(c == '.' && d == 0) prev = i;
+        }
+        if(prev != string::npos && prev > 0){ member = recv.substr(prev + 1) + "." + member; recv = recv.substr(0, prev); }
+    }
     if(recv.find_first_of("([") == string::npos) return fail();   // a plain path: the ordinary statement handles it
     if(!writes && member.find('(') == string::npos) return fail();
     if(head == "("){
@@ -3467,6 +3511,16 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 val->tokens.assign(1, r.owner);
             }
         }
+        // `tC.slots = pick(0).slots;`: a member array off a computed owner, as its field read recorded it.
+        else if(val->memberArrayDecl != nullptr && !val->memberArrayOwner.empty() && !val->memberArrayDecl->isRefLocal
+                && text.size() > val->memberArrayProp.size() + 1
+                && text.compare(text.size() - val->memberArrayProp.size() - 1, string::npos, "." + val->memberArrayProp) == 0){
+            string pair = "$" + a.emitterParam + ", 0";
+            if(a.emitterBody.find(pair) != string::npos){
+                a.emitterBody.replace(a.emitterBody.find(pair), pair.size(), "$" + a.emitterParam + ", " + val->memberArrayProp);
+                val->tokens.assign(1, val->memberArrayOwner);
+            }
+        }
     }
 }
 
@@ -3541,7 +3595,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){
         file.getToken();  // consume '$'
         assignExpr.interpSegments = parseInterpolatedSegments(func, body);
-        file.getToken(token::endStatement);  // consume ';'
+        endInterpolatedStatement();
         // Create a dummy RHS expression typed as interpolatedstringliteral for emitter resolution
         expression* rhs = new expression();
         rhs->resolvedType = "interpolatedstringliteral";
@@ -3822,7 +3876,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
         a.src = stmtLoc;
         a.variableLeft = lhs;
         a.interpSegments = parseInterpolatedSegments(func, body);
-        file.getToken(token::endStatement);
+        endInterpolatedStatement();
         a.emitterBody = dynamic_cast<i6Block*>(op->body)->i6Body;
         a.emitterParam = op->params[0]->name;
         a.assignedExpression = new expression();
@@ -3989,6 +4043,9 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             if(opFunc->params[0]->type.name == "float" && rhs != nullptr && rhs->resolvedType != "float" && rhs->resolvedType != "var"){
                 rhs->tokens = {applyCastConversion(rhs->text(), rhs->resolvedType, "float")}; rhs->resolvedType = "float";
             }
+            // A value its parameter doesn't take as is (`+= aReading` for an `int`) goes through its conversion.
+            else if(rhs != nullptr && opFunc->params[0]->type.name != rhs->resolvedType)
+                convertToParam(rhs, rhs->resolvedType, opFunc->params[0]->type.name);
             i6RawNode& node = *(new i6RawNode());
             node.text = lhs + "." + opFunc->i6name + "(" + rhs->text() + ");";
             node.cooked = true;   // built from Beguile expressions: locals take their renames
@@ -4159,8 +4216,12 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
            && !qualifyFromCurrentObject(rawName) && !qualifyFromCurrentClass(rawName))
             for(objectDef* imp : usingObjectImports)
                 for(typeMember* m : imp->members)
-                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == rawName && !fd->isValueEmitter)
-                        return imp->name + "." + rawName;
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == rawName && !fd->isValueEmitter){
+                        // A local named like the imported object doesn't take the call: the object is file scope's.
+                        bool shadowed = qualifyFromParams(imp->name, func) || qualifyFromBodyLocals(imp->name, body)
+                                     || qualifyFromAncestorBlocks(imp->name, body);
+                        return (shadowed ? "::" : "") + imp->name + "." + rawName;
+                    }
         string qualified = qualifyIdentifier(rawName, func, body);
         // A method of this object or class is called by its Beguile name: the arguments choose among its overloads.
         if(qualified.rfind("self.", 0) == 0 && strcasecmp(qualified.c_str() + 5, rawName.c_str()) != 0){
@@ -4315,6 +4376,9 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
     string actualPathType = !literalTypeName.empty() ? literalTypeName
                           : resolvePathType(objectPath, func, body, methodName);
     string objectType = !stmtCastType.empty() ? stmtCastType : actualPathType;
+    // A member typed by a bare type alias (an import's, written before the alias's object was imported) is that type.
+    if(!objectType.empty() && getDispatchClass(objectType) == nullptr && languageService.findObjectType(objectType) == nullptr)
+        if(string t = typeAliasTarget(objectType); !t.empty()) objectType = t;
     // Ancestor-qualified method dispatch (statement form): `(Base)obj.method(args);` emits I6
     // `obj.Base::method(args)`, forcing static dispatch to Base's version — the super-call /
     // ancestor-version idiom. Only when Base is a strict ancestor of the receiver's actual

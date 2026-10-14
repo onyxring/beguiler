@@ -1,0 +1,10 @@
+/* an emitter parameter named in $i6Expr without its $ */
+// EXPECT_ERROR: 'l' is this emitter's parameter; name it as `$l`
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+value class Length {
+    inline int cm;
+    Length operator = (Length o) { cm = o.cm; return self; }
+}
+emitter int twice(Length l) { ($i6Expr(l.cm) * 2) }
+Length a = Length{ 4 };
+void main() { print(twice(a)); }

@@ -1,0 +1,29 @@
+// run_target5_forward — an operator reference through an alias type path (`kit.watt::operator <=>`)
+// stored in a `func<>` and used to sort and to compare, with the alias declared above and below the use.
+// EXPECT_OUTPUT: 5 9 20 -4 3
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <array>
+value class Watt {
+    int sum;
+    Watt operator = (Watt o) { sum = o.sum; return self; }
+    static int operator <=> (Watt a, Watt b) { return a.sum - b.sum; }
+}
+object kit { alias watt for Watt; }
+array<Watt> spans[3];
+int later() {
+    func<int, Watt, Watt> cmp = shop.watt::operator <=>;
+    return cmp(spans[2], spans[1]);
+}
+void main() {
+    glulxConsole();
+    bglInit();
+    spans.length = 3;
+    spans[0].sum = 20; spans[1].sum = 5; spans[2].sum = 9;
+    func<int, Watt, Watt> cmp = kit.watt::operator <=>;
+    spans.sort(cmp);
+    print(spans[0].sum); print(" "); print(spans[1].sum); print(" "); print(spans[2].sum); print(" ");
+    print(cmp(spans[0], spans[1])); print(" ");
+    print(later() > 0 ? 3 : 0);
+}
+object shop { alias watt for Watt; }
