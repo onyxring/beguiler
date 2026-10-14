@@ -698,7 +698,7 @@ There are three kinds:
   through the class's copy operator, `operator =` taking the class; a value class that has none can't
   be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7). A
   routine that calls itself keeps each call's locals and parameters its own across the inner call,
-  but it can't return a value class by value.
+  and returns a value class as any routine does.
 
 Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
 follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a

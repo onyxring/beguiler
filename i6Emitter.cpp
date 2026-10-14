@@ -220,8 +220,9 @@ string i6Emitter::resolvedOutput(){
             std::cerr << "WARNING: nothing calls bglInit(), so this program starts with the BLR "
                          "uninitialized.\n";
     }
-    for(size_t p = 0; (p = buf.find(kGlobalEscapeMarker, p)) != string::npos; )
-        buf.erase(p, strlen(kGlobalEscapeMarker));
+    for(const string marker : {string(kGlobalEscapeMarker), string("_bglg_")})   // a canonical (lowercased) name keeps it too
+        for(size_t p = 0; (p = buf.find(marker, p)) != string::npos; )
+            buf.erase(p, marker.size());
     // A debug build compiles Inform 6's veneer with tracing, which uses `debug_flag`, `workflag` and
     // `DebugAttribute`. A library declares them; a program without one needs them, declared after
     // anything that might.
@@ -855,7 +856,12 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
 // So does an if/else whose branches both end in one, and a switch with a default whose every case does.
 static bool endsInReturn(statementBlock* body){
     if(body == nullptr || body->statements.empty()) return false;
-    statement* last = body->statements.back();
+    // Chain temporaries are declared at the end of the body (buildSpillMap): they aren't statements that run.
+    auto it = body->statements.rbegin();
+    while(it != body->statements.rend())
+        if(auto* vd = dynamic_cast<variableDeclaration*>(*it); vd && vd->isSynthetic) ++it; else break;
+    if(it == body->statements.rend()) return false;
+    statement* last = *it;
     if(dynamic_cast<returnStatement*>(last) != nullptr || dynamic_cast<throwStatement*>(last) != nullptr) return true;   // a throw leaves too
     if(auto* is = dynamic_cast<ifStatement*>(last)) return endsInReturn(is->thenBlock) && endsInReturn(is->elseBlock);
     if(auto* sw = dynamic_cast<switchStatement*>(last)){
@@ -3319,8 +3325,8 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
     if(!fi->memberBase.empty()){
         openTemplate = "forIn.openMember";
         closeTemplate = "forIn.closeMember";
-        arrayArg = fi->memberBase;
-        lengthExpr = fi->memberLength;
+        arrayArg = spillWord(fi->memberBase);   // the owner may be a local the routine renames or spills
+        lengthExpr = spillWord(fi->memberLength);
     } else if(isMemberArr){
         size_t d = arrayVarS.rfind('.');
         string owner = arrayVarS.substr(0, d), prop = arrayVarS.substr(d + 1);

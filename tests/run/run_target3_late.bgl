@@ -1,0 +1,28 @@
+// run_target3_late — a prefix step on a member through a nested element, a value-class `for` step with no
+// initializer, and an object typed by a partial path through `#using`, used above its declaration.
+// EXPECT_OUTPUT: D 3 0,0 1,1 2,2 4
+#beguilerSettings { target = z5; informName = "none"; }
+class Cell : object { int plain; }
+Cell b1 { plain = 0; }
+Cell b2 { plain = 0; }
+array<array<Cell>> grid = { { b1, b2 } };
+value class Pos {
+    int col;
+    int row;
+    Pos operator = (Pos o) { col = o.col; row = o.row; return self; }
+    Pos operator + (Pos o) { Pos t; t.col = col + o.col; t.row = row + o.row; return t; }
+}
+class Tray : object { int slots = 2; }
+object _bay { alias tray for Tray; tray first = trayB; }
+object idx { auto bay = _bay; }
+#using idx
+void main() {
+    ++grid[0][0].plain; print("D "); ++grid[0][0].plain; grid[0][0].plain++;
+    print(b1.plain); print(" ");
+    Pos one; one.col = 1; one.row = 1;
+    Pos c;
+    int n = 0;
+    for (; n < 3; c += one) { print(c.col); print(","); print(c.row); print(" "); n++; }
+    print(_bay.first.slots);
+}
+bay.tray trayB { slots = 4; }

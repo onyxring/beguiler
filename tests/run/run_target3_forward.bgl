@@ -1,0 +1,134 @@
+// run_target3_forward — uses above declarations: an overload added by a later extend, `int +=` a value
+// class with an int conversion, an accessor `+=` and a static `<=>` against an int on value classes
+// declared later, a union declared below its parameter use, a later extend's static operators used by
+// an operator reference and by array sort/indexOf/contains, a subclass operator beside its base's, and
+// a verb of a verb class declared below it.
+// EXPECT_OUTPUT: 5 9 7 true false null x t A 6 1 4 7 1 has eq 3 three 5 1004 probed
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<Box> bs[3];
+array<Mass> ms[4];
+string nameOf(crateOrText v) {
+    if (v == null) return "null";
+    if (v == crateA) return "x";
+    return (string)v;
+}
+void showNote() { ns.note(5); print(" "); }
+void showTally() {
+    Tally t;
+    t.n = 4;
+    int sum = 1;
+    sum = sum + t;
+    sum += t;
+    print(sum); print(" ");
+}
+void showGauge() {
+    binA.level = 5;
+    binA.level += 2;
+    print($"{binA.level} ");
+}
+void showCmp() {
+    Count t;
+    t.n = 12;
+    print($"{t > 10} {t < 10} ");
+}
+void showUnion() {
+    print(nameOf(null)); print(" ");
+    print(nameOf(crateA)); print(" ");
+    print(nameOf("t")); print(" ");
+    print(crateA.label); print(" ");
+}
+void showBoxes() {
+    func<int, Box, Box> c = Box::operator <=>;
+    print(c(b1, b2)); print(" ");
+    bs += b1; bs += b2; bs += b3;
+    bs.sort();
+    for (Box b in bs) { print(b.w); print(" "); }
+}
+void showMass() {
+    Mass a; a.g = 5; ms += a; a.g = 3; ms += a;
+    Mass k; k.g = 3;
+    print(ms.indexOf(k)); print(" ");
+    print(ms.contains(k) ? "has" : "no"); print(" ");
+    print(a == k ? "eq" : "ne"); print(" ");
+    Mass z;
+    Mass p = z ?? a;
+    print(p.g); print(" ");
+    switch (a) { case 3: print("three "); default: print("other "); }
+}
+class Crate : Peg {
+    int operator + (Crate o) { return w + o.w + 1000; }
+}
+void showOps() {
+    print(c1 + 3); print(" ");
+    print(c1 + c2);
+}
+object ns {
+    void note(string s) { print(s); }
+}
+extend ns {
+    void note(int t) { print(t); }
+}
+value class Tally {
+    int n;
+    Tally operator = (Tally o) { n = o.n; return self; }
+    int operator () { return n; }
+}
+class Bin : object { Gauge level; }
+Bin binA { }
+value class Gauge {
+    int _raw = 0;
+    int operator () { return _raw; }
+    void operator = (int v) { _raw = v; }
+    int operator + (ref Gauge o) { return _raw + o._raw; }
+}
+value class Count {
+    int n;
+    Count operator = (Count o) { n = o.n; return self; }
+    Count operator = (int v) { n = v; return self; }
+    static int operator <=> (Count a, Count b) { return a.n - b.n; }
+}
+class Label : object { string label; }
+Label crateA { label = "A"; }
+union crateOrText = Label | string;
+class Box : object { int w; }
+Box b1 { w = 7; }
+Box b2 { w = 1; }
+Box b3 { w = 4; }
+extend class Box {
+    static int operator <=> (Box x, Box y) { return x.w - y.w; }
+}
+value class Mass {
+    int g;
+    Mass operator = (Mass o) { g = o.g; return self; }
+}
+extend class Mass {
+    static bool operator == (Mass x, Mass y) { return x.g == y.g; }
+    static bool operator != (Mass x, Mass y) { return x.g != y.g; }
+    emitter eBool operator ? () { ($self ~= 0 && $self.g ~= 0) }
+    emitter eBool operator switch (int v) { ($self.g == $v) }
+}
+Crate c1 { w = 2; }
+Crate c2 { w = 2; }
+Info Probe {
+    grammar = {.probe};
+    void handler() { print("probed"); }
+}
+class Info : verb { meta = true; }
+class Peg : object {
+    int w;
+    int operator + (int n) { return w + n; }
+}
+void main() {
+    bglInit();
+    showNote();
+    showTally();
+    showGauge();
+    showCmp();
+    showUnion();
+    showBoxes();
+    showMass();
+    showOps();
+    print(" ");
+    Probe.handler();
+}

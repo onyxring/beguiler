@@ -119,6 +119,7 @@ static functionDef* substituteMethodForBindings(functionDef* fd, const unordered
     }
     if(!anyChange) return fd;
     functionDef* clone = new functionDef();
+    clone->substitutedFrom = fd->substitutedFrom != nullptr ? fd->substitutedFrom : fd;
     clone->name = fd->name;
     clone->displayName = fd->displayName;
     clone->src = fd->src;
@@ -338,8 +339,16 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         for(size_t i = 0; i < args.size() && argsOk; i++){
             string argType = args[i]->resolvedType;
             string paramType = fd->params[i]->type.name;
+            // A stub's parameter typed by one of the receiver object's own type aliases (`slip`).
+            if(fd->isPrePassStub)
+                if(objectDef* od = languageService.findObjectType(typeName))
+                    for(typeMember* m : od->members)
+                        if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->isAlias && vd->name == paramType && !vd->type.name.empty()){
+                            paramType = vd->type.name; break; }
             // As for global calls: a var (or unknown) argument matches a `var` parameter exactly.
             bool argUnknown = argType.empty() || argType == "var";
+            // An interpolated string has no value: only an emitter's interpolatedStringLiteral parameter takes one.
+            if((argType == "interpolatedstringliteral") != (paramType == "interpolatedstringliteral")){ argsOk = false; continue; }
             if(paramType == "var"){ if(!argUnknown){ usesVar = true; allExact = false; } }
             else if(argUnknown && argType == "var") allExact = false;
             else if(!argType.empty() && !isTypeCompatible(argType, paramType) && !argFitsByRule(args[i], paramType)) argsOk = false;
@@ -366,14 +375,14 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
         }
     };
 
-    // Step 1: search class hierarchy
+    // Step 1: search class hierarchy. A base's exact fit beats a nearer one that fits only by conversion.
     if(cls != nullptr){
         std::function<void(classDef*)> searchHierarchy = [&](classDef* c){
             for(typeMember* m : c->members)
                 if(auto* fd = dynamic_cast<functionDef*>(m))
                     checkMethod(fd);
-            if(!result.method)
-                for(classDef* base : c->baseClasses){ searchHierarchy(base); if(result.method) return; }
+            if(!exactMatch)
+                for(classDef* base : c->baseClasses){ searchHierarchy(base); if(exactMatch) return; }
         };
         searchHierarchy(cls);
     }
@@ -626,7 +635,10 @@ void bglParser::collectTypeCandidatesFromGlobals(const string& name, vector<Type
         if(g->name != name) continue;
         string ct, origin;
         bool isObj = false, isFn = false, libRoutine = false;
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ ct = vd->type.name; origin = format("global variable '{0}'", g->name); }
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
+            ct = vd->type.name;
+            origin = format(vd->type.name == "attribute" ? "attribute '{0}'" : vd->type.name == "property" ? "property '{0}'" : "global variable '{0}'", g->name);
+        }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){
             // A bare function NAME used as a value is a function reference (the I6 routine
             // name is its address), typed `func` — same as a lambda (which also resolves to
@@ -721,7 +733,22 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
             for(auto& c : candidates) if(!c.isFunction){ hasNonFunction = true; break; }
             // Where a func<> is expected, though, the name is the function.
             bool funcExpected = currentExpectedType.rfind("func", 0) == 0 && !memberHint.size();
-            if(hasNonFunction){
+            // A verb can't be called: `Show(5)` beside an imported method `Show` is the method's call.
+            bool calledVerbBeside = false;
+            if(hasNonFunction && (resolvingCallee || file.peekToken().is(token::parenOpen))){
+                bool verb = false, imported = false;
+                for(auto& c : candidates){
+                    if(!c.isFunction && c.origin.rfind("verb", 0) == 0) verb = true;
+                    if(c.isFunction && c.origin.rfind("#using-imported", 0) == 0) imported = true;
+                }
+                calledVerbBeside = verb && imported;
+            }
+            if(calledVerbBeside){
+                vector<TypeCandidate> filtered;
+                for(auto& c : candidates) if(c.isFunction) filtered.push_back(c);
+                candidates = filtered;
+            }
+            else if(hasNonFunction){
                 vector<TypeCandidate> filtered;
                 for(auto& c : candidates) if(c.isFunction == funcExpected) filtered.push_back(c);
                 if(filtered.empty())
@@ -755,6 +782,35 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                 if(types.size() == 1) return types[0]->type;
             }
         }
+        // A global beats a #using-imported member of the same name (§10.4), quietly when both name
+        // the same type (an imported alias of the global class).
+        {
+            int globals = 0; size_t globalAt = 0;
+            for(size_t i = 0; i < candidates.size(); i++)
+                if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
+            // A verb can't be called: `Show(5)` is the imported method's call.
+            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || file.peekToken().is(token::parenOpen)))
+                for(size_t i = 0; i < candidates.size(); i++)
+                    if(i != globalAt) return candidates[i].type;
+            // A verb has no members, so it isn't the head of a path: `stock.count` is the import's.
+            if(globals == 1 && (!memberHint.empty() || file.peekToken().is(token::period))){
+                bool isVerb = dynamic_cast<verbObjectDef*>(languageService.findGlobalAs<objectDef>(name)) != nullptr;
+                for(verbObjectDef* v : languageService.verbs) if(v->name == name) isVerb = true;
+                if(isVerb)
+                    for(size_t i = 0; i < candidates.size(); i++) if(i != globalAt) return candidates[i].type;
+            }
+            if(globals == 1){
+                // Quiet only when the global is a type and the import an alias of that same type.
+                bool sameType = candidates[globalAt].origin.rfind("type", 0) == 0;
+                for(auto& c : candidates)
+                    if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
+                       || getDispatchClass(c.type) == nullptr) sameType = false;
+                if(!sameType)
+                    warnOnceHere(format("'{0}' is both {1} and an imported member; the global is used. "
+                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
+                return candidates[globalAt].type;
+            }
+        }
         // Non-object beats object as a last-resort tiebreaker. Objects (and verbs,
         // which are objects via `alias class verb for object`) are reachable in their
         // natural usage contexts: `action == V` (expected-type filter above), or
@@ -768,24 +824,6 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
                 for(auto& c : candidates) if(!c.isObject) filtered.push_back(c);
                 if(filtered.size() == 1) return filtered[0].type;
                 candidates = filtered;  // narrowed but still ambiguous — fall through to error
-            }
-        }
-        // A global beats a #using-imported member of the same name (§10.4), quietly when both name
-        // the same type (an imported alias of the global class).
-        {
-            int globals = 0; size_t globalAt = 0;
-            for(size_t i = 0; i < candidates.size(); i++)
-                if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
-            if(globals == 1){
-                // Quiet only when the global is a type and the import an alias of that same type.
-                bool sameType = candidates[globalAt].origin.rfind("type", 0) == 0;
-                for(auto& c : candidates)
-                    if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
-                       || getDispatchClass(c.type) == nullptr) sameType = false;
-                if(!sameType)
-                    warnOnceHere(format("'{0}' is both {1} and an imported member; the global is used. "
-                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
-                return candidates[globalAt].type;
             }
         }
         // All that is left is one global name carrying several overloads. A call never reaches
@@ -820,6 +858,7 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
     // against file scope. Set on the head of a dotted path too (`::obj.member` → force-global `obj`).
     bool forceGlobalScope = false;
     if(name.size() > 2 && name[0]==':' && name[1]==':'){ forceGlobalScope = true; name = name.substr(2); }
+    else if(strncasecmp(name.c_str(), kGlobalEscapeMarker, strlen(kGlobalEscapeMarker)) == 0){ forceGlobalScope = true; name = name.substr(strlen(kGlobalEscapeMarker)); }
     if(name == "null") return "nullliteral";
     // `outer` inside an inline accessor's operator body = the enclosing (host) object; its type is
     // that object's own type. Only meaningful while synthesizing the accessor class body.
@@ -977,6 +1016,13 @@ bool bglParser::isInheritedObjectMember(const string& name, functionDef* func, s
 // for arrayDeclaration subclass instances so the elementType field can be read.
 
 string bglParser::resolveArrayElementType(const string& name, functionDef* func, statementBlock* body){
+    // `::name` is the global, past any local or member of the name.
+    if(name.rfind("::", 0) == 0 || strncasecmp(name.c_str(), kGlobalEscapeMarker, strlen(kGlobalEscapeMarker)) == 0){
+        string g = name.substr(name[0] == ':' ? 2 : strlen(kGlobalEscapeMarker));
+        if(g.find('.') != string::npos) return resolveArrayElementType(g, nullptr, nullptr);
+        if(auto* ad = languageService.findGlobalAs<arrayDeclaration>(g)) return ad->elementType;
+        return "";
+    }
     if(size_t d = name.rfind('.'); d != string::npos)
         return resolveArrayElementTypeDotted(name.substr(0, d), name.substr(d + 1), func, body);
     if(func != nullptr)
@@ -1425,6 +1471,9 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             expression* arg = new expression();
             arg->resolvedType = "interpolatedstringliteral";
             token sep = file.getToken();
+            if(!sep.is(token::comma) && !sep.is(token::parenClose))
+                parsingError("An interpolated string has no value, so it can't be part of an expression "
+                             "(`$\"…\".length`, `$\"…\" + x`). Assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
             arg->terminator = sep.value;
             result.args.push_back(arg);
             result.namedArgNames.push_back(namedArgName);
@@ -1544,6 +1593,27 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
     // If no global found, check #using imports for a method with the matching name, ranked the same way.
     // This lets `#using bgl.asm` make `get_prop_len(x)` work as a bare call.
     if(result.match == nullptr){
+        // Two imports with a method of the name, either of which could take these arguments: which one
+        // is meant needs its path (§10.4).
+        {
+            auto fits = [&](functionDef* fd){
+                size_t req = 0;
+                for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+                return fd->name == name && args.size() >= req && args.size() <= fd->params.size();
+            };
+            vector<string> owners;
+            for(classDef* imp : usingImports)
+                for(typeMember* m : imp->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fits(fd)){ owners.push_back(imp->dName()); break; }
+            for(objectDef* imp : usingObjectImports)
+                for(typeMember* m : imp->members)
+                    if(auto* fd = dynamic_cast<functionDef*>(m); fd && fits(fd)){ owners.push_back(imp->dName()); break; }
+            sort(owners.begin(), owners.end());
+            owners.erase(unique(owners.begin(), owners.end()), owners.end());
+            if(owners.size() > 1)
+                parsingError(format("'{0}' is a method of both '{1}' and '{2}', which are imported with #using; write the "
+                                    "one you mean with its path ('{1}.{0}').", name, owners[0], owners[1]));
+        }
         bool exact = false;
         functionDef* globalArity = result.arityMatch;
         result.arityMatch = nullptr;
@@ -2479,7 +2549,8 @@ bool bglParser::namesLibraryGlobal(const string& name){
     // calls by name: overloading it doesn't move the methods.
     for(typeDef* g : languageService.globals)
         if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == name && !fd->isExternal
-           && fd->src.file.find("beguiLib") != string::npos)
+           && fd->src.file.find("beguiLib") != string::npos
+           && !(fd->replacedFunc != nullptr && fd->replacedFunc->isExternal))   // a library routine it replaces is Inform 6's
             return false;
     for(typeDef* g : languageService.globals){
         if(g->name != name) continue;
@@ -2490,7 +2561,8 @@ bool bglParser::namesLibraryGlobal(const string& name){
         }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){
             // A routine the binding declares, or one of the program's own (not the library's Beguile code).
-            if(!fd->isEmitter && (fd->isExternal || (!fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos)))
+            if(!fd->isEmitter && (fd->isExternal || (!fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos)
+                                  || (fd->replacedFunc != nullptr && fd->replacedFunc->isExternal)))
                 return true;
         }
         else if(auto* od = dynamic_cast<objectDef*>(g)){ if(dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
@@ -2507,6 +2579,9 @@ bool bglParser::verbShadowedByMember(const string& name, const string& memberTyp
     bool isVerb = false;
     for(verbObjectDef* v : languageService.verbs) if(v->name == low){ isVerb = true; break; }
     if(!isVerb) return false;
+    // An object's own methods first.
+    if(objectDef* od = languageService.findObjectType(memberType))
+        for(typeMember* m : od->members) if(dynamic_cast<functionDef*>(m) != nullptr && m->name == meth) return false;
     classDef* mc = getDispatchClass(memberType);
     return mc == nullptr || findMemberInHierarchy(mc, [&](typeMember* m){
         return dynamic_cast<functionDef*>(m) != nullptr && m->name == meth; }) == nullptr;
@@ -2969,6 +3044,8 @@ optional<string> bglParser::qualifyFromCurrentObject(const string& name){
                     string target = qualifyIdentifier(currentObject->name + "." + name, nullptr, nullptr);
                     if(!target.empty() && target.rfind(currentObject->name + ".", 0) != 0) return target;
                 }
+                if(avd->i6name.empty() && avd->isPrePassStub)   // added by an `extend` below: the name it will take
+                    if(string r = clashRenamedMember(avd->name); !r.empty()) return "self." + r;
                 return "self." + (avd->i6name.empty() ? avd->dName() : avd->i6name);
             }
             if(auto* afd = dynamic_cast<functionDef*>(m)){
@@ -3006,6 +3083,15 @@ optional<string> bglParser::qualifyFromCurrentObject(const string& name){
 // Tier: members of the enclosing classDef — own members (statics included) then base classes.
 optional<string> bglParser::qualifyFromCurrentClass(const string& name){
     if(currentClass == nullptr || inMemberInitializer) return nullopt;
+    // A static method has no object: an instance member's name there is a global's, or nothing.
+    if(currentFunc != nullptr && currentFunc->isStatic && !currentFunc->isLambda)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(currentClass, [&](typeMember* m){
+               return m->name == name && dynamic_cast<variableDeclaration*>(m) != nullptr; })); vd != nullptr && !vd->isStatic){
+            if(definedSymbols.count(name) || languageService.findGlobal(name) != nullptr) return nullopt;
+            if(currentExpectedType != "property")   // the property itself (`o.provides(origin)`) is fine
+                parsingError(format("'{0}' is a member of each '{1}'; the static method '{2}' has no object to read it from. "
+                                    "Pass one as a parameter.", vd->dName(), currentClass->dName(), currentFunc->dName()));
+        }
     // Direct members: match both variables and functions (same as before).
     // Static variables resolve to their mangled global name, not `self.name` — they
     // live outside any instance's property table.
@@ -3014,7 +3100,10 @@ optional<string> bglParser::qualifyFromCurrentClass(const string& name){
             if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                 if(vd->isStatic) return "_bgl_" + currentClass->dName() + "_" + vd->dName();
                 // `as <i6name>` — the member emits under the alias, so a bare reference
-                // inside the object's own body has to resolve to it too.
+                // inside the object's own body has to resolve to it too. One declared below (an
+                // `extend`) takes the name its declaration will.
+                if(vd->i6name.empty() && vd->isPrePassStub)
+                    if(string r = clashRenamedMember(vd->name); !r.empty()) return "self." + r;
                 return "self." + (vd->i6name.empty() ? vd->dName() : vd->i6name);
             }
             else if(auto* fd = dynamic_cast<functionDef*>(m)){
@@ -3041,6 +3130,8 @@ optional<string> bglParser::qualifyFromCurrentClass(const string& name){
             if(m->name == name)
                 if(auto* vd = dynamic_cast<variableDeclaration*>(m)){
                     if(vd->isStatic) return "\x01_bgl_" + c->dName() + "_" + vd->dName();   // the declaring class's global
+                    if(vd->i6name.empty() && vd->isPrePassStub)
+                        if(string r = clashRenamedMember(vd->name); !r.empty()) return r;
                     return vd->i6name.empty() ? vd->dName() : vd->i6name;
                 }
         for(classDef* base : c->baseClasses){
@@ -3177,7 +3268,7 @@ void bglParser::collectQualifyCandidatesFromGlobals(const string& name, vector<Q
         else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
             ct = vd->type.name;
             qual = g->i6name.empty() ? name : g->i6name;
-            origin = format("global variable '{0}'", g->name);
+            origin = format(vd->type.name == "attribute" ? "attribute '{0}'" : vd->type.name == "property" ? "property '{0}'" : "global variable '{0}'", g->name);
             // Read before its declaration: I6 wants a variable defined before use (arrays and
             // constants are symbols I6 resolves later, so only a variable moves).
             if(vd->isPrePassStub && !vd->isExternal && !vd->isConst && dynamic_cast<arrayDeclaration*>(vd) == nullptr)
@@ -3274,6 +3365,8 @@ void bglParser::collectQualifyCandidatesFromUsingObjectImports(const string& nam
                 // object (e.g. `#using bgl` + `ui` → `bgl.ui` → `_bglUi`), matching a fully-qualified
                 // `bgl.ui`. Plain value members are unaffected (they re-qualify to themselves).
                 qual = qualifyIdentifier(imp->name + "." + name, func, body);
+                // The member goes by its I6 name (`_m_stock` beside a verb Stock).
+                if(qual == imp->name + "." + name) qual = imp->name + "." + memberI6Name(imp->name, name);
                 // A type alias named as a value is its class (`o.is(crate)`).
                 if(vd->isAlias)
                     if(classDef* ac = languageService.findClass(vd->type.name)) qual = ac->i6Name();
@@ -3414,6 +3507,35 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
                 if(types.size() == 1) return types[0]->qualified;
             }
         }
+        // A global beats a #using-imported member of the same name (§10.4), quietly when both name
+        // the same type (an imported alias of the global class).
+        {
+            int globals = 0; size_t globalAt = 0;
+            for(size_t i = 0; i < candidates.size(); i++)
+                if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
+            // A verb can't be called: `Show(5)` is the imported method's call.
+            if(globals == 1 && candidates[globalAt].origin.rfind("verb", 0) == 0 && (resolvingCallee || file.peekToken().is(token::parenOpen)))
+                for(size_t i = 0; i < candidates.size(); i++)
+                    if(i != globalAt) return candidates[i].qualified;
+            // A verb has no members, so it isn't the head of a path: `stock.count` is the import's.
+            if(globals == 1 && (!memberHint.empty() || file.peekToken().is(token::period))){
+                bool isVerb = dynamic_cast<verbObjectDef*>(languageService.findGlobalAs<objectDef>(name)) != nullptr;
+                for(verbObjectDef* v : languageService.verbs) if(v->name == name) isVerb = true;
+                if(isVerb)
+                    for(size_t i = 0; i < candidates.size(); i++) if(i != globalAt) return candidates[i].qualified;
+            }
+            if(globals == 1){
+                // Quiet only when the global is a type and the import an alias of that same type.
+                bool sameType = candidates[globalAt].origin.rfind("type", 0) == 0;
+                for(auto& c : candidates)
+                    if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
+                       || getDispatchClass(c.type) == nullptr) sameType = false;
+                if(!sameType)
+                    warnOnceHere(format("'{0}' is both {1} and an imported member; the global is used. "
+                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
+                return candidates[globalAt].qualified;
+            }
+        }
         // Non-object beats object (last-resort tiebreaker). See resolveIdentifierType for
         // rationale: objects (and verbs, which are objects via `alias class verb for object`)
         // are reachable in their natural usage contexts — `action == V`, `V.method()`,
@@ -3427,24 +3549,6 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
                 for(auto& c : candidates) if(!c.isObject) filtered.push_back(c);
                 if(filtered.size() == 1) return filtered[0].qualified;
                 candidates = filtered;  // narrowed but still ambiguous — fall through to error
-            }
-        }
-        // A global beats a #using-imported member of the same name (§10.4), quietly when both name
-        // the same type (an imported alias of the global class).
-        {
-            int globals = 0; size_t globalAt = 0;
-            for(size_t i = 0; i < candidates.size(); i++)
-                if(candidates[i].origin.rfind("#using-imported", 0) != 0){ globals++; globalAt = i; }
-            if(globals == 1){
-                // Quiet only when the global is a type and the import an alias of that same type.
-                bool sameType = candidates[globalAt].origin.rfind("type", 0) == 0;
-                for(auto& c : candidates)
-                    if(getDispatchClass(c.type) != getDispatchClass(candidates[globalAt].type)
-                       || getDispatchClass(c.type) == nullptr) sameType = false;
-                if(!sameType)
-                    warnOnceHere(format("'{0}' is both {1} and an imported member; the global is used. "
-                        "Write the imported one with its full path.", name, candidates[globalAt].origin));
-                return candidates[globalAt].qualified;
             }
         }
         // All that is left is one global name carrying several overloads. A call never reaches
@@ -4686,6 +4790,10 @@ void bglParser::reportMethodOverloadMismatch(const string& objType, const string
                         candidates.push_back(fd);
                 }
         });
+    for(expression* a : args)
+        if(a != nullptr && a->resolvedType == "interpolatedstringliteral")
+            parsingError(format("An interpolated string ($\"…\") has no value, so '{0}' can't take one. Assign it to a "
+                                "stringObj first (`stringObj s = $\"…\";`) and pass that.", methodName));
     string detail;
     for(functionDef* fd : candidates){
         detail += "\n  candidate: " + formatSignature(fd);
@@ -5122,7 +5230,9 @@ string bglParser::resolveNamespacedType(const string& dottedPath){
     string rest = dottedPath.substr(dot + 1);
     // Find starting object — check globals first, then #using imported scopes
     objectDef* curObj = nullptr;
-    if(auto* od = languageService.findGlobalAs<objectDef>(head)) curObj = od;
+    // A verb has no members: it isn't the head of a path (an import's step of its name is).
+    if(auto* od = languageService.findGlobalAs<objectDef>(head); od != nullptr && dynamic_cast<verbObjectDef*>(od) == nullptr)
+        curObj = od;
     // If not a global, check #using imports: the head might be a member of an imported scope.
     // e.g., after `#using bgl;`, head="glulx" is a member of the bgl object.
     if(!curObj){
@@ -5567,6 +5677,8 @@ string bglParser::keepValueResult(const string& text, const string& typeName){
         isCall = word != "_bglAt" && word != "_bglMemberAt" && word != "_bglByteAt" && word.rfind("_bglValSlot_", 0) != 0;
     }
     if(!isCall) return text;
+    // The call's own result ends with its `)`; a member read off it (`pick(1).gain`) is the object's.
+    if(size_t z = text.find_last_not_of(" \t"); z == string::npos || text[z] != ')') return text;
     classDef* cls = languageService.findClass(typeName);
     if(!cls || cls->isEmitterClass || !isValueClass(cls) || !classHasStoredFields(cls)) return text;
     functionDef* op = findAssignOperator(cls, typeName, [](functionDef*){ return true; }, /*allowInherited*/true);
@@ -5598,8 +5710,30 @@ void bglParser::convertIntoValueClass(expression* arg, const string& typeName){
     const string& at = arg->resolvedType;
     if(func == nullptr || at.empty() || at == typeName || at == "nullliteral") return;
     classDef* cls = languageService.findClass(typeName);
-    if(cls == nullptr || cls->isEmitterClass || !isValueClass(cls) || !classHasStoredFields(cls)) return;
+    if(cls == nullptr || cls->isEmitterClass || !isValueClass(cls)) return;
     if(classDef* ac = languageService.classOf(at); ac != nullptr && (ac == cls || ac->hasAncestor(cls))) return;
+    // A class declared below is known only by name here: its `operator =` is called through a routine
+    // written once the class is complete (emitDeferredConversions).
+    if(cls->isPrePassStub){
+        if(at == "nullliteral" || at == "var") return;
+        string fname = func->name;
+        for(char& ch : fname) if(!isalnum((unsigned char)ch) && ch != '_') ch = '_';   // an operator's routine
+        string name = format("_bglConv_{0}_{1}", fname, paramBackingNames.size());
+        while(!paramBackingNames.insert(name).second) name += "_";
+        auto* backing = new variableDeclaration();
+        backing->name = name; backing->displayName = name;
+        backing->type = languageService.getType(typeName);
+        backing->src = func->src;
+        backing->isInstanceBacking = true;
+        languageService.registerInstance(*backing);
+        func->ownBackings.push_back({name, typeName});
+        string base = literalBaseType(at);
+        deferredConversions.insert({cls->name, base});
+        arg->tokens.assign(1, format("_bglConvRt_{0}_{1}({2}, {3})", cls->dName(), base, name, arg->text()));
+        arg->resolvedType = typeName;
+        return;
+    }
+    if(!classHasStoredFields(cls)) return;
     functionDef* op = findAssignOperator(cls, at, [&](functionDef* f){
         return f->params.size() == 1 && f->params[0]->type.name != cls->name && isTypeCompatible(at, f->params[0]->type.name); },
         /*allowInherited*/true);
@@ -5739,4 +5873,27 @@ bool bglParser::libraryPropertyNamed(const string& name){
     for(typeDef* t : languageService.objectInstances)
         if(auto* od = dynamic_cast<objectDef*>(t)) for(typeMember* m : od->members) if(emitsProperty(m)) return true;
     return false;
+}
+
+// The routines a conversion into a value class declared below its use calls: the instance, set from the
+// value through the class's own `operator =` for the value's type.
+void bglParser::emitDeferredConversions(){
+    for(auto& [clsName, at] : deferredConversions){
+        classDef* cls = languageService.findClass(clsName);
+        if(cls == nullptr) continue;
+        functionDef* op = findAssignOperator(cls, at, [&](functionDef* f){
+            return f->params.size() == 1 && f->params[0]->type.name != cls->name && isTypeCompatible(at, f->params[0]->type.name); },
+            /*allowInherited*/true);
+        string body;
+        if(op != nullptr && !op->isEmitter){
+            mangleOverloadSetForReceiver(cls->name, op->name);
+            if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+            string v = op->params[0]->type.name == "float" && at != "float" ? applyCastConversion("v", at, "float") : string("v");
+            body = format("b.{0}({1}); return b;", op->i6name, v);
+        } else body = "return b;";
+        i6RawNode* raw = new i6RawNode();
+        raw->text = format("[ _bglConvRt_{0}_{1} b v; {2} ];\n", cls->dName(), at, body);
+        languageService.globals.push_back(raw);
+    }
+    deferredConversions.clear();
 }

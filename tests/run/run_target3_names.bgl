@@ -1,0 +1,31 @@
+// run_target3_names — `::` subscripts of a global array (read, write, `+=`, `++`), enum values reached
+// through `::`, and a bare read of an extend-added member named like a global function.
+// EXPECT_OUTPUT: 2 3 2 4 5 4 1 0 3 3 3 7
+#beguilerSettings { target = z5; informName = "none"; }
+enum eFlow { shut, slow, fast }
+array<int> marks = { 1, 2, 3 };
+int pick(eFlow flow) {
+    if (flow == ::eFlow.slow) return 1;
+    return 0;
+}
+int opened() { return 7; }
+object tank {
+    int vents() { return opened; }
+}
+extend tank { int opened = 3; }
+void main() {
+    bglInit();
+    int n = 0;
+    n += ::marks[1];
+    int m = ::marks[2];
+    int k = ::marks[0] + 1;
+    print(n); print(" "); print(m); print(" "); print(k); print(" ");
+    print(::marks[1] * 2); print(" ");
+    ::marks[1] = 5;
+    ::marks[2]++;
+    print(marks[1]); print(" "); print(marks[2]); print(" ");
+    print(pick(eFlow.slow)); print(" "); print(pick(eFlow.fast)); print(" ");
+    eFlow f = ::eFlow.fast;
+    print(f); print(" ");
+    print(tank.vents()); print(" "); print(tank.opened); print(" "); print(opened());
+}

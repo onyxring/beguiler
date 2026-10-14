@@ -1,0 +1,111 @@
+Room A
+Room A. Three valves stand in a row. Room B is east.
+You can see a left valve, a middle valve, a right valve and a log book here.
+> names
+room 19 25 30
+flows shut slow fast
+case 0 0 24 0 2 2
+open false false false 0
+take true true
+gauge 2 8 8 0 0
+big true false
+over 5 2 -20 -1
+steps 3 3, agree true, valve pressure 0 0 tank 0 global 1
+> readings
+Plant: level 0, pressure 1, volume 30, opened 0.
+Tank: 0 of 24, pressure 0, full false.
+Plant: level 0, pressure 1, volume 30, opened 0.
+Sample: level 0, pressure 0, spare 0.
+left valve: 0 shut, fast 0, marks 0 0 0
+middle valve: 0 shut, fast 0, marks 0 0 0
+right valve: 0 shut, fast 0, marks 0 0 0
+Marks 0 0 0, from 2 up 0.
+Open 0, opened 0 0 0.
+Running 0, fast 0.
+First running: none.
+0 0 0
+Tank: vents 0, meter 8, biggest 0 on right valve, valve true.
+Log: 0 entries since turn 0.
+> open left valve
+It only turns. Try CRANK.
+> close middle valve
+It only turns. Try CRANK.
+> crank log book
+That does not crank.
+> crank left valve
+The left valve is at 1 (slow); the meter reads 2, the tank holds 2.
+> crank left valve
+The left valve is at 2 (slow); the meter reads 4, the tank holds 6.
+> crank left valve
+The left valve is at 3 (fast); the meter reads 6, the tank holds 12.
+> crank right valve
+The right valve is at 1 (slow); the meter reads 2, the tank holds 14.
+> crank right valve
+The right valve is at 2 (slow); the meter reads 4, the tank holds 18.
+> crank right valve
+The right valve is at 3 (fast); the meter reads 6, the tank holds 24.
+> crank left valve
+The left valve is shut.
+> inspect right valve
+The right valve: level 3 (plant 12), fast, meter reads 6, pressure 6 (plant 7), opened 2 of 2.
+> inspect left valve
+The left valve: level 0 (plant 12), shut, meter reads 6, pressure 0 (plant 7), opened 2 of 2.
+> inspect log book
+Log: 10 entries since turn 3.
+Entries 10, any true.
+> readings
+Plant: level 12, pressure 7, volume 30, opened 2.
+Tank: 24 of 24, pressure 12, full true.
+Plant: level 12, pressure 7, volume 30, opened 2.
+Sample: level 24, pressure 12, spare 6.
+left valve: 0 shut, fast 1, marks 1 1 1
+middle valve: 0 shut, fast 0, marks 0 0 0
+right valve: 3 fast, fast 2, marks 1 1 1
+Marks 2 2 2, from 2 up 4.
+Open 1, opened 2 2 2.
+Running 1, fast 1.
+First running: right valve, at 3.
+A valve is wide open.
+3 0 0
+Tank: vents 0, meter 6, biggest 3 on right valve, valve true.
+Log: 10 entries since turn 3.
+> names
+room 19 25 18
+flows shut slow fast
+case 0 0 24 24 2 2
+open false false false 1
+take true true
+gauge 2 8 8 4 2
+big true false
+over 5 2 -8 5
+steps 3 0, agree true, valve pressure 6 6 tank 12 global 7
+> east
+Room B
+Room B. A tank and a meter. Room A is west.
+You can see a meter and a steel tank here.
+> inspect meter
+The meter: nothing to inspect.
+> crank meter
+That does not crank.
+> vent meter
+Only the tank vents.
+> vent tank
+The tank vents 24; valves opened 2, vents 1.
+> vent tank
+The tank is empty.
+> readings
+Plant: level 12, pressure 7, volume 30, opened 2.
+Tank: 0 of 24, pressure 0, full false.
+Plant: level 12, pressure 7, volume 30, opened 2.
+Sample: level 24, pressure 12, spare 6.
+left valve: 0 shut, fast 1, marks 1 1 1
+middle valve: 0 shut, fast 0, marks 0 0 0
+right valve: 3 fast, fast 2, marks 1 1 1
+Marks 2 2 2, from 2 up 4.
+Open 1, opened 2 2 2.
+Running 1, fast 1.
+First running: right valve, at 3.
+A valve is wide open.
+3 0 0
+Tank: vents 1, meter 8, biggest 3 on right valve, valve true.
+Log: 10 entries since turn 3.

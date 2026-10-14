@@ -1,0 +1,5 @@
+/* test a member read through ?. on a variable typed object */
+// EXPECT_ERROR: 'count' is not a declared property of type 'object'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object _stock { int count = 4; }
+void main(){ object o = _stock; print(o?.count); }

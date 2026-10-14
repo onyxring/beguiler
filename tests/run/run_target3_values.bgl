@@ -1,0 +1,59 @@
+// run_target3_values — value-class loop variables in `for` update clauses (`c = expr` copies, `c += one`
+// falls back to `c = c + one`), a lambda capturing a local with a `?:` body, and a for-in value-class
+// loop variable that owns a copy of each element.
+// EXPECT_OUTPUT: 0,0 1,1 [0,0] [1,1] 0,0 1 0 1 2 -2 5 1 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+value class Pos {
+    inline int col;
+    inline int row;
+    Pos operator = (Pos o) { col = o.col; row = o.row; return self; }
+    Pos operator + (Pos o) { Pos p; p.col = col + o.col; p.row = row + o.row; return p; }
+    bool operator == (Pos o) { return col == o.col && row == o.row; }
+    bool operator != (Pos o) { return col != o.col || row != o.row; }
+    Pos toward(Pos o) {
+        Pos d;
+        d.col = o.col > col ? 1 : 0;
+        d.row = o.row > row ? 1 : 0;
+        return self + d;
+    }
+}
+array<Pos> corners = {Pos{0, 0}, Pos{2, 2}};
+array<Pos> ps[3];
+Pos one;
+void walk() {
+    int n = 0;
+    for (Pos c = corners[0]; c != corners[1] && n < 5; c = c.toward(corners[1])) { n++; print($"{c.col},{c.row} "); }
+    Pos w = corners[0];
+    n = 0;
+    while (w != corners[1] && n < 5) { n++; print($"[{w.col},{w.row}] "); w = w.toward(corners[1]); }
+    print($"{corners[0].col},{corners[0].row} ");
+}
+void step() {
+    one.col = 1;
+    Pos k;
+    k += one;
+    print($"{k.col} ");
+    int n = 0;
+    for (Pos c; n < 3; c += one) { n++; print($"{c.col} "); }
+}
+void bounce() {
+    int d = 3;
+    func<int, int> b = (int p) => p > 2 ? p : p - d;
+    print($"{b(1)} {b(5)} ");
+}
+void own() {
+    Pos a;
+    a.col = 1;
+    ps += a;
+    ps += a;
+    for (Pos p in ps) p.col = 99;
+    print($"{ps[0].col} {ps[1].col}");
+}
+void main() {
+    bglInit();
+    walk();
+    step();
+    bounce();
+    own();
+}

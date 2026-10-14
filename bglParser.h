@@ -256,6 +256,7 @@ class bglParser {
         void mangleGlobalOverloadSet(const std::string& name);
         void assignGlobalFunctionOverloadMangling();
         void assignObjectMethodOverloadMangling();
+        void emitDeferredConversions();
         // Run the `init` emitter (and apply the declared value) for class-typed object members.
         void recordObjectMemberInits();
         // Check every member bound to a property declared in the typed form
@@ -317,6 +318,7 @@ class bglParser {
         // The expression depth a statement's own expressions parse at, and whether one of them opened a
         // mark on the string lock stack for a `?.` chain's string result (its outermost parse closes it).
         int stmtExprBase = 0;
+        bool resolvingCallee = false;   // the name being resolved is called (its '(' already read)
         bool optStringMarkOpen = false;
         bool allowEmptyExpr = false;
         set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing
@@ -560,6 +562,7 @@ class bglParser {
 
         bool processNextStatement(abstractObject& =emptyContainer);  // grammar-driven dispatcher
         bool processStatementDispatch(token tok, abstractObject& ctx);
+        bool processStatementDispatchInner(token tok, abstractObject& ctx);
         void processBracelessBody(token first, functionDef& ctx);  // grammar dispatch for a pre-read token
         bool processParameterList(functionDef&);
 
@@ -928,6 +931,7 @@ class bglParser {
         ExprStep parseExprDirective(ExprParseState& st);
         // Sub-branches of parseExprIdentifier, dispatched on the token AFTER the identifier.
         ExprStep parseExprSubscript(ExprParseState& st, token& next);
+        ExprStep parseExprSubscriptInner(ExprParseState& st, token& next);
         ExprStep parseExprCall(ExprParseState& st, token& next);
         ExprStep parseExprOptionalChain(ExprParseState& st, token& next);
         ExprStep parseExprMemberAccess(ExprParseState& st, token& next);
@@ -1332,7 +1336,7 @@ class bglParser {
         string validateGlobalCall(GlobalCallMatch& gcm, const string& funcName, const vector<expression*>& args);
 
         // Replace a pre-scan stub in a member list with the real definition. Returns true if replaced.
-        static bool replaceStubMember(vector<typeMember*>& members, functionDef& newDef);
+        bool replaceStubMember(vector<typeMember*>& members, functionDef& newDef);
 
         objectDef* currentObject = nullptr;
         // Enclosing object while synthesizing an inline accessor's class body (`auto name = { … }`);
@@ -1413,6 +1417,8 @@ class bglParser {
         void rejectAccessModifier(token& tok);
         void rejectStrayOuter(class functionDef* func, class statementBlock* body);
         void convertIntoValueClass(class expression* arg, const string& typeName);
+        // (class, argument type) pairs a conversion into a class declared below its use needs a routine for.
+        set<pair<string, string>> deferredConversions;
         void rejectUnionInto(class expression* val, class classDef* target);
         bool readingForBind = false;   // parsing the right side of `:=`: a member read names the instance, not its getter's value
         string checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked);

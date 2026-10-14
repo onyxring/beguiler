@@ -764,6 +764,12 @@ object _bglStr
        toAmbiguousBuffer [unkStr retval;
     
             if(unkStr ofclass _bglString) return unkStr.getBuf();
+            ! A null string reads as the empty one.
+            if(unkStr == 0){
+                retval = _bglStringPool.allocateBuffer();
+                _bglBuf.setLength(retval, 0);
+                return _bglStringPool.freeBuffer(retval);
+            }
             ! Phase B safety: at this point we KNOW unkStr is not a _bglString
             ! (ofclass check failed), so it's a packed string literal in practice.
             ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
@@ -1043,6 +1049,8 @@ class _bglString(bglstringpoolreserve)
     ],
     setFromLit[lit;
         
+            ! A null string (a `?.` chain that stopped) is the empty one.
+            if(lit == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
             ! Direct setFromLiteral — caller knows lit is a packed string.
             _bglBuf.setFromLiteral(self.getBuf(), lit);
         
@@ -1050,6 +1058,8 @@ class _bglString(bglstringpoolreserve)
     ],
     setFromStr[src;
         
+            ! A null string (a `?.` chain that stopped) is the empty one.
+            if(src == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
             ! A literal or string passed where a stringObj is expected arrives as packed text.
             if(metaclass(src) == String){ _bglBuf.setFromLiteral(self.getBuf(), src); return self; }
             _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());

@@ -1,0 +1,95 @@
+// run_target3_chains — casts over an object's member-array element, parenthesized ternaries with a
+// postfix-`?` condition, writes through `(a ?? b).m`, a stringObj from a null `?.` chain, `?.` before an
+// object's member array, before `children`, before an element compound write, and before an inline
+// accessor read.
+// EXPECT_OUTPUT: 5 10 x x x 1 0 1 1 5 6 4 0 0 0 yes 7 2 2 a1 a2 1 0 4 4 7 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+value class Volts {
+    int _v;
+    int operator () { return _v; }
+    void operator = (int n) { _v = n; }
+}
+class Valve : object {
+    int code;
+    int hits;
+    string badge;
+    array<int> marks[4];
+    Volts level;
+    int Twice() { return code * 2; }
+    stringObj Path() {
+        stringObj s = badge;
+        return s;
+    }
+}
+Valve va { code = 5; badge = "a1"; }
+Valve vb { }
+object rack {
+    array<object> slots[3];
+    array<int> marks[3];
+    auto pressure = {
+        int _p;
+        int operator () { return _p; }
+        void operator = (int v) { _p = v; }
+    }
+}
+object box { }
+object k1 { parent = box; }
+object k2 { parent = box; }
+string Pick(int n) {
+    if (n > 0) return "some";
+    return null;
+}
+Valve Find(int n) {
+    if (n > 0) return va;
+    return null;
+}
+void Bump(Valve v, int n) {
+    v?.marks[3] += 1;
+    print($"a{n} ");
+    v?.marks[3]++;
+    v?.marks[3] -= 1;
+}
+void main() {
+    bglInit();
+    rack.slots[0] = va;
+    Valve v = (Valve)rack.slots[0];
+    print(v.code); print(" ");
+    print(((Valve)rack.slots[0])?.Twice()); print(" ");
+    string t = (Pick(1)? ? "x" : "y");
+    string u = Pick(0) ?? (Pick(1)? ? "x" : "y");
+    string w = ((Pick(1)?) ? "x" : "y");
+    print($"{t} {u} {w} ");
+    (Find(1) ?? vb).hits += 1;
+    print($"{va.hits} {vb.hits} ");
+    (Find(0) ?? vb).hits += 1;
+    print($"{va.hits} {vb.hits} ");
+    (Find(1) ?? vb).hits = 5;
+    print($"{va.hits} ");
+    (Find(1) ?? vb).hits++;
+    print($"{va.hits} ");
+    (Find(1) ?? vb).hits -= 2;
+    print($"{va.hits} ");
+    stringObj up = Find(0)?.Path()?.toUpper();
+    print($"{up.length} ");
+    stringObj tagged = Find(0)?.badge;
+    stringObj gone = "ab";
+    gone = null;
+    print($"{tagged.length} {gone.length} ");
+    rack.slots[1] = vb;
+    rack.marks[1] = 7;
+    object o = rack?.slots[1];
+    print(o == vb ? "yes " : "no ");
+    int n = rack?.marks[1];
+    print(n); print(" ");
+    object bx = box;
+    print($"{bx.children.length} {bx?.children.length} ");
+    Bump(null, 1);
+    Bump(va, 2);
+    print($"{va.marks[3]} {vb.marks[3]} ");
+    rack.pressure = 4;
+    print($"{rack.pressure} {rack?.pressure} ");
+    Valve p = va;
+    p.level = 7;
+    print($"{p.level} {p?.level}");
+}

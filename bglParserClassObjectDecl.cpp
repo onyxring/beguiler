@@ -94,6 +94,10 @@ void bglParser::parseHideDirective(classDef& cls){
     }
     if(!nxt.is(token::endStatement))
         parsingError(format("hide {0}: expected ';' to end the hide directive", hm.memberName));
+    // The pre-scan records it first; the declaration's own pass finds it there.
+    for(hiddenMember& h : cls.hiddenMembers)
+        if(h.memberName == hm.memberName && h.operatorName == hm.operatorName && h.operandTypes == hm.operandTypes
+           && h.hasSignature == hm.hasSignature){ h.src = hm.src; return; }
     cls.hiddenMembers.push_back(hm);
 }
 
@@ -543,6 +547,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                 if(*it==existing){ keepReplaced(funcDef, existing); *it = &funcDef; break; }
             alreadyReplaced = true;
         }
+        if(!funcDef.isEmitter) rejectMethodBesideField(newClass, funcDef.name, funcDef.dName(), true);
         if(alreadyReplaced){ tok = file.getToken(); return true; }
     }
     if(funcDef.isEmitter && funcDef.name == "_bglglobaldeclaration"){
@@ -603,7 +608,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                         shadowedFrom));
             }
             rejectValueWordName(funcDef.name);
-            if(!funcDef.isEmitter && !funcDef.isStatic) rejectMethodBesideField(newClass, funcDef.name, funcDef.dName(), true);
+            if(!funcDef.isEmitter) rejectMethodBesideField(newClass, funcDef.name, funcDef.dName(), true);
             // A later `extend … replace emitter` already holds this slot; its body is the one used.
             // Only the overload it replaces: same parameter types.
             auto sameSignature = [&](functionDef* fd){
@@ -975,7 +980,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
                 if(*it==existing){ newClass.members.erase(it); break; }
     } else {
         warnMemberHidesDefine(varDef.name, varDef.dName());
-        if(!varDef.isStatic && !varDef.isAlias && !varDef.isValueAlias && !varDef.isExternal)
+        if(!varDef.isAlias && !varDef.isValueAlias && !varDef.isExternal)
             rejectMethodBesideField(newClass, varDef.name, varDef.dName(), false);
         // Check for an existing stub from pre-scan (static member variables) and replace it.
         bool replacedStub = false;
@@ -1902,8 +1907,9 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
                 parsingError(format("Cannot initialize member array '{0}' of {1} with a value of type '{2}'; "
                     "use a list: {{ … }}", arrDecl.dName(), typeDisplayName(elemType), typeDisplayName(expr->resolvedType)));
             arrDecl.declaredExpressionValue = list;
-        } else if(isArrayOfArraysElement(elemType)){
-            // Rows written in place (`{ {1, 2}, {3} }`) bake as anonymous global arrays.
+        } else if(isArrayOfArraysElement(elemType) || isInlineConstructible(getDispatchClass(elemType))){
+            // Rows written in place (`{ {1, 2}, {3} }`) bake as anonymous global arrays; an element of a
+            // class written as `{ … }` is that class's inline object.
             file.getToken(token::braceOpen);
             arrDecl.declaredExpressionValue = parseArrayInitializerList(elemType, nullptr, nullptr);
             if(file.peekToken().is(token::endStatement)) file.getToken();
@@ -3479,6 +3485,16 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
                     parsingError(format("'{0}' is a fake action of the I6 library: it has no grammar or action "
                         "routine, and Inform 6 can't give a real action its name. Give the verb another name.",
                         origName));
+        // A verb whose class is declared below it was pre-scanned as a plain object: that stub goes.
+        string lowerName = (string)name;
+        transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+        if(objectDef* stub = languageService.findObjectType(lowerName);
+           stub != nullptr && stub->isPrePassStub && dynamic_cast<verbObjectDef*>(stub) == nullptr){
+            auto drop = [&](vector<typeDef*>& v){ v.erase(remove(v.begin(), v.end(), (typeDef*)stub), v.end()); };
+            drop(languageService.globals);
+            languageService.objectInstances.erase(remove(languageService.objectInstances.begin(), languageService.objectInstances.end(), stub),
+                                                  languageService.objectInstances.end());
+        }
         verbObjectDef& vd = languageService.registerVerbObject(origName, isExternal);
         objPtr = &vd;
         vod = &vd;
@@ -4334,13 +4350,15 @@ void bglParser::rejectMethodBesideField(classDef& cls, const string& name, const
             if(m->name != name) continue;
             // A method over an inherited field gives that property its routine (`short_name`), as I6 allows.
             if(addingMethod && c != &cls) continue;
+            // In one class a static of the name clashes too: `Bin.adds` could be either.
+            bool sameClass = c == &cls;
             bool clash = addingMethod
                 ? [&]{ auto* vd = dynamic_cast<variableDeclaration*>(m);
-                       return vd && !vd->isStatic && !vd->isAlias && !vd->isValueAlias && !vd->isExternal; }()
-                : [&]{ auto* fd = dynamic_cast<functionDef*>(m); return fd && !fd->isEmitter && !fd->isStatic; }();
+                       return vd && (sameClass || !vd->isStatic) && !vd->isAlias && !vd->isValueAlias && !vd->isExternal; }()
+                : [&]{ auto* fd = dynamic_cast<functionDef*>(m); return fd && !fd->isEmitter && (sameClass || !fd->isStatic); }();
             if(clash)
-                parsingError(format("class '{0}': {1} '{2}' has the name of {3} '{4}'{5}; Inform 6 keeps both in one "
-                                    "property, so rename one.", cls.dName(), addingMethod ? "method" : "member", shown,
+                parsingError(format("class '{0}': {1} '{2}' has the name of {3} '{4}'{5}; a class's member and "
+                                    "method can't share a name, so rename one.", cls.dName(), addingMethod ? "method" : "member", shown,
                                     addingMethod ? "member" : "method", m->dName(),
                                     c == &cls ? string() : " of class '" + c->dName() + "'"));
         }

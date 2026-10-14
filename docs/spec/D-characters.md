@@ -25,7 +25,11 @@ in a raw string literal, which recognizes only `\"`.
 | `\^` | `^` (see §D.4) |
 | `\~` | `~` (see §D.4) |
 | `\@` | `@` |
-| `\{` | `{` (interpolated strings only, §1.6.5) |
+| `\{` | `{` |
+| `\}` | `}` |
+
+In an interpolated string (§1.6.5) `\{` is a brace that opens no span. A backslash followed by any
+character this appendix doesn't list is a compile-time error.
 
 An unescaped `^` in a string is a newline and an unescaped `~` is a double quote, as in I6.
 

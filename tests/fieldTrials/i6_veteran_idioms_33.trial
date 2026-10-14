@@ -1,0 +1,134 @@
+Room A
+Room A. A valve rack stands here. Room B is east.
+You can see a valve rack (which is empty), a valve A, a valve B, a valve C and a valve D here.
+> survey
+A1: flow 0, next 102, prev -, marks ...., seal 0.
+B2: flow 0, next 103, prev A1, marks ...., seal 0.
+--: flow 0, next 0, prev B2, marks ...., seal 0.
+D4: flow 0, next 0, prev -, marks ...., seal 0.
+Downstream flow 0, 0 fed. Slots: empty empty empty. Pressure 0. Journal: . Last none at The Room A; by code 103 none, by code 107 none. Score 0.
+> probe 101
+Code 101: A1, wraps to 102 >101 >102, seal 101/0, margin 12.
+> probe 104
+Code 104: D4, wraps to 104 >104, seal 104/0, margin 12.
+> probe 107
+Code 107: none >101 >102 >103, seal 0/0, margin 0.
+> trace a
+(the valve A)
+Forward: A1(0) B2(0) ?(0). Back: 103 102 101. Two on: none; wrapped: none; next is mid-line; flow two on 0, one on 0.
+> trace d
+(the valve D)
+Forward: D4(0). Back: 104. Two on: none; wrapped: D4; next is D; flow two on 0, one on 0.
+> x valve c
+Valve (untagged), code 103, flow 0, marks ...., fed by B2.
+> prime a with 3
+(the valve A with that)
+The valve A takes 3, holds 3.
+The valve B takes 2, holds 2.
+The valve C takes 1, holds 1.
+The push reaches 3 valve(s), ending at an untagged valve.
+> mark a
+(the valve A)
+Path A1/B2/?, tag 2 char(s), log 1 char(s), saw a 3; shows [A1-B2-?].
+> mark c
+Path ?, tag 0 char(s), log 1 char(s); shows [?].
+> mark d
+(the valve D)
+Path D4, tag 2 char(s), log 0 char(s), log empty; shows [D4].
+> mark rack
+Path (none), tag 0 char(s), log 0 char(s); shows [A1 ? D4 ].
+> trace c
+Forward: A1(3) B2(2) ?(1). Back: 103 102 101. Two on: none; wrapped: B2; next is A; flow two on 0, one on 0.
+> seal a
+(the valve A)
+Sealed code 101 at 3, margin 6, default margin 9, stored 3.
+> seal d
+(the valve D)
+Sealed code 104 at 0, margin 9, default margin 12, stored 0.
+> seal rack
+No seal taken, default margin 12, stored 0.
+> bleed b
+The valve B bleeds in 1 step(s); hits 2, flow 0, - still holds 1.
+> bleed rack
+Nothing to bleed.
+> x valve a
+Valve A1, code 101, flow 3, marks 3..., two on is untagged.
+> join c to d
+(the valve D)
+Joined. Line: A1-B2-?-D4, 4 long.
+> join a to d
+(the valve A to the valve D)
+They are already on one line.
+> trace b
+Forward: A1(3) B2(0) ?(1) D4(0). Back: 104 103 102 101. Two on: D4; wrapped: D4; next is mid-line; flow two on 0, one on 1.
+> split b
+The valve B comes out. Left: A1-?-D4.
+> trace a
+(the valve A)
+Forward: A1(3) ?(1) D4(0). Back: 104 103 101. Two on: D4; wrapped: D4; next is mid-line; flow two on 0, one on 1.
+> seat c
+The valve C goes into slot 1; tag none, pressure 1.
+> seat c
+No room for it.
+> seat d
+(the valve D)
+The valve D goes into slot 2; tag D4, pressure 1.
+> x rack
+Slots: untagged D4 empty. Pressure 1.
+> cycle
+Cycle: 1 reached, lookups 0>1.
+Current D4, hits 4, its next 0, lookups 6.
+> cycle
+Cycle: 1 reached, lookups 7>8.
+Current D4, hits 7, its next 0, lookups 13.
+> prime d with 5
+(the valve D with that)
+The valve D takes 5, holds 9.
+The push reaches 1 valve(s), ending at D4.
+The valve D is at full flow.
+[The score has just gone up by one point.]
+> e
+Room B
+Room B. Room A is west.
+> w
+The rack hums behind you.
+Room A
+Room A. A valve rack stands here. Room B is east.
+You can see a valve rack (which is empty), a valve A, a valve B, a valve C and a valve D here.
+> survey
+A1: flow 3, next 103, prev -, marks 3..., seal 3.
+B2: flow 0, next 0, prev -, marks .2.., seal 0.
+--: flow 1, next 104, prev A1, marks ..1., seal 0.
+D4: flow 9, next 0, prev -, marks 5..., seal 0.
+Downstream flow 10, 2 fed. Slots: empty D4 empty. Pressure 1. Journal: A1 ? D4 ? ->D4 . Last D4 at The Room A; by code 103 D4, by code 107 none. Score 1.
+> split c
+The valve C comes out. Left: A1-D4.
+> join d to b
+(the valve D to the valve B)
+Joined. Line: A1-D4-B2, 3 long.
+> mark b
+Path B2, tag 2 char(s), log 1 char(s); shows [B2].
+> tap b
+D4 answers in the light; mark 4 is 3, 0 inside, slot 3 B2 (102).
+> tap rack
+nothing answers; mark 4 is 0, 0 inside, slot 3 empty (0).
+> tap c
+nothing answers in the light; mark 4 is 3, 0 inside, slot 3 empty (103).
+> probe 101
+Code 101: A1, wraps to 104 >101, seal 101/3, margin 9.
+> probe 103
+Code 103: none, wraps to 103 >103, seal 103/1, margin 11.
+> survey
+A1: flow 3, next 104, prev -, marks 3..., seal 3.
+B2: flow 0, next 0, prev D4, marks .2.3, seal 0.
+--: flow 1, next 0, prev -, marks ..13, seal 0.
+D4: flow 9, next 102, prev A1, marks 5..., seal 0.
+Downstream flow 9, 2 fed, one fed by D4. Slots: empty D4 empty. Pressure 1. Journal: A1 ? D4 ? ->D4 D4>B2 B2 . Last D4 at The Room A; by code 103 none, by code 107 none. Score 1.
+> prime b with 9
+The valve B takes 9, holds 9.
+The push reaches 1 valve(s), ending at B2.
+The valve B is at full flow.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 2 out of a possible 2, in 31 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

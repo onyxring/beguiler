@@ -226,6 +226,10 @@ class expression {
         string terminator;         // which terminator token ended this expression
         string emitterSelf;        // host text for $self when this expr is a property access
                                    // (e.g. for `o.parent` → "o"); empty for non-property-access exprs
+        // A member word array read whole through a computed receiver (`((Bay)o).counts`): the receiver's
+        // text, the property, and the declaration, so a for-in can walk it in place.
+        string memberArrayOwner, memberArrayProp;
+        class arrayDeclaration* memberArrayDecl = nullptr;
 
         string text() const {
             string result;
@@ -384,6 +388,7 @@ class functionDef:public typeMember, public typeDef{
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
         string replacedTarget;               // mangled name of predecessor function (empty if not a replacement)
         bool replaceFoundNothing = false;    // a `replace` with no earlier function of its name to replace
+        functionDef* substitutedFrom = nullptr;  // a copy with its type parameters bound: the declaration it copies
         functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
         bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
         bool isReplaceStub = false;           // a pre-scan stub for a `replace` declaration: it takes the name's place, not an overload

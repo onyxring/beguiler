@@ -1,0 +1,5 @@
+/* test += on an array<int> without #include <array> */
+// EXPECT_ERROR: '+=' on an array comes from `<array>`
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+array<int> xs[3];
+void main(){ xs += 1; }

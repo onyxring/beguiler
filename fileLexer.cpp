@@ -513,7 +513,8 @@ token fileLexer::getBasicToken(bool suppressBleed){
                     while((unsigned char)peekChar() >= 0x80 && ((unsigned char)peekChar() & 0xC0) == 0x80) ch += readChar();
                     parser.parsingError(format("Unknown escape '\\{0}' in string literal", ch));
                 }
-                else           { retval.value+='\\'; retval.value+=c; } // unknown: pass through
+                else if(c=='{' || c=='}') retval.value += c;                     // \{ \}  -> literal brace
+                else parser.parsingError(format("Unknown escape '\\{0}' in string literal", string(1, c)));
             }
             else if((unsigned char)c >= 0x80){
                 // Non-ASCII: decode UTF-8 (or Latin-1) and translate to I6 notation.

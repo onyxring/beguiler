@@ -1,0 +1,425 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in an ordinary small program with two rooms, three valves, a
+// tank, a meter and a log book, written so that its names meet. Globals `level`, `pressure` and
+// `volume` share names with valve and tank members, an inline accessor, a method an `extend class`
+// adds, value-class fields, parameters, named arguments, loop and lambda variables, read bare,
+// through `self.`, through `::` and in interpolation; a parameter named like the library property
+// `capacity` beside the tank's `capacity`; a global function `opened()` beside a class static
+// `opened` (bare inside the class, `Valve.opened` and `BigValve.OPENED` outside, `::opened()` for the
+// function), a static method `opened()` on another class and a member `opened` an `extend` adds to
+// the tank, read from the tank's body above it; a global array `marks` beside a member array `marks`;
+// enum values `shut`, `slow`, `fast` beside a method `shut()`, a member `fast` and a local `shut`,
+// with `::shut` and `case ::fast`, and a parameter named like its own enum type; a member `meter`
+// beside the object `meter`, filled with `::meter`, and a tank method `meter()`; a member `valve`
+// named like its class; a method `open()` named like the library attribute and verb, with
+// `has(::open)` and `case ::Open` in a `before` rule, and `::Vent` in a body whose `vent()` an
+// `extend` adds; methods named like a library routine (`achieved`) and a library global (`turns`,
+// reached as `::turns`); a member overload `report(int)` beside a global `report()`; `#define`s
+// beside a member (set in an object body) and a local of their names; a parameter named like a
+// const in another case with a default of that const; locals named like a library verb, an object
+// and a class; `#using` an object whose members are then called bare; member access in other letter
+// cases (`VALVEB.LEVEL`, `TANK.Capacity`, `::TANK.Vent()`); <linq> `filter`, `count`, `any`,
+// `first` and `orderBy` with parameters named like objects and globals; mixed-case keywords,
+// Allman, K&R and one-line braces, tab indentation in one routine, comments between tokens and
+// declarations split over lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define SCALE   2               // the meter's own member is `scale`
+#define STEPS   4               // settings a valve cycles through: 0, 1, 2, 3
+
+// ---- constants and globals -----------------------------------------------------------------------
+
+const int Full = 20 ;           // the tank member `full` is a bool
+INT level    = 0 ;              // setting steps cranked in all; every valve has a `level` of its own
+int pressure = 1 ;              // fills made, plus one; the tank's `pressure` is an accessor
+int volume   = 30 ;             // the plant's limit; the sample has a `volume` too
+array<int> marks = { 0 , 0 , 0 , 0 } ;   // settings reached, by setting; each valve keeps its own
+
+enum eFlow { shut , slow , fast }
+
+// ---- rooms ---------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. Three valves stand in a row. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB { "Room B" ; description = "Room B. A tank and a meter. Room A is west." ;
+    object w_to = roomA ; }
+
+// ---- global helpers the members are named after ----------------------------------------------------
+
+/// Valves cranked open, in all.
+int opened () { return Valve.opened ; }
+
+/// Prints the plant totals.
+void report ()
+{
+    printLine($"Plant: level {level}, pressure {pressure}, volume {volume}, opened {opened()}.") ;
+}
+
+// ---- the meter -----------------------------------------------------------------------------------
+
+class Gauge : object
+{
+    int scale   = 1 ;
+    int reading = 0 ;
+    int read ( int level ) { reading = level * scale ; return reading ; }
+    static int opened () { return ::opened() * SCALE ; }  // named like the global function
+    int spread () { return opened() - ::opened() ; }
+}
+
+Gauge meter
+{
+    "meter" ;
+    parent     = roomB ;
+    name       = { .meter , .dial } ;
+    attributes = { static } ;
+    scale      = SCALE ;
+}
+
+// ---- valves --------------------------------------------------------------------------------------
+
+class Valve : object
+{
+    inline instanceName ;
+    inline int level ;                  // its setting, named like the global
+    eFlow      flow   = eFlow.shut ;
+    int        fast   = 0 ;             // times set to fast; named like the enum value
+    static int opened = 0 ;             // named like the global function
+    array<int> marks[ STEPS ] ;         // named like the global array
+    Gauge      meter  = ::meter ;       // named like the object it holds
+    attributeList attributes = { static , switchable } ;
+
+    bool open () { return self.has(::open) ; }      // named like the attribute and the verb
+
+    void shut ()                                    // named like the enum value
+    {
+        ungive(::open) ;
+        flow  = ::shut ;
+        level = 0 ;
+    }
+
+    void set ( int level )                          // the parameter hides the member
+    {
+        self.level = level ;
+        if      (level == 0) { shut() ; }
+        else if (level < 3)  { flow = slow ; give(::open) ; }
+        else                 { flow = eFlow.fast ; fast++ ; give(::open) ; }
+        if (level == 1) opened++ ;
+        marks[level]++ ;
+        ::marks[level]++ ;
+        ::level += level ;
+    }
+
+    int rate () { return meter.read(level) ; }      // the member meter, which is ::meter
+    void show ()
+    {
+        printLine($"{cThe(self)}: level {level} (plant {::level}), {flowName(flow)}, {::meter} reads {meter.reading}, pressure {pressure()} (plant {::pressure}), opened {opened} of {::opened()}.") ;
+    }
+
+    bool agrees () { return ::meter.scale == meter.scale && ::Meter.reading == self.meter.reading ; }
+
+    bool before ()
+    {
+        switch (action)
+        {
+            case ::Open , Close :
+                printLine("It only turns. Try CRANK.") ;
+                rtrue ;
+        }
+        rfalse ;
+    }
+}
+
+class BigValve : Valve
+{
+    replace void set ( int level )
+    {
+        (( Valve ) self).set(level) ;
+        if (level == 3) fast++ ;                    // a big valve counts fast twice
+    }
+}
+
+Valve valveA { "left valve"   , 0 ; name = { .left , .valve }   ; parent = roomA ; }
+Valve valveB
+{
+    "middle valve" ,
+    $00 ;                               // starts shut
+    name   = { .middle , .valve } ;
+    parent = roomA ;
+}
+BigValve valveC { "right valve" , 0 ; name = { .right , .valve } ; parent = roomA ; }
+
+array<Valve> valves = { valveA , valveB , valveC } ;
+
+// ---- the tank ------------------------------------------------------------------------------------
+
+object tank
+{
+    "steel tank" ;
+    parent     = roomB ;
+    name       = { .steel , .tank } ;
+    attributes = { static } ;
+    string description = "A steel tank with a vent." ;
+
+    int  capacity = 24 ;                // the library property
+    int  level    = 0 ;                 // like the global
+    bool full     = false ;             // like the const Full
+
+    auto pressure = {                   // like the global
+        int _p = 0 ;
+        int  operator ()        { return _p ; }
+        void operator = (int v) { _p = v ; if (_p > outer.capacity) _p = outer.capacity ; }
+    }
+
+    void fill ( int level )             // the parameter hides the member
+    {
+        self.level += level ;
+        if (self.level >= capacity) self.level = capacity ;
+        full     = self.level >= ::Full ;
+        pressure = self.level / 2 ;
+        ::pressure++ ;
+    }
+
+    void report ( int level ) { printLine($"Tank: {level} of {capacity}, pressure {pressure}, full {full}.") ; }
+
+    void status ()
+    {
+        report(self.level) ;            // the member
+        report() ;                      // the global: no member report() takes nothing
+    }
+
+    Valve valve = valveC ;              // a member named like the class
+
+    int vents () { return opened ; }   // the member an extend adds below, not the global function
+    int meter () { return ::meter.reading ; }     // a method named like the object
+
+    int biggest ()
+    {
+        Valve best = valve ;            // the type, beside the member
+        for (Valve v in valves) if (v.level > best.level) best = v ;
+        valve = best ;
+        return best.level ;
+    }
+
+    void drain () { level = 0 ; full = FALSE ; pressure = 0 ; }
+
+    bool before ()
+    {
+        if (action == ::Vent && level == 0) { printLine("The tank is empty.") ; rtrue ; }
+        rfalse ;
+    }
+}
+
+// ---- the log book --------------------------------------------------------------------------------
+
+object logBook
+{
+    "log book" ;
+    parent  = roomA ;
+    name    = { .log , .book } ;
+    int entries = 0 ;
+    int started = 0 ;
+
+    void banner   () { printLine($"Log: {entries} entries since turn {started}.") ; }
+    bool achieved () { return entries > 0 ; }                                        // like Achieved
+    int  turns  () { return ::turns - started ; }                                     // like turns
+
+    void note ( Valve valve )           // a parameter named like the class
+    {
+        if (entries == 0) started = ::turns ;
+        entries++ ;
+        if (valve.is(::BigValve)) entries++ ;
+    }
+}
+
+#using logBook ;
+
+// ---- a sample ------------------------------------------------------------------------------------
+
+value class Sample
+{
+    int level ;                         // like the global
+    int pressure ;                      // like the global and the accessor
+    int volume ;                        // like the global
+    Sample operator = ( Sample o ) { level = o.level ; pressure = o.pressure ; volume = o.volume ; return self ; }
+    void take () { level = tank.level ; pressure = tank.pressure ; volume = ::volume - tank.capacity ; }
+}
+
+Sample latest ;
+
+// ---- name meetings in plain routines -------------------------------------------------------------
+
+/// What is left of a capacity; both parameters are named like globals.
+int headroom ( int level , int capacity = 24 ) { return capacity - level ; }
+
+stringObj flowName ( eFlow EFLOW )     // a parameter named like its own type
+{
+    stringObj shut = "shut" ;           // a local named like the enum value
+    switch (eflow)
+    {
+        case ::eFlow.slow : return "slow" ;
+        case ::fast     : return "fast" ;
+    }
+    return shut ;
+}
+
+int openCount ()
+{
+    int open = 0 ;                      // a local named like the attribute and the verb
+    for (Valve level in valves)         // a loop variable named like the global
+        if (level.has(::open)) open++ ;
+    return open ;
+}
+
+/// How far a level is over a mark; the second parameter is named like the const Full.
+int over ( int level , int full = Full ) { return level - full ; }
+
+int stepsLeft ( Valve v )
+{
+    int steps = STEPS ;                 // a local named like the #define
+    RETURN steps - 1 - v.level ;
+}
+
+int markSum ( int level )
+{
+	int n = 0 ;
+	for ( int i = level ; i < STEPS ; i++ )
+	{
+		n += ::marks[i] ;
+	}
+	return n ;
+}
+
+// ---- startup -------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+extend class Valve
+{
+    int pressure () { return level * 2 ; }     // a method named like the global and the tank's accessor
+}
+
+extend tank
+{
+    int opened = 0 ;                    // like the global function
+    void vent ()
+    {
+        opened++ ;
+        printLine($"The tank vents {level}; valves opened {::opened()}, vents {opened}.") ;
+        drain() ;
+    }
+}
+
+// ---- commands ------------------------------------------------------------------------------------
+
+verb Crank
+{
+    grammar = { .crank , NOUN } ;
+    void handler ()
+    {
+        if (!noun.is(Valve)) { printLine("That does not crank.") ; return ; }
+        Valve valve = (Valve) noun ;
+        valve.set((valve.level + 1) % STEPS) ;
+        logBook.note(valve) ;
+        if (valve.level == 0) { printLine($"{cThe(valve)} is shut.") ; return ; }
+        int got = valve.rate() ;
+        tank.fill(got) ;
+        latest.take() ;
+        printLine($"{cThe(valve)} is at {valve.level} ({flowName(valve.flow)}); the meter reads {meter.reading}, the tank holds {tank.level}.") ;
+    }
+}
+
+verb Vent
+{
+    grammar = { .vent , NOUN } ;
+    void handler ()
+    {
+        object Tank = noun ;            // a local named like the object
+        if (tank != ::tank) { printLine("Only the tank vents.") ; return ; }
+        ::TANK.Vent() ;                 // the object and its method, in other cases
+    }
+}
+
+verb Readings
+{
+    meta    = true ;
+    grammar = { { .readings } , { .ledger } } ;
+    void handler ()
+    {
+        report() ;
+        tank.status() ;
+        printLine($"Sample: level {latest.level}, pressure {latest.Pressure}, spare {latest.VOLUME}.") ;
+        for (Valve valve in valves)
+            printLine($"{valve}: {valve.level} {flowName(valve.flow)}, fast {valve.fast}, marks {valve.marks[1]} {valve.marks[2]} {valve.marks[3]}") ;
+        printLine($"Marks {marks[1]} {marks[2]} {marks[3]}, from 2 up {markSum(2)}.") ;
+        printLine($"Open {openCount()}, opened {opened()} {Valve.opened} {BigValve.OPENED}.") ;
+        printLine($"Running {valves.filter((Valve meter) => meter.level > 0).count()}, fast {valves.filter((Valve tank) => tank.flow == eFlow.fast).count()}.") ;
+        Valve first = valves.filter( (Valve capacity) => capacity.level > 0 ).first() ;
+        if (first != null) printLine($"First running: {first}, at {first.level}.") ; else printLine("First running: none.") ;
+        if (valves.any((Valve level) => level.level == 3)) printLine("A valve is wide open.") ;
+        array<Valve> byLevel = valves.orderBy( (Valve a , Valve b) => b.level - a.level ) ;
+        for (Valve pressure in byLevel) print($"{pressure.level} ") ;
+        printLine("") ;
+        printLine($"Tank: vents {tank.vents()}, meter {tank.meter()}, biggest {tank.biggest()} on {tank.valve}, valve {tank.valve.is(::BigValve)}.") ;
+        logBook.banner() ;
+    }
+}
+
+verb Names
+{
+    meta    = TRUE ;
+    grammar = { .names } ;
+    void handler ()
+    {
+        printLine($"room {headroom(5)} {headroom(5 , capacity: 30)} {headroom(capacity: ::volume , level: ::level)}") ;
+        printLine($"flows {flowName(shut)} {flowName(eFlow.slow)} {flowName(FAST)}") ;
+        printLine($"case {VALVEB.LEVEL} {valveb.Level} {TANK.Capacity} {Tank.LEVEL} {METER.Scale} {valveC.Meter.SCALE}") ;
+        printLine($"open {valveA.open()} {valveA.OPEN()} {valveA.has(open)} {openCount()}") ;
+        bool Take = location == roomA ;     // a local named like a library verb
+        printLine($"take {Take} {logBook.turns() >= 0}") ;
+        Gauge gauge = meter ;               // a local named like the class
+        printLine($"gauge {gauge.scale} {gauge.read(STEPS)} {meter.reading} {Gauge.opened()} {gauge.spread()}") ;
+        Valve valve = valveC ;
+        printLine($"big {valve.is(BigValve)} {valveA.is(BIGVALVE)}") ;
+        printLine($"over {over(25)} {over(5 , full: 3)} {over(level: ::level)} {over(full: ::pressure , level: tank.pressure)}") ;
+        printLine($"steps {stepsLeft(valveA)} {stepsLeft(valveC)}, agree {valveB.agrees()}, valve pressure {valveC.pressure()} {valveC.PRESSURE()} tank {tank.pressure} global {pressure}") ;
+    }
+}
+
+verb Inspect
+{
+    grammar = { .inspect , NOUN } ;
+    void handler ()
+    {
+        if (noun.is(Valve))  { ((Valve) noun).show() ; return ; }
+        if (noun == LOGBOOK) { logBook.banner() ; printLine($"Entries {entries}, any {logBook.achieved()}.") ; return ; }
+        printLine($"{cThe(noun)}: nothing to inspect.") ;
+    }
+}

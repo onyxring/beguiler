@@ -34,8 +34,9 @@ A global name must be unique across every kind of global declaration, ignoring c
 variable, function, class, object, enum or verb with the name of an existing global of any kind is a
 compile-time error (§19.2). That includes the globals a binding declares: a verb named like a library
 verb (`verb Empty` beside the binding's `extern verb Empty`) is an error, and the library verb is
-extended instead (§13.5). The one exception is an emitter function, which may share its name with a
-variable or object (§3.10).
+extended instead (§13.5). The exceptions are an emitter function, which may share its name with a
+variable or object (§3.10), and a verb, which may share its name with a class: the class's name names a
+type, the verb's an action (`verb Seal` beside `value class Seal`).
 
 ## 3.2 Declaration Qualifiers
 

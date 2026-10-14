@@ -1,0 +1,321 @@
+#grids
+Room A
+Room A. A desk with three channels and a bus is here.
+You can see a desk (on which are a channel A, a channel B, a channel C and a bus) here.
+[win 1] 1. desk ready, 3 channels, rows 4
+[grid 1]
+|A>......... 0                                     |
+|B ......... 0                                     |
+|C ......... 0                                     |
+|bus 0 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus - | master 1                         |
+> fade channel a to 6
+The channel A is at 6.
+[win 1] 2. A 0 -> 6
+[grid 1]
+|A>######... 6                                     |
+|B ......... 0                                     |
+|C ......... 0                                     |
+|bus 0 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus A | master 1                         |
+> raise channel b
+The channel B is at 1.
+[win 1] 3. B 0 -> 1
+[grid 1]
+|A>######... 6                                     |
+|B =........ 1                                     |
+|C ......... 0                                     |
+|bus 0 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> raise channel b
+The channel B is at 2.
+[win 1] 4. B 1 -> 2
+[grid 1]
+|A>######... 6                                     |
+|B ==....... 2                                     |
+|C ......... 0                                     |
+|bus 0 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> lower channel a
+The channel A is at 5.
+[win 1] 5. A 6 -> 5
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C ......... 0                                     |
+|bus 0 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> fade bus to 3
+The bus is at 3.
+[win 1] 6. M 0 -> 3
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C ......... 0                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus M | master 1                         |
+> fade channel c to 12
+The channel C is at 9, the top.
+[win 1] 7. C 0 -> 9
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> cut channel c
+C trim -3, net 6 (below zero).
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> cut channel c
+C trim -4, net 5 (below zero).
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> tag channel a
+A tagged hot; tagged: yes.
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> tag channel b
+B tagged lead; tagged: yes.
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> focus
+Focus C, gain 9, tag none, first C.
+Focused gain above two: yes.
+C is near the top.
+[grid 1]
+|A>#####.... 5                                     |
+|B ==....... 2                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus C | master 1                         |
+> step
+Cursor 1, B at 3.
+[grid 1]
+|A #####.... 5                                     |
+|B>===...... 3                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> focus
+Focus B, gain 3, tag lead, first B.
+Focused gain above two: yes.
+B is at three.
+[grid 1]
+|A #####.... 5                                     |
+|B>===...... 3                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> untag channel b
+B tag none; tagged: no.
+[grid 1]
+|A #####.... 5                                     |
+|B>===...... 3                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus B | master 1                         |
+> clear
+Focus cleared.
+[grid 1]
+|A #####.... 5                                     |
+|B>===...... 3                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus - | master 1                         |
+> focus
+Focus none, gain 0, tag none, first A.
+[grid 1]
+|A #####.... 5                                     |
+|B>===...... 3                                     |
+|C +++++++++ 9                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus - | master 1                         |
+> copy
+A 5, B 5, C 5; master 8, snapshot 6 (1 hit).
+All three match.
+Master is above the snapshot.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 3 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus - | master 8                         |
+> sum
+Bus 9, over by 6 (clipped).
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 9 | pan 0 | rows 4                            |
+[grid 2]
+|desk | focus - | master 8                         |
+> pan 3
+Pan 1 after 3 sets.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 9 | pan 1 | rows 4                            |
+[grid 2]
+|desk | focus - | master 8                         |
+> mute
+Muted.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 9 | pan 1 | rows 4 | muted                    |
+[grid 2]
+|desk | focus - | master 8                         |
+> rows 9
+Rows 5 (asked 9, grid 5), the most.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 9 | pan 1 | rows 5 | muted                    |
+|                                                  |
+[grid 2]
+|desk | focus - | master 8                         |
+> shrink
+Rows now 4; title desk.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|C +++++.... 5                                     |
+|bus 9 | pan 1 | rows 4 | muted                    |
+[grid 2]
+|desk | focus - | master 8                         |
+> shrink
+Rows now 3; title small desk.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus - | master 8                   |
+> cues 4
+Cue one 6 ||||||, cue two 9; one below two: yes.
+Cue two now 3.
+[grid 1]
+|A #####.... 5                                     |
+|B>=====.... 5                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus - | master 8                   |
+> settle
+A settled 5 -> 2.
+B settled 5 -> 2.
+C settled 5 -> 2.
+Spare 4 (4).
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus - | master 8                   |
+> spread
+Strips 2/1 5/1 9/1; top 9; master 2.
+Focus C at 3.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> mix
+A: gain 2 trim 0 net 2 [##.......] 22% low, tag hot
+B: gain 2 trim 0 net 2 [==.......] 22% low, tag none
+C: gain 3 trim -4 net -1 [+++......] 33% low, tag none
+Above A: 1; at or above pan: 2; loudest first CAB; any tagged: yes.
+A matches B.
+Headroom 20; bus 9 of 9, A has 7 left.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> x channel a
+The channel A: gain 2, trim 0, tag hot, low.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> x bus
+The bus: gain 9, trim 0, tag none, full.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> counts
+Level sets 52, copies 1; caption edits 3; focus switches 9; pan sets 3; mute flips 1.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> links
+Focus: A B C
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3 | muted                    |
+[grid 2]
+|small desk | focus C | master 2                   |
+> mute
+Unmuted.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3                            |
+[grid 2]
+|small desk | focus C | master 2                   |
+> counts
+Level sets 52, copies 1; caption edits 3; focus switches 9; pan sets 3; mute flips 2.
+[grid 1]
+|A ##....... 2                                     |
+|B>==....... 2                                     |
+|bus 9 | pan 1 | rows 3                            |
+[grid 2]
+|small desk | focus C | master 2                   |

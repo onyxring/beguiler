@@ -1,0 +1,71 @@
+// run_target3_accessors — a call result's value-class member passed to a `ref` parameter, compared,
+// and assigned through, `ref` locals bound to members of a call result and of an accessor's getter
+// result, such a member passed as a `ref` argument, and a routine whose loop body ends the scope before
+// its final return.
+// EXPECT_OUTPUT: 5 6 7 yes 0 yes 0 8 9 1 #.. 4 6 9
+#beguilerSettings { target = glulx; informName = "none"; }
+#include "glulxConsole.bgl"
+#include <string>
+value class Level {
+    int _v = 0;
+    static int copies = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v; }
+    Level operator = (Level o) { _v = o._v; copies++; return self; }
+    Level operator += (int n) { _v = _v + n; return self; }
+    int operator <=> (int n) { return _v - n; }
+}
+value class Focus {
+    Channel _c = null;
+    Channel operator () { return _c; }
+    void operator = (Channel c) { _c = c; }
+}
+class Channel : object { Level gain; }
+Channel chanA { }
+Channel chanB { }
+array<Channel> chans = { chanA, chanB };
+object desk { Focus focus; }
+Channel pick(int i) { return chans[i]; }
+void pairUp(ref Level from, ref Level into) { into = from; }
+void put(ref Level g, int v) { g = v; }
+stringObj dots(int n) {
+    stringObj s = "";
+    for (int i = 0; i < n; i++) s += i < 1 ? '#' : '.';
+    return s;
+}
+void main() {
+    glulxConsole();
+    bglInit();
+    chanA.gain = 5;
+    pairUp(chanA.gain, chanB.gain);
+    print($"{chanB.gain} ");
+    chanA.gain = 6;
+    pairUp(chanA.gain, pick(1).gain);
+    print($"{chanB.gain} ");
+    chanA.gain = 7;
+    pairUp(chanA.gain, chans[1].gain);
+    print($"{chanB.gain} ");
+    chanA.gain = 5;
+    int c = Level.copies;
+    bool hi = pick(0).gain > 2;
+    print($"{hi ? "yes" : "no"} {Level.copies - c} ");
+    c = Level.copies;
+    bool hi2 = chanA.gain > 2;
+    print($"{hi2 ? "yes" : "no"} {Level.copies - c} ");
+    pick(0).gain += 3;
+    print($"{chanA.gain} ");
+    pick(0).gain++;
+    print($"{chanA.gain} ");
+    pick(0).gain = 1;
+    print($"{chanA.gain} ");
+    print($"{dots(3)} ");
+    desk.focus = chanA;
+    ref Level r := pick(0).gain;
+    r = 4;
+    print($"{chanA.gain} ");
+    ref Level f := desk.focus.gain;
+    f = 6;
+    print($"{chanA.gain} ");
+    put(desk.focus.gain, 9);
+    print($"{chanA.gain}");
+}

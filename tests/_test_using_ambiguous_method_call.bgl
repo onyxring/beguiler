@@ -1,0 +1,8 @@
+/* test a bare call to a method that two #using imports both declare */
+// EXPECT_ERROR: 'half' is a method of both '_bay' and '_box'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object _bay { int half(int n) { return n / 2 + 100; } }
+object _box { int half(int n) { return n / 2 + 200; } }
+#using _bay
+#using _box
+void main(){ print(half(9)); }

@@ -1,0 +1,119 @@
+Room A
+Room A.
+
+You can see a bolt, a crate, a tray A, a tray B and a bucket here.
+
+> survey
+Shelf:; loose:.
+upper/high=0 middle/high=0 deep lower/low=0 
+Heaviest 0; heavy 0; all 0.
+Made 0, gone 0, net 0, idx 0.
+
+> trays
+First 4/12; other 3/3, same A.
+Footprint 3x1 area 3; 4, 5.
+Halves 4/104/104/104/4; box 12.
+Now first 3, by path A.
+
+> rank
+Order L U M; codes 3 1 2.
+Bins; total 0, fullest U, label upper.
+Upper 0, any low no, last 0, counts 000.
+
+> paths
+Stock yes, bay yes, deep yes.
+Counts 0/0/3.
+Bucket 50/50/5; is tray yes, is part no.
+Tint 1, marked 3, sealed no.
+Store deep lower, same, heaviest agrees 0.
+
+> probe
+Home 2, in home 0, upper 0, loose lower 0.
+No spare on the shelf.
+Pick 3x1, first 3, units 12/6.
+Next bin ?, lower 3, sealed 4.
+
+> restock 1
+Kept S100:2x1 in upper (HIGH); count 1, global 10.
+
+> restock 3
+Kept S101:2x3 in deep lower (LOW); count 2, global 20.
+
+> restock 2
+Kept S102:2x2 in middle (HIGH); count 3, global 30.
+
+> restock 3
+Shelf is full; S103:2x3 goes loose.
+
+> restock 1
+No spares left.
+
+> survey
+Shelf: S100:2x1 S101:2x3 S102:2x2; loose: S103:2x3.
+upper/high=2 middle/high=2 deep lower/low=2 
+Heaviest 6; heavy 1; all 8.
+Made 4, gone 0, net 4, idx 4.
+
+> rank
+Order L U M; codes 3 1 2.
+Bins U L M; total 6, fullest U, label upper.
+Upper 1, any low yes, last 6, counts 111.
+
+> paths
+Stock yes, bay yes, deep yes.
+Counts 3/3/3.
+Bucket 50/50/5; is tray yes, is part no.
+Tint 1, marked 3, sealed no.
+Store deep lower, same, heaviest agrees 6.
+
+> probe
+Home 2, in home 2, upper 2, loose lower 1.
+Caught S100:2x1 from bin U.
+Pick 1x3, first 3, units 12/6.
+Next bin M, lower 3, sealed 4.
+
+> bulk
+Loose 1: S103:2x3.
+Front serial 103, bin L.
+Words deep/low, deep lower.
+
+> measure
+Crate 2x3 area 6; grown 3x4; twice 48.
+Now 4x5; same as grown no; template 6.
+Box 12, half 10.
+
+> sort
+Crate tag crate, idx 7, ns 0.
+Bolt 3x1 in high.
+Lower spare 101.
+Local stock 5, path count 3.
+Container crate 20, attribute no/no.
+
+> mark
+Tagged 3, sealed 1, crate sealed yes.
+
+> trays
+First 3/3; other 4/12, same B.
+Footprint 4x3 area 12; 4, 5.
+Halves 4/104/104/104/4; box 12.
+Now first 4, by path B.
+
+> recount
+Made 5, gone 4, net 1.
+
+> clear
+Cleared 4; made 5, gone 8, net -3.
+
+> recount
+Made -2, gone -3, net 1.
+
+> bulk
+Loose 2: S200:2x1 S201:2x3.
+Front serial 200, bin U.
+Words deep/low, deep lower.
+
+> probe
+Home 2, in home 0, upper 0, loose lower 1.
+No spare on the shelf.
+Pick 3x1, first 4, units 12/6.
+Next bin ?, lower 3, sealed 4.

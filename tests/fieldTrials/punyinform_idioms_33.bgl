@@ -1,0 +1,724 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-third PunyInform program written bottom-up in reverse, so that nearly every name
+// is used above its declaration: two rooms (Room A with a bench and four crates, Room B with a platform);
+// globals typed by a class, an alias type path, an enum, a bnum and a value class declared at the foot,
+// initialized with objects and enum values declared below; a global `array<Mass>` sized by a const
+// declared below, appended, searched with the value class's static `==`, sorted through an operator
+// reference `Mass::operator <=>` taken above the class, and compared with orderings derived from a
+// static `<=>`; routines returning, taking (`ref`, plain, defaulted to a const and an enum value
+// declared below) and comparing the value class; a forward `extend` of a namespace object adding a type
+// alias, and a forward `extend` of a platform object adding a method and a member; a namespace object
+// at the foot with type aliases (class, enum, pooled class) and value aliases (`alias`, `auto`) used
+// above in declarations, parameters, casts, `is()`, `new`, and member-array reads; a pooled class sized
+// by a const below, allocated through an alias path and deleted; a subclass declared above its base,
+// overriding a `default` method; an instance `<=>` on the base with derived `<`/`>` used above; a named
+// accessor class declared last, with `==`, `!=` and `<=>` against int, read, assigned, `+=`d, `++`d and
+// compared through casts, array elements and `?.`; an inline `auto` accessor whose setter writes a
+// member declared after it through `outer`; a member array on the bench of the subclass type, and one
+// on the base class, written and read from above; enum emitter members (one added by `extend enum` at
+// the foot) and bnum flags used above; `extend class` at the foot adding a method, a static member and
+// an emitter value, all used above; global emitter functions and values and an emitter namespace
+// declared at the foot used above, in interpolation; mutual recursion with the partner declared
+// below; `throw`/`catch` of the subclass; a children loop over the bench; <linq> over
+// `bgl.world.instances` with lambdas calling members added by the foot `extend`; a strongbox subclass
+// declared above its base that hides the base's accessor setter (written through an upcast) and adds a
+// class-body inline accessor; a static `<=>` and an `operator + (Mass)` added to the base by the foot
+// `extend`; overloads choosing between a value class and the subclass; a named union parameter with a
+// default object declared below; inline objects of the value class as a global initializer, an
+// argument, a return value and an array append; `ref` accessor parameters bound to members through
+// casts and `?.`; a `ref` local of an alias type; `array<kit.crate>`; a member `array<Mass>` on the
+// platform added to through a forward `extend`; and verbs weigh, stamp, tear, rack, compare, grade,
+// sort, nudge, pack plus meta verbs tally, ledger, probe and survey.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    object e_to;
+    object w_to;
+}
+
+// --- globals typed by things declared further down ------------------------------------------------
+
+Crate picked = crateB;
+kit.crate spare = crateD;
+eGrade lastGrade = eGrade.mid;
+eTag stamped = eTag.sealed;
+Mass total;
+Mass heaviestSeen;
+array<Mass> weighed[CAP];
+int issued = 0;
+stringObj trail;
+
+// --- forward extends: the namespace and the platform are declared at the foot ----------------------
+
+extend kit {
+    alias mass for Mass;
+}
+
+extend platform {
+    int readings = 0;
+    int readOut(Crate c) {
+        readings++;
+        return c.load + twice(c.lid);
+    }
+    kit.mass peek(int back = 0) {
+        if (history.length <= back) return Mass{ grams = 0; count = 0; };
+        return history[history.length - 1 - back];
+    }
+}
+
+extend crateD {
+    replace string kindName() {
+        return "spare crate";
+    }
+}
+
+// --- routines ---------------------------------------------------------------------------------------
+
+kit.mass massOf(Box b) {
+    Mass m;
+    m.grams = b.load;
+    m.count = 1;
+    return m;
+}
+
+void addTo(ref Mass acc, Mass m) {
+    acc += m;
+}
+
+eGrade gradeOf(Mass m, int cut = HEAVY_CUT) {
+    if (m.grams >= cut) return eGrade.heavy;
+    if (m.grams >= cut / 2) return kit.grade.mid;
+    return eGrade.light;
+}
+
+string gradeName(kit.grade g) {
+    switch (g) {
+        case eGrade.light: return "light";
+        case kit.grade.mid: return "medium";
+        case eGrade.heavy: return "heavy";
+    }
+    return "none";
+}
+
+bool passes(Crate c, eGrade floor = eGrade.mid) {
+    return gradeOf(massOf(c)).atLeast(floor);
+}
+
+Crate heaviest() {
+    Crate best = null;
+    for (int i = 0; i < benchTop.rack.size; i++) {
+        Crate c = benchTop.rack[i];
+        if (!c?) continue;
+        if (!best? || c > best) best = c;
+    }
+    return best;
+}
+
+int sumFrom(int i) {
+    if (i >= benchTop.rack.size) return 0;
+    return sumRest(i);
+}
+
+void note(string what, kit.crate c = null) {
+    trail += $"{what}:{c?.label ?? "-"} ";
+}
+
+string labelOf(Box b, string blank = "none") {
+    return b?.label ?? blank;
+}
+
+kit.crate heaviestK() {
+    return heaviest() ?? spare;
+}
+
+void showMass(Mass m) {
+    print($"{m.grams}g in {m.count}");
+}
+
+void bump(ref Dial d, int by = NUDGE_STEP) {
+    d += by;
+}
+
+string show(Mass m) {
+    return m.grams > 0 ? "a reading" : "no reading";
+}
+
+string show(Crate c) {
+    return c.label;
+}
+
+string nameOf(crateOrText v, kit.crate fallback = crateA) {
+    if (typeof(v) == eType.object) return ((Crate)v).label;
+    if (v == null) return fallback.label;
+    return (string)v;
+}
+
+Mass floorMass = Mass{ grams = 2; count = 1; };
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Weigh {
+    grammar = {.weigh, NOUN, .at, NUMBER};
+    void handler() {
+        if (!noun.is(kit.crate)) {
+            printLine("Only crates go on the scale.");
+            return;
+        }
+        Crate c = (kit.crate)noun;
+        c.load = parsed_number;
+        c.load++;
+        c.load += -1;
+        c.stash(c.load);
+        Mass m = massOf(c);
+        addTo(total, m);
+        if (m > heaviestSeen) heaviestSeen = m;
+        weighed += m;
+        lastGrade = gradeOf(m);
+        note("weigh", c);
+        if (c.load == DIAL_MAX) printLine($"{cThe(c)} pins the dial at {c.load}.");
+        else printLine($"{cThe(c)} weighs {c.load}; grade {gradeName(lastGrade)} ({lastGrade.rank}, {lastGrade.stars} star(s)).");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) {
+            printLine("Only crates take a chit.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        if (c.ticket?) {
+            printLine($"{cThe(c)} already has chit {c.ticket.number}.");
+            return;
+        }
+        kit.chit t = new kit.chit(issued + 1, c);
+        if (t == null) {
+            printLine("The chit pad is empty.");
+            return;
+        }
+        issued++;
+        Box.stamps++;
+        c.ticket = t;
+        c.tags = c.tags | eTag.marked;
+        note("stamp", c);
+        printLine($"Chit {t.number} goes on {labelOf(t.on)}, grade {gradeName(t.grade)}; {CHITS - issued} chit(s) left{dotted}");
+    }
+}
+
+verb Tear {
+    grammar = {.tear, NOUN};
+    void handler() {
+        Crate c = noun.is(Crate) ? (Crate)noun : null;
+        if (!c?.ticket?) {
+            printLine("There is no chit to tear.");
+            return;
+        }
+        int n = c.ticket.number;
+        delete c.ticket;
+        c.ticket = null;
+        c.tags = c.tags & eTag.sealed;
+        note("tear", c);
+        printLine($"You tear chit {n} from {labelOf(c)}. {issued} still out.");
+    }
+}
+
+verb RackUp {
+    grammar = {.rack, NOUN};
+    void handler() {
+        if (!noun.is(Crate)) {
+            printLine("Only crates go on the rack.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        if (benchTop.rack.indexOf(c) >= 0) {
+            printLine($"{cThe(c)} is already racked.");
+            return;
+        }
+        if (benchTop.rack.length >= benchTop.rack.size) {
+            printLine("The rack is full.");
+            return;
+        }
+        benchTop.rack += c;
+        kit.bench.filled = benchTop.rack.length;
+        c.parent = benchTop;
+        c.tags = c.tags | eTag.checked;
+        note("rack", c);
+        printLine($"You rack {labelOf(c)}. Rack holds {kit.bench.filled} (peak {benchTop.peak}), total {sumFrom(0)}.");
+    }
+}
+
+verb Compare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        if (!noun.is(Box) || !second.is(Box)) {
+            printLine("Only crates compare.");
+            return;
+        }
+        Box a = (Box)noun;
+        Box b = (Box)second;
+        string word = a > b ? "heavier than" : (a < b ? "lighter than" : "as heavy as");
+        printLine($"{labelOf(a)} is {word} {labelOf(b)} ({a <=> b}).");
+        printLine($"{labelOf(a)} {((Crate)a).load >= 5 ? "passes" : "fails"} the half mark; {labelOf(b)} {passes((Crate)b) ? "passes" : "fails"} medium.");
+    }
+}
+
+verb Grading {
+    grammar = {.grade, NOUN};
+    void handler() {
+        Crate c = noun.is(Crate) ? (Crate)noun : null;
+        if (!c?) {
+            printLine($"{cThe(noun)} has no grade.");
+            return;
+        }
+        eGrade g = gradeOf(massOf(c), cut: c.heft());
+        kit.grade h = gradeOf(cut: HEAVY_CUT, m: massOf(c));
+        printLine($"{labelOf(c)}: heft {c.heft()}, grade {gradeName(g)} against heft, {gradeName(h)} against {HEAVY_CUT}; rank {h.rank}, at least medium {h.atLeast(eGrade.mid) ? "yes" : "no"}.");
+        printLine($"{labelOf(c)} on the platform reads {platform.readOut(c)}; {c.kindName()} {c.code}, {(c.tags & eTag.marked) != 0 ? "marked" : "unmarked"}.");
+    }
+}
+
+verb Sorting {
+    grammar = {.sort};
+    void handler() {
+        if (weighed.length == 0) {
+            printLine("Nothing has been weighed.");
+            return;
+        }
+        weighed.sort(Mass::operator <=>);
+        func<bool, Mass, Mass> same = Mass::operator ==(Mass);
+        print("Weighed:");
+        for (int i = 0; i < weighed.length; i++) print($" {weighed[i].grams}");
+        printLine(".");
+        Mass probe = massOf(picked);
+        printLine($"{labelOf(picked)} reading found at {weighed.indexOf(probe)}, same as last {same(probe, weighed[weighed.length - 1]) ? "yes" : "no"}; heaviest {heaviestSeen.grams}, light ones {weighed.filter((Mass m) => m < heaviestSeen).count()}.");
+        array<object> order[4];
+        order = bgl.world.instances(Crate).orderBy((object a, object b) => ((Box)b) <=> ((Box)a));
+        print("By load:");
+        for (object o in order) print($" {labelOf((Box)o, "?")}={((Crate)o).load}");
+        printLine(".");
+        array<Box> boxes[5];
+        for (object o in bgl.world.instances(Box)) boxes += (Box)o;
+        boxes.sort();
+        boxes.sort(Box::operator <=>);
+        print("Boxes up:");
+        for (Box b in boxes) print($" {labelOf(b, "?")}");
+        printLine(".");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        print("Rack:");
+        for (int i = 0; i < kit.bench.rack.size; i++) print($" {labelOf(kit.bench.rack[i], "_")}");
+        printLine($". Filled {kit.bench.filled}, peak {benchTop.peak}, sum {sumFrom(0)}.");
+        print("On the bench:");
+        int n = 0;
+        for (object o in benchTop.children) {
+            print($" {(Crate)o}");
+            n++;
+        }
+        printLine($" ({n}).");
+        int lit = bgl.world.instances(Crate).filter((object o) => ((Crate)o).heft() > 0).count();
+        bool any = bgl.world.instances(Crate).any((object o) => ((Box)o).ticket?);
+        printLine($"{lit} crate(s) have heft; chits out: {any ? "yes" : "no"}; stamps {Box.stamps}; flags on picked {(int)picked.tags}, spare {labelOf(spare)}.");
+        try {
+            throw heaviest() ?? spare;
+        } catch (Crate c) {
+            printLine($"Heaviest racked: {labelOf(c)} at {c.load}{dotted}");
+        }
+    }
+}
+
+verb Ledger {
+    meta = true;
+    grammar = {.ledger};
+    void handler() {
+        print("Total ");
+        showMass(total);
+        printLine($"; last grade {gradeName(lastGrade)}; stamped {(int)stamped}; platform readings {kit.scale.readings}.");
+        print("Slots:");
+        for (int i = 0; i < 4; i++) {
+            Crate c = (Crate)kit.bench.rack[i];
+            if (!c?) continue;
+            print($" {c.label}[{c.slots.length}]");
+            if (c.slots.length > 0) print($"={c.slots[c.slots.length - 1]}");
+        }
+        printLine(".");
+        ref Dial d := crateA.load;
+        d = d + 3;
+        printLine($"Crate A dial moves to {crateA.load} ({crateA.load != 0 ? "live" : "zero"}).");
+        d = 0;
+        printLine($"Trail: {trail}");
+    }
+}
+
+verb Nudge {
+    grammar = {.nudge, NOUN, .by, NUMBER};
+    void handler() {
+        if (!noun.is(kit.crate)) {
+            printLine("Only crates nudge.");
+            return;
+        }
+        Crate c = (Crate)noun;
+        int was = c.load;
+        bump(c.load, parsed_number);
+        bump(((Box)c).load);
+        ((kit.crate)noun)?.load++;
+        c.stash(c + 0);
+        printLine($"{labelOf(c)} goes from {was} to {c.load}; {c.load > was ? "up" : "not up"}, {c.load == DIAL_MAX ? "pinned" : "free"}, plus five {c + 5}.");
+        switch (c.load <=> HEAVY_CUT) {
+            case 0: printLine("Exactly the cut.");
+            default: printLine(c.load > HEAVY_CUT ? "Over the cut." : "Under the cut.");
+        }
+    }
+}
+
+verb Probe {
+    meta = true;
+    grammar = {.probe};
+    void handler() {
+        Crate first = benchTop.rack[0];
+        printLine($"First racked {first?.label ?? "none"}, its chit {first?.ticket?.number}, grade rank {first?.ticket?.grade.rank}.");
+        printLine($"Show: {show(massOf(crateD))}, {show(crateC)}, {show(floorMass)} ({floorMass.grams}g).");
+        printLine($"Names: {nameOf(crateB)}, {nameOf("loose")}, {nameOf(null)}, {nameOf(null, fallback: crateD)}.");
+        int heavyRack = 0;
+        for (Crate c in benchTop.rack) {
+            if (c?.load >= HEAVY_CUT) heavyRack++;
+        }
+        Mass m = massOf(crateC);
+        m += floorMass;
+        func<bool, kit.mass> over = (kit.mass x) => x > floorMass;
+        printLine($"Heavy racked {heavyRack}; C plus floor {m.grams}g in {m.count}; over floor {over(m) ? "yes" : "no"}; first mass {massOf(first ?? crateA).grams}.");
+        printLine($"C plus floor again {crateC + floorMass}, strongbox plus floor {strongbox + floorMass}.");
+        printLine($"Static stamps {Crate.stamps}, platform shelf {benchTop.width}, kit scale {kit.scale}, cut grade {gradeName(gradeOf(Mass{ grams = HEAVY_CUT; count = 1; }))}.");
+    }
+}
+
+verb Pack {
+    grammar = {.pack, NOUN, .with, NUMBER};
+    void handler() {
+        if (!noun.is(Lockbox)) {
+            printLine("Only the strongbox packs.");
+            return;
+        }
+        Lockbox l = (Lockbox)noun;
+        ((Box)l).load = parsed_number;
+        l.seal = parsed_number;
+        l.last = massOf(l);
+        platform.history += l.last;
+        l.tags = l.tags | eTag.sealed;
+        printLine($"{cThe(l)} holds {l.load} ({l.kindName()}), seal {l.seal}, {platform.history.length} logged, last {platform.history[platform.history.length - 1].grams}g, sealed {l.tags.has(eTag.sealed) ? "yes" : "no"}, marked {l.tags.has(eTag.marked) ? "yes" : "no"}.");
+        printLine($"Racked count {Box.countRacked()} / {Crate.countRacked()}; spare is a {crateD.kindName()}; strongbox {l > crateD ? "outweighs" : "trails"} D.");
+    }
+}
+
+verb Survey {
+    meta = true;
+    grammar = {.survey};
+    void handler() {
+        spare.load += 2;
+        kit.bench.filled++;
+        kit.bench.filled += 1;
+        printLine($"Heaviest {heaviestK().label} at {heaviestK().load}, {heaviestK().kindName()}; spare now {spare.load}; filled {kit.bench.filled}, peak {kit.bench.peak}.");
+        kit.bench.filled = benchTop.rack.length;
+        printLine($"Platform peek {kit.scale.peek().grams}g, one back {platform.peek(1).grams}g, two back {platform.peek(back: 2).count}; heavy rank {kit.grade.heavy.rank}, mid stars {kit.grade.mid.stars}.");
+        array<kit.crate> picks[4];
+        for (int i = 0; i < benchTop.rack.length; i++) {
+            if (passes(benchTop.rack[i], kit.grade.heavy)) picks += benchTop.rack[i];
+        }
+        kit.mass sum = Mass{ grams = 0; count = 0; };
+        for (Crate c in picks) sum += massOf(c);
+        ref kit.mass r := total;
+        Box pick = picks.length > 1 ? (Box)picks[1] : strongbox;
+        weighed += Mass{ grams = 1; count = 1; };
+        printLine($"Heavy picks {picks.length} ({sum.grams}g in {sum.count}), first {picks[0]?.label ?? "none"}, pick {labelOf(pick)}, seal {strongbox?.seal}; total {r.grams}g; weighed {weighed.length}, last {weighed[weighed.length - 1].grams}g.");
+        if (picks.indexOf(crateC) >= 0) printLine("C counts as heavy.");
+    }
+}
+
+// --- the partner of sumFrom -------------------------------------------------------------------------
+
+int sumRest(int i) {
+    Crate c = benchTop.rack[i];
+    int here = c?.load;
+    return here + sumFrom(i + 1);
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {light, proper};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. Four crates sit by a bench. A doorway leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A platform scale. A doorway leads west.";
+    w_to = roomA;
+}
+
+// --- the strongbox class, declared above its base ---
+
+class Lockbox : Box {
+    hide load.operator =;
+    auto seal = {
+        int _s = 0;
+        int  operator () { return _s; }
+        void operator = (int v) { _s = v > 0 ? 1 : 0; }
+    }
+    string kindName() {
+        return "strongbox";
+    }
+}
+
+Lockbox strongbox {
+    "strongbox";
+    parent = roomB;
+    name = {.strongbox, .box};
+    label = "S";
+}
+
+// --- the crate class, declared above its base -------------------------------------------------------
+
+class Crate : Box {
+    int lid = 0;
+    string kindName() {
+        return "crate";
+    }
+}
+
+object benchTop {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    description = "A long bench with a rack.";
+    attributes = {static, supporter};
+    array<Crate> rack[4];
+    emitter int width { 4 }
+    auto filled = {
+        int _n = 0;
+        int operator () { return _n; }
+        void operator = (int v) {
+            _n = v;
+            if (v > outer.peak) outer.peak = v;
+        }
+    }
+    int peak = 0;
+}
+
+Crate crateA {
+    "crate A";
+    parent = roomA;
+    name = {.crate, .a};
+    label = "A";
+    lid = 1;
+}
+
+Crate crateB {
+    "crate B";
+    parent = roomA;
+    name = {.crate, .b};
+    label = "B";
+    lid = 2;
+}
+
+Crate crateC {
+    "crate C";
+    parent = roomA;
+    name = {.crate, .c};
+    label = "C";
+}
+
+Crate crateD {
+    "crate D";
+    parent = roomA;
+    name = {.crate, .d};
+    label = "D";
+    lid = 3;
+}
+
+object platform {
+    "platform";
+    parent = roomB;
+    name = {.platform, .scale};
+    description = "A platform scale.";
+    attributes = {static};
+    array<Mass> history[3];
+}
+
+// --- the base class ---------------------------------------------------------------------------------
+
+class Box : object {
+    Dial load;
+    eTag tags;
+    string label;
+    kit.chit ticket;
+    Mass last;
+    array<int> slots[4];
+
+    default string kindName() {
+        return "box";
+    }
+
+    int operator <=> (Box o) {
+        return load - o.load;
+    }
+
+    void stash(int g) {
+        if (slots.length >= slots.size) slots.dequeue();
+        slots += g;
+    }
+}
+
+// --- the pooled chit --------------------------------------------------------------------------------
+
+class Chit[CHITS] : object {
+    int number;
+    Crate on;
+    eGrade grade;
+
+    void create(int n, Crate c) {
+        number = n;
+        on = c;
+        grade = gradeOf(massOf(c));
+    }
+
+    void destroy() {
+        issued--;
+    }
+}
+
+// --- namespace --------------------------------------------------------------------------------------
+
+object kit {
+    alias crate for Crate;
+    alias grade for eGrade;
+    alias chit for Chit;
+    alias bench = benchTop;
+    auto scale = platform;
+}
+
+// --- enums and the value class ----------------------------------------------------------------------
+
+enum eGrade {
+    light, mid, heavy,
+    emitter int rank { ($self * 10) }
+    emitter bool atLeast(eGrade g) { ($self >= $g) }
+}
+
+bnum eTag { sealed, marked, checked }
+
+value class Mass {
+    int grams;
+    int count;
+
+    Mass operator = (Mass o) {
+        grams = o.grams;
+        count = o.count;
+        return self;
+    }
+    Mass operator += (Mass o) {
+        grams += o.grams;
+        count += o.count;
+        return self;
+    }
+    static bool operator == (Mass a, Mass b) { return a.grams == b.grams; }
+    static bool operator != (Mass a, Mass b) { return a.grams != b.grams; }
+    static int  operator <=> (Mass a, Mass b) { return a.grams - b.grams; }
+}
+
+union crateOrText = Crate | string;
+
+// --- foot: extensions, consts, emitters, the accessor class -----------------------------------------
+
+extend class Box {
+    static int operator <=> (Box a, Box b) {
+        return order(a, b);
+    }
+    static int order(Box a, Box b) {
+        if (a.load != b.load) return a.load - b.load;
+        return a.slots.length - b.slots.length;
+    }
+    static int stamps = 0;
+    int operator + (Mass m) {
+        return load + m.grams;
+    }
+    static int countRacked() {
+        return benchTop.rack.length;
+    }
+    int heft() {
+        return load * 2 + slots.length;
+    }
+}
+
+extend class Crate {
+    emitter int code { ($self.lid * 100) }
+    int operator + (int n) {
+        return load + n;
+    }
+}
+
+
+extend bnum eTag {
+    emitter bool has(eTag t) { (($self & $t) ~= 0) }
+}
+
+extend enum eGrade {
+    emitter int stars { ($self) }
+}
+
+const int CAP = 6;
+const int CHITS = 3;
+const int HEAVY_CUT = 8;
+const int DIAL_MAX = 9;
+const int NUDGE_STEP = 1;
+
+emitter int twice(int n) { ($n * 2) }
+emitter string dotted { "." }
+
+value class Dial {
+    int _g = 0;
+
+    int  operator () { return _g; }
+    void operator = (int v) {
+        if (v < 0) v = 0;
+        if (v > DIAL_MAX) v = DIAL_MAX;
+        _g = v;
+    }
+    bool operator == (int v) { return _g == v; }
+    bool operator != (int v) { return _g != v; }
+    int  operator <=> (int v) { return _g - v; }
+}
+
+bool Initialise() {
+    rfalse;
+}

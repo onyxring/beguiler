@@ -1,0 +1,82 @@
+Room A
+> stock
+bay 10: 6 6 0 0; load 24, level 0, slots 2, next 20.
+bay 20: 0 2 7 1; load 21, level 0, slots 2, next 30.
+cold bay 30: 5 0 0 2; load 25, level 0, slots 2, next 40.
+bay 40: 0 1 0 7; load 36, level 0, slots 2, next 0.
+> show alpha
+bay 10 holds 12 (many).
+Slots: [4 bolt] [6 nut]
+Sum 12; best 0 bolt; heaviest kind bolt.
+Crate: 2 bolt.
+Next: bay 20.
+> show gamma
+cold bay 30 holds 7 (some).
+Slots: [2 cog] [5 bolt]
+Sum 7; best 0 bolt; heaviest kind bolt.
+Next: bay 40.
+> add bolt to beta
+bolt: 0 -> 4; total 13; level 3; load 30.
+New slot 3.
+> add cog to alpha
+cog: 0 -> 4; total 15; level 5; load 39.
+New slot 3.
+> pick 1 bolt
+most bolt: bay 10 with 6, slot 5, weight 12.
+Short slot.
+> pick 2 nut
+least nut: cold bay 30 with 0, slot 1, weight 0.
+Not slotted.
+> pick 3 pin
+by kind pin: cold bay 30 with 0, slot 1, weight 0.
+Not slotted.
+> pick 4 pin
+No such picker.
+> grid
+[10 6 6 14][20 5 2 16]
+[30 11 0 8][40 12 0 7]
+Corner next: 0; first row next: 30.
+> links
+Chain: 40, cold bay 30, 40, 40.
+From 20: 2 cogs; missing: 40; 0; bay 40; none.
+Stopped at bay 40 after 3.
+> best
+10: 5 cog (25).
+20: 5 bolt (15).
+30: 6 bolt (18).
+40: 8 cog (40).
+Doubled: 10; same as bay 20: no.
+Copied: 10 cog; same now: yes.
+Changed: 10 cog / 10 nut; differ: yes.
+> rank
+Fewest: cold bay 30; most: bay 10.
+Bays with a slot over 4: 3; first with cogs: 10, its next 20.
+Heavier of 10 and 40: bay 10; 10; 2.
+Busy: 10/39 20/30 30/25 40/36
+> shift 2 to alpha
+1 cog from 20 to 10: 0 left, 5 there.
+> shift 3 to delta
+4 pin from 20 to 40: 3 left, 4 there.
+> shift 1 to alpha
+Already there.
+> tally
+Slotted weight 119; diagonal 15 in 4 picks; visits 3 in 6 picks.
+Index calls 2.
+Spare 0: 1 bolt -> 3 bolt, weight 9.
+Spare 1: 2 cog -> 4 cog, weight 20.
+Mix of 10: 49, cogs 35, heavy bolt.
+> copy delta
+Sorted: 0 1 4 7; swapped 7..0; max at 0
+Restored: 0 1 4 7; snap 4.
+> tune nut
+Gamma slots: 3 cog, 5 bolt, 8 nut; last weight 8.
+Levels: 9 7 10; top 40, over 5: 4, beta nut 4, least 30.
+Gamma is bolt-heavy.
+> cold
+cold bay 30 / bay 30 / cold bay 30 / cold bay 30.
+COLD BAY 30 / cold bay 30 / 11.
+> stock
+bay 10: 6 6 0 5; load 44, level 7, slots 3, next 20.
+bay 20: 4 4 3 0; load 19, level 9, slots 3, next 30.
+cold bay 30: 5 1 0 2; load 25, level 11, slots 3, next 40.
+bay 40: 0 1 4 7; load 44, level 12, slots 2, next 0.

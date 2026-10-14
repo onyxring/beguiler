@@ -1,0 +1,549 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small parts-bin index program, on the Z-machine, leaning on
+// namespaces and the names that meet across them.
+// An object namespace `_stock` holding type aliases for a class, a pooled subclass, an enum, a bnum and a
+// value class, a member `count` beside a global `count`, a member array typed by its own alias and
+// methods naming the aliases bare (one calling its own `binWord` beside a global `binWord`); a superposed
+// namespace `_calc` taking and returning the aliases by full path (value-class returns, `array<T>` and
+// `func<…>` parameters); a root `idx` given members by an `extend` written ABOVE it (`auto stock`) and
+// below it (`alias calc`, `alias tally` to a class's statics, `alias store` as a second path to `_stock`);
+// a third level (`idx.stock.bay`, holding a type alias and objects typed through it); later `extend
+// _stock` blocks adding type aliases (one named like the library attribute `container`), methods and a
+// `replace`, written before and after the imports that reach them; an emitter-class namespace composed by
+// alias members (`tools.units`) and imported along with its target; a class's statics imported by
+// `#using Tally` and written through the import, the class and the value alias; `#using idx`, then
+// `idx.stock`, then `idx.stock.bay`, so one type is written by full path, partial path and bare name;
+// dotted paths in globals, a const, `array<T>` and `func<…>`, base class lists (three levels deep),
+// object declarations, `extend class` members, casts, `is()`, `new`, inline value objects (positional and
+// named), `ref` parameters, lambda parameters, for-in variables, switch cases, default and named
+// arguments, `?.`, ternaries and interpolation; `auto` namespace members compared as values; a class
+// member named like the root namespace (reached past it with `::idx`), a method named like an imported
+// type alias, a local named like an imported branch and like an imported static, and a `half` imported
+// from two namespaces, always written with a path.
+
+#beguilerSettings {
+    target = z8;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+const int SLOTS = 4;
+int count = 0;
+
+enum eBin { upper, middle, lower }
+bnum eMark { dented, tagged, sealed }
+
+value class Size {
+    inline int w;
+    inline int h;
+    Size operator = (Size o) { w = o.w; h = o.h; return self; }
+    bool operator == (Size o) { return w == o.w && h == o.h; }
+    bool operator != (Size o) { return !(self == o); }
+    int area() { return w * h; }
+}
+
+class Part : object {
+    int qty = 1;
+    eBin bin = eBin.middle;
+    eMark marks = 0;
+    int idx = 0;
+
+    int weight() { return qty * (int)bin; }
+
+    void print() { ::print($"{qty}x{(int)bin}"); }
+}
+
+class Spare[SLOTS] : Part {
+    int serial;
+    void create(int s, eBin b) {
+        serial = s;
+        bin = b;
+        qty = 2;
+        Tally.made++;
+    }
+    void destroy() { Tally.gone++; }
+    replace void print() { ::print($"S{serial}:"); ((Part)self).print(); }
+}
+
+class Tally {
+    static int made = 0;
+    static int gone = 0;
+    static int net() { return made - gone; }
+}
+
+// ---- the root namespace, extended above its declaration ------------------------------------------------
+
+extend idx { auto stock = _stock; }
+
+object _stock {
+    alias part for Part;
+    alias spare for Spare;
+    alias bin for eBin;
+    alias mark for eMark;
+    alias size for Size;
+    int count = 0;
+    array<part> shelf[3];
+
+    part heaviest() {
+        part best = null;
+        for (part p in shelf) {
+            if (best == null || p.weight() > best.weight()) best = p;
+        }
+        return best;
+    }
+
+    bool keep(part p) {
+        if (!shelf.append(p)) return false;
+        count++;
+        ::count += 10;
+        return true;
+    }
+
+    int inBin(bin b) {
+        int n = 0;
+        for (part p in shelf) if (p.bin == b) n += p.qty;
+        return n;
+    }
+
+    string binWord(bin b) { return b == bin.lower ? "deep" : "shallow"; }
+
+    string label(bin b) {
+        if (binWord(b) == "deep") return "deep lower";
+        switch (b) {
+            case bin.upper:  return "upper";
+            case bin.middle: return "middle";
+        }
+        return "lower";
+    }
+}
+
+object idx {
+    int opened = 0;
+}
+
+superposed object _calc {
+    int area(idx.stock.size s) { return s.area(); }
+
+    idx.stock.size twice(idx.stock.size s) {
+        idx.stock.size r;
+        r.w = s.w * 2;
+        r.h = s.h * 2;
+        return r;
+    }
+
+    string label(idx.stock.bin b) { return b == idx.stock.bin.lower ? "LOW" : "HIGH"; }
+
+    int load(array<idx.stock.part> a, func<int, idx.stock.part> f) {
+        int t = 0;
+        for (idx.stock.part p in a) t += f(p);
+        return t;
+    }
+}
+
+extend idx {
+    alias calc = _calc;
+    alias tally = Tally;
+    alias store = _stock;
+}
+
+// ---- an emitter-class namespace composed by alias members --------------------------------------------
+
+emitter class unitsNs {
+    int perBox { 12 }
+    int half(int n) { ($n / 2) }
+}
+
+emitter class tools { }
+extend class tools { unitsNs units; }
+
+// ---- a third level: a bay under the stock namespace ----------------------------------------------------
+
+class Tray : object {
+    int slots = 2;
+    eBin bin = eBin.lower;
+    int size() { return slots * (int)bin; }
+    idx.stock.size footprint() { return idx.stock.size{ slots, (int)bin }; }
+}
+
+object _bay {
+    alias tray for Tray;
+    tray first = trayB;
+
+    tray other(tray t) { return t == trayA ? trayB : trayA; }
+
+    int half(int n) { return n / 2 + 100; }
+}
+
+extend _stock { auto bay = _bay; }
+
+class Bucket : idx.stock.bay.tray {
+    idx.stock.mark tint = idx.stock.mark.dented;
+    replace int size() { return slots * 10; }
+    idx.stock.bay.tray asTray() { return (idx.stock.bay.tray)self; }
+}
+
+#using idx
+#using Tally
+
+// From here `stock.part`, `calc.area`, `tally.made` and the bare statics `made`/`gone` are reachable.
+
+class Crate : stock.part {
+    stock.size dims;
+    string tag = "crate";
+}
+
+extend class Part { stock.mark extra = 0; }
+
+extend _stock {
+    alias crate for Crate;
+    alias container for Crate;
+}
+
+array<stock.part> loose[SLOTS];
+stock.size template;
+func<bool, stock.part> isHeavy = (stock.part p) => p.weight() >= 6;
+
+// ---- world -------------------------------------------------------------------------------------------
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+idx.stock.part boltA {
+    "bolt";
+    parent = roomA;
+    name = {.bolt};
+    description = "A bolt.";
+    qty = 3;
+    bin = idx.stock.bin.upper;
+}
+
+stock.crate crateA {
+    "crate";
+    parent = roomA;
+    name = {.crate};
+    description = "A crate.";
+    qty = 1;
+    bin = stock.bin.lower;
+    idx = 7;
+}
+
+idx.stock.bay.tray trayA {
+    "tray A";
+    parent = roomA;
+    name = {.tray, .a};
+    description = "Tray A.";
+    slots = 3;
+    bin = idx.stock.bin.upper;
+}
+
+stock.bay.tray trayB {
+    "tray B";
+    parent = roomA;
+    name = {.tray, .b};
+    description = "Tray B.";
+    slots = 4;
+}
+
+Bucket bucketA {
+    "bucket";
+    parent = roomA;
+    name = {.bucket};
+    description = "A bucket.";
+    slots = 5;
+    bin = stock.bin.middle;
+}
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    template.w = 2;
+    template.h = 3;
+    crateA.dims = template;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+#using idx.stock
+
+// From here the aliases are bare: `part`, `spare`, `bin`, `mark`, `size`, `crate`, `shelf`, `heaviest()`.
+
+void grow(ref size s, int by) {
+    s.w += by;
+    s.h += by;
+}
+
+part pickFrom(bin b) {
+    for (part p in shelf) if (p.bin == b) return p;
+    return null;
+}
+
+string binWord(bin b) {
+    switch (b) {
+        case bin.upper, bin.middle: return "high";
+        default:                    return "low";
+    }
+}
+
+int sumAll() {
+    return calc.load(loose, (stock.part p) => p.qty) + inBin(bin.upper) + inBin(bin.middle) + inBin(bin.lower);
+}
+
+verb Stock {
+    grammar = {.restock, NUMBER};
+    void handler() {
+        int n = parsed_number;
+        if (n < 1 || n > 3) {
+            printLine("No such bin.");
+            return;
+        }
+        spare s = new spare(100 + made, (bin)n);
+        if (!s?) {
+            printLine("No spares left.");
+            return;
+        }
+        if (!keep(s)) {
+            loose.append(s);
+            printLine($"Shelf is full; {s} goes loose.");
+            return;
+        }
+        printLine($"Kept {s} in {label((bin)n)} ({calc.label(s.bin)}); count {stock.count}, global {count}.");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    void handler() {
+        print("Shelf:");
+        for (part p in shelf) print($" {p}");
+        print("; loose:");
+        for (idx.stock.part p in loose) print($" {p}");
+        printLine(".");
+        for (bin b in {bin.upper, bin.middle, bin.lower}) {
+            print($"{stock.label(b)}/{binWord(b)}={inBin(b)} ");
+        }
+        printLine();
+        part h = heaviest();
+        printLine($"Heaviest {h?.weight()}; heavy {shelf.filter(isHeavy).count()}; all {sumAll()}.");
+        printLine($"Made {made}, gone {gone}, net {tally.net()}, idx {idx.tally.made}.");
+    }
+}
+
+verb Measure {
+    grammar = {.measure};
+    void handler() {
+        size s = crateA.dims;
+        grow(s, 1);
+        idx.stock.size big = calc.twice(s);
+        printLine($"Crate {crateA.dims.w}x{crateA.dims.h} area {calc.area(crateA.dims)}; grown {s.w}x{s.h}; twice {big.area()}.");
+        grow(crateA.dims, 2);
+        printLine($"Now {crateA.dims.w}x{crateA.dims.h}; same as grown {crateA.dims == s ? "yes" : "no"}; template {template.area()}.");
+        printLine($"Box {tools.units.perBox}, half {tools.units.half(crateA.dims.area())}.");
+    }
+}
+
+verb Sort {
+    grammar = {.sort};
+    void handler() {
+        object o = crateA;
+        if (o.is(crate)) printLine($"Crate tag {((crate)o).tag}, idx {((stock.crate)o).idx}, ns {::idx.opened}.");
+        o = boltA;
+        if (o.is(idx.stock.part) && !o.is(stock.crate)) printLine($"Bolt {(part)o} in {binWord(((idx.stock.part)o).bin)}.");
+        part found = pickFrom(bin.lower);
+        if (found?.is(spare)) printLine($"Lower spare {((spare)found).serial}.");
+        else printLine("No lower spare.");
+        int stock = 5;
+        printLine($"Local stock {stock}, path count {idx.stock.count}.");
+        container c = crateA;
+        printLine($"Container {c.tag} {c.dims.area()}, attribute {crateA.has(container) ? "yes" : "no"}/{roomA.has(container) ? "yes" : "no"}.");
+    }
+}
+
+verb Mark {
+    grammar = {.mark};
+    void handler() {
+        for (part p in shelf) {
+            p.marks = p.marks | mark.tagged;
+            if (p.bin == bin.upper) p.extra = mark.sealed | mark.dented;
+        }
+        crateA.extra = idx.stock.mark.sealed;
+        int tagged = shelf.filter((part p) => (p.marks & mark.tagged) != 0).count();
+        int sealed = shelf.filter((part p) => (p.extra & stock.mark.sealed) != 0).count();
+        printLine($"Tagged {tagged}, sealed {sealed}, crate sealed {(crateA.extra & mark.sealed) != 0 ? "yes" : "no"}.");
+    }
+}
+
+verb Clear {
+    grammar = {.clear};
+    void handler() {
+        int gone = 0;
+        while (shelf.length > 0) {
+            part p = shelf.popEnd();
+            if (p.is(spare)) { spare q = (spare)p; delete q; }
+            gone++;
+        }
+        while (loose.length > 0) {
+            spare s = (spare)loose.popEnd();
+            delete s;
+            gone++;
+        }
+        count = 0;
+        stock.count = 0;
+        printLine($"Cleared {gone}; made {made}, gone {Tally.gone}, net {idx.tally.net()}.");
+    }
+}
+
+// ---- added after the imports: an extend that the imports already reach --------------------------------
+
+extend _stock {
+    int total() { return inBin(bin.upper) + inBin(bin.middle) + inBin(bin.lower); }
+    int countBin(bin b) { return shelf.filter((part p) => p.bin == b).count(); }
+    replace part heaviest() { return shelf.orderBy((part a, part b) => a.weight() - b.weight()).last(); }
+    bin fullest() {
+        bin best = bin.upper;
+        for (bin b in {bin.middle, bin.lower}) if (inBin(b) > inBin(best)) best = b;
+        return best;
+    }
+}
+
+#using idx.stock.bay
+#using unitsNs
+#using tools
+
+const idx.stock.bin HOME = idx.stock.bin.middle;
+
+// From here `tray`, `first`, `other()` (bay), `perBox` (unitsNs) and `units` (tools) are bare; `half` is in
+// bay and unitsNs both, so it is always written with a path.
+
+array<idx.stock.bin> sequence = { bin.lower, stock.bin.upper, idx.stock.bin.middle };
+func<bin, part> binOf = (part p) => p.bin;
+
+char binCode(stock.bin b) {
+    switch (b) {
+        case idx.stock.bin.upper: return 'U';
+        case stock.bin.middle:    return 'M';
+        case bin.lower:           return 'L';
+    }
+    return '?';
+}
+
+verb Trays {
+    grammar = {.trays};
+    void handler() {
+        tray t = first;
+        print($"First {t.slots}/{t.size()}; ");
+        t = other(t);
+        printLine($"other {t.slots}/{t.size()}, same {t == trayA ? "A" : "B"}.");
+        size fp = t.footprint();
+        printLine($"Footprint {fp.w}x{fp.h} area {calc.area(fp)}; {calc.area(size{2, 2})}, {calc.area(idx.stock.size{ w = 1; h = 5; })}.");
+        printLine($"Halves {unitsNs.half(9)}/{bay.half(9)}/{stock.bay.half(9)}/{idx.stock.bay.half(9)}/{tools.units.half(9)}; box {perBox}.");
+        first = other(first);
+        printLine($"Now first {idx.stock.bay.first.slots}, by path {stock.bay.first == trayA ? "A" : "B"}.");
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        print("Order");
+        for (bin b in sequence) print($" {binCode(b)}");
+        print("; codes");
+        for (int i in 0 to sequence.length - 1) print($" {(int)sequence[i]}");
+        printLine(".");
+        print("Bins");
+        for (part p in shelf) print($" {binCode(binOf(p))}");
+        printLine($"; total {total()}, fullest {binCode(fullest())}, label {label(fullest())}.");
+        int up = shelf.filter((part p) => p.bin == stock.bin.upper).count();
+        bool anyLow = shelf.any((idx.stock.part p) => binOf(p) == idx.stock.bin.lower);
+        part last = shelf.orderBy((part a, part b) => a.weight() - b.weight()).last();
+        printLine($"Upper {up}, any low {anyLow ? "yes" : "no"}, last {last?.weight()}, counts {countBin(bin.upper)}{countBin(stock.bin.middle)}{countBin(HOME)}.");
+    }
+}
+
+verb Recount {
+    grammar = {.recount};
+    void handler() {
+        made -= gone;
+        gone = 0;
+        tally.made += 1;
+        idx.tally.gone = Tally.made - 1;
+        printLine($"Made {made}, gone {gone}, net {net()}.");
+    }
+}
+
+verb Bulk {
+    grammar = {.bulk};
+    void handler() {
+        idx.stock.part a = new idx.stock.spare(200, idx.stock.bin.upper);
+        stock.spare b = new stock.spare(201, stock.bin.lower);
+        if (a?) loose.append(a);
+        if (b?) loose.append(b);
+        print($"Loose {loose.length}:");
+        for (stock.part p in loose) print($" {p}");
+        printLine(".");
+        stock.part front = loose.peek();
+        if (front?.is(idx.stock.spare)) printLine($"Front serial {((stock.spare)loose.peek()).serial}, bin {binCode(front.bin)}.");
+        else printLine("No front.");
+        printLine($"Words {stock.binWord(bin.lower)}/{binWord(bin.lower)}, {stock.label(bin.lower)}.");
+    }
+}
+
+verb Paths {
+    grammar = {.paths};
+    void handler() {
+        object ns = idx.stock;
+        object inner = stock.bay;
+        printLine($"Stock {ns == _stock ? "yes" : "no"}, bay {inner == _bay ? "yes" : "no"}, deep {idx.stock.bay == stock.bay ? "yes" : "no"}.");
+        printLine($"Counts {idx.stock?.count}/{stock.count}/{idx.stock.bay.first?.slots}.");
+        tray t = bucketA;
+        object plain = bucketA;
+        printLine($"Bucket {t.size()}/{bucketA.asTray().size()}/{((tray)bucketA).slots}; is tray {bucketA.is(idx.stock.bay.tray) ? "yes" : "no"}, is part {plain.is(stock.part) ? "yes" : "no"}.");
+        mark m = bucketA.tint | mark.tagged;
+        printLine($"Tint {(int)bucketA.tint}, marked {(int)m}, sealed {(m & stock.mark.sealed) != 0 ? "yes" : "no"}.");
+        idx.store.part h = idx.store.heaviest();
+        idx.stock.part h2 = heaviest();
+        printLine($"Store {idx.store.label(idx.store.bin.lower)}, {idx.store.count == stock.count ? "same" : "differs"}, heaviest {h == h2 ? "agrees" : "differs"} {h2?.weight()}.");
+    }
+}
+
+int countIn(stock.bin b = HOME, bool loose2 = false) {
+    int n = 0;
+    if (loose2) { for (part p in loose) if (p.bin == b) n++; }
+    else n = inBin(b);
+    return n;
+}
+
+stock.spare firstSpare(bool fromLoose) {
+    array<idx.stock.part> pool[4];
+    if (fromLoose) { for (part p in loose) pool.append(p); }
+    else { for (part p in shelf) pool.append(p); }
+    for (part p in pool) if (p.is(spare)) throw (spare)p;
+    return null;
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        printLine($"Home {(int)HOME}, in home {countIn()}, upper {countIn(b: stock.bin.upper)}, loose lower {countIn(idx.stock.bin.lower, loose2: true)}.");
+        try {
+            firstSpare(fromLoose: false);
+            printLine("No spare on the shelf.");
+        } catch (stock.spare s) {
+            printLine($"Caught {s} from bin {binCode(s.bin)}.");
+        }
+        stock.part pick = shelf.length > 0 ? (stock.part)crateA : boltA;
+        printLine($"Pick {pick}, first {idx.stock.bay.first?.slots}, units {units.perBox}/{units.half(perBox)}.");
+        bin b = pick.bin == HOME ? bin.upper : (bin)((int)pick.bin - 1);
+        printLine($"Next bin {binCode(b)}, lower {(int)idx.stock.bin.lower}, sealed {(int)mark.sealed}.");
+    }
+}

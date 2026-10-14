@@ -1,0 +1,811 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-third first-time-programmer program, a sign desk where letters are set on a
+// board, signs are painted from words, stamped over and over, framed, checked and filed, written by a
+// beginner who has just found stringObj and uses it for everything. string and stringObj together:
+// global, local, member, static member, object member and array-element stringObjs; string globals
+// that start null; functions returning string (from ?: and switch) and stringObj (built locals,
+// interpolations, chains, recursion); parameters of string, stringObj (a copy), ref stringObj, char
+// and string | stringObj passed on to format(); default and named string and char arguments; ?: and
+// ?? picking between strings and stringObjs; postfix ? on a string; append / prepend with chars,
+// literals, strings, stringObjs and other methods' results; + with a char, in either order with
+// literals; += of a literal, a string, a stringObj, a char, a call result and an interpolation;
+// interpolation in print, printLine, assignment, declaration, += and inside loops, with spans holding
+// method chains, ?: of literals, call results, characters, lengths and objects; s[i] read and written;
+// ==, !=, <, >, =~, <=> and compareTo; switch on a stringObj; capture / release and captureOutput;
+// format with $0 $1 $2; recursion that builds and returns stringObjs (pool pressure per frame); loops
+// that make and drop many stringObjs; an array of stringObj with clear / += / indexing / indexOf /
+// contains, and <linq> filter / count / any / first / orderBy with lambdas on stringObj; a value
+// class holding a stringObj with a copy operator; #define and const strings in +=, prepend, replaceAll
+// and switch cases; an emitter taking an interpolated string; a ref stringObj built through recursion
+// and two routines that call each other; a thrown string caught as a string; a string | stringObj
+// return narrowed with typeof and casts; stringObjs in loop blocks left by break and continue; and verbs
+// (board, letterset, stamp, frame, match, paint, file, spell, sizes, churn, letters, more, odds) that
+// drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#define SHOP_NAME "signs"
+const string DOOR_WORD = "door";
+
+// ===== COUNTS =====
+
+// how many words the word list holds
+const int WORD_LIST_SIZE = 6;
+// how wide a framed sign is
+const int FRAME_WIDTH = 12;
+// how many times a stamp goes down at most
+const int MOST_STAMPS = 6;
+// how many signs have been painted
+int signsPainted = 0;
+// how many times the churn ran
+int churnRuns = 0;
+
+// ===== TEXT KEPT BETWEEN TURNS =====
+
+// what is on the board right now
+stringObj boardText = "BOARD";
+// the last sign painted
+stringObj lastSign;
+// the shop word
+string shopWord = "signs";
+// a note nobody has written yet
+string note;
+// a second note, also empty
+string otherNote;
+// the words filed so far
+array<stringObj> wordList[WORD_LIST_SIZE];
+
+// ===== LITTLE HELPERS =====
+
+// "" for one, "s" for more
+string endingS(int n) {
+    return n == 1 ? "" : "s";
+}
+
+// a word for a small number
+string smallWord(int n) {
+    switch (n) {
+        case 0: return "no";
+        case 1: return "one";
+        case 2: return "two";
+        case 3: return "three";
+    }
+    return "many";
+}
+
+// a count and a word, like "two signs"
+stringObj countOf(int n, string word) {
+    stringObj s = $"{smallWord(n)} {word}{endingS(n)}";
+    return s;
+}
+
+// the first of two notes that is set
+string firstNote(string a, string b) {
+    return a ?? b ?? "blank";
+}
+
+// the word with a mark on both ends
+stringObj marked(string word, char mark = '*') {
+    stringObj s = word;
+    s = s.prepend(mark);
+    s = s.append(mark);
+    return s;
+}
+
+// the word stamped n times, one after another (recursive)
+stringObj stamp(string word, int n) {
+    stringObj s = "";
+    if (n <= 0) {
+        return s;
+    }
+    s = word;
+    s += stamp(word, n - 1);
+    return s;
+}
+
+// the word with a dash between every letter (recursive)
+stringObj spaced(stringObj word) {
+    if (word.length <= 1) {
+        return word;
+    }
+    stringObj head = word.left(1);
+    stringObj rest = spaced(word.right(word.length - 1));
+    head += '-';
+    head += rest;
+    return head;
+}
+
+// the word with its letters the other way round, made one letter at a time (recursive)
+stringObj backwards(stringObj word, int at) {
+    stringObj s = "";
+    if (at < 0) {
+        return s;
+    }
+    s = s + word[at];
+    return s.append(backwards(word, at - 1));
+}
+
+// adds a bang to the caller's text
+void shout(ref stringObj s) {
+    s += '!';
+}
+
+// tries to add a bang, but only to its own copy
+void shoutCopy(stringObj s) {
+    s += '!';
+    print($"(inside: {s}) ");
+}
+
+// pads a word with dots out to a width
+stringObj padDots(stringObj word, int width = FRAME_WIDTH) {
+    stringObj s = word;
+    while (s.length < width) {
+        s += ".";
+    }
+    return s;
+}
+
+// a sign in a frame
+stringObj frame(string word, char edge = '#', int width = FRAME_WIDTH) {
+    stringObj inner = padDots(" " + word + " ", width - 2);
+    stringObj s = inner.prepend(edge).append(edge);
+    return s;
+}
+
+// two words joined with "and"
+stringObj both(string | stringObj a, string | stringObj b) {
+    stringObj glue = "and";
+    return glue.format("$1 $0 $2", a, b);
+}
+
+// says what kind of word it is
+void kindOf(string s) {
+    print("a string");
+}
+void kindOf(stringObj s) {
+    print("a stringObj");
+}
+
+// ===== A TAG: A VALUE CLASS WITH TEXT IN IT =====
+
+value class Tag {
+    stringObj text;
+    int uses;
+
+    Tag operator = (Tag o) {
+        text = o.text;
+        uses = o.uses;
+        return self;
+    }
+}
+
+// a tag for a word
+Tag tagFor(string word) {
+    Tag t;
+    t.text = word;
+    t.text += ":";
+    t.uses = 1;
+    return t;
+}
+
+// ===== SIGNS =====
+
+class Sign : object {
+    stringObj text;
+    string paint = "black";
+    string description = "A sign.";
+    static stringObj lastPaint;
+    int coats = 0;
+
+    // sets the sign's words
+    void setText(string | stringObj w) {
+        text = "";
+        text = text.format("$1", w);
+        coats++;
+        Sign.lastPaint = paint;
+    }
+
+    // the sign's words, as shouted
+    stringObj loud() {
+        return text.toUpper().append('!');
+    }
+
+    // the sign's words with its paint in front
+    stringObj withPaint() {
+        stringObj s = paint;
+        s += ": ";
+        s += text;
+        return s;
+    }
+}
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The sign desk.";
+    attributes = {light};
+}
+
+// ===== THINGS ON THE DESK =====
+
+object desk {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    string description = "The desk.";
+    attributes = {static};
+    stringObj label = "desk";
+    // the last word checked
+    stringObj checked;
+}
+
+Sign signA {
+    "red sign";
+    parent = roomA;
+    name = {.red, .sign};
+    paint = "red";
+    attributes = {static};
+}
+
+Sign signB {
+    "blue sign";
+    parent = roomA;
+    name = {.blue, .sign};
+    paint = "blue";
+    attributes = {static};
+}
+
+bool Initialise() {
+    location = roomA;
+    signA.setText("OPEN");
+    signB.setText("shut");
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== VERBS =====
+
+// BOARD - what is on the board, every way it can be shown
+verb ShowBoard {
+    meta = true;
+    grammar = {.board};
+    void handler() {
+        print($"The board says {boardText} ({boardText.length} letter{endingS(boardText.length)}).^");
+        printLine($"Lower: {boardText.toLower()}. First letter: {boardText[0]}. Last: {boardText[boardText.length - 1]}.");
+        stringObj line = "Board: ";
+        line += boardText;
+        line += '.';
+        printLine(line);
+        print($"Last sign: {lastSign.isEmpty() ? "none yet" : "set"}. Signs painted: {countOf(signsPainted, "sign")}.^");
+        print($"Note: {firstNote(note, otherNote)}.^");
+        if (!note?) {
+            print("The note is empty.^");
+        }
+    }
+}
+
+// LETTERSET - puts letters on the board, one way after another
+verb SetBoard {
+    meta = true;
+    grammar = {.letterset};
+    void handler() {
+        boardText = "ab";
+        boardText = boardText + 'c';
+        boardText = "z" + boardText;
+        boardText += "d";
+        boardText += shopWord;
+        boardText = boardText.prepend('<').append('>');
+        boardText[1] = 'Z';
+        print($"Board now: {boardText}.^");
+        stringObj spare = boardText;
+        shout(spare);
+        shout(spare);
+        print($"Shouted copy: {spare}. Board: {boardText}.^");
+        shoutCopy(boardText);
+        print($"After the copy: {boardText}.^");
+        ref stringObj b := boardText;
+        b += "?";
+        print($"Through the ref: {boardText}.^");
+        note = "set";
+        print($"Note: {firstNote(note, otherNote)}.^");
+    }
+}
+
+// STAMP - stamps words over and over
+verb StampWords {
+    meta = true;
+    grammar = {.stamp};
+    void handler() {
+        for (int i = 0; i <= 3; i++) {
+            print($"{i}: [{stamp("ab", i)}]^");
+        }
+        stringObj big = stamp("xy", MOST_STAMPS);
+        print($"Six stamps: {big} ({big.length}).^");
+        print($"Spaced: {spaced("sign")}. Spaced one: {spaced("a")}.^");
+        stringObj w = "paint";
+        print($"Backwards: {backwards(w, w.length - 1)}.^");
+        stringObj twice = spaced(backwards(w, w.length - 1));
+        print($"Both: {twice}.^");
+    }
+}
+
+// FRAME - frames words
+verb FrameWords {
+    meta = true;
+    grammar = {.frame};
+    void handler() {
+        printLine(frame("OPEN"));
+        printLine(frame("shut", '|'));
+        printLine(frame(edge: '+', word: "sale"));
+        printLine(frame("ok", width: 8));
+        print($"Marked: {marked("hi")} {marked("lo", '~')} {marked(word: "up", mark: '=')}.^");
+        stringObj padded = padDots("x");
+        print($"Padded: {padded}, {padDots(padded.left(3), 5)}.^");
+    }
+}
+
+// MATCH - compares words
+verb CheckWords {
+    meta = true;
+    grammar = {.match};
+    void handler() {
+        stringObj a = "apple";
+        string b = "Apple";
+        stringObj c = "banana";
+        if (a == "apple") print("a is apple. ");
+        if (a != b) print("a is not Apple. ");
+        if (a =~ b) print("a is apple in any case. ");
+        if (a < c) print("apple comes first. ");
+        if (c > "apple") print("banana comes after. ");
+        print("^");
+        print($"a<=>c: {a <=> c}. c<=>a: {c <=> a}. a<=>a: {a <=> "apple"}.^");
+        print($"compareTo: {a.compareTo(b)} {a.compareTo(b, true)}.^");
+        stringObj pick = a.length > 4 ? a : c;
+        print($"Pick: {pick}.^");
+        string either = signsPainted > 100 ? "lots" : shopWord;
+        print($"Either: {either}.^");
+        print("Kinds: ");
+        kindOf(b);
+        print(", ");
+        kindOf(a);
+        print(", ");
+        kindOf("literal");
+        print(".^");
+        stringObj fruit = "banana";
+        switch (fruit) {
+            case "apple": print("Switch: an apple.^");
+            case "banana": print("Switch: a banana.^");
+            default: print("Switch: something else.^");
+        }
+        print($"Both: {both(a, b)}. Both again: {both("x", c.left(3))}.^");
+        print($"Starts: {a.startsWith("app")}, ends: {c.endsWith("na")}, has: {c.contains("nan")}, at: {c.indexOf("na")}.^");
+    }
+}
+
+// PAINT - paints both signs and shows them
+verb PaintSigns {
+    meta = true;
+    grammar = {.paint};
+    void handler() {
+        signA.setText(signA.text + " NOW");
+        stringObj shut = "shut ";
+        shut += "for lunch";
+        signB.setText(shut);
+        signsPainted += 2;
+        lastSign = signB.text;
+        print($"{signA.withPaint()} / {signB.withPaint()}.^");
+        print($"Loud: {signA.loud()} and {signB.loud()}.^");
+        print($"Coats: {signA.coats} and {signB.coats}. Last paint: {Sign.lastPaint}.^");
+        Sign which = signA.coats > 5 ? signA : signB;
+        print($"Which: {which.text.toUpper()}.^");
+        stringObj c = which.text.left(4).toUpper().append('?');
+        print($"Chain: {c}.^");
+    }
+}
+
+// FILE - files words in the word list
+verb FileWords {
+    meta = true;
+    grammar = {.file};
+    void handler() {
+        wordList.clear();
+        wordList += "pear";
+        wordList += boardText.left(3);
+        stringObj w = "fig";
+        wordList += w;
+        stringObj plum = $"plum{wordList.length}";
+        wordList += plum;
+        wordList += signA.text.toLower();
+        wordList[1] = "apple";
+        for (int i = 0; i < wordList.length; i++) {
+            print($"{i}. {wordList[i]} ");
+        }
+        print("^");
+        int pCount = wordList.filter((stringObj s) => s.startsWith("p")).count();
+        bool anyLong = wordList.any((stringObj s) => s.length > 6);
+        print($"P words: {pCount}. Any long: {anyLong ? "yes" : "no"}. Has fig: {wordList.contains(w) ? "yes" : "no"}.^");
+        print("Sorted: ");
+        for (stringObj s in wordList.orderBy((stringObj x, stringObj y) => x.compareTo(y))) {
+            print($"{s} ");
+        }
+        print("^");
+        stringObj firstF = wordList.filter((stringObj s) => s.startsWith("f")).first();
+        print($"First f: {firstF}. Fig at: {wordList.indexOf(w)}.^");
+        Tag t = tagFor("pear");
+        Tag u = t;
+        u.text += "ripe";
+        u.uses++;
+        print($"Tags: {t.text} {t.uses} / {u.text} {u.uses}.^");
+    }
+}
+
+// SPELL - spells the board one letter at a time
+verb SpellBoard {
+    meta = true;
+    grammar = {.spell};
+    void handler() {
+        stringObj out = "";
+        for (int i = 0; i < boardText.length; i++) {
+            char c = boardText[i];
+            if (i > 0) {
+                out += ' ';
+            }
+            out += c;
+        }
+        print($"Spelled: {out}.^");
+        stringObj vowels = "";
+        stringObj rest = "";
+        for (int i = 0; i < boardText.length; i++) {
+            char c = boardText[i];
+            switch (c) {
+                case 'a', 'e', 'i', 'o', 'u': vowels = vowels.append(c);
+                default: rest = rest.prepend(c);
+            }
+        }
+        print($"Vowels: [{vowels}], the rest backwards: [{rest}].^");
+    }
+}
+
+// SIZES - captures printed text into strings
+verb Sizes {
+    meta = true;
+    grammar = {.sizes};
+    void handler() {
+        stringObj grab;
+        grab.capture();
+        print("captured ");
+        print(signsPainted);
+        grab.release();
+        print($"Grab: [{grab}] ({grab.length}).^");
+        stringObj desc;
+        desc.captureOutput(roomA, description);
+        print($"Room text: [{desc.left(6)}...] ({desc.length}).^");
+        stringObj fromName = $"{desk}";
+        fromName += $" has label {desk.label}";
+        print($"{fromName}.^");
+        desk.checked = desk.label.toUpper();
+        desk.checked += $"/{desk.label.length}";
+        print($"Checked: {desk.checked}.^");
+        stringObj trimmed = "  gap  ";
+        print($"Trim: [{trimmed.trim()}] [{trimmed.trimLeft()}] [{trimmed.trimRight()}].^");
+        stringObj mid = "abcdef";
+        print($"Mid: {mid.mid(1, 3)}, ins: {mid.insert(2, "--")}, del: {mid.delete(0, 2)}, rep: {mid.replace("cd", "CD")}.^");
+        stringObj dots = "a.b.c";
+        print($"All: {dots.replaceAll(".", ", ")}. Rev: {dots.reverse()}.^");
+    }
+}
+
+// CHURN - makes and drops lots of strings, to see the pool stays well
+verb Churn {
+    meta = true;
+    grammar = {.churn};
+    void handler() {
+        churnRuns++;
+        stringObj total = "";
+        for (int i = 0; i < 60; i++) {
+            stringObj one = $"{i % 10}";
+            stringObj two = one + one;
+            if (i % 20 == 0) {
+                total += two;
+            }
+        }
+        int made = 0;
+        for (int j = 0; j < 40; j++) {
+            stringObj s = stamp("q", 3);
+            made += s.length;
+            stringObj f = frame("w");
+            made += f.length - FRAME_WIDTH;
+        }
+        int k = 0;
+        while (k < 30) {
+            total += marked("k").length > 5 ? "!" : "";
+            k++;
+        }
+        print($"Churn {churnRuns}: total [{total}], made {made}.^");
+        stringObj fromLoop = "";
+        do {
+            fromLoop += $"{k}";
+            k -= 10;
+        } while (k > 0);
+        print($"Down: {fromLoop}.^");
+    }
+}
+
+// LETTERS - counts letters in each sign
+verb Letters {
+    meta = true;
+    grammar = {.letters};
+    void handler() {
+        for (Sign s in {signA, signB}) {
+            stringObj t = s.text;
+            int caps = 0;
+            for (int i = 0; i < t.length; i++) {
+                char c = t[i];
+                if (c >= 'A' && c <= 'Z') {
+                    caps++;
+                }
+            }
+            print($"{s}: {t.length} letters, {caps} capital{endingS(caps)}, {t.isEmpty() ? "empty" : "not empty"}.^");
+        }
+        string pickNote = note ?? "no note";
+        print($"Note: {pickNote}. Other: {otherNote ?? "none"}.^");
+    }
+}
+
+// ===== MORE HELPERS =====
+
+// a countdown as text, like "3 2 1 go" (recursive, each frame keeps two strings)
+stringObj countdown(int n) {
+    stringObj here = $"{n}";
+    if (n <= 0) {
+        stringObj done = "go";
+        return done;
+    }
+    stringObj rest = countdown(n - 1);
+    here += ' ';
+    here += rest;
+    return here;
+}
+
+// the last word in a chain of picks (recursive, returns a string)
+string pickDown(int n, string last = "end") {
+    return n > 0 ? pickDown(n - 1, last) : last;
+}
+
+// a greeting, with string defaults
+stringObj greet(string who = "you", string how = "hi") {
+    stringObj s = how;
+    s = s + ", " + who;
+    return s;
+}
+
+// the longer of two words
+stringObj longer(stringObj a, stringObj b) {
+    return a.length >= b.length ? a : b;
+}
+
+// ===== MORE =====
+
+// MORE - strings in more places
+verb MoreStrings {
+    meta = true;
+    grammar = {.more};
+    void handler() {
+        print($"Countdown: {countdown(4)}.^");
+        print($"Pick: {pickDown(3)}, {pickDown(2, "stop")}, {pickDown(last: "here", n: 1)}.^");
+        print($"Greet: {greet()}, {greet("Room A")}, {greet(how: "bye")}.^");
+        stringObj a = "short";
+        stringObj b = "much longer";
+        print($"Longer: {longer(a, b)}, {longer(b.left(2), a.right(3))}.^");
+        stringObj joined = a.left(2) + b.right(3);
+        print($"Joined: {joined}. Joined calls: {a.left(1) + b.left(1) + 'x'}.^");
+        printLine(a.length > 3 ? a : b);
+        printLine(a + " and " + b);
+        print(a.format("[$0|$1|$2]^", b.left(4), "lit"));
+        stringObj s1 = lastSign ?? boardText;
+        print($"Coalesce: {s1}. Note length: {otherNote?.length}.^");
+        ref stringObj r := signA.text;
+        r += " (r)";
+        print($"Sign A through a ref: {signA.text}.^");
+        shout(desk.label);
+        shout(signB.text);
+        print($"Shouted members: {desk.label}, {signB.text}.^");
+        Sign.lastPaint += "!";
+        Sign.lastPaint = Sign.lastPaint.prepend("paint ");
+        print($"Static: {Sign.lastPaint}.^");
+        if (signA.text == signB.text) {
+            print("The signs match.^");
+        } else if (signA.text.length < signB.text.length) {
+            print("Sign A is shorter.^");
+        } else {
+            print("Sign A is longer.^");
+        }
+        switch (signB.text.toLower()) {
+            case "shut for lunch!": print("Switch call: lunch.^");
+            default: print($"Switch call: {signB.text}.^");
+        }
+        stringObj acc = "";
+        bool found = wordList.any((stringObj w) => {
+            acc += w.left(1);
+            return w == "fig";
+        });
+        print($"Acc: {acc}, found: {found ? "yes" : "no"}.^");
+        func<void, stringObj> show = (stringObj w) => print($"<{w}>");
+        for (stringObj w in wordList) {
+            show(w);
+        }
+        print("^");
+        stringObj grow = "";
+        while (grow.length < 6 && grow != "aaaa") {
+            grow += 'a';
+        }
+        print($"Grow: {grow}. Code of first: {(int)grow[0]}.^");
+        stringObj spot = "x";
+        for (int i = 0; i < 3; i++) {
+            stringObj iText = $"{i}";
+            spot = spot.prepend(iText.length > 0 ? "<" : ">");
+        }
+        print($"Spot: {spot}.^");
+    }
+}
+
+// ===== EVEN MORE HELPERS =====
+
+// prints a line in square brackets
+emitter void boxed(interpolatedStringLiteral v) { print "["; $v; print "]^"; }
+
+// builds <<<54321>>> style text into the caller's string (recursive, through a ref)
+void nest(ref stringObj s, int n) {
+    if (n == 0) {
+        return;
+    }
+    s += $"{n}";
+    s = s.prepend('<');
+    nest(s, n - 1);
+    s += '>';
+}
+
+// "e" and "o" taking turns (two routines that call each other)
+stringObj evens(int n) {
+    stringObj s = "e";
+    if (n == 0) {
+        return s;
+    }
+    return s + odds(n - 1);
+}
+stringObj odds(int n) {
+    stringObj s = "o";
+    if (n == 0) {
+        return s;
+    }
+    return evens(n - 1) + s;
+}
+
+// a word in upper case, but words that are too long are thrown back
+stringObj checkWord(string w) {
+    if (w.length > 4) {
+        throw "too long";
+    }
+    stringObj s = w;
+    return s.toUpper();
+}
+
+// either a plain string or the board
+string | stringObj eitherText(bool plain) {
+    if (plain) {
+        return "plain";
+    }
+    return boardText;
+}
+
+// prints a string or a stringObj
+void sayEither(string | stringObj v) {
+    if (typeof(v) == eType.string) {
+        print((string)v);
+    } else {
+        stringObj s = (stringObj)v;
+        print(s);
+    }
+}
+
+// the first word list entry that starts with a letter
+stringObj firstWith(char c) {
+    for (stringObj w in wordList) {
+        stringObj s = w;
+        if (s[0] == c) {
+            return s;
+        }
+    }
+    stringObj none = "none";
+    return none;
+}
+
+// ===== ODDS AND ENDS =====
+
+// ODDS - the last few string things
+verb OddsAndEnds {
+    meta = true;
+    grammar = {.odds};
+    void handler() {
+        boxed($"{boardText} has {boardText.length}");
+        boxed($"{signA.loud().left(2)}");
+        for (int i = 0; i < 3; i++) {
+            boxed($"{i}{i == 1 ? "!" : ""}");
+        }
+        stringObj n = "";
+        nest(n, 5);
+        print($"Nest: {n}. Turns: {evens(6)} {odds(5)}.^");
+        print($"Braces: \{x\} and \{y\}.^");
+        try {
+            print($"Check: {checkWord("abc")}");
+            print($", {checkWord("abcdef")}.^");
+        } catch (string why) {
+            print($" - {why}.^");
+        }
+        sayEither(eitherText(true));
+        print(" / ");
+        sayEither(eitherText(false));
+        print(" / ");
+        sayEither(boardText.toLower());
+        print("^");
+        stringObj shop = SHOP_NAME;
+        shop += DOOR_WORD;
+        shop = shop.prepend(DOOR_WORD);
+        print($"Shop: {shop}, {SHOP_NAME}, {DOOR_WORD}.^");
+        stringObj fixedShop = shop.replaceAll(SHOP_NAME, DOOR_WORD);
+        print($"Fixed: {fixedShop} at {fixedShop.indexOf(DOOR_WORD)}.^");
+        switch (fixedShop.left(4)) {
+            case DOOR_WORD: print("It starts with a door.^");
+            case SHOP_NAME: print("It starts with signs.^");
+        }
+        print($"First f: {firstWith('f')}, first z: {firstWith('z')}.^");
+        stringObj dotted = "a.b.c";
+        print($"Dot at {dotted.indexOf('.')}, has b: {dotted.contains('b')}.^");
+        stringObj single = "a";
+        if (single == 'a') {
+            print("Single is a.^");
+        }
+        char c = dotted[1];
+        char d = c + 1;
+        dotted += d;
+        dotted = dotted.append((char)(d + 1));
+        print($"Dotted: {dotted}, c is {c}.^");
+        int hits = 0;
+        for (int k = 0; k < 80; k++) {
+            stringObj a = $"{k}";
+            if (k % 2 == 0) {
+                stringObj b = a + "even";
+                if (b.length > 5) {
+                    continue;
+                }
+                hits++;
+                continue;
+            }
+            {
+                stringObj e = a.prepend('x');
+                if (k > 70) {
+                    stringObj f = e + e;
+                    if (k == 75) {
+                        break;
+                    }
+                }
+            }
+            hits += firstWith('f').length == 3 ? 1 : 0;
+        }
+        print($"Hits: {hits}.^");
+    }
+}

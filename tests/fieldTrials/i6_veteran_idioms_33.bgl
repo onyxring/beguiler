@@ -1,0 +1,517 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: an Inform 6-style program on z5, routines and verbs first and objects and classes
+// after, that reaches a doubly linked line of valves almost entirely through `?.`, `??` and postfix
+// `?`. `?.` assignments and compound assignments (`v?.flow -= 3`, `v?.hits++`, `a?.next?.prev =
+// null`, `v?.prev?.next = v?.next`, `rack.Pick()?.hits += 1` and `rack.At(0)?.prev?.hits++` with
+// the call made once, `rack?.pressure += v?.flow` on an inline accessor); `?.` on member array
+// elements (`v?.marks[i]`, `v?.marks[3] = v?.hits`), on casts (`((Valve)noun)?.Push(…)`,
+// `((Valve)rack.slots[i])?.Tag()`), on elements of a global array (`pipeline[i]?.next?.code`) and
+// on call results of a static method, an object method and a class method
+// (`Valve.ByCode(c)?.Down(wrap: true)?.code`, `rack.Pick()?.Push(2)`); `?.` calls with default and
+// named arguments in any order (`Down(steps: 2, wrap: true)`, `Push(quiet: false, amount: n)`,
+// `LabelOf(blank:, o:)`), recursion through `?.` and `??` (`Head()`, `Tail()`, `Down()`, `Path()`);
+// `??` with `string`, `stringObj`, object, class and value-class operands, parenthesized as a
+// receiver (`(v?.Read() ?? noSeal).Margin()`), in returns, default-argument routines, arguments,
+// declarations, `for` initializers and interpolation; a value class with `operator ?` reached
+// through `?.` (`v?.Read()?.Margin(limit: 9)`) and stored through `?.` (`v?.seal = v?.Read()`);
+// stringObj results through `?.` (`Path(sep:)?.toUpper()`, `log?.length`, `log?.contains()`,
+// `log?.isEmpty()`); `?.` and postfix `?` in `for` headers, `while`, `do`/`while`, `switch`, `if`
+// with `&&`/`||`, `return`, and a <linq> lambda; library properties and attribute tests through `?.`
+// (`rack?.parent?.has(light)`, `v?.parent?.has(light)`, `AsValve(noun)?.has(static)`); a room
+// `before` reacting to Go through a chain; native Prime, Bleed, Join, Split, Mark, Seat,
+// Cycle, SealUp and Tap verbs and meta Trace, Survey and Probe verbs.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 2;
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <string>
+#include <linq>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+// ---------------------------------------------------------------- globals
+
+array<Valve> pipeline = {valveA, valveB, valveC, valveD};
+Valve lastValve;
+stringObj journal;
+Seal noSeal;
+Seal lastSeal;
+int pushes;
+
+// ---------------------------------------------------------------- routines
+
+bool Initialise() {
+    location = roomA;
+    valveA.next = valveB;
+    valveB.prev = valveA;
+    valveB.next = valveC;
+    valveC.prev = valveB;
+    valveA?.seal = valveA?.Read();
+    rfalse;
+}
+
+Valve AsValve(object o) {
+    if (o == null || !o.is(Valve)) return null;
+    return (Valve)o;
+}
+
+string LabelOf(object o, string blank = "-") {
+    return AsValve(o)?.Tag() ?? blank;
+}
+
+Seal SealOf(object o) {
+    return AsValve(o)?.Read() ?? noSeal;
+}
+
+int FlowAt(Valve v, int steps = 1) {
+    return v?.Down(steps)?.flow;
+}
+
+bool OnLine(Valve v) {
+    return v?.next? || v?.prev?;
+}
+
+void Award(Valve v) {
+    if (v?.flow >= FLOW_GOAL && !v?.awarded) {
+        v?.awarded = true;
+        print($"{cThe(v)} is at full flow.^");
+        score++;
+        if (score >= MAX_SCORE) deadflag = 2;
+    }
+}
+
+void ShowMarks(Valve v) {
+    for (int i = 0; i < NMARKS; i++) {
+        if (v?.marks[i] > 0) print($"{v?.marks[i]}");
+        else print(".");
+    }
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Prime {
+    grammar = {.prime, NOUN, .with, NUMBER};
+    void handler() {
+        if (!AsValve(noun)?) {
+            print("Only valves can be primed.^");
+            return;
+        }
+        int n = (int)second;
+        int reached = ((Valve)noun)?.Push(quiet: false, amount: n);
+        pushes++;
+        lastValve = (Valve)noun;
+        print($"The push reaches {reached} valve(s), ending at {LabelOf(((Valve)noun)?.Down(reached - 1), "an untagged valve")}.^");
+        Award(((Valve)noun)?.Tail());
+    }
+}
+
+verb Bleed {
+    grammar = {.bleed, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        if (!v?) {
+            print("Nothing to bleed.^");
+            return;
+        }
+        int steps = 0;
+        while (v?.flow > 0) {
+            v?.flow -= 3;
+            steps++;
+        }
+        if (v?.flow < 0) v?.flow = 0;
+        v?.hits++;
+        print($"{cThe(v)} bleeds in {steps} step(s); hits {v?.hits}, flow {v?.flow}");
+        if (v?.next? && v.next.flow > 0) print($", {LabelOf(v.next)} still holds {v?.next?.flow}");
+        print(".^");
+    }
+}
+
+verb Join {
+    grammar = {.join, NOUN, .to, NOUN};
+    void handler() {
+        Valve a = AsValve(noun);
+        Valve b = AsValve(second);
+        if (!a? || !b?) {
+            print("Only valves can be joined.^");
+            return;
+        }
+        if (a == b || a?.Head() == b?.Head()) {
+            print("They are already on one line.^");
+            return;
+        }
+        a?.next?.prev = null;
+        b?.prev?.next = null;
+        a?.next = b;
+        b?.prev = a;
+        journal += $"{LabelOf(a)}>{LabelOf(b)} ";
+        print($"Joined. Line: {a?.Head()?.Path()}, {a?.Head()?.Reach()} long.^");
+    }
+}
+
+verb Split {
+    grammar = {.split, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        if (!OnLine(v)) {
+            print("That is not on a line.^");
+            return;
+        }
+        Valve before = v?.prev;
+        v?.prev?.next = v?.next;
+        v?.next?.prev = v?.prev;
+        v?.next = null;
+        v?.prev = null;
+        print($"{cThe(v)} comes out. Left: {before?.Head()?.Path() ?? "nothing"}.^");
+    }
+}
+
+verb Trace {
+    grammar = {.trace, NOUN};
+    meta = true;
+    void handler() {
+        Valve v = AsValve(noun);
+        if (!v?) {
+            print("Only valves can be traced.^");
+            return;
+        }
+        print("Forward:");
+        for (Valve w = v?.Head(); w?; w = w?.next) print($" {w?.Tag() ?? "?"}({w?.flow})");
+        print(". Back:");
+        Valve t = v?.Tail();
+        do {
+            print($" {t?.code}");
+            t = t?.prev;
+        } while (t?);
+        print($". Two on: {v?.Down(2)?.Tag() ?? "none"}; wrapped: {v?.Down(steps: 2, wrap: true)?.Tag() ?? "none"}");
+        switch (v?.Down(wrap: true)?.code) {
+            case 0:   print("; next is nothing");
+            case 101: print("; next is A");
+            case 104: print("; next is D");
+            default:  print("; next is mid-line");
+        }
+        print($"; flow two on {FlowAt(v, 2)}, one on {FlowAt(v)}.^");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        stringObj up = v?.Path(sep: "/")?.toUpper() ?? "(none)";
+        print($"Path {up}, tag {v?.Tag()?.length} char(s), log {v?.log?.length} char(s)");
+        if (v?.log?.contains("3")) print(", saw a 3");
+        if (v?.log?.isEmpty()) print(", log empty");
+        stringObj shown = v?.Path() ?? journal;
+        print($"; shows [{shown}].^");
+        journal += LabelOf(v, "?");
+        journal += ' ';
+    }
+}
+
+verb Seat {
+    grammar = {.seat, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        if (!v? || !AsValve(noun)?.has(static)) {
+            print("Only valves fit the rack.^");
+            return;
+        }
+        int i = rack.FreeSlot();
+        if (rack.SlotOf(v) >= 0 || i < 0) {
+            print("No room for it.^");
+            return;
+        }
+        rack.slots[i] = v;
+        rack.cur = i;
+        rack?.pressure += v?.flow;
+        ((Valve)rack.slots[i])?.hits++;
+        print($"{cThe(v)} goes into slot {i + 1}; tag {((Valve)rack.slots[i])?.Tag() ?? "none"}, pressure {rack?.pressure}.^");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        int before = rack.lookups;
+        int got = rack.Pick()?.Push(2);
+        print($"Cycle: {got} reached, lookups {before}>{rack.lookups}.^");
+        rack.At(rack.cur)?.next?.Push(hop: 1, amount: 1);
+        (rack.Pick() ?? valveD).hits += 1;
+        rack.Pick()?.hits += 1;
+        rack.At(0)?.prev?.hits++;
+        print($"Current {LabelOf(rack.Pick())}, hits {rack.Pick()?.hits}, its next {rack.Pick()?.next?.code}, lookups {rack.lookups}.^");
+        Award(rack.Pick()?.Tail());
+    }
+}
+
+verb SealUp {
+    grammar = {.seal, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        lastSeal = v?.Read() ?? noSeal;
+        v?.seal = v?.Read();
+        if (lastSeal?) print($"Sealed code {lastSeal.code} at {lastSeal.psi}, margin {v?.Read()?.Margin(limit: 9)}");
+        else print("No seal taken");
+        print($", default margin {(v?.Read() ?? noSeal).Margin()}, stored {SealOf(noun).psi}.^");
+    }
+}
+
+verb Survey {
+    grammar = {.survey};
+    meta = true;
+    void handler() {
+        for (int i = 0; i < pipeline.length; i++) {
+            print($"{LabelOf(pipeline[i], "--")}: flow {pipeline[i]?.flow}, next {pipeline[i]?.next?.code}, prev {pipeline[i]?.prev?.Tag() ?? "-"}, marks ");
+            ShowMarks(pipeline[i]);
+            print($", seal {pipeline[i]?.seal.psi}.^");
+        }
+        int total = 0;
+        for (Valve q in pipeline) total += q?.next?.flow;
+        int fed = pipeline.filter((Valve q) => q?.prev?.flow > 0).count();
+        print($"Downstream flow {total}, {fed} fed");
+        if (pipeline.any((Valve q) => (q?.prev?.Tag() ?? "-") == "D4")) print(", one fed by D4");
+        print(". Slots:");
+        for (int k = 0; k < NSLOTS; k++) print($" {((Valve)rack.slots[k])?.Tag() ?? "empty"}");
+        print($". Pressure {rack.pressure}. Journal: {journal ?? "(none)"}");
+        print($". Last {lastValve?.Tag() ?? "none"} at {cThe(lastValve?.parent ?? location)}; ");
+        print($"by code 103 {Valve.ByCode(103)?.Down()?.Tag() ?? "none"}, by code 107 {Valve.ByCode(107)?.Down()?.Tag() ?? "none"}. Score {score}.^");
+    }
+}
+
+verb Tap {
+    grammar = {.tap, NOUN};
+    void handler() {
+        Valve v = AsValve(noun);
+        v?.marks[3] = v?.hits;
+        v?.marks[3] += 1;
+        rack?.slots[2] = v;
+        print($"{LabelOf(blank: "nothing", o: v?.next ?? v?.prev)} answers");
+        if (v?.parent?.has(light)) print(" in the light");
+        print($"; mark 4 is {v?.marks[3]}, {noun?.children.length} inside, slot 3 {LabelOf(rack?.slots[2], "empty")} ({AsValve(rack?.slots[2])?.code}).^");
+    }
+}
+
+verb Probe {
+    grammar = {.probe, NUMBER};
+    meta = true;
+    void handler() {
+        int c = (int)noun;
+        Valve v = Valve.ByCode(c);
+        print($"Code {c}: {Valve.ByCode(c)?.Tag() ?? "none"}");
+        if (Valve.ByCode(c)?.Down(wrap: true)?) print($", wraps to {Valve.ByCode(c)?.Down(wrap: true)?.code}");
+        for (Valve w = v ?? valveA; w? && w.code <= c + 1; w = w?.next) print($" >{w?.code}");
+        Seal s = Valve.ByCode(c)?.Read() ?? noSeal;
+        print($", seal {s.code}/{s.psi}, margin {Valve.ByCode(c)?.Read()?.Margin()}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+// ---------------------------------------------------------------- rooms
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A valve rack stands here. Room B is east.";
+    object e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    short_name = "Room B";
+    description = "Room B. Room A is west.";
+    object w_to = roomA;
+    bool before() {
+        switch (action) {
+            case Go:
+                if (rack.Pick()?.flow > 5 && rack?.parent?.has(light)) print("The rack hums behind you.^");
+        }
+        rfalse;
+    }
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- fittings
+
+object rack {
+    short_name = "valve rack";
+    name = {.rack};
+    parent = roomA;
+    array<object> slots[NSLOTS];
+    int cur;
+    int lookups;
+    auto pressure = {
+        int _p;
+        int operator () { return _p; }
+        void operator = (int v) {
+            if (v > PSI_MAX * outer.slots.size) v = PSI_MAX * outer.slots.size;
+            _p = v;
+        }
+    }
+    Valve At(int i) {
+        return (Valve)slots[i];
+    }
+    Valve Pick() {
+        lookups++;
+        return (Valve)slots[cur];
+    }
+    int SlotOf(object o) {
+        for (int i = 0; i < slots.size; i++) {
+            if (slots[i] == o) return i;
+        }
+        return -1;
+    }
+    int FreeSlot() {
+        for (int i = 0; i < slots.size; i++) {
+            if (slots[i] == null) return i;
+        }
+        return -1;
+    }
+    void description() {
+        print("Slots:");
+        for (int i = 0; i < slots.size; i++) print($" {At(i)?.Tag() ?? (At(i)? ? "untagged" : "empty")}");
+        print($". Pressure {pressure}.^");
+    }
+    attributes = {static, container, open};
+}
+
+// ---------------------------------------------------------------- valves, ahead of their class
+
+Valve valveA {
+    short_name = "valve A";
+    name = {.valve, .a};
+    parent = roomA;
+    code = 101;
+    badge = "A1";
+}
+
+Valve valveB {
+    short_name = "valve B";
+    name = {.valve, .b};
+    parent = roomA;
+    code = 102;
+    badge = "B2";
+}
+
+Valve valveC {
+    short_name = "valve C";
+    name = {.valve, .c};
+    parent = roomA;
+    code = 103;
+}
+
+Valve valveD {
+    short_name = "valve D";
+    name = {.valve, .d};
+    parent = roomA;
+    code = 104;
+    badge = "D4";
+}
+
+// ---------------------------------------------------------------- classes
+
+class Valve : object {
+    static Valve ByCode(int c) {
+        for (Valve q in pipeline) {
+            if (q?.code == c) return q;
+        }
+        return null;
+    }
+    int code;
+    Valve next;
+    Valve prev;
+    int flow;
+    int hits;
+    bool awarded;
+    string badge;
+    stringObj log;
+    array<int> marks[NMARKS];
+    Seal seal;
+    string Tag() {
+        return badge;
+    }
+    Valve Head() {
+        return prev?.Head() ?? self;
+    }
+    Valve Tail() {
+        return next?.Tail() ?? self;
+    }
+    Valve Down(int steps = 1, bool wrap = false) {
+        if (steps <= 0) return self;
+        if (next?) return next?.Down(steps - 1, wrap: wrap);
+        if (wrap) return Head()?.Down(wrap: true, steps: steps - 1);
+        return null;
+    }
+    int Reach() {
+        int n = 0;
+        for (Valve w = self; w?; w = w?.next) n++;
+        return n;
+    }
+    int Push(int amount, int hop = 0, bool quiet = true) {
+        flow += amount;
+        hits++;
+        marks[hop % NMARKS] = amount;
+        log += $"{amount}";
+        if (!quiet) print($"{cThe(self)} takes {amount}, holds {flow}.^");
+        if (amount > 1 && next?) return 1 + next?.Push(amount - 1, quiet: quiet, hop: hop + 1);
+        return 1;
+    }
+    Seal Read() {
+        Seal s;
+        s.psi = flow;
+        s.code = code;
+        return s;
+    }
+    stringObj Path(string sep = "-") {
+        stringObj s = Tag() ?? "?";
+        if (next?) {
+            s += sep;
+            s += next?.Path(sep);
+        }
+        return s;
+    }
+    void description() {
+        print($"Valve {badge ?? "(untagged)"}, code {code}, flow {flow}, marks ");
+        ShowMarks(self);
+        if (prev?) print($", fed by {prev?.Tag() ?? "an untagged valve"}");
+        if (next?.next?) print($", two on is {next?.next?.Tag() ?? "untagged"}");
+        print(".^");
+    }
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- value classes
+
+value class Seal {
+    int psi;
+    int code;
+    Seal operator = (Seal o) {
+        psi = o.psi;
+        code = o.code;
+        return self;
+    }
+    emitter eBool operator ? () { ($self ~= 0 && $self.code ~= 0) }
+    int Margin(int limit = PSI_MAX) {
+        return limit - psi;
+    }
+}
+
+const int NSLOTS = 3;
+const int NMARKS = 4;
+const int PSI_MAX = 12;
+const int FLOW_GOAL = 9;

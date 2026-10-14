@@ -286,6 +286,12 @@ object _bglStr {
         var retval;
         #i6 {
             if(unkStr ofclass _bglString) return unkStr.getBuf();
+            ! A null string reads as the empty one.
+            if(unkStr == 0){
+                retval = _bglStringPool.allocateBuffer();
+                _bglBuf.setLength(retval, 0);
+                return _bglStringPool.freeBuffer(retval);
+            }
             ! Phase B safety: at this point we KNOW unkStr is not a _bglString
             ! (ofclass check failed), so it's a packed string literal in practice.
             ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
@@ -722,6 +728,8 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     // that knowledge through to the right _bglBuf primitive directly.
     var setFromLit(var lit) {
         #i6 {
+            ! A null string (a `?.` chain that stopped) is the empty one.
+            if(lit == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
             ! Direct setFromLiteral — caller knows lit is a packed string.
             _bglBuf.setFromLiteral(self.getBuf(), lit);
         }
@@ -729,6 +737,8 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     }
     var setFromStr(var src) {
         #i6 {
+            ! A null string (a `?.` chain that stopped) is the empty one.
+            if(src == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
             ! A literal or string passed where a stringObj is expected arrives as packed text.
             if(metaclass(src) == String){ _bglBuf.setFromLiteral(self.getBuf(), src); return self; }
             _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
@@ -1236,6 +1246,8 @@ extend class string {
     /// Return a copy with `count` characters removed from `pos`.
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
     /// Return a copy with the FIRST `searchText` swapped for `replaceText`.
+    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     /// Return a copy with EVERY `searchText` swapped for `replaceText`.
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
@@ -1262,6 +1274,20 @@ extend class string {
     /// True when `searchText` appears anywhere.
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
     emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
+    /// The position of the character `c`, or -1.
+    emitter int     indexOf(char c)                       { _bglStringLockStack.stackDrain(_bglStr.indexOf($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), 0), _bglStringLockStack.stackMark()) }
+    /// True when the text starts with the character `c`.
+    emitter eBool   startsWith(char c)                    { _bglStringLockStack.stackDrain(_bglStr.startsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text ends with the character `c`.
+    emitter eBool   endsWith(char c)                      { _bglStringLockStack.stackDrain(_bglStr.endsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text holds the character `c`.
+    emitter eBool   contains(char c)                      { _bglStringLockStack.stackDrain(_bglStr.contains($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    /// A copy with the character `c` inserted at `pos`.
+    emitter stringObj insert(int pos, char c)             { _bglStringLockStack.stackDrain(_bglStr.insert($val, $pos, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    /// True when the text is the one character `c`.
+    emitter eBool   operator == (char c)                  { _bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text is not the one character `c`.
+    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark())) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
 }
@@ -1433,6 +1459,8 @@ emitter class stringObj {
     emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
     emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
     emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
+    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
     emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
     emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
     emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }
@@ -1450,6 +1478,20 @@ emitter class stringObj {
     emitter eBool endsWith(array<char> suffix) { _bglStr.endsWith($val, _bglStr.fromChars($suffix), false) }
     emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
     emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
+    /// The position of the character `c`, or -1.
+    emitter int     indexOf(char c)                       { _bglStringLockStack.stackDrain(_bglStr.indexOf($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), 0), _bglStringLockStack.stackMark()) }
+    /// True when the text starts with the character `c`.
+    emitter eBool   startsWith(char c)                    { _bglStringLockStack.stackDrain(_bglStr.startsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text ends with the character `c`.
+    emitter eBool   endsWith(char c)                      { _bglStringLockStack.stackDrain(_bglStr.endsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text holds the character `c`.
+    emitter eBool   contains(char c)                      { _bglStringLockStack.stackDrain(_bglStr.contains($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    /// A copy with the character `c` inserted at `pos`.
+    emitter stringObj insert(int pos, char c)             { _bglStringLockStack.stackDrain(_bglStr.insert($val, $pos, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    /// True when the text is the one character `c`.
+    emitter eBool   operator == (char c)                  { _bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    /// True when the text is not the one character `c`.
+    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark())) }
     emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
     emitter void    capture()                             { $self.capture() }
     emitter void    release()                             { $self.release() }

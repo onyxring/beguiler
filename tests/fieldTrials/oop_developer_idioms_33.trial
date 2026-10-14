@@ -1,0 +1,76 @@
+Room A
+Room A.
+
+> setup
+(posting) Ann/savings=[25.50] an account, digits 4
+Bob/account=[3.25] an account, digits 3
+Cal/business=[14.25] 'seed' an account, digits 4
+Dee/account=[43.21] an account, digits 4
+Posts 7.
+
+> amounts
+a 2.50 b 1.99 c 2.50 d 4.49 e 1.75 f 3.75 g 0.49.
+a 3.50 b 2.00 c 2.00 d 8.98 e 3.75.
+a==350 true, a!=c true, a?=355 true, a?=b false, !g false, !Zero true.
+a<b false, a>=c true, b<=b true, a<=>c 150.
+amount number text account number; a sum a debt; pct 35 20.
+Spend 1 2 3 3.
+Rounded a 3.00, h 7.00.
+
+> refs
+same true, isCents true false, order -95, byBal 2225.
+Sorted: 0.99 1.00 5.00 12.30
+Index of 1.00: 1; total 19.29; over 2 2; near 1.05 2.
+Ranked: Bob Cal Ann Dee
+
+> compare
+sav1==chk1 false, sav1!=biz1 true, sav1==25.50 true, sav1!=1.00 true, chk1<biz1 true, acc1>sav1 true, sav1<=>acc1 -1771.
+sav1+chk1 28.75, plus 1 28.76, desc a sum, projected 26.00, chk1+sav1 28.75.
+acc1==4321 true, acc1!=4321 false, chk1==325 true.
+savings at 5%; a checking account; a checking account; an account; an account.
+Kinds: savings account business account account.
+Richest Dee/account, of two Ann/savings, of two again Cal/business.
+Above chk1 3, any small true, big 2.
+
+> draw
+Can sav1 draw 10.00 true, 25.00 false.
+Can chk1 draw 7.00 true, 9.00 false.
+Can acc1 draw 43.21 true, 43.22 false; via base false true.
+Moved 1250.
+Ann/savings=[22.00]
+Bob/account=[1.75]
+Cal/business=[15.25] 'rent'
+Dee/account=[47.21] 'rent'
+Fees: 5 17 20 0 6 20.
+
+> history
+Ann: 2000 550 -100 -250
+Bob: 325 100 250 -500
+Cal: 1200 150 75 500 -400
+Dee: 4321 400
+biz1 deposits 1925, withdrawals 0, fees -400; slot 9 0.
+Grand 8621.
+
+> chain
+biz1 note debit, kind business; sav1 note credit; chk1 audited.
+[flag: large] flags 5, has 4 true, has 2 false.
+sav1 25.00 note bonus; interest 1.25; acc1 note closed.
+Total 89.21, savings-like 25.00, checking-like 17.00.
+Served 8, posts 18.
+
+> extra
+p 3.05 q 0.77; fmt 7 007 7c 0012 5u.
+chk1 4.50 note coupon; over 4.00 true, over p true, biz1 over q true.
+Element posts: 5.50 'via element', 16.25; ok true; elem kind business.
+Apply 6.10 15 0.00.
+Pot 2.50 after 5; near 2.50 true.
+#[0.25][3.00]Dee/account=[47.21]
+  big Ann/savings 0 a sum
+  fees Bob/account -500
+  fees Cal/business -400
+
+> late
+Picked Cal/business, Dee/account, none; index of biz1 2, of acc1 3.
+acc1 draws 47.00 true, 51.00 false, 51.00 as amount false.
+Over by name: true false.
+Close: closed, closed ok, moved, early.

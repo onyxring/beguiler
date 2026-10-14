@@ -1,0 +1,5 @@
+/* test an interpolated string passed to a stringObj method */
+// EXPECT_ERROR: has no value, so 'append' can't take one
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void main(){ bglInit(); int n = 3; stringObj s = "x"; s.append($"{n}"); print(s); }

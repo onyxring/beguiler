@@ -164,8 +164,9 @@ in an included file does not affect the includer.
 
 **Priority.** Imported names form the lowest tier of identifier resolution (§3.8.3): they rank below
 locals, parameters, class and object members and globals. A global with the same name as an imported
-member wins, with a warning. If two imports declare a member with the same name, using that name
-unqualified is a compile-time error; qualify it.
+member wins, with a warning. A verb has no members and can't be called, so it doesn't compete with an
+imported member at the head of a path (`stock.count`) or in a call (`Show(5)`). If two imports declare a
+member with the same name, using that name unqualified is a compile-time error; qualify it.
 
 **Target.** The target must be a class or object that is already declared when the directive is read.
 If it is not yet declared, the directive is ignored with a warning and never takes effect, even when a

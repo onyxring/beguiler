@@ -180,7 +180,9 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 
 A method's string argument may be a literal, a `string`, a `stringObj` or an `array<char>` (`append`,
 `prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `compareTo`), and may be another method's
-result (`s.append(t.trim())`).
+result (`s.append(t.trim())`). `append`, `prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`,
+`insert`, `replace`, `replaceAll` (its search text), `==` and `!=` also take a `char`, which stands for
+the one-character string.
 
 | Method | Returns | Description |
 |---|---|---|

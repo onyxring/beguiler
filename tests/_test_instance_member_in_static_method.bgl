@@ -1,0 +1,5 @@
+/* test a per-instance member read bare in a static method */
+// EXPECT_ERROR: the static method 'twice' has no object to read it from
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Gauge : object { int scale = 1; static int twice() { return scale * 2; } }
+void main(){ print(Gauge.twice()); }

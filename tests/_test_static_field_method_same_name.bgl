@@ -1,0 +1,5 @@
+/* test a static field and a static method of one name in a class */
+// EXPECT_ERROR: method 'adds' has the name of member 'adds'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Bin : object { static int adds = 0; static int adds() { return 1; } }
+void main(){ print(Bin.adds); }

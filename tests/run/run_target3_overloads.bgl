@@ -1,0 +1,44 @@
+// run_target3_overloads — overloaded methods returning `selfType`, an inherited exact overload beside a
+// subclass's own that fits only by conversion, an operator overload added in a subclass beside its
+// base's, and an overload returning a call to its sibling with a `?:` argument.
+// EXPECT_OUTPUT: 7 1 base btag dtag bop dop 8
+#beguilerSettings { target = z5; informName = "none"; }
+value class Amt {
+    int C;
+    Amt operator = (Amt o) { C = o.C; return self; }
+    Amt operator = (int c) { C = c; return self; }
+}
+class Acct : object {
+    int Code;
+    selfType Note(string s) { Code = 1; return self; }
+    selfType Note(int c) { Code = c; return self; }
+}
+Acct a1 { }
+class Base : object {
+    void Post(int a, int b) { print("base "); }
+    void Tag(int n) { print("btag "); }
+    void operator += (int n) { print("bop "); }
+}
+class Derived : Base {
+    void Post(Amt a, int times) { print("derived "); }
+    void Tag(string s) { print("dtag "); }
+    void operator += (string s) { print("dop "); }
+}
+Derived d1 { }
+int Twice(int n) { return n * 2; }
+int Twice(Amt a) { return Twice(a.C < 0 ? -a.C : a.C); }
+Amt g;
+void main() {
+    bglInit();
+    a1.Note(7);
+    print(a1.Code); print(" ");
+    a1.Note("s");
+    print(a1.Code); print(" ");
+    d1.Post(20, 0);
+    d1.Tag(5);
+    d1.Tag("x");
+    d1 += 5;
+    d1 += "x";
+    g.C = -4;
+    print(Twice(g));
+}

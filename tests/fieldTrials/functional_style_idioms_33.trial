@@ -1,0 +1,141 @@
+Room A
+Room A.
+
+> plot
+home (1,1), cursor (1,1), path 1: (1,1)
+corners (0,0)/(4,0)/(4,4)/(0,4), sum (8,8)
+red at (1,2) fee 5 dist 3 from home 1 anchor none
+blue at (3,0) fee 0 dist 3 from home 3 anchor none
+green at (4,4) fee 12 dist 8 from home 6 anchor none
+
+> walk 1
+walk 1: (1,1) -> (2,1), moved 1, on, path 2
+
+> walk 2
+walk 2: (2,1) -> (2,2), moved 1, on, path 3
+
+> walk 1
+walk 1: (2,2) -> (3,2), moved 1, on, path 4
+
+> walk 0
+walk 0: (3,2) -> (3,1), moved 1, back, path 5
+
+> walk 3
+walk 3: (3,1) -> (2,1), moved 1, back, path 6
+
+> head 44
+to (4,4): 3 steps, halfway (3,2), two on (4,3)
+now (4,4), path 9, last (4,4)
+
+> plot
+home (1,1), cursor (4,4), path 9: (1,1) (2,1) (2,2) (3,2) (3,1) (2,1) (3,2) (4,3) (4,4)
+corners (0,0)/(4,0)/(4,4)/(0,4), sum (8,8)
+red at (1,2) fee 5 dist 3 from home 1 anchor none
+blue at (3,0) fee 0 dist 3 from home 3 anchor none
+green at (4,4) fee 12 dist 8 from home 6 anchor none
+
+> survey
+bounds (1,1)-(4,4) area 16 middle (2,2)
+near middle: 5, any at home: true, all inside: true
+lowest (1,1), first by order (1,1), last by order (4,4)
+farthest (4,4) dist 8; nearest red (1,1)
+distinct 7, sum (24,17)
+dists: 2 3 4 5 4 3 5 7 8
+
+> zones
+zone 0: (0,0)-(4,4) area 25, holds red true, path in it 9
+zone 1: (1,1)-(2,2) area 4, holds red true, path in it 4
+zone 2: (0,1)-(2,3) area 9, holds red true, path in it 4
+zone 1 now (0,0)-(3,2) area 12
+
+> sort
+index of home 0, of (1,0) -1, has (4,4) true
+sorted: (1,1) (2,1) (2,1) (3,1) (2,2) (3,2) (3,2) (4,3) (4,4)
+less (1,0) and cursor: (1,1),(2,1),(2,1),(3,1),(2,2),(3,2),(3,2),(4,3)
+distinct less first: (2,1) (3,1) (2,2) (3,2) (4,3); path still 8
+
+> mark red
+red: (1,2) -> (1,3), anchor (1,3), moved true
+through ref (1,2), member (1,2), copy kept (1,2), bumped copy 11 member col 1
+offset from blue (-2,2), near blue false, within 3 false
+
+> mark blue
+blue: (3,0) -> (3,1), anchor (3,1), moved true
+through ref (3,0), member (3,0), copy kept (3,0), bumped copy 13 member col 3
+offset from blue (0,0), near blue true, within 3 true
+
+> plot
+home (1,1), cursor (4,4), path 8: (1,1) (2,1) (2,1) (3,1) (2,2) (3,2) (3,2) (4,3)
+corners (0,0)/(4,0)/(4,4)/(0,4), sum (8,8)
+red at (1,2) fee 5 dist 3 from home 1 anchor (1,2)
+blue at (3,0) fee 0 dist 3 from home 3 anchor (3,0)
+green at (4,4) fee 12 dist 8 from home 6 anchor none
+
+> swap red with green
+red (4,4), green (1,2)
+path ends swapped: (4,3) (2,1) (2,1) (3,1) (2,2) (3,2) (3,2) (1,1)
+nearer home: green at (1,2)
+
+> level
+peak dist 10, flat copy (2,3) dist 5
+through ref dist 10, col 2
+copy (3,3) lvl 3 dist 9; peak lvl 5 col 2
+peak now lvl 3 (3,3), equal flat false, after flat true
+
+> pay red 3
+red due 15 for 3, owed 15, purse 15, fees 17, paid yes
+
+> pay blue 2
+blue due 0 for 2, owed 1, purse 16, fees 17, paid yes
+
+> step
+0: (1,0) earlier
+1: (2,1) later
+2: (1,2) later
+3: (0,1) earlier
+twice twice east (4,1), then mapped back (3,1)
+ (0,0) (1,1) (2,2) (3,3) .
+
+> shuffle
+work: (2,3) (1,4) (4,0) (2,2); nearest (2,3) (2,3)
+reversed order: (1,4) (2,3) (2,2) (4,0); top (1,4) dist 5
+popped (4,0), front (1,4), left 3, has popped false
+zone 0 from (1,1) area 16, through ref (1,1)
+walked 2 of 3, acc (1,5) dist 12
+
+> spend blue
+blue: picked 2, fee now 3, copy 103, doubled 6, fee still 3, sum 5
+
+> spend green
+green: picked 12, fee now 15, copy 115, doubled 30, fee still 15, sum 17
+
+> nudge 2
+by (0,1): (4,4) (2,2) (2,2) (3,2) (2,3) (3,3) (3,3) (1,2)
+first two (6,6), span (4,4), ordered false, same as red true, at red 0
+in bounds 8, symmetric corners 2, clamped total 41, first still (4,4)
+
+> nudge 1
+by (1,0): (5,4) (3,2) (3,2) (4,2) (3,3) (4,3) (4,3) (2,2)
+first two (8,6), span (4,4), ordered false, same as red false, at red -1
+in bounds 7, symmetric corners 2, clamped total 48, first still (5,4)
+
+> trace 1
+trace (1,0): (1,1) (2,1) (3,1) (4,1) stopped at (5,1) after 4
+bounce (3,1), grow (2,2) (4,4)
+clamped: (4,4) (0,0) (3,2) (4,2) (3,3) (4,3) (4,3) (2,2); red anchor (0,0) is path 1 true, cursor (3,3)
+
+> plot
+home (1,1), cursor (3,3), path 8: (4,4) (0,0) (3,2) (4,2) (3,3) (4,3) (4,3) (2,2)
+corners (0,0)/(4,0)/(4,4)/(0,4), sum (8,8)
+red at (4,4) fee 5 dist 8 from home 6 anchor (0,0)
+blue at (3,0) fee 3 dist 3 from home 3 anchor (3,0)
+green at (1,2) fee 15 dist 3 from home 1 anchor none
+
+> stack
+ (0,0)-(2,2):9 (1,1)-(3,4):12 (2,0)-(4,1):6; holding cursor 1
+wide 25, tight (2,0)-(4,1), middle of wide (2,2)
+highs: top dist 6, third as pos 5 (0,3), first by order lvl 1, index of third 2
+top lvl 14 dist 16, sliced dist 2
+from home: 0 4 4; from origin 0 6
+markers below row 2: 1, first in order blue
+gap home 1, cursor 3; green moved to (0,0), gap home 2

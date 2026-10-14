@@ -1,0 +1,171 @@
+Room A
+Room A. Four crates sit by a bench. A doorway leads east.
+
+You can see a bench, a crate A, a crate B, a crate C and a crate D here.
+
+> tally
+Rack: _ _ _ _. Filled 0, peak 0, sum 0.
+On the bench: (0).
+0 crate(s) have heft; chits out: no; stamps 0; flags on picked 0, spare D.
+Heaviest racked: D at 0.
+
+> ledger
+Total 0g in 0; last grade medium; stamped 1; platform readings 0.
+Slots:.
+Crate A dial moves to 3 (live).
+Trail: 
+
+> sort
+Nothing has been weighed.
+
+> weigh crate a at 3
+The crate A weighs 3; grade light (10, 1 star(s)).
+
+> weigh b at 7
+The crate B weighs 7; grade medium (20, 2 star(s)).
+
+> weigh crate c at 12
+The crate C weighs 8; grade heavy (30, 3 star(s)).
+
+> grade b
+B: heft 15, grade medium against heft, medium against 8; rank 20, at least medium yes.
+B on the platform reads 11; crate 200, unmarked.
+
+> grade c
+C: heft 17, grade medium against heft, heavy against 8; rank 30, at least medium yes.
+C on the platform reads 8; crate 0, unmarked.
+
+> compare crate a with b
+A is lighter than B (-4).
+A fails the half mark; B passes medium.
+
+> compare c with b
+C is heavier than B (1).
+C passes the half mark; B passes medium.
+
+> stamp b
+Chit 1 goes on B, grade medium; 2 chit(s) left.
+
+> stamp c
+Chit 2 goes on C, grade heavy; 1 chit(s) left.
+
+> stamp b
+The crate B already has chit 1.
+
+> rack b
+You rack B. Rack holds 1 (peak 1), total 7.
+
+> rack c
+You rack C. Rack holds 2 (peak 2), total 15.
+
+> rack crate a
+You rack A. Rack holds 3 (peak 3), total 18.
+
+> rack b
+The crate B is already racked.
+
+> tally
+Rack: B C A _. Filled 3, peak 3, sum 18.
+On the bench: crate A crate C crate B (3).
+3 crate(s) have heft; chits out: yes; stamps 2; flags on picked 6, spare D.
+Heaviest racked: C at 8.
+
+> sort
+Weighed: 3 7 8.
+B reading found at 1, same as last no; heaviest 8, light ones 2.
+By load: C=8 B=7 A=3 D=0.
+Boxes up: S D A B C.
+
+> tear b
+You tear chit 1 from B. 1 still out.
+
+> tear d
+There is no chit to tear.
+
+> ledger
+Total 18g in 3; last grade heavy; stamped 1; platform readings 2.
+Slots: B[1]=7 C[1]=8 A[1]=3.
+Crate A dial moves to 6 (live).
+Trail: weigh:A weigh:B weigh:C stamp:B stamp:C rack:B rack:C rack:A tear:B 
+
+> e
+Room B
+Room B. A platform scale. A doorway leads west.
+
+You can see a strongbox and a platform here.
+
+> grade strongbox
+The strongbox has no grade.
+
+> ledger
+Total 18g in 3; last grade heavy; stamped 1; platform readings 2.
+Slots: B[1]=7 C[1]=8 A[1]=3.
+Crate A dial moves to 3 (live).
+Trail: weigh:A weigh:B weigh:C stamp:B stamp:C rack:B rack:C rack:A tear:B 
+
+> w
+Room A
+
+You can see a bench (on which are a crate A, a crate C and a crate B) and a crate D here.
+
+> probe
+First racked B, its chit 0, grade rank 0.
+Show: no reading, C, a reading (2g).
+Names: B, loose, A, D.
+Heavy racked 1; C plus floor 10g in 2; over floor yes; first mass 7.
+C plus floor again 10, strongbox plus floor 2.
+Static stamps 2, platform shelf 4, kit scale platform, cut grade heavy.
+
+> nudge crate d by 3
+D goes from 0 to 5; up, free, plus five 10.
+Under the cut.
+
+> nudge b by 1
+B goes from 7 to 9; up, pinned, plus five 14.
+Over the cut.
+
+> nudge c by 4
+C goes from 8 to 9; up, pinned, plus five 14.
+Over the cut.
+
+> probe
+First racked B, its chit 0, grade rank 0.
+Show: a reading, C, a reading (2g).
+Names: B, loose, A, D.
+Heavy racked 2; C plus floor 11g in 2; over floor yes; first mass 9.
+C plus floor again 11, strongbox plus floor 2.
+Static stamps 2, platform shelf 4, kit scale platform, cut grade heavy.
+
+> e
+Room B
+
+You can see a strongbox and a platform here.
+
+> pack strongbox with 6
+The strongbox holds 6 (strongbox), seal 1, 1 logged, last 6g, sealed yes, marked no.
+Racked count 3 / 3; spare is a spare crate; strongbox outweighs D.
+
+> pack box with 0
+The strongbox holds 0 (strongbox), seal 0, 2 logged, last 0g, sealed yes, marked no.
+Racked count 3 / 3; spare is a spare crate; strongbox trails D.
+
+> w
+Room A
+
+You can see a bench (on which are a crate A, a crate C and a crate B) and a crate D here.
+
+> grade crate d
+D: heft 11, grade medium against heft, medium against 8; rank 20, at least medium yes.
+D on the platform reads 11; spare crate 300, unmarked.
+
+> survey
+Heaviest B at 9, crate; spare now 7; filled 5, peak 5.
+Platform peek 0g, one back 6g, two back 0; heavy rank 30, mid stars 2.
+Heavy picks 2 (18g in 2), first B, pick C, seal 0; total 18g; weighed 4, last 1g.
+C counts as heavy.
+
+> sort
+Weighed: 1 3 7 8.
+B reading found at -1, same as last no; heaviest 8, light ones 3.
+By load: B=9 C=9 D=7 A=0.
+Boxes up: S A D B C.

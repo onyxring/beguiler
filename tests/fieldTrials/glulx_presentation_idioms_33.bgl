@@ -1,0 +1,602 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a desk of three channels and a bus drawn in a text grid split above the main window, with
+// a text-buffer log split to the right, where nearly every value is a property accessor. A named
+// accessor class Level (setter clamping, copy operator, declared `==`, `!=`, `<=>`, `+`, `-`, `+=`,
+// static counters, methods) as the gain of a class Channel, of a pooled class Cue made with `new`, of
+// a value class Strip held in globals, and as a global of its own; a named accessor Caption whose
+// getter returns a string (read with `??`, postfix `?` and interpolation, set from its own `??`, cleared through a method)
+// and a named accessor Focus whose getter returns a Channel (read through `?.`, `?.` chained into the
+// next accessor, `??` and as a `?.` statement). Inline `auto` accessors in the Channel class body (no
+// outer) and on a desk object declared below everything that uses it: rows (resizes the grid through
+// `outer`), a cursor used as an array subscript, a pan with a static counter reached through a method
+// of the accessor, a bool used in conditions and a string title. Accessors read above their object
+// and class; passed to `ref Level` parameters (through casts, array elements, value-class array elements and a
+// pooled instance's member) and bound with `:=`; compared with the accessor class's own and
+// derived operators against ints and other accessors; `+=`, `-=`, `*=`, `/=`, `%=`, `++`, prefix `--` (declared
+// and fallback); in `while`/`for`/`if` conditions, `?:`, `switch`, returns, emitter arguments, <linq>
+// lambdas (filter, count, orderBy, any), window-property writes, array subscripts and interpolation
+// spans; one accessor copied into another (copy operator) and assigned from another (getter + setter);
+// a Bus subclass that hides the gain's `operator =`, written through an upcast. Hyperlinks to enum
+// values that set the focus in HandleGlkEvent; a replaced DrawStatusLine.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 48; }
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+// ---- state ------------------------------------------------------------------------------------------
+
+array<Channel> chans = { chanA, chanB, chanC };
+Strip master;
+Strip snapshot;
+array<Strip> strips[3];
+Level spare;
+int logged = 0;
+
+// ---- helpers (all above the desk and the classes they read) -----------------------------------------
+
+stringObj barFor(int v, char mark) {
+    stringObj s = "";
+    for (int i = 0; i < LEVEL_MAX; i++) s += i < v ? mark : '.';
+    return s;
+}
+
+void logLine(stringObj text) {
+    logged++;
+    logPane?.printLine($"{logged}. {text}");
+}
+
+Channel pick(int i) { return chans[i]; }
+
+int gainOf(Channel c) { return c.gain; }
+
+int headroom(Channel c) { return c.gain > LEVEL_MAX - 2 ? 0 : LEVEL_MAX - c.gain; }
+
+string loudness(Channel c) {
+    switch (c.gain) {
+        case 0: return "silent";
+        case 1, 2, 3: return "low";
+    }
+    return c.gain >= LEVEL_MAX ? "full" : "mid";
+}
+
+void ramp(ref Level g, int to) {
+    if (to > LEVEL_MAX) to = LEVEL_MAX;
+    while (g < to) g += 1;
+    while (g > to) g -= 1;
+}
+
+int settle(ref Level g) {
+    if (g == 0) return 0;
+    g /= 2;
+    return g;
+}
+
+void pairUp(ref Level from, ref Level into) {
+    into = from;
+}
+
+Channel asChannel(object o) {
+    if (o == null || !o.is(Channel)) {
+        printLine("That is not a channel.");
+        return null;
+    }
+    return (Channel)o;
+}
+
+void report(Channel c) {
+    printLine($"{c.label}: gain {c.gain} trim {c.trim} net {c.effective()} [{barFor(c.gain, c.mark)}] {pct(c.gain, LEVEL_MAX)}% {loudness(c)}, tag {c.tag ?? "none"}");
+}
+
+void shifted(Channel c, int was) {
+    stringObj note = $"{c.label} {was} -> {c.gain}";
+    logLine(note);
+    printLine($"{cThe(c)} is at {c.gain}{c.gain == was ? " (no change)" : ""}{c.gain.atTop() ? ", the top" : ""}.");
+}
+
+// ---- drawing ----------------------------------------------------------------------------------------
+
+void drawBoard() {
+    if (board == null) return;
+    board.clear();
+    int row = 0;
+    for (int i = 0; i < chans.length && row < desk.rows - 1; i++) {
+        board.moveCursor(0, row);
+        board.print($"{chans[i].label}{i == desk.cursor ? ">" : " "}{barFor(chans[i].gain, chans[i].mark)} {chans[i].gain}");
+        row++;
+    }
+    board.moveCursor(0, row);
+    board.print($"bus {busM.gain} | pan {desk.pan} | rows {desk.rows}{desk.muted ? " | muted" : ""}");
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{desk.title ?? "desk"} | focus {desk.focus?.label ?? "-"} | master {master.gain}");
+    drawBoard();
+}
+
+int HandleGlkEvent(var event, var context, var buf) {
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink) {
+        int value = bgl.asm.aload(event, 2);
+        if (value < (int)eLinks.linkA || value > (int)eLinks.linkC) return 0;
+        desk.cursor = value - (int)eLinks.linkA;
+        desk.focus = chans[desk.cursor];
+        drawBoard();
+    }
+    return 0;
+}
+
+// ---- verbs ------------------------------------------------------------------------------------------
+
+verb Fade {
+    grammar = {.fade, NOUN, .to, NUMBER};
+    void handler() {
+        if (asChannel(noun) == null) return;
+        int was = ((Channel)noun).gain;
+        ramp(((Channel)noun).gain, (int)second);
+        desk.focus = (Channel)noun;
+        shifted((Channel)noun, was);
+    }
+}
+
+verb Raise {
+    grammar = {.raise, NOUN};
+    void handler() {
+        Channel c = asChannel(noun);
+        if (c == null) return;
+        int was = c.gain;
+        c.gain++;
+        desk.focus = c;
+        shifted(c, was);
+    }
+}
+
+verb Lower {
+    grammar = {.lower, NOUN};
+    void handler() {
+        if (asChannel(noun) == null) return;
+        int was = gainOf((Channel)noun);
+        --((Channel)noun).gain;
+        shifted((Channel)noun, was);
+    }
+}
+
+verb CutTrim {
+    grammar = {.cut, NOUN};
+    void handler() {
+        Channel c = asChannel(noun);
+        if (c == null) return;
+        c.trim -= 2;
+        c.trim--;
+        printLine($"{c.label} trim {c.trim}, net {c.effective()}{c.trim < 0 ? " (below zero)" : ""}.");
+    }
+}
+
+verb TagIt {
+    grammar = {.tag, NOUN};
+    void handler() {
+        Channel c = asChannel(noun);
+        if (c == null) return;
+        c.tag = c.tag ?? (c.gain > 4 ? "hot" : "cool");
+        printLine($"{c.label} tagged {c.tag}; tagged: {c.tag? ? "yes" : "no"}.");
+    }
+}
+
+verb Untag {
+    grammar = {.untag, NOUN};
+    void handler() {
+        Channel c = asChannel(noun);
+        if (c == null) return;
+        c.tag.clear();
+        printLine($"{c.label} tag {c.tag ?? "none"}; tagged: {c.tag? ? "yes" : "no"}.");
+    }
+}
+
+verb ShowFocus {
+    grammar = {.focus};
+    meta = true;
+    void handler() {
+        int g = desk.focus?.gain;
+        printLine($"Focus {desk.focus?.label ?? "none"}, gain {g}, tag {desk.focus?.tag ?? "none"}, first {(desk.focus ?? chanA).label}.");
+        if (desk.focus?) {
+            printLine($"Focused gain above two: {desk.focus.gain > 2 ? "yes" : "no"}.");
+            ref Level fr := desk.focus.gain;
+            if (fr >= LEVEL_MAX - 1 || fr == 3) printLine($"{desk.focus.label} is {fr == 3 ? "at three" : "near the top"}.");
+        }
+    }
+}
+
+verb ClearFocus {
+    grammar = {.clear};
+    void handler() {
+        desk.focus = null;
+        printLine("Focus cleared.");
+    }
+}
+
+verb Step {
+    grammar = {.step};
+    void handler() {
+        desk.cursor++;
+        desk.focus = chans[desk.cursor];
+        desk.focus?.bump(1);
+        printLine($"Cursor {desk.cursor}, {chans[desk.cursor].label} at {chans[desk.cursor].gain}.");
+    }
+}
+
+verb Copy {
+    grammar = {.copy};
+    void handler() {
+        chanC.gain = chanA.gain;
+        pairUp(chanA.gain, pick(1).gain);
+        master.gain = chanA.gain + 1;
+        master.hits++;
+        snapshot = master;
+        master.gain += 2;
+        printLine($"A {chanA.gain}, B {chanB.gain}, C {chanC.gain}; master {master.gain}, snapshot {snapshot.gain} ({snapshot.hits} hit).");
+        if (chanA.gain == chanB.gain && chanB.gain == chanC.gain) printLine("All three match.");
+        if (master.gain > snapshot.gain) printLine("Master is above the snapshot.");
+    }
+}
+
+verb Sum {
+    grammar = {.sum};
+    void handler() {
+        ((Channel)busM).gain = chanA.gain + chanB.gain;
+        int over = chanA.gain + chanB.gain + chanC.gain - busM.gain;
+        printLine($"Bus {busM.gain}, over by {over}{busM.gain.atTop() ? " (clipped)" : ""}.");
+    }
+}
+
+verb PanTo {
+    grammar = {.pan, NUMBER};
+    void handler() {
+        desk.pan = (int)noun;
+        desk.pan *= 2;
+        desk.pan %= 5;
+        printLine($"Pan {desk.pan} after {desk.pan.count()} sets{desk.pan > LEVEL_MAX ? ", wide" : ""}.");
+    }
+}
+
+verb Mute {
+    grammar = {.mute};
+    void handler() {
+        desk.muted = !desk.muted;
+        if (desk.muted) printLine("Muted.");
+        else printLine("Unmuted.");
+    }
+}
+
+verb Rows {
+    grammar = {.rows, NUMBER};
+    void handler() {
+        int asked = (int)noun;
+        desk.rows = asked;
+        printLine($"Rows {desk.rows} (asked {asked}, grid {board == null ? 0 : board.height}){desk.rows == desk.maxRows ? ", the most" : ""}.");
+    }
+}
+
+verb Shrink {
+    grammar = {.shrink};
+    void handler() {
+        desk.rows -= 1;
+        desk.title = desk.rows < 4 ? "small desk" : "desk";
+        printLine($"Rows now {desk.rows}; title {desk.title}.");
+    }
+}
+
+verb Cues {
+    grammar = {.cues, NUMBER};
+    void handler() {
+        Cue first = new Cue((int)noun);
+        Cue other = new Cue(LEVEL_MAX + 5);
+        if (first == null || other == null) return;
+        ramp(first.gain, first.gain + 2);
+        stringObj line = "";
+        for (int n = first.gain; n > 0; n--) line += '|';
+        printLine($"Cue one {first.gain} {line}, cue two {other.gain}; one below two: {first.gain < other.gain ? "yes" : "no"}.");
+        ref Level held := other.gain;
+        held -= first.gain;
+        printLine($"Cue two now {other.gain}.");
+        delete first;
+        delete other;
+    }
+}
+
+verb SettleAll {
+    grammar = {.settle};
+    void handler() {
+        for (int i = 0; i < chans.length; i++) {
+            int was = pick(i).gain;
+            int now = settle(chans[i].gain);
+            if (now != was) printLine($"{pick(i).label} settled {was} -> {now}.");
+        }
+        spare = master.gain;
+        int half = settle(spare);
+        printLine($"Spare {spare} ({half}).");
+    }
+}
+
+verb Spread {
+    grammar = {.spread};
+    void handler() {
+        for (int i = 0; i < strips.size; i++) {
+            strips[i].gain = chans[i].gain * (i + 1);
+            ramp(strips[i].gain, strips[i].gain + i);
+            strips[i].hits++;
+        }
+        ref Strip top := strips[2];
+        top.gain += 1;
+        ramp(master.gain, strips[0].gain);
+        stringObj line = "";
+        for (int i = 0; i < strips.size; i++) line += $" {strips[i].gain}/{strips[i].hits}";
+        printLine($"Strips{line}; top {top.gain}; master {master.gain}{master.gain >= strips[1].gain ? " (at or above B)" : ""}.");
+        desk.focus = strips[2].gain > strips[0].gain ? chanC : chanA;
+        desk.focus = desk.focus ?? chanB;
+        ramp(desk.focus.gain, desk.focus.gain + 1);
+        printLine($"Focus {desk.focus.label} at {desk.focus.gain}{!desk.muted && desk.focus.gain > strips[0].gain ? ", above strip one" : ""}.");
+    }
+}
+
+verb Mix {
+    grammar = {.mix};
+    meta = true;
+    void handler() {
+        for (Channel c in chans) report(c);
+        int floor = chanA.gain;
+        int above = chans.filter((Channel c) => c.gain > floor).count();
+        int panned = chans.filter((Channel c) => c.gain + c.trim >= desk.pan).count();
+        array<Channel> order[3];
+        order = chans.orderBy((Channel a, Channel b) => b.gain - a.gain);
+        stringObj names = "";
+        for (Channel c in order) names += c.label;
+        printLine($"Above A: {above}; at or above pan: {panned}; loudest first {names}; any tagged: {chans.any((Channel c) => c.tag?) ? "yes" : "no"}.");
+        if (chanA.gain < chanB.gain) printLine("A is below B.");
+        else if (chanA.gain != chanB.gain) printLine("A is above B.");
+        else printLine("A matches B.");
+        int room = 0;
+        for (Channel c in chans) room += headroom(c);
+        printLine($"Headroom {room}; bus {busM.gain} of {LEVEL_MAX}, A has {LEVEL_MAX - chanA.gain} left.");
+    }
+}
+
+verb Counts {
+    grammar = {.counts};
+    meta = true;
+    void handler() {
+        printLine($"Level sets {Level.sets}, copies {Level.copies}; caption edits {Caption.edits}; focus switches {Focus.switches}; pan sets {desk.pan.count()}; mute flips {desk.muteFlips}.");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    meta = true;
+    void handler() {
+        printLine($"Focus: {link("A", eLinks.linkA)} {link("B", eLinks.linkB)} {link("C", eLinks.linkC)}");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    bgl.ui.mainWin.childStyles = logLook;
+    board = bgl.ui.mainWin.splitUpGrid(desk.rows, fixed, border, styles: boardLook);
+    logPane = bgl.ui.mainWin.splitRightBuffer(LOG_COLS, fixed);
+    chanB.tag = "lead";
+    master.gain = 1;
+    stringObj note = $"desk ready, {chans.length} channels, rows {desk.rows}";
+    logLine(note);
+    rfalse;
+}
+
+// ---- looks ------------------------------------------------------------------------------------------
+
+styleSheet boardLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 2; };
+};
+
+const int LEVEL_MAX = 9;
+const int LOG_COLS = 30;
+
+emitter int pct(int a, int b) { ($a * 100 / $b) }
+
+textGridWindowHorz board = null;
+textBufferWindowVert logPane = null;
+
+enum eLinks { linkA = 31, linkB, linkC }
+
+// ---- the room and the channels ----------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. A desk with three channels and a bus is here.";
+    attributes = {light};
+}
+
+object deskTop {
+    "desk";
+    parent = roomA;
+    name = {.desk};
+    description = "A desk holding three channels and a bus.";
+    attributes = {static, supporter};
+    children = { chanA, chanB, chanC, busM };
+}
+
+Channel chanA { "channel A"; name = {.channel, .a}; label = "A"; mark = '#'; slot = 0; }
+Channel chanB { "channel B"; name = {.channel, .b}; label = "B"; mark = '='; slot = 1; }
+Channel chanC { "channel C"; name = {.channel, .c}; label = "C"; mark = '+'; slot = 2; }
+Bus busM { "bus"; name = {.bus}; label = "M"; mark = '%'; slot = 3; }
+
+class Channel : object {
+    attributeList attributes = {static};
+    string label = "?";
+    char mark = '*';
+    Level gain;
+    Caption tag;
+    auto trim = {
+        int _t = 0;
+        int operator () { return _t; }
+        void operator = (int v) { _t = v < -4 ? -4 : (v > 4 ? 4 : v); }
+    }
+    int slot = 0;
+
+    void bump(int n) { gain += n; }
+
+    int effective() { return gain + trim; }
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"{cThe(self)}: gain {gain}, trim {trim}, tag {tag ?? "none"}, {loudness(self)}.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+class Bus : Channel {
+    hide gain.operator =;
+}
+
+class Cue[3] {
+    Level gain;
+    void create(int g) { gain = g; }
+}
+
+value class Strip {
+    Level gain;
+    int hits;
+    Strip operator = (Strip o) {
+        gain = o.gain;
+        hits = o.hits;
+        return self;
+    }
+}
+
+value class Level {
+    int _v = 0;
+    static int sets = 0;
+    static int copies = 0;
+
+    void put(int v) {
+        if (v < 0) v = 0;
+        if (v > LEVEL_MAX) v = LEVEL_MAX;
+        _v = v;
+        sets++;
+    }
+
+    int operator () { return _v; }
+    void operator = (int v) { put(v); }
+    Level operator = (Level o) {
+        _v = o._v;
+        copies++;
+        return self;
+    }
+    Level operator += (int n) {
+        put(_v + n);
+        return self;
+    }
+    bool operator == (int n) { return _v == n; }
+    bool operator != (int n) { return _v != n; }
+    int operator <=> (int n) { return _v - n; }
+    int operator + (int n) { return _v + n; }
+    int operator - (int n) { return _v - n; }
+
+    bool atTop() { return _v == LEVEL_MAX; }
+}
+
+value class Caption {
+    string _s = null;
+    static int edits = 0;
+    string operator () { return _s; }
+    void operator = (string v) {
+        _s = v;
+        edits++;
+    }
+    void clear() { _s = null; }
+}
+
+value class Focus {
+    Channel _c = null;
+    static int switches = 0;
+    Channel operator () { return _c; }
+    void operator = (Channel c) {
+        _c = c;
+        switches++;
+    }
+}
+
+// ---- the desk ---------------------------------------------------------------------------------------
+
+object desk {
+    auto rows = {
+        int _n = 4;
+        int operator () { return _n; }
+        void operator = (int v) {
+            if (v < outer.minRows) v = outer.minRows;
+            if (v > outer.maxRows) v = outer.maxRows;
+            _n = v;
+            if (board != null) board.height = v;
+        }
+    }
+    auto cursor = {
+        int _i = 0;
+        int operator () { return _i; }
+        void operator = (int v) {
+            _i = v % 3;
+            if (_i < 0) _i += 3;
+        }
+    }
+    auto pan = {
+        static int sets = 0;
+        int _p = 0;
+        int operator () { return _p; }
+        void operator = (int v) {
+            _p = v;
+            sets++;
+        }
+        int count() { return sets; }
+    }
+    auto muted = {
+        bool _m = false;
+        bool operator () { return _m; }
+        void operator = (bool v) {
+            _m = v;
+            outer.muteFlips++;
+        }
+    }
+    auto title = {
+        string _t = null;
+        string operator () { return _t; }
+        void operator = (string v) { _t = v; }
+    }
+    Focus focus;
+    int minRows = 3;
+    int maxRows = 5;
+    int muteFlips = 0;
+}
+
+#includeI6 "grammar"

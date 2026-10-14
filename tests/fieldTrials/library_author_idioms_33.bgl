@@ -1,0 +1,587 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a stock-counting kit laid out header-first, the way a library author writes a file whose
+// public surface comes before its implementation, so that nearly every name is used above its
+// declaration. The namespace object comes first: type aliases to a value class, a class, a pooled
+// class, an enum and a bnum all declared further down; a value alias to a static-only class below;
+// an `auto` member naming a store object below; overloaded note() methods whose parameters are typed
+// through those aliases, and a further note() overload added by an `extend` before the class it names. `#using` of
+// that namespace right after it, so bare alias names reach types not yet declared. Globals typed
+// through alias paths (a value class, an enum initialized through the path, an array of the class
+// sized by a const declared below). Global overload sets split across the file (some overloads
+// above the calls, some below), with default arguments naming an enum value and a const declared
+// below, named arguments, `ref` parameters of the value class, returns of alias-typed values, and
+// func<> parameters typed by classes below; a global func<>, stringObj and enum array declared
+// below and used above. Verb instances of a verb class; objects
+// of a class declared below; a derived class declared above its base. Calls above their declarations
+// of: value-class operators (+, -, +=, ==, !=, <=>, implicit int, explicit string), operator
+// references passed to sort and orderBy, static makers through a value alias, instance and static
+// members, member arrays of a class and of an object (through casts, alias paths and the auto
+// member), method overloads inherited and overridden, an overload added by `extend class` at the
+// bottom, an inline `auto` accessor whose setter reaches members declared after it through `outer`,
+// a named accessor class typing a class member (with its own `+` and `==`), compound assignment on
+// both accessors, global and class emitter values, an emitter function, `is()` and casts against
+// alias paths, `new` and `delete` of a pooled class through its alias, `?.` and `??` on lookups
+// returning class instances, <linq> chains with lambdas over the class, switch cases through the
+// alias path, and a for-in over bgl.world.instances of a class declared below. A second consumer
+// section after the kit imports an emitter class with `#using`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ==== Public surface. ====
+
+/// The kit's namespace: its type names, its maker, its store and its log.
+object la33 {
+    alias tally for La33Tally;
+    alias bin   for La33Bin;
+    alias crate for La33Crate;
+    alias slip  for La33Slip;
+    alias kind  for eLa33Kind;
+    alias mark  for eLa33Mark;
+    alias calc = La33Calc;
+    auto store = la33Store;
+    stringObj log;
+
+    /// Adds a word to the log.
+    void note(string s) {
+        log += s;
+        log += " ";
+    }
+    /// Adds a count to the log.
+    void note(tally t) { log += $"{t.n} "; }
+    /// Adds a bin's label to the log.
+    void note(bin b) { note(b.label()); }
+    /// Adds a kind's letter to the log.
+    void note(kind k) {
+        switch (k) {
+            case kind.loose: note("L");
+            case kind.boxed: note("B");
+            case kind.bulk:  note("K");
+        }
+    }
+}
+
+
+#using la33
+
+/// The running total of everything counted.
+tally runningTotal;
+/// The kind counted most recently.
+la33.kind lastKind = la33.kind.boxed;
+/// Bins in the order they were last ranked.
+array<la33.bin> ranked[LA33_BINS];
+/// Counts taken so far, one per count verb.
+array<La33Tally> history[LA33_BINS];
+
+/// The first bin of a kind, or null.
+bin la33Find(kind k = eLa33Kind.loose) {
+    for (object o in bgl.world.instances(La33Bin)) {
+        if (((La33Bin)o).kind == k) return (bin)o;
+    }
+    return null;
+}
+
+/// How much a bin holds.
+int la33Count(La33Bin b) { return b.total(); }
+/// How much every bin of a kind holds.
+int la33Count(la33.kind k) {
+    int n = 0;
+    for (object o in bgl.world.instances(la33.bin)) {
+        La33Bin b = (La33Bin)o;
+        if (b.kind == k) n += la33Count(b);
+    }
+    return n;
+}
+
+/// Adds to a tally in place; by the standard step unless told otherwise.
+void la33Bump(ref tally t, int by = LA33_STEP) { t += by; }
+
+/// Moves one tally into another, leaving the first empty.
+void la33Move(ref La33Tally from, ref tally into) {
+    into += from;
+    from = 0;
+}
+
+/// Every bin that passes a test, ranked by the kit's ordering.
+int la33Rank(func<bool, la33.bin> test) {
+    ranked.clear();
+    for (object o in bgl.world.instances(La33Bin)) {
+        La33Bin b = (La33Bin)o;
+        if (test(b)) ranked.append(b);
+    }
+    ranked.sort(La33Bin::operator <=>);
+    La33Bin.ranks++;
+    return ranked.length;
+}
+
+bool Initialise() {
+    location = roomA;
+    runningTotal = la33.calc.of(LA33_STEP);
+    binA.level = 3;
+    la33Store.cap = 5;
+    rfalse;
+}
+
+// ==== Verbs. ====
+
+La33Info La33Tallies {
+    grammar = {.tallies};
+    void handler() {
+        tally a = La33Calc.of(5);
+        la33.tally b = calc.of(2, kind.boxed);
+        La33Tally c = kind.bulk;
+        tally d = 7;
+        print($"a {a} b {b} c {c} d {d}; ");
+        tally e = a + b;
+        tally f = c - d;
+        tally g = a + 4;
+        e += d;
+        g += 1;
+        print($"e {e} f {f} g {g}; a==5 {a == 5}, a==b {a == b}, a!=d {a != d}, a<b {a < b}, c>d {c > d}, a<=>d {a <=> d}^");
+        string word = (string)c;
+        int plain = f;
+        print($"word {word}, small {(string)b}, none {(string)calc.of(0)}, plain {plain * 2}; ");
+        la33Bump(a);
+        la33Bump(b, by: 10);
+        la33Bump(by: 3, t: c);
+        print($"bumped {a} {b} {c}; ");
+        la33Move(d, e);
+        print($"moved {d} {e}; total {runningTotal}^");
+        array<tally> row[5];
+        row.append(e);
+        row.append(a);
+        row.append(c);
+        row.append(b);
+        row.sort(La33Tally::operator <=>);
+        stringObj line = "sorted";
+        for (tally t in row) line += $" {t.n}";
+        print(line);
+        func<bool, La33Tally, La33Tally> same = La33Tally::operator ==(La33Tally);
+        print($", same {same(a, calc.of(5 + LA33_STEP))} {same(a, b)}, over 10: {row.filter((tally r) => r > 10).count()}");
+        print($", first {row.first()}, has c {row.contains(c)}, width {la33Width}, pad {la33Pad(7)}^");
+    }
+}
+
+La33Info La33Bins {
+    grammar = {.bins};
+    void handler() {
+        print($"loose {la33Count(kind.loose)}, boxed {la33Count(la33.kind.boxed)}, bulk {la33Count(eLa33Kind.bulk)}");
+        print($", bin A {la33Count(binA)}, crate {la33Count(crateA)}, all {la33Count(bins: true)}^");
+        bin first = la33Find();
+        crate firstBulk = (crate)la33Find(kind.bulk);
+        print($"first loose {first?.label() ?? "none"}, first bulk {firstBulk?.label() ?? "none"}, first boxed {la33Find(k: kind.boxed)?.label() ?? "none"}^");
+        binA.add(2);
+        binA.add(calc.of(3));
+        binA.add(crateA);
+        binA.add(kind.bulk);
+        crateA.add(1);
+        crateA.add(la33.calc.of(4));
+        crateA.add(kind.loose);
+        print($"bin A {binA.total()} [{binA.counts[0]} {binA.counts[1]} {binA.counts[2]}], crate {crateA.total()} [{crateA.counts[0]} {crateA.counts[1]}]");
+        print($", crate slats {crateA.slats}, max {La33Bin.slotsMax} {crateA.slotsMax}^");
+        int n = la33Rank((bin b) => b.total() > 0);
+        stringObj line = "ranked";
+        for (bin b in ranked) line += $" {b.label()}={b.total()}";
+        print(line);
+        print($" ({n}); top {ranked.orderBy(La33Crate::operator <=>).last().label()}, binA<crate {binA < crateA}, crate==crateB {crateA == crateB}, crate!=crateB {crateA != crateB}^");
+        for (object o in bgl.world.instances(la33.bin)) {
+            if (o.is(la33.crate)) print($"[{((crate)o).label()} {((La33Crate)o).counts[1]} {((la33.crate)o).slats}]");
+            else print($"[{((bin)o).label()} {((La33Bin)o).counts[0]}]");
+        }
+        print($" ranks {La33Bin.ranks}, adds {La33Bin.addCount()}^");
+    }
+}
+
+La33Info La33Levels {
+    grammar = {.levels};
+    void handler() {
+        print($"bin A level {binA.level}, crate level {crateA.level}; ");
+        binA.level = 6;
+        crateA.level += 2;
+        binA.level++;
+        print($"now {binA.level} {crateA.level}, sum {binA.level + crateA.level}, same {binA.level == crateA.level} {binA.level != crateA.level}, over 5 {binA.level > 5}^");
+        print($"cap {la33Store.cap} via alias {la33.store.cap}; ");
+        la33Store.cap = 40;
+        print($"set 40 -> {la33Store.cap} refused {la33Store.refusals}; ");
+        la33.store.cap += 3;
+        print($"+3 -> {store.cap}; ");
+        if (la33Store.cap > la33Store.limit / 2) print("over half");
+        else print("under half");
+        la33Store.shelf[0] = binA;
+        la33.store.shelf[1] = crateA;
+        print($"; shelf {la33Store.shelf[0].label()} {la33.store.shelf[1]?.label()} {la33Store.shelf[2]?.label() ?? "empty"}");
+        print($", stocked {la33Store.stocked()}^");
+    }
+}
+
+La33Info La33Slips {
+    grammar = {.slips};
+    void handler() {
+        slip s1 = new slip(binA);
+        la33.slip s2 = new la33.slip(crateA, 3);
+        La33Slip s3 = new La33Slip(b: crateB, copies: 2);
+        La33Slip s4 = new slip(binA);
+        s1?.stamp();
+        s2?.stamp(calc.of(2));
+        s4?.stamp();
+        print($"s1 {s1.copies} s2 {s2.copies} s3 {s3.copies}, s4 {s4 == null ? "none" : "made"}, issued {La33Slip.issued}; ");
+        note(s1);
+        note(s2.what);
+        note(calc.of(9));
+        note(kind.bulk);
+        note("end");
+        print($"log {la33.log}^");
+        delete s1;
+        delete s2;
+        delete s3;
+        print($"after delete {la33Live()}^");
+    }
+}
+
+La33Info La33Audit {
+    grammar = {.audit};
+    void handler() {
+        la33Probes++;
+        la33Trail += "audit";
+        la33Picker = (La33Bin b) => b.kind == eLa33Kind.boxed;
+        int n = la33Rank(la33Picker);
+        print($"probes {la33Probes}, picked {n} {ranked[0]?.label() ?? "none"}, has crate B {ranked.contains(crateB)}, has bin A {ranked.contains(binA)}");
+        ranked.append(binA);
+        ranked.append(crateA);
+        ranked.removeValue(crateB);
+        print($", after {ranked.length} {ranked.indexOf(crateA)}, kept {ranked.filter((la33.bin b) => b.is(crate)).count()}^");
+        la33Trail += $" {ranked.length}";
+        la33Trail = la33Trail.prepend('[');
+        la33Trail += ']';
+        print($"trail {la33Trail}, kinds {la33Kinds[0]} {la33Kinds[1]}, rule {la33Rule(binA)} {la33Rule(crateB)}, bin max {binA.slotsMax + 1}, store max {la33Store.maxShelf}^");
+    }
+}
+
+/// Weighs a bin by its total, or tells what else the noun is.
+verb La33Heft {
+    grammar = {.heft, NOUN};
+    void handler() {
+        if (noun.is(bin)) {
+            bin b = (bin)noun;
+            lastKind = b.kind;
+            history.append(calc.of(b.total()));
+            runningTotal += b.total();
+            note(b);
+            print($"The {b} holds {la33Count(b)} ({b.label()}, {la33Describe(b)}), running {runningTotal}, takes {history.length}.^");
+        } else {
+            print($"The {noun} is not a bin ({la33Describe(noun)}).^");
+        }
+    }
+}
+
+// ==== The kit's implementation. ====
+
+/// How many counts the kit keeps, and how far a bump goes.
+const int LA33_BINS = 4;
+const int LA33_STEP = 2;
+/// How many slips may be out at once.
+const int LA33_SLIPS = 3;
+
+/// How a bin holds its stock.
+enum eLa33Kind { loose, boxed, bulk }
+
+/// Marks a bin may carry.
+bnum eLa33Mark { sealed, dented }
+
+/// A derived bin, declared above its base: a crate has slats.
+class La33Crate : La33Bin {
+    int slats = 2;
+
+    replace string label() { return "crate"; }
+    /// A crate counts its slats as well.
+    replace int total() { return ((La33Bin)self).total() + slats; }
+    /// A crate adds a number twice over.
+    replace void add(int n) {
+        counts[1] += n * 2;
+        adds++;
+    }
+}
+
+/// A number of things, copied on assignment.
+value class La33Tally {
+    int n;
+
+    La33Tally operator = (La33Tally o) { n = o.n; return self; }
+    La33Tally operator = (int v) { n = v; return self; }
+    La33Tally operator = (eLa33Kind k) { n = La33Calc.per(k); return self; }
+
+    La33Tally operator + (La33Tally o) { return La33Calc.of(n + o.n); }
+    La33Tally operator + (int v) { return La33Calc.of(n + v); }
+    La33Tally operator - (La33Tally o) { return La33Calc.of(n - o.n); }
+    La33Tally operator += (La33Tally o) { n += o.n; return self; }
+    La33Tally operator += (int v) { n += v; return self; }
+
+    bool operator == (La33Tally o) { return n == o.n; }
+    bool operator == (int v) { return n == v; }
+    bool operator != (La33Tally o) { return n != o.n; }
+    static int operator <=> (La33Tally a, La33Tally b) { return a.n - b.n; }
+    static bool operator == (La33Tally a, La33Tally b) { return a.n == b.n; }
+
+    int operator () { return n; }
+    explicit string operator () {
+        if (n == 0) return "none";
+        if (n < 10) return "few";
+        return "lots";
+    }
+}
+
+/// Makers and unit sizes for tallies; static only.
+class La33Calc {
+    /// A tally of so many.
+    static La33Tally of(int v) {
+        La33Tally t;
+        t.n = v;
+        return t;
+    }
+    /// A tally of so many of a kind.
+    static La33Tally of(int count, eLa33Kind k) { return of(count * per(k)); }
+    /// How many one of a kind is.
+    static int per(eLa33Kind k) {
+        switch (k) {
+            case la33.kind.boxed: return 6;
+            case la33.kind.bulk:  return 20;
+            default:              return 1;
+        }
+    }
+}
+
+/// A bin's level: never below zero, with its own sum and equality.
+value class La33Gauge {
+    int _raw = 0;
+    int operator () { return _raw; }
+    void operator = (int v) { _raw = v < 0 ? 0 : v; }
+    int operator + (ref La33Gauge o) { return _raw + o._raw; }
+    bool operator == (ref La33Gauge o) { return _raw == o._raw; }
+    bool operator != (ref La33Gauge o) { return _raw != o._raw; }
+}
+
+/// A bin: holds counts in slots.
+class La33Bin : object {
+    eLa33Kind kind = eLa33Kind.loose;
+    eLa33Mark marks;
+    array<int> counts[3];
+    La33Gauge level;
+    /// Adds made to any bin, and rankings taken.
+    static int ranks = 0;
+    static int adds = 0;
+    /// How many slots a bin has.
+    emitter int slotsMax { 3 }
+
+    default string label() { return "bin"; }
+    /// Everything in its slots.
+    default int total() {
+        int t = 0;
+        for (int i = 0; i < counts.size; i++) t += counts[i];
+        return t;
+    }
+
+    /// Adds a number to the first slot.
+    default void add(int n) {
+        counts[0] += n;
+        adds++;
+    }
+    /// Adds a tally to the first slot.
+    void add(La33Tally t) { add(t.n); }
+    /// Adds everything another bin holds to the second slot.
+    void add(La33Bin other) {
+        counts[1] += other.total();
+        adds++;
+    }
+
+    static int operator <=> (La33Bin a, La33Bin b) { return a.total() - b.total(); }
+    static bool operator == (La33Bin a, La33Bin b) { return a.total() == b.total(); }
+    static bool operator != (La33Bin a, La33Bin b) { return a.total() != b.total(); }
+}
+
+/// Bins hold more when told a kind; added after the class.
+extend class La33Bin {
+    /// Adds one of a kind to the third slot.
+    void add(eLa33Kind k) {
+        counts[2] += La33Calc.per(k);
+        adds++;
+    }
+    /// How many adds every bin has had.
+    static int addCount() { return adds; }
+}
+
+/// A copy slip for a bin; made with new.
+class La33Slip[LA33_SLIPS] : object {
+    La33Bin what;
+    int copies;
+    /// Slips issued so far.
+    static int issued = 0;
+
+    void create(La33Bin b, int copies = 1) {
+        what = b;
+        self.copies = copies;
+        issued++;
+    }
+    void destroy() { issued--; }
+
+    void stamp() { copies++; }
+    void stamp(La33Tally t) { copies += t.n; }
+}
+
+/// Report verbs: they take no time.
+class La33Info : verb {
+    meta = true;
+}
+
+/// The kit's store: a capped count and a shelf of bins.
+object la33Store {
+    auto cap = {
+        int _v = 0;
+        int operator () { return _v; }
+        void operator = (int v) {
+            if (v > outer.limit) {
+                outer.refusals++;
+                return;
+            }
+            _v = v;
+        }
+    }
+    int limit = 12;
+    int refusals = 0;
+    /// How many shelf places the store has.
+    emitter int maxShelf { 3 }
+}
+
+/// The store gets a shelf and a count of what is on it.
+extend la33Store {
+    array<La33Bin> shelf[3];
+    int stocked() {
+        int n = 0;
+        for (int i = 0; i < 3; i++) if (shelf[i] != null) n++;
+        return n;
+    }
+}
+
+/// A last overload of la33Count, for everything at once.
+int la33Count(bool bins) {
+    if (!bins) return 0;
+    int n = 0;
+    for (object o in bgl.world.instances(La33Bin)) n += la33Count((La33Bin)o);
+    return n;
+}
+
+/// How many slips are out.
+int la33Live() { return La33Slip.issued; }
+
+/// A short description of a bin, or of anything else.
+string la33Describe(La33Bin b) {
+    switch (b.kind) {
+        case kind.loose: return "loose";
+        case kind.boxed: return "boxed";
+        default:         return "bulk";
+    }
+}
+string la33Describe(object o) { return o.is(La33Bin) ? "a bin" : "a thing"; }
+
+/// How many audits have run, a trail of them, and the test the last one used.
+int la33Probes = 0;
+stringObj la33Trail;
+func<bool, La33Bin> la33Picker;
+/// Kinds in the order the audit reports them.
+array<eLa33Kind> la33Kinds = { eLa33Kind.bulk, eLa33Kind.loose };
+
+/// A one-word rule for a bin: what the bin holds against its slats.
+string la33Rule(La33Bin b) {
+    if (b.is(La33Crate)) return b.total() > ((La33Crate)b).slats ? "full" : "bare";
+    return b.total() > 0 ? "used" : "empty";
+}
+
+/// The display width.
+emitter int la33Width { 12 }
+
+/// A number padded on the left by the display width.
+emitter int la33Pad(int v) { ($v + 100) }
+
+// ==== The world: objects of the kit's classes. ====
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La33Bin binA {
+    "bin A";
+    parent = roomA;
+    name = {.bin, .a};
+    kind = eLa33Kind.loose;
+    replace string label() { return "bin A"; }
+}
+
+La33Crate crateA {
+    "crate A";
+    parent = roomA;
+    name = {.crate, .a};
+    kind = eLa33Kind.bulk;
+    marks = eLa33Mark.sealed;
+}
+
+La33Crate crateB {
+    "crate B";
+    parent = roomA;
+    name = {.crate, .b};
+    kind = eLa33Kind.boxed;
+    slats = 4;
+}
+
+object rope {
+    "rope";
+    parent = roomA;
+    name = {.rope};
+}
+
+// ==== A second consumer, after the kit: an emitter class imported. ====
+
+/// Bracketed numbers.
+emitter class La33Fmt {
+    void wrap(int v) { print "<", $v, ">"; }
+    emitter int twice { 2 }
+}
+
+#using La33Fmt
+
+La33Info La33Marks {
+    grammar = {.marks};
+    void handler() {
+        for (object o in bgl.world.instances(crate)) {
+            crate c = (crate)o;
+            print($"{c.label()} sealed {(c.marks & mark.sealed) != 0} ");
+            wrap(c.slats * twice);
+        }
+        int sum = 0;
+        for (tally t in history) sum += t;
+        print($"; last kind {(int)lastKind}, history {history.length}, history sum {sum}, big {history.filter((tally t) => t > calc.of(10)).count()}^");
+    }
+}
+
+#includeI6 "grammar"
+
+/// The log takes slips and slip counts too.
+extend la33 {
+    /// Adds a slip's copies to the log.
+    void note(slip s) { log += $"x{s.copies} "; }
+}

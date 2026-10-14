@@ -1,0 +1,552 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a parts yard kept in tables, whose bays are reached almost only through computed
+// receivers. A Bay class with a member array of counts, a member array of a value class (Slot), an
+// owned Slot member, a link to the next bay, a named accessor class (Gauge) and an inline `auto`
+// accessor in the class body, self-returning methods with a default argument, methods returning a
+// Slot, a Mix value class holding a member array, a stringObj label, and a static lookup returning a
+// bay or null; a ColdBay subclass whose label calls the base one through `((Bay)self)`. Receivers:
+// casts of noun, second and `.parent` (`((Bay)noun).counts[k]`, `((Bay)crates[n].parent).counts[..] -=`),
+// elements of a member array of objects (`yard.bays[i].slots[j].qty`), of a jagged global table of
+// bays (`grid[r][c].level++`) and of a crate table, call results of global functions, of a table of
+// func<Bay, int> (`pickers[p](k).slotOf(k).plus(1).qty`), of static and object methods
+// (`Bay.byCode(c).next.counts[3]`, `yard.pick(i).visits++` counted once), chained self-returning calls
+// (`((Bay)second).add(k).add(k, n: 2).total()`), value-class results (`b.slotOf(k).plus(2).weight()`,
+// `b.mix().parts[k]`), `?:` and `??` results used as receivers, `?.` chains off them, <linq> chain
+// results (`yard.bays.orderBy(f).last().label()`, `.filter(..).first().next?.code`) and lambda
+// parameters (`b.slots.any((Slot s) => s.qty > n)` inside a filter); member arrays reached through
+// those receivers used for `length`, for-in, loop bounds, `contains`, `indexOf`, `swap`, `sort`,
+// `+=`, whole-array copy in and out, and subscripts written with `=`, `+=`, `-=` and `++`; owned
+// members copied, compared and changed through receivers and a `ref` local bound to one; accessors
+// read, written, `+=`d and `++`d through the same receivers; receivers in conditions, `while`,
+// `switch`, arguments (named), returns and interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+//-- Constants -------------------------------------------------------------------
+
+const int KIND_COUNT = 4;
+const int BAY_COUNT = 4;
+const int SLOT_MAX = 3;
+const int NONE = -1;
+
+//-- Tables ----------------------------------------------------------------------
+
+//                            bolt     nut     pin     cog
+array<string> kindNames    = { "bolt", "nut",  "pin",  "cog" };
+array<dictionaryWord> kindWords = { .bolt, .nut, .pin, .cog };
+array<int> kindWeight      = { 3,      1,      2,      5 };
+
+// Opening stock:  bay, kind, quantity
+array<array<int>> stock = {
+    { 0, 0, 4 },
+    { 0, 1, 6 },
+    { 1, 2, 3 },
+    { 2, 3, 2 },
+    { 2, 0, 5 },
+    { 3, 1, 1 },
+    { 3, 3, 7 },
+    { 1, 1, 2 }
+};
+
+// The bay each bay passes on to, by index.
+array<int> links = { 1, 2, 3, NONE };
+
+//-- Value classes ---------------------------------------------------------------
+
+value class Slot {
+    inline int kind;
+    inline int qty;
+    Slot operator = (Slot o) { kind = o.kind; qty = o.qty; return self; }
+    bool operator == (Slot o) { return kind == o.kind && qty == o.qty; }
+    bool operator != (Slot o) { return kind != o.kind || qty != o.qty; }
+    int weight() { return kindWeight[kind] * qty; }
+    Slot plus(int n) { return Slot{ kind, qty + n }; }
+    stringObj text() {
+        stringObj r = $"{qty} {kindNames[kind]}";
+        return r;
+    }
+}
+
+value class Mix {
+    array<int> parts[KIND_COUNT];
+    int heavy;
+    Mix operator = (Mix o) { parts = o.parts; heavy = o.heavy; return self; }
+    int sum() {
+        int t = 0;
+        for (int n in parts) t += n;
+        return t;
+    }
+}
+
+// A level that saturates at 0 and 99.
+value class Gauge {
+    int _v = 0;
+    int operator () { return _v; }
+    void operator = (int v) { _v = v > 99 ? 99 : v < 0 ? 0 : v; }
+}
+
+//-- Classes ---------------------------------------------------------------------
+
+class Bay : object {
+    inline int code;
+    array<int> counts[KIND_COUNT];
+    array<Slot> slots[SLOT_MAX];
+    Slot best;
+    Bay next;
+    Gauge level;
+    auto load = {
+        int _n = 0;
+        int operator () { return _n; }
+        void operator = (int v) { _n = v < 0 ? 0 : v; }
+    }
+    int visits = 0;
+
+    Bay add(int k, int n = 1) {
+        counts[k] += n;
+        load = load + n * kindWeight[k];
+        return self;
+    }
+
+    int total() {
+        int t = 0;
+        for (int n in counts) t += n;
+        return t;
+    }
+
+    Slot slotOf(int k) {
+        for (Slot s in slots)
+            if (s.kind == k) return s;
+        return Slot{ k, 0 };
+    }
+
+    Mix mix() {
+        Mix m;
+        m.parts.length = KIND_COUNT;
+        for (int k in 0 to KIND_COUNT - 1) {
+            m.parts[k] = counts[k] * kindWeight[k];
+            if (m.parts[k] > m.parts[m.heavy]) m.heavy = k;
+        }
+        return m;
+    }
+
+    default stringObj label() {
+        stringObj r = $"bay {code}";
+        return r;
+    }
+
+    Bay hop(int n) {
+        Bay b = self;
+        while (n > 0 && b.next?) {
+            b = b.next;
+            n--;
+        }
+        return b;
+    }
+
+    static Bay byCode(int c) {
+        for (Bay b in yard.bays)
+            if (b.code == c) return b;
+        return null;
+    }
+}
+
+class ColdBay : Bay {
+    stringObj label() {
+        stringObj r = "cold ";
+        r += ((Bay)self).label();
+        return r;
+    }
+}
+
+class Crate : object {
+    inline int kind;
+    inline int qty;
+}
+
+//-- Objects ---------------------------------------------------------------------
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Bay bayAlpha { 10, "bay alpha"; name = {.alpha}; parent = roomA; attributes = {scenery}; }
+Bay bayBeta { 20, "bay beta"; name = {.beta}; parent = roomA; attributes = {scenery}; }
+ColdBay bayGamma { 30, "bay gamma"; name = {.gamma}; parent = roomA; attributes = {scenery}; }
+Bay bayDelta { 40, "bay delta"; name = {.delta}; parent = roomA; attributes = {scenery}; }
+
+Crate crateOne { 0, 2, "crate one"; parent = bayAlpha; }
+Crate crateTwo { 3, 1, "crate two"; parent = bayBeta; }
+Crate crateThree { 2, 4, "crate three"; parent = bayBeta; }
+
+object yard {
+    "yard";
+    array<Bay> bays = { bayAlpha, bayBeta, bayGamma, bayDelta };
+    array<Slot> spare = { { 0, 1 }, { 3, 2 } };
+    int moves = 0;
+
+    Bay pick(int i) {
+        moves++;
+        return bays[i];
+    }
+}
+
+array<array<Bay>> grid = { { bayAlpha, bayBeta }, { bayGamma, bayDelta } };
+array<Crate> crates = { crateOne, crateTwo, crateThree };
+
+// Ways of choosing a bay for a kind, picked by number.
+array<func<Bay, int>> pickers = {
+    (int k) => mostOf(k),
+    (int k) => leastOf(k),
+    (int k) => yard.bays[k % BAY_COUNT]
+};
+array<string> pickerNames = { "most", "least", "by kind" };
+
+//-- Parsing ---------------------------------------------------------------------
+
+int parseKind() {
+    int at = kindWords.indexOf(NextWord());
+    if (at == NONE) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Helpers ---------------------------------------------------------------------
+
+int nextCalls = 0;
+
+int nextIndex() {
+    nextCalls++;
+    return nextCalls % BAY_COUNT;
+}
+
+Bay mostOf(int k) {
+    Bay top = yard.bays[0];
+    for (Bay b in yard.bays)
+        if (b.counts[k] > top.counts[k]) top = b;
+    return top;
+}
+
+Bay leastOf(int k) {
+    Bay low = yard.bays[0];
+    for (int i in 1 to yard.bays.length - 1)
+        if (yard.bays[i].counts[k] < low.counts[k]) low = yard.bays[i];
+    return low;
+}
+
+Bay heavier(Bay a, Bay b) {
+    return a.load >= b.load ? a : b;
+}
+
+string sizeWord(int n) {
+    switch (n) {
+        case 0: return "none";
+        case 1 to 3: return "few";
+        case 4 to 9: return "some";
+    }
+    return "many";
+}
+
+void printCounts(Bay b) {
+    for (int k in 0 to b.counts.length - 1) {
+        if (k > 0) print(" ");
+        print(b.counts[k]);
+    }
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        for (int i in 0 to yard.bays.length - 1) {
+            print($"{yard.bays[i].label()}: ");
+            printCounts(yard.bays[i]);
+            print($"; load {yard.bays[i].load}, level {yard.bays[i].level}, slots {yard.bays[i].slots.length}");
+            print($", next {yard.bays[i].next?.code}.^");
+        }
+    }
+}
+
+verb ShowTest {
+    grammar = {.show, NOUN};
+    void handler() {
+        if (!noun.is(Bay)) {
+            print("Not a bay.^");
+            return;
+        }
+        print($"{((Bay)noun).label()} holds {((Bay)noun).total()} ({sizeWord(((Bay)noun).total())}).^");
+        stringObj line = "Slots:";
+        for (Slot s in ((Bay)noun).slots) line += $" [{s.text()}]";
+        printLine(line);
+        int sum = 0;
+        for (int n in ((Bay)noun).counts) sum += n;
+        print($"Sum {sum}; best {((Bay)noun).best.text()}; heaviest kind {kindNames[((Bay)noun).mix().heavy]}.^");
+        for (object o in ((Bay)noun).children)
+            print($"Crate: {((Crate)o).qty} {kindNames[((Crate)o).kind]}.^");
+        print($"Next: {((Bay)noun).next?.label() ?? "none"}.^");
+    }
+}
+
+verb AddTest {
+    grammar = {.add, parseKind, .to, NOUN};
+    void handler() {
+        int k = (int)noun;
+        if (!second.is(Bay)) {
+            print("Not a bay.^");
+            return;
+        }
+        int before = ((Bay)second).counts[k];
+        int t = ((Bay)second).add(k).add(k, n: 2).total();
+        ((Bay)second).level += kindWeight[k];
+        ((Bay)second).counts[k]++;
+        print($"{kindNames[k]}: {before} -> {((Bay)second).counts[k]}; total {t}; level {((Bay)second).level}; load {((Bay)second).load}.^");
+        if (!((Bay)second).slots.contains(((Bay)second).slotOf(k)) && ((Bay)second).slots.length < SLOT_MAX) {
+            ((Bay)second).slots += Slot{ k, ((Bay)second).counts[k] };
+            print($"New slot {((Bay)second).slots.length}.^");
+        }
+    }
+}
+
+verb PickTest {
+    grammar = {.pick, NUMBER, parseKind};
+    void handler() {
+        int p = (int)noun;
+        int k = (int)second;
+        if (p < 1 || p > pickers.length) {
+            print("No such picker.^");
+            return;
+        }
+        print($"{pickerNames[p - 1]} {kindNames[k]}: {pickers[p - 1](k).label()} with {pickers[p - 1](k).counts[k]}");
+        print($", slot {pickers[p - 1](k).slotOf(k).plus(1).qty}, weight {pickers[p - 1](k).slotOf(k).weight()}.^");
+        switch (pickers[p - 1](k).slotOf(k).qty) {
+            case 0: print("Not slotted.^");
+            case 1 to 4: print("Short slot.^");
+            default: print("Full slot.^");
+        }
+    }
+}
+
+verb GridTest {
+    grammar = {.grid};
+    void handler() {
+        for (int r in 0 to grid.length - 1) {
+            for (int c in 0 to grid[r].length - 1) {
+                grid[r][c].level++;
+                grid[r][c].level += r * 10 + c;
+                print($"[{grid[r][c].code} {grid[r][c].level} {grid[r][c].counts[r + c]} {grid[r][(c + 1) % grid[r].length].total()}]");
+            }
+            print("^");
+        }
+        print($"Corner next: {grid[1][1].next?.code}; first row next: {grid[0][0].next.next.code}.^");
+    }
+}
+
+verb LinkTest {
+    grammar = {.links};
+    void handler() {
+        print($"Chain: {bayAlpha.next.next.next.code}, {yard.bays[0].next.next.label()}, {bayAlpha.hop(2).hop(1).code}, {bayAlpha.hop(9).code}.^");
+        print($"From 20: {Bay.byCode(20).next.counts[3]} cogs; missing: {(Bay.byCode(99) ?? bayDelta).code}; ");
+        print($"{Bay.byCode(99)?.code}; {Bay.byCode(30)?.next?.label() ?? "none"}; {Bay.byCode(40)?.next?.label() ?? "none"}.^");
+        Bay b = bayAlpha;
+        int steps = 0;
+        while (b.next? && b.next.load < 40) {
+            b = b.next;
+            steps++;
+        }
+        print($"Stopped at {b.label()} after {steps}.^");
+    }
+}
+
+verb BestTest {
+    grammar = {.best};
+    void handler() {
+        for (int i in 0 to yard.bays.length - 1) {
+            if (yard.bays[i].slots.length == 0) continue;
+            yard.bays[i].best = yard.bays[i].slots.orderBy((Slot a, Slot b) => a.weight() - b.weight()).last();
+            yard.bays[i].best.qty += 1;
+            print($"{yard.bays[i].code}: {yard.bays[i].best.text()} ({yard.bays[i].best.weight()}).^");
+        }
+        ref Slot r := yard.bays[0].best;
+        r.qty = r.qty * 2;
+        print($"Doubled: {yard.bays[0].best.qty}; same as bay 20: {yard.bays[0].best == yard.bays[1].best ? "yes" : "no"}.^");
+        yard.bays[1].best = yard.bays[0].best;
+        print($"Copied: {yard.bays[1].best.text()}; same now: {yard.bays[0].best == yard.bays[1].best ? "yes" : "no"}.^");
+        yard.bays[1].best.kind = 1;
+        print($"Changed: {yard.bays[0].best.text()} / {yard.bays[1].best.text()}; differ: {yard.bays[0].best != yard.bays[1].best ? "yes" : "no"}.^");
+    }
+}
+
+verb RankTest {
+    grammar = {.rank};
+    void handler() {
+        print($"Fewest: {yard.bays.orderBy((Bay a, Bay b) => a.total() - b.total()).first().label()}; ");
+        print($"most: {yard.bays.orderBy((Bay a, Bay b) => a.total() - b.total()).last().label()}.^");
+        int n = 4;
+        print($"Bays with a slot over {n}: {yard.bays.filter((Bay b) => b.slots.any((Slot s) => s.qty > n)).count()}; ");
+        print($"first with cogs: {yard.bays.filter((Bay b) => b.counts[3] > 0).first().code}, its next {yard.bays.filter((Bay b) => b.counts[3] > 0).first().next?.code}.^");
+        print($"Heavier of 10 and 40: {heavier(bayAlpha, bayDelta).label()}; ");
+        print($"{(bayAlpha.total() > bayBeta.total() ? bayAlpha : bayBeta).code}; ");
+        print($"{(yard.bays[2].load > 20 ? yard.bays[2] : yard.bays[3]).slotOf(3).qty}.^");
+        array<Bay> busy[BAY_COUNT] = yard.bays.filter((Bay b) => b.load >= 10);
+        stringObj line = "Busy:";
+        for (Bay b in busy) line += $" {b.code}/{b.load}";
+        printLine(line);
+    }
+}
+
+verb ShiftTest {
+    grammar = {.shift, NUMBER, .to, NOUN};
+    void handler() {
+        int c = (int)noun - 1;
+        if (c < 0 || c >= crates.length || !second.is(Bay)) {
+            print("Can't shift that.^");
+            return;
+        }
+        if (crates[c].parent == second) {
+            print("Already there.^");
+            return;
+        }
+        ((Bay)crates[c].parent).counts[crates[c].kind] -= crates[c].qty;
+        ((Bay)crates[c].parent).load -= crates[c].qty * kindWeight[crates[c].kind];
+        int from = ((Bay)crates[c].parent).code;
+        crates[c].parent = second;
+        ((Bay)crates[c].parent).counts[crates[c].kind] += crates[c].qty;
+        ((Bay)crates[c].parent).load += crates[c].qty * kindWeight[crates[c].kind];
+        print($"{crates[c].qty} {kindNames[crates[c].kind]} from {from} to {((Bay)crates[c].parent).code}: ");
+        print($"{Bay.byCode(from).counts[crates[c].kind]} left, {((Bay)second).counts[crates[c].kind]} there.^");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        yard.moves = 0;
+        int sum = 0;
+        for (int i in 0 to BAY_COUNT - 1)
+            for (int k in 0 to KIND_COUNT - 1)
+                sum += yard.bays[i].slotOf(k).weight();
+        print($"Slotted weight {sum}; ");
+        sum = 0;
+        for (int i in 0 to BAY_COUNT - 1) sum += yard.pick(i).counts[i];
+        print($"diagonal {sum} in {yard.moves} picks; ");
+        yard.pick(2).visits++;
+        yard.pick(2).visits += 2;
+        print($"visits {bayGamma.visits} in {yard.moves} picks.^");
+        int before = nextCalls;
+        yard.bays[nextIndex()].visits++;
+        yard.bays[nextIndex()].counts[0] += 0;
+        print($"Index calls {nextCalls - before}.^");
+        for (int j in 0 to yard.spare.length - 1)
+            print($"Spare {j}: {yard.spare[j].text()} -> {yard.spare[j].plus(2).text()}, weight {yard.spare[j].plus(2).weight()}.^");
+        print($"Mix of 10: {bayAlpha.mix().sum()}, cogs {yard.bays[3].mix().parts[3]}, heavy {kindNames[grid[1][0].mix().heavy]}.^");
+    }
+}
+
+verb CopyTest {
+    grammar = {.copy, NOUN};
+    void handler() {
+        if (!noun.is(Bay)) {
+            print("Not a bay.^");
+            return;
+        }
+        array<int> snap[KIND_COUNT];
+        snap = ((Bay)noun).counts;
+        ((Bay)noun).counts.sort();
+        stringObj line = "Sorted:";
+        for (int k in 0 to ((Bay)noun).counts.length - 1) line += $" {((Bay)noun).counts[k]}";
+        ((Bay)noun).counts.swap(0, ((Bay)noun).counts.length - 1);
+        line += $"; swapped {((Bay)noun).counts[0]}..{((Bay)noun).counts[3]}";
+        line += $"; max at {((Bay)noun).counts.indexOf(snap[mostKind(snap)])}";
+        printLine(line);
+        ((Bay)noun).counts = snap;
+        print("Restored: ");
+        printCounts((Bay)noun);
+        print($"; snap {snap.length}.^");
+    }
+}
+
+int mostKind(array<int> a) {
+    int at = 0;
+    for (int k in 1 to a.length - 1)
+        if (a[k] > a[at]) at = k;
+    return at;
+}
+
+verb ColdTest {
+    grammar = {.cold};
+    void handler() {
+        print($"{bayGamma.label()} / {((Bay)bayGamma).label()} / {grid[1][0].label()} / {((Bay)grid[1][0]).label()}.^");
+        print($"{yard.bays[2].label().toUpper()} / {pickers[2](2).label()} / {Bay.byCode(30).label().length}.^");
+    }
+}
+
+verb TuneTest {
+    grammar = {.tune, parseKind};
+    void handler() {
+        int k = (int)noun;
+        Bay.byCode(20).level += 4;
+        mostOf(k).level++;
+        pickers[1](k).counts[k] += 1;
+        yard.bays[3].next?.add(k);
+        yard.bays[0].next?.add(n: 2, k: k);
+        if (Bay.byCode(30).slots.length < SLOT_MAX) Bay.byCode(30).slots += Slot{ k, 9 };
+        yard.bays[2].slots[0].qty += 1;
+        ref Slot e := yard.bays[2].slots[yard.bays[2].slots.length - 1];
+        e.qty--;
+        print($"Gamma slots: {slotAt(2, 0).text()}, {slotAt(2, 1).text()}, {slotAt(2, 2).text()}; last weight {e.weight()}.^");
+        print($"Levels: {Bay.byCode(20).level} {mostOf(k).level} {mostOf(k).code}; top {yard.bays.orderBy((Bay a, Bay b) => a.level - b.level).last().code}, ");
+        print($"over 5: {yard.bays.filter((Bay b) => b.level > 5).count()}, beta {kindNames[k]} {yard.bays[1].counts[k]}, least {pickers[1](k).code}.^");
+        switch (((Bay)yard.bays[2]).mix().heavy) {
+            case 0: print("Gamma is bolt-heavy.^");
+            case 3: print("Gamma is cog-heavy.^");
+            default: print($"Gamma leans to {kindNames[yard.bays[2].mix().heavy]}.^");
+        }
+    }
+}
+
+Slot slotAt(int i, int j) {
+    if (j >= yard.bays[i].slots.length) return Slot{ 0, 0 };
+    return yard.bays[i].slots[j];
+}
+
+//-- Setup -----------------------------------------------------------------------
+
+void loadStock() {
+    for (Bay b in yard.bays) b.counts.length = KIND_COUNT;
+    for (array<int> row in stock) {
+        yard.bays[row[0]].add(row[1], row[2]);
+        if (yard.bays[row[0]].slots.length < SLOT_MAX)
+            yard.bays[row[0]].slots += Slot{ row[1], row[2] };
+    }
+    for (int i in 0 to links.length - 1)
+        if (links[i] != NONE) yard.bays[i].next = yard.bays[links[i]];
+    for (Crate c in crates) {
+        ((Bay)c.parent).add(c.kind, c.qty);
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    loadStock();
+    rfalse;
+}
+
+#includeI6 "grammar"

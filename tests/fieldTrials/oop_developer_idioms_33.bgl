@@ -1,0 +1,608 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-third pass: a ledger built around
+// overloads on a class hierarchy. A value class for an amount with a copy operator and an int conversion
+// assignment; `+`/`-` overloaded by an amount and by an int, `*`/`/`/`%` by an int, postfix `++` and
+// `prefix++` with different meanings, `!`, `?=` by an amount and by an int, instance and `static` `==` side
+// by side (each by an amount and by an int) with matching `!=`, an instance `<=>` and a static one,
+// orderings derived from `<=>`, compound assignments that fall back to `+`/`-`/`*`, overloaded static
+// factories; references to the static `==` overloads picked by operand type and to the static `<=>`; an
+// account hierarchy (account, savings, checking, business with a second parent) with overloaded `Post`,
+// `CanDraw`, `Note` (chained) and `[]` by int and by enum, `+=`/`-=` by an amount and by an int, instance
+// `==`/`!=` and a static `<=>` on the base used with subclass operands, `+` of two accounts giving an
+// amount, a subclass that overrides one overload and inherits the rest, one that adds an overload, one that
+// hides an overload, overloads added to the base by a later `extend class` (emitter overloads among them,
+// picked by named argument), static overloads called through subclass names, a default-argument method
+// beside a subclass overload, an object body that adds its own overload and one that replaces one inherited
+// overload; a subclass operator overload for a new operand type; global overload sets chosen by
+// most-derived class, by a value class, by a union, by an enum, by implicit conversion, by array element
+// type, by the parameter type of a `func<>` (int and value-class lambdas), by `ref`, and with default and
+// named arguments; an emitter and a regular function in one set; a `replace` chain on one overload; a
+// recursive overload pair; a teller object whose overloads are imported with `#using`; overload calls in
+// conditions, loops, ternaries, returns, lambdas, `<linq>` chains and interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eKind { Deposit, Withdrawal, Fee }
+
+//-- Amount: a value type --------------------------------------------------------------------------------------
+
+value class Amount {
+    int Cents;
+
+    static Amount Of(int cents) {
+        Amount a;
+        a = cents;
+        return a;
+    }
+    static Amount Of(int units, int cents) { return Amount.Of(units * 100 + cents); }
+    static Amount Of(Amount other) { return Amount.Of(other.Cents); }
+
+    Amount operator = (Amount o) {
+        Cents = o.Cents;
+        return self;
+    }
+    Amount operator = (int c) {
+        Cents = c;
+        return self;
+    }
+
+    Amount operator + (Amount o) { return Amount.Of(Cents + o.Cents); }
+    Amount operator + (int c) { return Amount.Of(Cents + c); }
+    Amount operator - (Amount o) { return Amount.Of(Cents - o.Cents); }
+    Amount operator - (int c) { return Amount.Of(Cents - c); }
+    Amount operator * (int k) { return Amount.Of(Cents * k); }
+    Amount operator / (int k) { return Amount.Of(Cents / k); }
+    Amount operator % (int k) { return Amount.Of(Cents % k); }
+
+    Amount operator ++ () {
+        Cents += 100;
+        return self;
+    }
+    Amount operator prefix++ () {
+        Cents += 1;
+        return self;
+    }
+
+    bool operator ! () { return Cents == 0; }
+    bool operator ?= (Amount o) { return Near(o.Cents); }
+    bool operator ?= (int c) { return Near(c); }
+
+    bool operator == (Amount o) { return Cents == o.Cents; }
+    bool operator != (Amount o) { return Cents != o.Cents; }
+    bool operator == (int c) { return Cents == c; }
+    bool operator != (int c) { return Cents != c; }
+    static bool operator == (Amount a, Amount b) { return a.Cents == b.Cents; }
+    static bool operator == (Amount a, int c) { return a.Cents == c; }
+
+    int operator <=> (Amount o) { return Cents - o.Cents; }
+    static int operator <=> (Amount a, Amount b) { return a.Cents - b.Cents; }
+
+    bool Near(int c) {
+        int d = Cents - c;
+        if (d < 0) d = -d;
+        return d <= 10;
+    }
+
+    void print() {
+        int c = Cents;
+        if (c < 0) {
+            print("-");
+            c = -c;
+        }
+        print(c / 100);
+        print(".");
+        if (c % 100 < 10) print("0");
+        print(c % 100);
+    }
+}
+
+Amount Zero;
+
+//-- Accounts --------------------------------------------------------------------------------------------------
+
+class Account : object {
+    string Owner = "nobody";
+    Amount Balance;
+    array<int> History[8];
+    int Count;
+    string LastNote = "";
+    static int Posts;
+
+    void Post(Amount a) {
+        Balance = Balance + a;
+        if (Count < 8) {
+            History[Count] = a.Cents;
+            Count++;
+        }
+        Account.Posts++;
+    }
+    void Post(int cents) { Post(Amount.Of(cents)); }
+    void Post(int units, int cents) { Post(Amount.Of(units, cents)); }
+    void Post(Amount a, string memo) {
+        Post(a);
+        LastNote = memo;
+    }
+
+    default bool CanDraw(Amount a) { return Balance >= a; }
+    bool CanDraw(int cents) { return CanDraw(Amount.Of(cents)); }
+
+    default string Kind() { return "account"; }
+
+    selfType Note(string s) {
+        LastNote = s;
+        return self;
+    }
+    selfType Note(int code) {
+        LastNote = code < 0 ? "debit" : "credit";
+        return self;
+    }
+
+    void operator += (Amount a) { Post(a); }
+    void operator += (int c) { Post(c); }
+    void operator -= (Amount a) { Post(Zero - a); }
+    void operator -= (int c) { Post(-c); }
+
+    int operator [] (int i) { return i < Count ? History[i] : 0; }
+    int operator [] (eKind k) {
+        int t = 0;
+        for (int i = 0; i < Count; i++) {
+            int h = History[i];
+            if (k == eKind.Deposit && h > 0) t += h;
+            if (k == eKind.Withdrawal && h < 0 && h > -100) t += h;
+            if (k == eKind.Fee && h <= -100) t += h;
+        }
+        return t;
+    }
+
+    bool operator == (Account o) { return Balance == o.Balance; }
+    bool operator != (Account o) { return Balance != o.Balance; }
+    Amount operator + (Account o) { return Balance + o.Balance; }
+    static int operator <=> (Account a, Account b) { return a.Balance <=> b.Balance; }
+
+    static Account Pick(array<Account> list, int index) { return list[index]; }
+    static Account Pick(array<Account> list, string owner) {
+        for (Account a in list) if (a.Owner == owner) return a;
+        return null;
+    }
+
+    void Close(string why = "closed") { LastNote = why; }
+
+    void print() { print($"{Owner}/{Kind()}"); }
+}
+
+class Savings : Account {
+    int RatePct;
+
+    string Kind() { return "savings"; }
+
+    replace bool CanDraw(Amount a) { return Balance - a >= 1000; }
+
+    void Post(Amount a, int times) {
+        for (int i = 0; i < times; i++) Post(a);
+    }
+
+    Amount Interest() { return Balance * RatePct / 100; }
+
+    void Close(int code) { LastNote = code == 0 ? "closed ok" : "closed with code"; }
+
+    bool operator == (Amount a) { return Balance == a; }
+    bool operator != (Amount a) { return Balance != a; }
+    Amount operator + (Amount a) { return Balance + a; }
+}
+
+class Checking : Account {
+    Amount Limit;
+
+    void operator += (Coupon c) {
+        Post(c.Worth);
+        LastNote = "coupon";
+    }
+
+    replace bool CanDraw(Amount a) { return Balance + Limit >= a; }
+
+    hide Post(int, int);
+}
+
+class Flagged : object {
+    int Flags;
+    void Flag(int bit) { Flags = Flags | bit; }
+    void Flag(string why) {
+        Flag(1);
+        print($"[flag: {why}] ");
+    }
+    bool Flagged(int bit) { return (Flags & bit) != 0; }
+}
+
+class Business : Checking, Flagged {
+    string Kind() { return "business"; }
+}
+
+extend class Account {
+    void Post(string memo) { LastNote = memo; }
+    emitter bool IsOver(int c) { ($self.Balance.Cents > $c) }
+    emitter bool IsOver(Amount a) { ($self.Balance.Cents > $a.Cents) }
+    bool operator == (int cents) { return Balance == cents; }
+    bool operator != (int cents) { return Balance != cents; }
+}
+
+Savings sav1 { Owner = "Ann"; RatePct = 5; }
+Checking chk1 { Owner = "Bob"; }
+Business biz1 {
+    Owner = "Cal";
+    void Post(Amount a, bool quiet) {
+        if (!quiet) print("(posting) ");
+        Post(a);
+    }
+}
+Account acc1 {
+    Owner = "Dee";
+    replace bool CanDraw(int cents) { return cents <= 5000 && CanDraw(Amount.Of(cents)); }
+}
+
+array<Account> book = { sav1, chk1, biz1, acc1 };
+
+//-- A coupon converts to cents --------------------------------------------------------------------------------
+
+class Coupon : object {
+    int Worth;
+    int operator () { return Worth; }
+}
+
+Coupon cpn1 { Worth = 250; }
+
+//-- Global overload sets --------------------------------------------------------------------------------------
+
+string Describe(Account a) { return "an account"; }
+stringObj Describe(Savings s) {
+    stringObj r = $"savings at {s.RatePct}%";
+    return r;
+}
+string Describe(Checking c) { return "a checking account"; }
+string Describe(Amount a) { return a.Cents < 0 ? "a debt" : "a sum"; }
+string Describe(eKind k) {
+    switch (k) {
+        case eKind.Deposit:    return "deposits";
+        case eKind.Withdrawal: return "withdrawals";
+        case eKind.Fee:        return "fees";
+    }
+    return "?";
+}
+
+string Label(string | Account v) { return typeof(v) == eType.object ? "account" : "text"; }
+string Label(int n) { return "number"; }
+string Label(Amount a) { return "amount"; }
+
+int Spend(Amount a) { return 1; }
+int Spend(string what) { return 2; }
+int Spend(int cents) { return 3; }
+
+int Transfer(Account from, Account to, int cents = 100) {
+    if (!from.CanDraw(cents)) return 0;
+    from -= cents;
+    to += cents;
+    return cents;
+}
+int Transfer(Account from, Account to, Amount a, string memo = "") {
+    if (!from.CanDraw(a)) return 0;
+    from.Post(Zero - a, memo);
+    to.Post(a, memo);
+    return a.Cents;
+}
+
+void Round(ref Amount a) { a = a - a % 100; }
+void Round(Account acc) { Round(acc.Balance); }
+
+Amount Total(array<Amount> list) {
+    Amount t;
+    for (Amount a in list) t += a;
+    return t;
+}
+Amount Total(array<Account> list) {
+    Amount t;
+    for (Account a in list) t = t + a.Balance;
+    return t;
+}
+Amount Total(array<Account> list, func<bool, Account> pick) {
+    Amount t;
+    for (Account a in list) if (pick(a)) t = t + a.Balance;
+    return t;
+}
+
+int CountIf(array<Account> list, func<bool, Account> test) { return list.filter(test).count(); }
+int CountIf(array<Amount> list, func<bool, Amount> test) {
+    int n = 0;
+    for (Amount a in list) if (test(a)) n++;
+    return n;
+}
+
+emitter int Pct(int v, int p) { ($v * $p / 100) }
+int Pct(Amount a, int p) { return Pct(a.Cents, p); }
+
+int Fee(int cents) { return cents / 100; }
+replace int Fee(int cents) { return replaced(cents) + 5; }
+replace int Fee(int cents) {
+    int f = replaced(cents);
+    return f > 20 ? 20 : f;
+}
+int Fee(Account acc) { return acc.is(Savings) ? 0 : Fee(acc.Balance.Cents); }
+
+int Digits(int n) { return n < 10 ? 1 : 1 + Digits(n / 10); }
+int Digits(Amount a) { return Digits(a.Cents < 0 ? -a.Cents : a.Cents); }
+
+//-- Teller: overloads imported with #using --------------------------------------------------------------------
+
+object teller {
+    int Served;
+
+    void Show(Amount a) { print($"[{a}]"); }
+    void Show(int cents) { Show(Amount.Of(cents)); }
+    void Show(Account acc) {
+        Served++;
+        print($"{acc}=");
+        Show(acc.Balance);
+    }
+    void Show(Account acc, bool withNote) {
+        Show(acc);
+        if (withNote && acc.LastNote != "") print($" '{acc.LastNote}'");
+    }
+    Account Richest(array<Account> list) {
+        Account best = list[0];
+        for (Account a in list) if (a > best) best = a;
+        return best;
+    }
+    Account Richest(Account a, Account b) { return a >= b ? a : b; }
+}
+
+extend teller {
+    replace void Show(int cents) {
+        print("#");
+        Show(Amount.Of(cents));
+    }
+}
+
+#using teller
+
+stringObj Fmt(int n, int width = 0) {
+    stringObj r = $"{n}";
+    while (r.length < width) r = r.prepend("0");
+    return r;
+}
+stringObj Fmt(int n, string unit) {
+    stringObj r = $"{n}";
+    r += unit;
+    return r;
+}
+
+Amount Apply(Amount a, func<Amount, Amount> f) { return f(a); }
+int Apply(int n, func<int, int> f) { return f(n); }
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Setup {
+    grammar = {.setup};
+    void handler() {
+        sav1.Post(20, 0);
+        sav1 += 550;
+        chk1 += Amount.Of(3, 25);
+        chk1.Limit = 500;
+        biz1.Limit = Amount.Of(10, 0);
+        biz1.Post(Amount.Of(12, 0), "seed");
+        biz1.Post(Amount.Of(1, 50), true);
+        biz1.Post(Amount.Of(0, 75), false);
+        acc1.Post(4321);
+        for (Account a in book) {
+            Show(a, true);
+            printLine($" {Describe(a)}, digits {Digits(a.Balance)}");
+        }
+        printLine($"Posts {Account.Posts}.");
+    }
+}
+
+verb Amounts {
+    grammar = {.amounts};
+    void handler() {
+        Amount a = Amount.Of(2, 50);
+        Amount b = 199;
+        Amount c = Amount.Of(a);
+        Amount d = a + b;
+        Amount e = a - 75;
+        Amount f = (a * 3) / 2;
+        Amount g = d % 100;
+        printLine($"a {a} b {b} c {c} d {d} e {e} f {f} g {g}.");
+        a++;
+        ++b;
+        c -= 50;
+        d *= 2;
+        e += b;
+        printLine($"a {a} b {b} c {c} d {d} e {e}.");
+        printLine($"a==350 {a == 350}, a!=c {a != c}, a?=355 {a ?= 355}, a?=b {a ?= b}, !g {!g}, !Zero {!Zero}.");
+        printLine($"a<b {a < b}, a>=c {a >= c}, b<=b {b <= b}, a<=>c {a <=> c}.");
+        printLine($"{Label(a)} {Label(7)} {Label("x")} {Label(chk1)} {Label(cpn1)}; {Describe(a)} {Describe(Zero - a)}; pct {Pct(a, 10)} {Pct(80, 25)}.");
+        printLine($"Spend {Spend(a)} {Spend("tea")} {Spend(40)} {Spend(cpn1)}.");
+        Round(a);
+        Amount h = Amount.Of(7, 89);
+        Round(h);
+        printLine($"Rounded a {a}, h {h}.");
+    }
+}
+
+verb Refs {
+    grammar = {.refs};
+    void handler() {
+        func<bool, Amount, Amount> same = Amount::operator ==(Amount);
+        func<bool, Amount, int> isCents = Amount::operator ==(int);
+        func<int, Amount, Amount> order = Amount::operator <=>;
+        func<int, Account, Account> byBal = Savings::operator <=>;
+        Amount x = Amount.Of(1, 5);
+        printLine($"same {same(x, Amount.Of(105))}, isCents {isCents(x, 105)} {isCents(x, 104)}, order {order(x, Amount.Of(2, 0))}, byBal {byBal(sav1, chk1)}.");
+        array<Amount> sums[6];
+        sums.append(Amount.Of(5, 0));
+        sums.append(Amount.Of(0, 99));
+        sums.append(Amount.Of(12, 30));
+        sums.append(Amount.Of(1, 0));
+        sums.sort(Amount::operator <=>);
+        stringObj line = "Sorted:";
+        for (Amount s in sums) line += $" {s}";
+        printLine(line);
+        printLine($"Index of 1.00: {sums.indexOf(Amount.Of(100))}; total {Total(sums)}; over 2 {CountIf(sums, (Amount s) => s > 200)}; near 1.05 {CountIf(sums, (Amount s) => s ?= 105)}.");
+        array<Account> ranked = book.orderBy(Account::operator <=>);
+        line = "Ranked:";
+        for (Account r in ranked) line += $" {r.Owner}";
+        printLine(line);
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        printLine($"sav1==chk1 {sav1 == chk1}, sav1!=biz1 {sav1 != biz1}, sav1==25.50 {sav1 == Amount.Of(25, 50)}, sav1!=1.00 {sav1 != Amount.Of(1, 0)}, chk1<biz1 {chk1 < biz1}, acc1>sav1 {acc1 > sav1}, sav1<=>acc1 {sav1 <=> acc1}.");
+        Amount both = sav1 + chk1;
+        printLine($"sav1+chk1 {both}, plus 1 {(sav1 + chk1) + 1}, desc {Describe(sav1 + biz1)}, projected {sav1 + Amount.Of(0, 50)}, chk1+sav1 {chk1 + sav1}.");
+        printLine($"acc1==4321 {acc1 == 4321}, acc1!=4321 {acc1 != 4321}, chk1==325 {chk1 == 325}.");
+        printLine($"{Describe(sav1)}; {Describe(chk1)}; {Describe(biz1)}; {Describe(acc1)}; {Describe((Account)sav1)}.");
+        printLine($"Kinds: {sav1.Kind()} {chk1.Kind()} {biz1.Kind()} {acc1.Kind()} {((Account)biz1).Kind()}.");
+        Account rich = Richest(book);
+        printLine($"Richest {rich}, of two {Richest(sav1, chk1)}, of two again {teller.Richest(chk1, biz1)}.");
+        int above = book.filter((Account a) => a > chk1).count();
+        bool anySmall = book.any((Account a) => a.Balance < 500);
+        printLine($"Above chk1 {above}, any small {anySmall}, big {CountIf(book, (Account a) => a == 4321 || a.Balance > 2000)}.");
+    }
+}
+
+verb Draw {
+    grammar = {.draw};
+    void handler() {
+        printLine($"Can sav1 draw 10.00 {sav1.CanDraw(1000)}, 25.00 {sav1.CanDraw(Amount.Of(25, 0))}.");
+        printLine($"Can chk1 draw 7.00 {chk1.CanDraw(700)}, 9.00 {chk1.CanDraw(Amount.Of(9, 0))}.");
+        printLine($"Can acc1 draw 43.21 {acc1.CanDraw(4321)}, 43.22 {acc1.CanDraw(4322)}; via base {((Account)sav1).CanDraw(2500)} {((Account)sav1).CanDraw(Amount.Of(25, 0))}.");
+        int moved = Transfer(sav1, chk1);
+        moved += Transfer(sav1, chk1, 250);
+        moved += Transfer(chk1, biz1, Amount.Of(5, 0));
+        moved += Transfer(from: biz1, to: acc1, memo: "rent", a: Amount.Of(4, 0));
+        moved += Transfer(to: sav1, from: acc1, cents: 9999);
+        moved += Transfer(acc1, sav1, Amount.Of(99, 0), "too much");
+        printLine($"Moved {moved}.");
+        for (Account a in book) {
+            Show(a, true);
+            printLine("");
+        }
+        printLine($"Fees: {Fee(50)} {Fee(1234)} {Fee(5000)} {Fee(sav1)} {Fee(chk1)} {Fee(acc1)}.");
+    }
+}
+
+verb History {
+    grammar = {.history};
+    void handler() {
+        for (Account a in book) {
+            stringObj line = $"{a.Owner}:";
+            for (int i = 0; i < a.Count; i++) line += $" {a[i]}";
+            printLine(line);
+        }
+        printLine($"biz1 {Describe(eKind.Deposit)} {biz1[eKind.Deposit]}, {Describe(eKind.Withdrawal)} {biz1[eKind.Withdrawal]}, {Describe(eKind.Fee)} {biz1[eKind.Fee]}; slot 9 {biz1[9]}.");
+        int grand = 0;
+        for (Account a in book) grand += a[eKind.Deposit] + a[eKind.Fee];
+        printLine($"Grand {grand}.");
+    }
+}
+
+verb Chain {
+    grammar = {.chain};
+    void handler() {
+        string k = biz1.Note("checked").Note(-1).Kind();
+        printLine($"biz1 note {biz1.LastNote}, kind {k}; sav1 note {sav1.Note(5).LastNote}; chk1 {chk1.Note("x").Note("audited").LastNote}.");
+        biz1.Flag("large");
+        biz1.Flag(4);
+        printLine($"flags {biz1.Flags}, has 4 {biz1.Flagged(4)}, has 2 {biz1.Flagged(2)}.");
+        sav1.Post(Amount.Of(1, 0), 3);
+        sav1.Post("bonus");
+        acc1.Post("closed");
+        Round(sav1);
+        printLine($"sav1 {sav1.Balance} note {sav1.LastNote}; interest {sav1.Interest()}; acc1 note {acc1.LastNote}.");
+        printLine($"Total {Total(book)}, savings-like {Total(book, (Account a) => a.is(Savings))}, checking-like {Total(book, (Account a) => a.is(Checking))}.");
+        printLine($"Served {teller.Served}, posts {Account.Posts}.");
+    }
+}
+
+verb Extra {
+    grammar = {.extra};
+    void handler() {
+        Amount p = Amount.Of(units: 3, cents: 5);
+        Amount q = Amount.Of(cents: 77);
+        printLine($"p {p} q {q}; fmt {Fmt(7)} {Fmt(7, 3)} {Fmt(7, "c")} {Fmt(width: 4, n: 12)} {Fmt(unit: "u", n: 5)}.");
+        chk1 += cpn1;
+        chk1 += 25;
+        printLine($"chk1 {chk1.Balance} note {chk1.LastNote}; over 4.00 {chk1.IsOver(400)}, over p {chk1.IsOver(p)}, biz1 over q {biz1.IsOver(q)}.");
+        book[1].Post(Amount.Of(1, 0), "via element");
+        ((Checking)book[2]).Post(100);
+        bool ok = ((Checking)book[1]).CanDraw(Amount.Of(10, 0)) ? book[1].CanDraw(1) : false;
+        printLine($"Element posts: {book[1].Balance} '{book[1].LastNote}', {book[2].Balance}; ok {ok}; elem kind {book[2].Kind()}.");
+        Amount doubled = Apply(p, (Amount x) => x * 2);
+        int tripled = Apply(5, (int n) => n * 3);
+        printLine($"Apply {doubled} {tripled} {Apply(Apply(q, (Amount x) => x + 3), (Amount y) => y - 80)}.");
+        int rounds = 0;
+        Amount pot = Amount.Of(1, 0);
+        while (!pot.Near(250) && pot < Amount.Of(5, 0)) {
+            pot = pot + (rounds % 2 == 0 ? Amount.Of(0, 40) : Amount.Of(0, 15));
+            rounds++;
+        }
+        printLine($"Pot {pot} after {rounds}; near 2.50 {pot ?= Amount.Of(2, 50)}.");
+        Show(25);
+        Show(Amount.Of(3, 0));
+        Show(acc1, false);
+        printLine("");
+        for (Account a in book) {
+            if (a.IsOver(2000) && a != acc1) printLine($"  big {a} {Fee(a)} {Describe(a.Balance)}");
+            else if (a[eKind.Fee] < 0) printLine($"  fees {a} {a[eKind.Fee]}");
+        }
+    }
+}
+
+verb Late {
+    grammar = {.late};
+    void handler() {
+        Account p1 = Savings.Pick(book, 2);
+        Account p2 = Account.Pick(book, "Dee");
+        Account p3 = Checking.Pick(list: book, owner: "Zed");
+        printLine($"Picked {p1}, {p2}, {p3?.Owner ?? "none"}; index of biz1 {book.indexOf(biz1)}, of acc1 {book.indexOf(acc1)}.");
+        printLine($"acc1 draws 47.00 {acc1.CanDraw(4700)}, 51.00 {acc1.CanDraw(5100)}, 51.00 as amount {acc1.CanDraw(Amount.Of(51, 0))}.");
+        printLine($"Over by name: {chk1.IsOver(c: 100)} {chk1.IsOver(a: Amount.Of(9, 0))}.");
+        sav1.Close();
+        string n1 = sav1.LastNote;
+        sav1.Close(0);
+        string n2 = sav1.LastNote;
+        sav1.Close(why: "moved");
+        chk1.Close(7 > 3 ? "early" : "late");
+        printLine($"Close: {n1}, {n2}, {sav1.LastNote}, {chk1.LastNote}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

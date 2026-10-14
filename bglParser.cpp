@@ -1402,8 +1402,12 @@ void bglParser::mangleOverloadSetForReceiver(const string& receiverTypeName, con
 // library's classes are shared by every program class, so the line does not spread down through them.
 // `create`, `destroy` and `recreate` are Inform 6's own class messages and keep their names.
 void bglParser::mangleClassFamilyOverloadSet(classDef* cls, const string& methodName){
-    if(cls == nullptr || methodName.empty() || !isalpha((unsigned char)methodName[0])) return;
+    if(cls == nullptr || methodName.empty()) return;
     if(methodName == "create" || methodName == "destroy" || methodName == "recreate") return;
+    // An operator is told apart by its operand types; copying (`=`), conversions and `?` keep their names,
+    // which the runtime and the library send directly.
+    bool isOperator = !isalpha((unsigned char)methodName[0]) && methodName[0] != '_';
+    if(isOperator && (methodName == "=" || methodName == "?" || methodName == "operator()" || methodName == "()")) return;
     auto isLibrary = [](classDef* c){ return c->baseClasses.empty() || c->src.file.find("beguiLib") != string::npos; };
     auto ancestors = [&](classDef* c){
         set<classDef*> out; vector<classDef*> work(c->baseClasses.begin(), c->baseClasses.end());
@@ -1448,7 +1452,17 @@ void bglParser::mangleClassFamilyOverloadSet(classDef* cls, const string& method
             bool differs = false;
             for(classDef* y : line) for(functionDef* other : methodsIn(y))
                 if(mangleObjectMethodName(other) != mangleObjectMethodName(fd)) differs = true;
-            if(differs && (fd->i6name.empty() || fd->i6name.rfind("_m_", 0) == 0)) fd->i6name = mangleObjectMethodName(fd);
+            if(!differs) continue;
+            if(isOperator){
+                string disc;
+                for(paramDef* p : fd->params){
+                    string t = p->type.name;
+                    if(size_t lt = t.find('<'); lt != string::npos) t = t.substr(0, lt);
+                    disc += "_" + (t.empty() ? string("var") : t);
+                }
+                fd->i6name = mangleOperatorName(fd->name) + disc;
+            }
+            else if(fd->i6name.empty() || fd->i6name.rfind("_m_", 0) == 0) fd->i6name = mangleObjectMethodName(fd);
         }
     }
 }
@@ -2307,6 +2321,19 @@ bool bglParser::processNextStatement(abstractObject& contextObject) {
 // for the main loop, and by statement handlers (if/while/for/etc.) for unbraced single-
 // statement bodies like `if(x) doSomething();`.
 bool bglParser::processStatementDispatch(token tok, abstractObject& contextObject) {
+    size_t postBefore = postInjections.size();
+    bool r = processStatementDispatchInner(tok, contextObject);
+    // What a statement leaves to run after it (a `?.` guard's closing brace) follows it, not the next one.
+    if(postInjections.size() > postBefore)
+        if(auto* f = dynamic_cast<functionDef*>(&contextObject))
+            if(auto* b = dynamic_cast<statementBlock*>(f->body)){
+                for(size_t i = postBefore; i < postInjections.size(); i++) b->statements.push_back(postInjections[i]);
+                postInjections.resize(postBefore);
+            }
+    return r;
+}
+
+bool bglParser::processStatementDispatchInner(token tok, abstractObject& contextObject) {
     if(!grammarInitialized) initGrammarTable();
     sourceLocation stmtLoc = file.currentLocation();
     struct stmtExprScope {
@@ -2328,6 +2355,12 @@ bool bglParser::processStatementDispatch(token tok, abstractObject& contextObjec
         parsingError("Unexpected '}' at file scope: it closes nothing.");
     if(tok.is(token::braceClose)) return true;
     if(tok.is(token::endStatement)) return false;   // an empty statement (`default: ;`, `if (c) ;`)
+    // `::name[i] …`: the global array, written as the escape the emitter resolves past a same-named local.
+    if(tok.value.size() > 2 && tok.value.rfind("::", 0) == 0 && tok.value.find('.') == string::npos
+       && file.peekToken().is(token::bracketOpen)){
+        if(functionDef* f = currentFunc) f->globalEscapes.insert(tok.value.substr(2));
+        tok.value = kGlobalEscapeMarker + tok.value.substr(2);
+    }
     if(tok.is("self") && getCurrentCompileContext() == eCompileContext::codeBlock)
         rejectSelfWithoutObject(dynamic_cast<functionDef*>(&contextObject));
     if(getCurrentCompileContext() == eCompileContext::codeBlock && !looseIdentifierMode){
@@ -2920,11 +2953,41 @@ bool bglParser::replaceStubMember(vector<typeMember*>& members, functionDef& new
             if(fd->params[i]->type.name != newDef.params[i]->type.name) return false;
         return true;
     };
+    // The last resort takes a stub whose parameters could be these: a stub's type the pre-scan couldn't
+    // resolve (an alias) might be this one, but a stub of known, different types is another overload.
+    auto mayBeThis = [&](functionDef* fd){
+        if(fd->params.size() != newDef.params.size()) return false;
+        for(size_t i = 0; i < fd->params.size(); i++){
+            const string& a = fd->params[i]->type.name;
+            const string& b = newDef.params[i]->type.name;
+            if(a == b) continue;
+            // Resolved all the way: no path left in it, and a generic's arguments resolved too.
+            std::function<bool(const string&)> known = [&](const string& t) -> bool {
+                if(t.empty() || t.find('.') != string::npos) return false;
+                if(size_t lt = t.find('<'); lt != string::npos && t.back() == '>'){
+                    string args = t.substr(lt + 1, t.size() - lt - 2);
+                    size_t from = 0;
+                    for(size_t c; (c = args.find(',', from)) != string::npos; from = c + 1){
+                        string a = args.substr(from, c - from);
+                        a.erase(0, a.find_first_not_of(' '));
+                        if(!known(a)) return false;
+                    }
+                    string last = args.substr(from); last.erase(0, last.find_first_not_of(' '));
+                    if(!known(last)) return false;
+                    return getDispatchClass(t.substr(0, lt)) != nullptr;
+                }
+                static const set<string> prim = {"int", "uint", "bool", "char", "string", "var", "float", "object"};
+                return prim.count(t) || getDispatchClass(t) != nullptr || languageService.findEnum(t) != nullptr;
+            };
+            if(known(a) && known(b)) return false;
+        }
+        return true;
+    };
     for(int pass = 0; pass < 3; pass++)
         for(auto it = members.begin(); it != members.end(); ++it)
             if(auto* fd = dynamic_cast<functionDef*>(*it))
                 if(fd->name == newDef.name && fd->isPrePassStub
-                   && (pass == 2 || (pass == 0 ? sameSignature(fd) : fd->params.empty()))){
+                   && (pass == 2 ? mayBeThis(fd) : pass == 0 ? sameSignature(fd) : fd->params.empty())){
                     // An emitter an `extend` later replaces: every use expands the replacement.
                     if(fd->isReplaceStub && fd->isEmitter && newDef.isEmitter && dynamic_cast<i6Block*>(fd->body) != nullptr)
                         newDef.body = fd->body;
@@ -3030,7 +3093,8 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             else if(nc == '?' && file.peekChar()=='?') { file.readChar(); currentStr += "@??"; }
             else if(nc == '<' && file.peekChar()=='<') { file.readChar(); currentStr += "@<<"; }
             else if(nc == '>' && file.peekChar()=='>') { file.readChar(); currentStr += "@>>"; }
-            else { currentStr += '\\'; currentStr += nc; }
+            else if(nc == '}')  currentStr += '}';
+            else parsingError(format("Unknown escape '\\{0}' in string literal", string(1, nc)));
         } else if(c == '{') {
             if(!currentStr.empty()) {
                 interpolatedSegment seg;

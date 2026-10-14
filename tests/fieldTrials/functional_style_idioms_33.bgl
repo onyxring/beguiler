@@ -1,0 +1,649 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a grid survey written in a functional style on z5, leaning on value classes. A value
+// class `Pos` with positional `inline` members, a copy operator, instance `+`, `-`, `*` (by int), `==`,
+// `!=` and `<=>` (orderings derived), a `default` method, methods that copy `self` and return a new
+// value, a stringObj text and a static factory; a subclass `Pos3` chaining its copy operator with
+// `(Pos)self = o` and overriding the default method (sliced when copied, dispatched through `ref`);
+// a value class `Span` owning two `Pos` members, with methods returning `Span` and `Pos`; a value
+// class `Coins` with an int conversion assignment, `+=`, and `operator ?` coalesced with `??`.
+// Marker objects own `Pos` and `Coins` members given inline values and a `ref Pos` member bound at
+// run time; owned members are passed to `ref` parameters and swapped. Values sit in a file-scope
+// array of inline values, a sized global array appended with `+=`, a local sized array, an array of
+// Span, and an array<func<Pos, Pos>> of named functions and a lambda returning values; values are
+// returned from functions, methods, lambdas, ternaries, `?:` in arguments, fold helpers and a
+// recursive walk; recursive helpers take value parameters; `ref` locals bind to globals, owned
+// members and array elements; values are compared in `if`/`while`/`for` conditions and switch-free
+// ternaries; <linq> filter/count/any/all/orderBy (with and without comparator)/first/last/distinct/map
+// and <array> indexOf/contains/sort/remove/removeValue/-= run over arrays of values, with lambdas
+// capturing value locals and a `ref` local; value-class default arguments (a global and an inline
+// value) with named arguments; a file-scope array of Span written with nested positional and named
+// inline values; an array<Pos3> read through `ref Pos3` and `ref Pos`; for-in over arrays of values;
+// verbs read noun, second and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 16; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXPATH = 10;
+const int EDGE = 4;
+
+int mag(int n) { return n < 0 ? -n : n; }
+int sign(int n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
+
+//-- Positions --------------------------------------------------------------------------------------
+
+value class Pos {
+    inline int col;
+    inline int row;
+
+    Pos operator = (Pos o) {
+        col = o.col;
+        row = o.row;
+        return self;
+    }
+
+    Pos operator + (Pos o) {
+        Pos p;
+        p.col = col + o.col;
+        p.row = row + o.row;
+        return p;
+    }
+
+    Pos operator - (Pos o) {
+        Pos p;
+        p.col = col - o.col;
+        p.row = row - o.row;
+        return p;
+    }
+
+    Pos operator * (int k) {
+        Pos p;
+        p.col = col * k;
+        p.row = row * k;
+        return p;
+    }
+
+    bool operator == (Pos o) { return col == o.col && row == o.row; }
+    bool operator != (Pos o) { return col != o.col || row != o.row; }
+
+    // Reading order: by row, then by column.
+    int operator <=> (Pos o) { return row != o.row ? row - o.row : col - o.col; }
+
+    default int dist() { return mag(col) + mag(row); }
+
+    int distTo(Pos o) { return (self - o).dist(); }
+
+    Pos clamped(int lo = 0, int hi = EDGE) {
+        Pos p = self;
+        if (p.col < lo) p.col = lo;
+        if (p.col > hi) p.col = hi;
+        if (p.row < lo) p.row = lo;
+        if (p.row > hi) p.row = hi;
+        return p;
+    }
+
+    // One unit step from here toward o.
+    Pos toward(Pos o) {
+        Pos d;
+        d.col = sign(o.col - col);
+        d.row = sign(o.row - row);
+        return self + d;
+    }
+
+    stringObj text() {
+        stringObj s;
+        s = $"({col},{row})";
+        return s;
+    }
+
+    static Pos at(int c, int r) {
+        Pos p;
+        p.col = c;
+        p.row = r;
+        return p;
+    }
+}
+
+value class Pos3 : Pos {
+    int lvl;
+
+    Pos3 operator = (Pos3 o) {
+        lvl = o.lvl;
+        (Pos)self = o;
+        return self;
+    }
+
+    int dist() { return mag(col) + mag(row) + mag(lvl); }
+}
+
+value class Span {
+    inline Pos lo;
+    inline Pos hi;
+
+    Span operator = (Span o) {
+        lo = o.lo;
+        hi = o.hi;
+        return self;
+    }
+
+    bool holds(Pos p) { return p.col >= lo.col && p.col <= hi.col && p.row >= lo.row && p.row <= hi.row; }
+
+    int area() { return (hi.col - lo.col + 1) * (hi.row - lo.row + 1); }
+
+    Pos middle() { return Pos.at((lo.col + hi.col) / 2, (lo.row + hi.row) / 2); }
+
+    // The smallest span holding this one and p.
+    Span grown(Pos p) {
+        Span s = self;
+        if (p.col < s.lo.col) s.lo.col = p.col;
+        if (p.row < s.lo.row) s.lo.row = p.row;
+        if (p.col > s.hi.col) s.hi.col = p.col;
+        if (p.row > s.hi.row) s.hi.row = p.row;
+        return s;
+    }
+}
+
+value class Coins {
+    int cents;
+
+    Coins operator = (Coins o) {
+        cents = o.cents;
+        return self;
+    }
+
+    Coins operator = (int c) {
+        cents = c;
+        return self;
+    }
+
+    Coins operator + (Coins o) {
+        Coins c;
+        c.cents = cents + o.cents;
+        return c;
+    }
+
+    Coins operator += (int c) {
+        cents += c;
+        return self;
+    }
+
+    emitter eBool operator ? () { ($self ~= 0 && $self.cents ~= 0) }
+}
+
+//-- Markers ----------------------------------------------------------------------------------------
+
+class Marker : object {
+    attributeList attributes = {scenery};
+    string label;
+    Pos at;
+    Coins fee;
+    ref Pos anchor;
+
+    Pos where() { return at; }
+
+    void moveBy(Pos d) { at += d; }
+
+    Pos offsetFrom(Marker m) { return at - m.at; }
+
+    bool near(Pos p, int r = 1) { return at.distTo(p) <= r; }
+
+    Coins dueFor(int legs = 1) {
+        Coins c = fee;
+        c.cents = c.cents * legs;
+        return c;
+    }
+}
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+Marker red   { "red marker";   name = {.red, .marker};   label = "red";   at = Pos{1, 2}; fee = Coins{ cents = 5; };  parent = roomA; }
+Marker blue  { "blue marker";  name = {.blue, .marker};  label = "blue";  at = Pos{3, 0}; fee = Coins{ cents = 0; };  parent = roomA; }
+Marker green { "green marker"; name = {.green, .marker}; label = "green"; at = Pos{4, 4}; fee = Coins{ cents = 12; }; parent = roomA; }
+
+array<Marker> markers = {red, blue, green};
+
+//-- Global values ----------------------------------------------------------------------------------
+
+array<Pos> corners = {Pos{0, 0}, Pos{EDGE, 0}, Pos{EDGE, EDGE}, Pos{0, EDGE}};
+array<Pos> path[MAXPATH];
+array<Span> zones[3];
+Pos home = Pos{1, 1};
+Pos cursor;
+Pos3 peak = Pos3{ col = 2; row = 3; lvl = 5; };
+Coins purse;
+
+Pos north(Pos p) { return p + Pos{0, -1}; }
+Pos east(Pos p) { return p + Pos{1, 0}; }
+Pos south(Pos p) { return p + Pos{0, 1}; }
+
+array<Span> presets = {Span{Pos{0, 0}, Pos{2, 2}}, Span{ lo = Pos{1, 1}; hi = Pos{3, 4}; }, Span{Pos{2, 0}, Pos{EDGE, 1}}};
+array<Pos3> highs = {Pos3{ col = 1; row = 1; lvl = 4; }, Pos3{ col = 2; row = 0; lvl = 1; }, Pos3{ col = 0; row = 3; lvl = 2; }};
+
+array<func<Pos, Pos>> moves = {north, east, south, (Pos p) => p - Pos{1, 0}};
+
+//-- Pure helpers -----------------------------------------------------------------------------------
+
+Pos foldPos(array<Pos> ps, func<Pos, Pos, Pos> f, Pos seed) {
+    Pos acc = seed;
+    for (Pos p in ps) acc = f(acc, p);
+    return acc;
+}
+
+Pos sumOf(array<Pos> ps) { return foldPos(ps, (Pos a, Pos b) => a + b, Pos{0, 0}); }
+
+Pos lowest(array<Pos> ps) { return foldPos(ps, (Pos a, Pos b) => b < a ? b : a, ps[0]); }
+
+Span boundsOf(array<Pos> ps) {
+    Span s;
+    s.lo = ps[0];
+    s.hi = ps[0];
+    for (int i = 1; i < ps.length; i++) s = s.grown(ps[i]);
+    return s;
+}
+
+Pos nearestTo(array<Pos> ps, Pos to) {
+    Pos best = ps[0];
+    for (Pos p in ps) {
+        if (p.distTo(to) < best.distTo(to)) best = p;
+    }
+    return best;
+}
+
+void shift(ref Pos p, Pos by) { p += by; }
+
+void swapPos(ref Pos a, ref Pos b) {
+    Pos t = a;
+    a = b;
+    b = t;
+}
+
+// A copy changed inside a function doesn't reach the caller.
+int bumpCopy(Pos p) {
+    p.col += 10;
+    return p.col;
+}
+
+int stepsBetween(Pos a, Pos b) {
+    if (a == b) return 0;
+    return 1 + stepsBetween(a.toward(b), b);
+}
+
+// The position n unit steps from a toward b, stopping at b.
+Pos walkToward(Pos a, Pos b, int n) {
+    if (n <= 0 || a == b) return a;
+    return walkToward(a.toward(b), b, n - 1);
+}
+
+stringObj trail(array<Pos> ps, string sep = " ") {
+    stringObj out;
+    for (int i = 0; i < ps.length; i++) {
+        if (i > 0) out += sep;
+        out += ps[i].text();
+    }
+    return out;
+}
+
+int fromHome(Pos p = home) { return p.distTo(home); }
+
+int fromOrigin(Pos p = Pos{0, 0}, int scale = 1) { return (p * scale).dist(); }
+
+Pos pickNearer(Pos a, Pos b, Pos to) { return a.distTo(to) <= b.distTo(to) ? a : b; }
+
+int byDistDesc(Pos a, Pos b) {
+    if (a.dist() != b.dist()) return b.dist() - a.dist();
+    return a <=> b;
+}
+
+Coins totalFees(array<Marker> ms) {
+    Coins c;
+    for (Marker m in ms) c = c + m.fee;
+    return c;
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb PlotVerb {
+    grammar = {{.plot}};
+    void handler() {
+        print($"home {home.text()}, cursor {cursor.text()}, path {path.length}: {trail(path)}^");
+        print($"corners {trail(corners, "/")}, sum {sumOf(corners).text()}^");
+        for (Marker m in markers) {
+            print($"{m.label} at {m.at.text()} fee {m.fee.cents} dist {m.where().dist()} from home {m.at.distTo(home)}");
+            print($" anchor {m.anchor ? m.anchor.text() : "none"}^");
+        }
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.walk, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        Pos was = cursor;
+        cursor = moves[n % moves.length](cursor).clamped();
+        path += cursor;
+        print($"walk {n}: {was.text()} -> {cursor.text()}, moved {cursor.distTo(was)}, ");
+        print($"{cursor == was ? "stuck" : cursor < was ? "back" : "on"}, path {path.length}^");
+    }
+}
+
+verb HeadVerb {
+    grammar = {{.head, NUMBER}};
+    void handler() {
+        Pos target = Pos.at(parsed_number / 10, parsed_number % 10);
+        int steps = stepsBetween(cursor, target);
+        Pos half = walkToward(cursor, target, steps / 2);
+        print($"to {target.text()}: {steps} steps, halfway {half.text()}, two on {walkToward(cursor, target, 2).text()}^");
+        Pos c = cursor;
+        while (c != target) {
+            c = c.toward(target);
+            path += c;
+        }
+        cursor = c;
+        print($"now {cursor.text()}, path {path.length}, last {path.last().text()}^");
+    }
+}
+
+verb SurveyVerb {
+    grammar = {{.survey}};
+    void handler() {
+        Span b = boundsOf(path);
+        print($"bounds {b.lo.text()}-{b.hi.text()} area {b.area()} middle {b.middle().text()}^");
+        Pos mid = b.middle();
+        print($"near middle: {path.filter((Pos p) => p.distTo(mid) <= 1).count()}, ");
+        print($"any at home: {path.any((Pos p) => p == home)}, all inside: {path.all((Pos p) => b.holds(p))}^");
+        print($"lowest {lowest(path).text()}, first by order {path.orderBy().first().text()}, last by order {path.orderBy().last().text()}^");
+        Pos far = path.orderBy(byDistDesc).first();
+        print($"farthest {far.text()} dist {far.dist()}; nearest red {nearestTo(path, red.at).text()}^");
+        print($"distinct {path.distinct().count()}, sum {sumOf(path).text()}^");
+        array<var> ds = path.map((var v) => ((Pos)v).dist());
+        print("dists:");
+        for (int i = 0; i < ds.length; i++) print($" {ds[i]}");
+        print("^");
+    }
+}
+
+verb ZoneVerb {
+    grammar = {{.zones}};
+    void handler() {
+        zones.clear();
+        zones += boundsOf(corners);
+        Span inner;
+        inner.lo = home;
+        inner.hi = home * 2;
+        zones += inner;
+        zones += inner.grown(Pos{0, 3});
+        for (int i = 0; i < zones.length; i++) {
+            print($"zone {i}: {zones[i].lo.text()}-{zones[i].hi.text()} area {zones[i].area()}");
+            print($", holds red {zones[i].holds(red.at)}, path in it {path.filter((Pos p) => zones[i].holds(p)).count()}^");
+        }
+        zones[1].hi.col++;
+        zones[1].lo = zones[1].lo - Pos{1, 1};
+        print($"zone 1 now {zones[1].lo.text()}-{zones[1].hi.text()} area {zones[1].area()}^");
+    }
+}
+
+verb SortVerb {
+    grammar = {{.sort}};
+    void handler() {
+        print($"index of home {path.indexOf(home)}, of (1,0) {path.indexOf(Pos{1, 0})}, has (4,4) {path.contains(Pos{4, 4})}^");
+        path.sort();
+        print($"sorted: {trail(path)}^");
+        path -= Pos{1, 0};
+        path.removeValue(cursor);
+        print($"less (1,0) and cursor: {trail(path, ",")}^");
+        array<Pos> uniq[MAXPATH];
+        uniq = path.distinct();
+        uniq.remove(0);
+        print($"distinct less first: {trail(uniq)}; path still {path.length}^");
+    }
+}
+
+verb MarkVerb {
+    grammar = {{.mark, NOUN}};
+    void handler() {
+        if (!noun.is(Marker)) {
+            print("That is not a marker.^");
+            return;
+        }
+        Marker m = (Marker)noun;
+        m.anchor := m.at;
+        Pos before = m.where();
+        m.moveBy(Pos{1, 1});
+        shift(m.at, Pos{-1, 0});
+        print($"{m.label}: {before.text()} -> {m.at.text()}, anchor {m.anchor.text()}, moved {m.at != before}^");
+        ref Pos r := m.at;
+        r.row--;
+        r = r.clamped(hi: 3);
+        print($"through ref {r.text()}, member {m.at.text()}, copy kept {before.text()}, bumped copy {bumpCopy(m.at)} member col {m.at.col}^");
+        print($"offset from blue {m.offsetFrom(blue).text()}, near blue {m.near(blue.at)}, within 3 {m.near(blue.at, r: 3)}^");
+    }
+}
+
+verb SwapVerb {
+    grammar = {{.swap, NOUN, .with, NOUN}};
+    void handler() {
+        Marker a = (Marker)noun;
+        Marker b = (Marker)second;
+        swapPos(a.at, b.at);
+        print($"{a.label} {a.at.text()}, {b.label} {b.at.text()}^");
+        ref Pos first := path[0];
+        ref Pos last := path[path.length - 1];
+        swapPos(first, last);
+        print($"path ends swapped: {trail(path)}^");
+        Pos pick = pickNearer(a.at, b.at, home);
+        print($"nearer home: {pick == a.at ? a.label : b.label} at {pick.text()}^");
+    }
+}
+
+verb LevelVerb {
+    grammar = {{.level}};
+    void handler() {
+        Pos flat = peak;
+        print($"peak dist {peak.dist()}, flat copy {flat.text()} dist {flat.dist()}^");
+        ref Pos rp := peak;
+        print($"through ref dist {rp.dist()}, col {rp.col}^");
+        Pos3 copy = peak;
+        copy.lvl -= 2;
+        copy.col++;
+        print($"copy {copy.text()} lvl {copy.lvl} dist {copy.dist()}; peak lvl {peak.lvl} col {peak.col}^");
+        peak = copy;
+        print($"peak now lvl {peak.lvl} {peak.text()}, equal flat {peak == flat}, after flat {peak > flat}^");
+    }
+}
+
+verb PayVerb {
+    grammar = {{.pay, NOUN, NUMBER}};
+    void handler() {
+        Marker m = (Marker)noun;
+        Coins due = m.dueFor(parsed_number);
+        Coins fallback;
+        fallback = 1;
+        Coins owed = due ?? fallback;
+        purse += owed.cents;
+        print($"{m.label} due {due.cents} for {parsed_number}, owed {owed.cents}, purse {purse.cents}, ");
+        print($"fees {totalFees(markers).cents}, paid {purse ? "yes" : "no"}^");
+    }
+}
+
+verb StepVerb {
+    grammar = {{.step}};
+    void handler() {
+        Pos p = home;
+        for (int i = 0; i < moves.length; i++) {
+            Pos q = moves[i](p);
+            print($"{i}: {q.text()}");
+            if (q < p) print(" earlier");
+            if (q >= p && q != p) print(" later");
+            print("^");
+        }
+        func<Pos, Pos> twice = (Pos x) => east(east(x));
+        Pos far = twice(twice(p)).clamped();
+        print($"twice twice east {far.text()}, then mapped back {moves[3](far).text()}^");
+        for (Pos c = corners[0]; c != corners[2]; c = c.toward(corners[2])) print($" {c.text()}");
+        print(" .^");
+    }
+}
+
+verb ShuffleVerb {
+    grammar = {{.shuffle}};
+    void handler() {
+        array<Pos> work[6];
+        work += corners[1];
+        work.append(Pos.at(2, 2));
+        work.prepend(home * 3);
+        work.insert(1, Pos{1, 4});
+        work[0] += Pos{-1, 0};
+        print($"work: {trail(work)}; nearest (2,3) {nearestTo(work, {2, 3}).text()}^");
+        work.sort((Pos a, Pos b) => b <=> a);
+        print($"reversed order: {trail(work)}; top {work[0].text()} dist {work[0].dist()}^");
+        Pos tail = work.popEnd();
+        Pos front = work.peek();
+        print($"popped {tail.text()}, front {front.text()}, left {work.length}, has popped {work.contains(tail)}^");
+        ref Pos lo := zones[0].lo;
+        lo = lo + Pos{1, 1};
+        print($"zone 0 from {zones[0].lo.text()} area {zones[0].area()}, through ref {lo.text()}^");
+        Pos acc = Pos.at(0, 0);
+        int i = 0;
+        do {
+            acc += work[i] - home;
+            i++;
+        } while (i < work.length && acc.dist() < 6);
+        print($"walked {i} of {work.length}, acc {acc.text()} dist {(acc * 2).dist()}^");
+    }
+}
+
+verb SpendVerb {
+    grammar = {{.spend, NOUN}};
+    void handler() {
+        Marker m = (Marker)noun;
+        Coins none;
+        Coins base;
+        base = 2;
+        Coins picked = none ?? m.fee ?? base;
+        addTo(m.fee, 3);
+        Coins copy = m.fee;
+        copy += 100;
+        print($"{m.label}: picked {picked.cents}, fee now {m.fee.cents}, copy {copy.cents}, ");
+        print($"doubled {doubled(m.fee).cents}, fee still {m.fee.cents}, sum {(m.fee + base).cents}^");
+    }
+}
+
+verb NudgeVerb {
+    grammar = {{.nudge, NUMBER}};
+    void handler() {
+        Pos by = moves[parsed_number % moves.length](Pos{0, 0});
+        nudgeAll(path, by);
+        print($"by {by.text()}: {trail(path)}^");
+        print($"first two {(path[0] + path[1]).text()}, span {(corners[2] - corners[0]).text()}, ordered {path[0] < path[1]}, ");
+        print($"same as red {path.any((Pos p) => p == red.at)}, at red {path.indexOf(red.at)}^");
+        print($"in bounds {countWhere(path, (Pos p) => p == p.clamped())}, symmetric corners {countWhere(corners, (Pos p) => Pos.at(p.row, p.col) == p)}, ");
+        print($"clamped total {clampedTotal(path)}, first still {path[0].text()}^");
+    }
+}
+
+verb StackVerb {
+    grammar = {{.stack}};
+    void handler() {
+        for (Span z in presets) print($" {z.lo.text()}-{z.hi.text()}:{z.area()}");
+        print($"; holding cursor {presets.filter((Span z) => z.holds(cursor)).count()}^");
+        Span wide = Span{Pos.at(r: 0, c: 0), corners[2]};
+        Span tight = presets.orderBy((Span a, Span b) => a.area() - b.area()).first();
+        print($"wide {wide.area()}, tight {tight.lo.text()}-{tight.hi.text()}, middle of wide {wide.middle().text()}^");
+        ref Pos3 top := highs[0];
+        ref Pos asPos := highs[2];
+        print($"highs: top dist {top.dist()}, third as pos {asPos.dist()} {asPos.text()}, ");
+        print($"first by order lvl {highs.orderBy().first().lvl}, index of third {highs.indexOf(highs[2])}^");
+        top.lvl += 10;
+        Pos sliced = highs[0];
+        print($"top lvl {highs[0].lvl} dist {highs[0].dist()}, sliced dist {sliced.dist()}^");
+        print($"from home: {fromHome()} {fromHome(Pos{3, 3})} {fromHome(p: cursor)}; from origin {fromOrigin()} {fromOrigin(scale: 3, p: home)}^");
+        print($"markers below row 2: {markers.filter((Marker m) => m.at.row < 2).count()}, first in order {markers.orderBy((Marker a, Marker b) => a.at <=> b.at).first().label}^");
+        ref Pos tracked := green.at;
+        func<int, Pos> gap = (Pos p) => p.distTo(tracked);
+        print($"gap home {gap(home)}, cursor {gap(cursor)}; ");
+        tracked = Pos.at(0, 0);
+        print($"green moved to {green.at.text()}, gap home {gap(home)}^");
+    }
+}
+
+verb TraceVerb {
+    grammar = {{.trace, NUMBER}};
+    void handler() {
+        Pos d = moves[parsed_number % moves.length](Pos{0, 0});
+        print($"trace {d.text()}:");
+        Pos c;
+        int n = 0;
+        for (c = home; c == c.clamped() && n < 6; c += d) {
+            print($" {c.text()}");
+            n++;
+        }
+        print($" stopped at {c.text()} after {n}^");
+        func<Pos, Pos> bounce = (Pos p) => p == p.clamped() ? p : p - d * 2;
+        func<Pos, Pos> grow = (Pos p) => {
+            Pos q = p * 2;
+            return q.clamped();
+        };
+        print($"bounce {bounce(c).text()}, grow {grow(home).text()} {grow(grow(home)).text()}^");
+        ref Pos r := path[0];
+        for (int i = 0; i < path.length; i++) {
+            r := path[i];
+            if (r.col > EDGE) r.col = EDGE;
+        }
+        red.anchor := path[1];
+        path[1] = Pos{0, 0};
+        cursor = path.filter((Pos p) => p.row == 3).first();
+        print($"clamped: {trail(path)}; red anchor {red.anchor.text()} is path 1 {red.anchor == path[1]}, cursor {cursor.text()}^");
+    }
+}
+
+void nudgeAll(array<Pos> ps, Pos by) {
+    for (int i = 0; i < ps.length; i++) ps[i] += by;
+}
+
+// The total distance of the positions once each is pulled inside the grid; the array is unchanged.
+int clampedTotal(array<Pos> ps) {
+    int total = 0;
+    for (Pos p in ps) {
+        p = p.clamped();
+        total += p.dist();
+    }
+    return total;
+}
+
+int countWhere(array<Pos> ps, func<bool, Pos> f) {
+    int n = 0;
+    for (Pos p in ps) if (f(p)) n++;
+    return n;
+}
+
+void addTo(ref Coins c, int n) { c += n; }
+
+Coins doubled(Coins c) {
+    c.cents = c.cents * 2;
+    return c;
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    cursor = home;
+    path += home;
+    location = roomA;
+    rfalse;
+}

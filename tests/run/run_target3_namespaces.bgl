@@ -1,0 +1,45 @@
+// run_target3_namespaces — an imported namespace step beside a verb and beside a global object of its
+// name, objects declared with a dotted alias type used above their declarations, a catch clause with a
+// dotted alias type, `?.` after an `auto` namespace member, and a routine with a local array and a `?:`
+// temporary that ends in `rtrue`.
+// EXPECT_OUTPUT: 3 G 4 4 3 7 3 4 same 1
+#beguilerSettings { target = z5; informName = "none"; }
+class Part : object { int qty = 1; }
+Part boltA { qty = 7; }
+object _stock { alias part for Part; int count = 3; }
+object idx { auto stock = _stock; }
+object _store { int count = 4; }
+object shop { auto store = _store; }
+#using idx
+int peek() { return stock.count; }
+#using shop
+object store { int count = 9; }
+class Tray : object { int slots = 2; }
+object _bay { alias tray for Tray; tray first = trayB; }
+object bays { auto bay = _bay; }
+Tray f1(int x) { return x > 0 ? trayB : trayA; }
+object o { Tray f2(int x) { return x > 0 ? trayB : trayA; } }
+bays.bay.tray trayB { slots = 4; }
+bays.bay.tray trayA { slots = 3; }
+void boom() { throw boltA; }
+bool tail() {
+    print(o == o ? "same " : "diff ");
+    array<int> xs = {1, 2, 3};
+    print(xs[0]);
+    rtrue;
+}
+verb Stock { grammar = {.stock}; void handler() { print("x"); } }
+void main() {
+    bglInit();
+    print(peek()); print(" ");
+    print(store.count == 9 ? "G " : "I ");
+    print(_bay.first.slots); print(" ");
+    print(f1(1).slots); print(" ");
+    print(o.f2(0).slots); print(" ");
+    try { boom(); } catch (idx.stock.part p) { print(p.qty); print(" "); }
+    print(idx.stock?.count); print(" ");
+    int n = idx.stock?.count;
+    n = shop.store?.count;
+    print(n); print(" ");
+    tail();
+}

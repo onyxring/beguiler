@@ -255,6 +255,9 @@ in everyday text are:
 | `\^` | `^` |
 | `\~` | `~` |
 | `\@` | `@` |
+| `\{` `\}` | `{` `}` |
+
+A backslash before any other character is a compile-time error unless Appendix D lists the escape.
 
 Beguile preserves Inform 6's conventions for extended characters in strings: an unescaped `^` is a
 newline and an unescaped `~` is a double quote, exactly as in I6, and both must be escaped to print
@@ -305,7 +308,7 @@ $"⟨characters⟩ { ⟨expression⟩ } ⟨characters⟩ …"
 **Description**
 
 An interpolated string literal is prefixed with `$` and may contain Beguile expressions inside `{ }`
-spans. Escapes are those of a string literal, plus `\{` for a literal `{`.
+spans. Escapes are those of a string literal; `\{` is a literal `{` rather than the start of a span.
 
 A span holds any expression, including one with braces of its own, such as a lambda with a block body.
 A string literal inside a span is written with plain quotes; escapes belong to the characters of a

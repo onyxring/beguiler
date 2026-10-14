@@ -1,0 +1,31 @@
+// run_target3_strings — `\}` as a literal brace in plain and interpolated strings, a char passed to
+// stringObj indexOf/contains/startsWith/replaceAll/insert, stringObj compared with a char, and routines
+// with owning stringObj parameters that end in `return c ? x : y;`.
+// EXPECT_OUTPUT: a}b c}d 1 true true a-b-c aX.b.c eq ab ab 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+stringObj longer(stringObj a, stringObj b) {
+    return a.length >= b.length ? a : b;
+}
+stringObj first(stringObj a, stringObj b) {
+    return a;
+}
+int len(stringObj a) {
+    return a.length > 2 ? 1 : 0;
+}
+void main() {
+    bglInit();
+    print("a\}b ");
+    print($"c\}d ");
+    stringObj s = "a.b.c";
+    print($"{s.indexOf('.')} {s.contains('b')} {s.startsWith('a')} ");
+    print($"{s.replaceAll('.', "-")} ");
+    stringObj t = s.insert(1, 'X');
+    print($"{t} ");
+    stringObj u = "a";
+    if (u == 'a') print("eq "); else print("ne ");
+    stringObj x = "ab";
+    print(longer(x, "c")); print(" ");
+    print(first(x, "c")); print(" ");
+    print(len(x));
+}
