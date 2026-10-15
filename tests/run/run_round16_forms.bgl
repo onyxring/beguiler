@@ -12,7 +12,7 @@ class Store {
 }
 
 // D1097, D1112: postfix `?` binds tighter than `!` and the binary operators.
-class Vault : object { object keeper; object keeperFn() { return keeper; } }
+class Vault : object { ref object keeper; object keeperFn() { return keeper; } }
 Vault v { }
 object o1 { }
 

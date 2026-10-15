@@ -298,7 +298,7 @@ void fillFrom(array<char> dst, cellText t) {
 // ---- captions ------------------------------------------------------------------------------------
 
 value class captionOf {
-    gaugePanel owner;
+    ref gaugePanel owner;
     string operator () { return owner?.caption ?? "(none)"; }
     captionOf operator = (captionOf o) {
         owner = o.owner;

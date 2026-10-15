@@ -60,7 +60,7 @@ class card[3] : object, bglAllocated {
     }
 }
 
-card held;
+ref card held;
 
 object roomA {
     "Room A";

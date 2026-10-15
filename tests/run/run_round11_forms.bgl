@@ -22,7 +22,7 @@ Trio tr { 1, 2, 3; }
 object reg { alias tier for eGrade; }
 #using reg
 array<eGrade> grades = { mid, high };
-class Acct : object { bool real = true; Acct up; emitter eBool operator ? () { ($self ~= nothing && $self.$i6Name(Acct.real)) } }
+class Acct : object { bool real = true; ref Acct up; emitter eBool operator ? () { ($self ~= nothing && $self.$i6Name(Acct.real)) } }
 Acct a1 { up = null; }
 Acct a2 { up = a1; }
 Acct ghost { real = false; }

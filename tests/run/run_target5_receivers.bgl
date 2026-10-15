@@ -8,7 +8,7 @@
 class Tray : object {
     array<array<int>> grid = { {1, 2}, {3, 4, 5} };
     array<int> slots[4];
-    Tray link;
+    ref Tray link;
     int code = 1;
     Tray next() { return link; }
     default void report() { print("base"); }

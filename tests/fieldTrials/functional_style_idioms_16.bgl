@@ -289,7 +289,7 @@ verb SummaryVerb {
 
 verb GaugeVerb {
     grammar = {{.gauge, NUMBER}};
-    Meter last;
+    ref Meter last;
     ref Spot hold;
     array<array<int>> steps = {{1, 2}, {3}};
     array<char> tags = {0, 0, 0, 0};

@@ -9,8 +9,8 @@ attribute light;
 
 class Room : object {
     string description = "a room";
-    Room up;
-    Room next;
+    ref Room up;
+    ref Room next;
 }
 
 Room foyer { }
@@ -36,7 +36,7 @@ void main(){
     object first = x ?? foyer ?? cloakroom;
 
     // ?? on the RHS of an assignment
-    object dest;
+    ref object dest;
     dest = x ?? foyer;
 
     // Mixed with ?. — if x is null, fall back to foyer then read description

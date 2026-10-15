@@ -103,7 +103,7 @@ PriceVisitor pricer { }
 class Order[5] : object {
     static int NextId = 101;
     int Id;
-    Product Item;
+    ref Product Item;
     int Qty;
     eStatus Status;
 

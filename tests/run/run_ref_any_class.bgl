@@ -1,0 +1,19 @@
+// run_ref_any_class — `ref` declares a reference to any class, at file scope, as a member and as a local; it
+// starts null and is bound with `:=`.
+// EXPECT_OUTPUT: true 2 3 1 true
+#beguilerSettings { target = z5; informName = "none"; }
+class Room : object { int visits; ref Room next; }
+Room kitchen { visits = 1; }
+Room hall { visits = 2; }
+ref Room current;
+void main(){
+    print(current == null); print(" ");
+    current := hall;
+    print(current.visits); print(" ");
+    ref Room r := current;
+    r.visits++;
+    print(hall.visits); print(" ");
+    kitchen.next := kitchen;
+    print(kitchen.next.visits); print(" ");
+    print(hall.next == null);
+}

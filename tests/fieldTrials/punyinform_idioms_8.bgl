@@ -150,8 +150,8 @@ int crateCount asI6 g_crate_total = 0;
 
 class Room : object {
     string description;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
     attributes = {light};
 }
 
@@ -327,7 +327,7 @@ verb Clone {
     }
 }
 
-BigChip lastBig;
+ref BigChip lastBig;
 
 verb Forge {
     grammar = { {.forge, NUMBER} };

@@ -816,8 +816,8 @@ verb More {
     }
 }
 
-Ticket held1;
-Ticket held2;
+ref Ticket held1;
+ref Ticket held2;
 
 verb Issue {
     grammar = {.issue, NUMBER};

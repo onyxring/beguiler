@@ -111,7 +111,7 @@ value class NonNegative {
 //-- Packages --------------------------------------------------------------------------------------------------
 
 value class Requirement {
-    Package Target;
+    ref Package Target;
     Version Minimum;
 
     Requirement operator = (Requirement o) {
@@ -172,7 +172,7 @@ Package pkgLoopB { "loopb"; Title = "loopb"; Size = 5; }
 //-- Errors ----------------------------------------------------------------------------------------------------
 
 class ResolveError[2] : object {
-    Package Culprit;
+    ref Package Culprit;
     string Reason;
     static int Raised;
 

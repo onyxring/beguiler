@@ -152,7 +152,7 @@ Tank tankC { "tank C", 20.0; parent = rack; name = .charlie; }
 
 class Sample[3] : object {
     float amount;
-    Tank origin;
+    ref Tank origin;
     static int live = 0;
 
     void create(Tank from, float amt) {

@@ -181,7 +181,7 @@ window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags m
                   ref styleSheet inherited = _bglNoStyles, ref styleSheet styles = _bglNoStyles){
     if(parentId == 0) return null;   // the window to split isn't open (e.g. a status bar with no height)
     // The pooled object first: with the pool spent, no Glk window is opened for nothing to hold.
-    window kid;
+    ref window kid;
     if(type == eGlulxWindowType.graphics)       kid = new graphicsWindow();
     else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
     else                                        kid = new textBufferWindow();

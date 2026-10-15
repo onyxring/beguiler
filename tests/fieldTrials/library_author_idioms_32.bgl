@@ -261,7 +261,7 @@ extend class La32Item {
 
 /// A slip for a count of one item; made with new.
 class La32Slip[3] : object {
-    La32Item what;
+    ref La32Item what;
     int count;
     /// Slips issued so far.
     static int issued = 0;

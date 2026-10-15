@@ -6,7 +6,7 @@
 #include <string>
 
 // D1272, D1273: a selfType member read through a variable, and a three-call selfType chain.
-class Node : object { int key; selfType next; }
+class Node : object { int key; ref selfType next; }
 Node n1 { key = 1; }
 Node n2 { key = 3; }
 class Widget : object { int width; selfType wide(int n) { width = n; return self; } }

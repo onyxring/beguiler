@@ -49,7 +49,7 @@ value class Gauge {
 class Car : object {
     inline instanceName;
     inline int code;
-    Car next;
+    ref Car next;
     array<int> loads[4];
     Gauge g;
     auto tag = {

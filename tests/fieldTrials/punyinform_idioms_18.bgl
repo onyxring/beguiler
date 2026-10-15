@@ -260,7 +260,7 @@ class Shelf : object {
 }
 
 class Tagged : object {
-    object owner;
+    ref object owner;
     int tagNo = 0;
 }
 
@@ -400,7 +400,7 @@ Holder rack {
     array<char> stamp[10];
     array<string> names = {"low", "mid", "high"};
     eShade shade = eShade.pale;
-    Gizmo held;
+    ref Gizmo held;
 
     auto level = {
         int _raw = 0;

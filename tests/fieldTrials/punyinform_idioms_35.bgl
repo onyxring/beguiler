@@ -131,8 +131,8 @@ class Tray : object {
     array<string> marks = {"plain", "plain"};
     Gauge level;
     Pair  best;
-    Tray  link;
-    Tray  spare;
+    ref Tray  link;
+    ref Tray  spare;
     stringObj note;
     array<array<int>> bins = { {0, 0}, {0, 0, 0} };
     static int touched = 0;

@@ -155,7 +155,7 @@ int Total = 0;
 
 class Node : object {
     string Label;
-    Node Up;
+    ref Node Up;
     array<Node> Kids[4];
     int Total;
 
@@ -200,7 +200,7 @@ class Node : object {
 }
 
 class Leaf : Node {
-    Shape Item;
+    ref Shape Item;
     int Weight() { return (int)Item.Area(); }
 }
 

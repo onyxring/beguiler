@@ -101,7 +101,7 @@ class Shelf : object {
 }
 
 class Tagged : object {
-    object owner;
+    ref object owner;
 }
 
 // --- cluster 1: an object with an inline accessor ---------------------------------------------------

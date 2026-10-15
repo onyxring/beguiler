@@ -120,7 +120,7 @@ ShopError ErrNotForSale { Message = "That is not for sale."; }
 class Creature : Entity {
     BoundedHealth Health;
     eDamageKind Weakness = eDamageKind.Fire;
-    Creature Target;
+    ref Creature Target;
     Coord Position;
 
     default string GetKindName() { return "creature"; }

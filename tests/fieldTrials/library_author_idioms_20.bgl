@@ -100,7 +100,7 @@ value class La20Stamp {
 class La20Notice[5] : object {
     eLa20Kind kind = eLa20Kind.tick;
     La20Stamp at;
-    object subject;
+    ref object subject;
     string text;
     int seen = 0;
     /// Notices made so far.

@@ -206,7 +206,7 @@ MaintenanceState maintenance { Label = "maintenance"; }
 class Lift : object {
     string Tag;
     FloorGauge Floor;
-    LiftState State;
+    ref LiftState State;
     eDir Dir = eDir.Idle;
     array<int> Stops[6];
     int DoorTimer;
@@ -247,7 +247,7 @@ class Request[4] : object {
     int Level;
     eDir Dir = eDir.Idle;
     Clock At;
-    Lift AssignedTo;
+    ref Lift AssignedTo;
     static int Made;
     static int Done;
 

@@ -42,7 +42,7 @@ object roomA {
 
 extend class la11Board {
     ref la11Row focus;
-    La11Part keeper;
+    ref La11Part keeper;
 
     /// The sum of one row; a fault off the board.
     int operator [] (int r) {

@@ -112,7 +112,7 @@ class Drawer : object
         int  operator ()          { return _n ; }
         void operator = ( int v ) { _n = v < 0 ? 0 : v ; }
     } ;
-    Drawer      next ;
+    ref Drawer      next ;
     Size        box ;
     array<Size> slots[ 3 ] ;
 
@@ -145,7 +145,7 @@ class Drawer : object
 
 class Card[ 3 ] : object
 {
-    Part about ;
+    ref Part about ;
     int  n ;
     void create ( Part p , int k ) { about = p ; n = k ; }
     Card stamp ( int k = 1 ) { n += k ; return self ; }
@@ -207,7 +207,7 @@ Gear oddGear
 array<Part> allParts = { gearA , springA , gearB , pinA , oddGear } ;
 array<Size>
             plans[ 3 ] ;
-Part        sparePart ;
+ref Part        sparePart ;
 int         pickedIn = 0 ;
 
 func<Drawer , int> at = ( int i ) => cabinet.drawers[ i ] ;

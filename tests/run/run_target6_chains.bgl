@@ -15,8 +15,8 @@ value class Span {
 Span noSpan;
 class Knot : object {
     int a; int b; int w;
-    Knot left;
-    Knot right;
+    ref Knot left;
+    ref Knot right;
     string label;
     Span span() { Span s; s.lo = a; s.hi = b; return s; }
     int child(int i) { return w + i; }

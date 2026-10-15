@@ -58,7 +58,7 @@ loudVerb V_bell { grammar = { .bell } ; void handler() { pings += 10 ; print("[b
 
 //-- Cells: a short chain ------------------------------------------------------------------------------
 
-class Cell : object { inline int n ; Cell next ; void show() { print(n) ; } }
+class Cell : object { inline int n ; ref Cell next ; void show() { print(n) ; } }
 
 Cell c1 { 3 ; }
 Cell c2 { $5 ; next = c1 ; }
@@ -130,7 +130,7 @@ extend extern class wordTab
 class Ledger : object
 {
     int total ;
-    Ledger link ;
+    ref Ledger link ;
     array<int> slots[4] ;
 #IF LOUD
     int noise = 1 ;
@@ -198,7 +198,7 @@ extend class Ledger
 
 class Chain : object
 {
-    Cell head ;
+    ref Cell head ;
     int  size ;
     Cell operator [] ( int i )
     {

@@ -12,7 +12,7 @@ bnum flags { f1, f2, f3 }
 int reading = 0;
 class Holder : object { int hits; }
 Holder h1 { }
-class Gadget : object { Holder owner; eKind kind; }
+class Gadget : object { ref Holder owner; eKind kind; }
 Gadget g1 { owner = h1; kind = eKind.b; }
 bool isWorn(Part p) { return p.worn; }
 class Part : object { bool worn; string note = "Room of reading"; }

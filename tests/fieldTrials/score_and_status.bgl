@@ -28,7 +28,7 @@ int       doneCount = 0;
 int       pointsEarned = 0;
 
 // What the status line showed when it was last drawn.
-object statusRoom;
+ref object statusRoom;
 int    statusTasks = -1;
 int    statusScore = -1;
 

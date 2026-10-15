@@ -100,7 +100,7 @@ class La29Book : object {
     eLa29Kind kind = eLa29Kind.novel;
     /// Where it goes back to; each book is given its own.
     const string mark = "?";
-    La29Shelf home;
+    ref La29Shelf home;
     bool out = false;
     /// Loans made of any book.
     static int lent = 0;
@@ -171,7 +171,7 @@ class La29Slip[3] : object {
     string short_name = "slip";
     name = {.slip, .ticket};
     stringObj code;
-    La29Book book;
+    ref La29Book book;
     La29Days due;
     bool late = false;
     int time_left;

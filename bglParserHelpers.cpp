@@ -245,8 +245,6 @@ std::string refNotApplicable(classDef* cls, const std::string& typeShown){
     if(cls == nullptr) return "";
     if(cls->isPrimitive)
         return "'" + typeShown + "' is a primitive type — its value is held directly, so there is nothing to refer to.";
-    if(!cls->isEmitterClass && !cls->isAlias && !isValueClass(cls))
-        return "'" + typeShown + "' is a reference class, so it is already a reference: drop 'ref'.";
     return "";
 }
 

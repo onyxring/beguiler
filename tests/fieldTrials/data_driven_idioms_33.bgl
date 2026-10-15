@@ -104,7 +104,7 @@ class Bay : object {
     array<int> counts[KIND_COUNT];
     array<Slot> slots[SLOT_MAX];
     Slot best;
-    Bay next;
+    ref Bay next;
     Gauge level;
     auto load = {
         int _n = 0;

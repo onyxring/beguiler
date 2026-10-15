@@ -38,7 +38,7 @@ superposed void _bglWorldStamp(array<object> buf, int count){
 // Collect every object.
 superposed array<object> _bglWorldGetAll(var pred){
     array<object> buf = _bglWorldNextBuf();
-    object o;
+    ref object o;
     int n = 0;
     #i6 {
         objectloop(o) {
@@ -54,7 +54,7 @@ superposed array<object> _bglWorldGetAll(var pred){
 // Collect the objects of a class.
 superposed array<object> _bglWorldInstances(var cls, var pred){
     array<object> buf = _bglWorldNextBuf();
-    object o;
+    ref object o;
     int n = 0;
     #i6 {
         objectloop(o ofclass cls) {
@@ -70,7 +70,7 @@ superposed array<object> _bglWorldInstances(var cls, var pred){
 // Collect the children of `parent`.
 superposed array<object> _bglWorldInParent(object parent, var pred){
     array<object> buf = _bglWorldNextBuf();
-    object o;
+    ref object o;
     int n = 0;
     #i6 {
         objectloop(o in parent) {

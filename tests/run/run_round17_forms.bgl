@@ -48,7 +48,7 @@ object crateRow {
 }
 
 // D1142: postfix `?` on a member reached through `outer`.
-class Rack : object { Rack peer; }
+class Rack : object { ref Rack peer; }
 Rack r1 { }
 Rack r2 { peer = r1; }
 object deck {

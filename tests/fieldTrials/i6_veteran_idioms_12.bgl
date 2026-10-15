@@ -77,7 +77,7 @@ class Bin : Crate, Tagged {
     static array<int> slots[SLOT_COUNT];
     static array<char> stamp[16];
     static array<string> kinds = {"bolt", "nut", "washer"};
-    Bin peer;
+    ref Bin peer;
 
     void showSelf() {
         print("[");

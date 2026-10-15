@@ -5,14 +5,14 @@
 #beguilerSettings { target = z5; informName = "none"; }
 class Item : object { int n; Tray tray() { return t1; } }
 class Tray : object {
-    Item a;
-    Tray next;
+    ref Item a;
+    ref Tray next;
     Item operator [] (int i) { return a; }
     Item operator []= (int i, Item v) { a = v; return v; }
     Tray me() { return self; }
 }
 class Rack : object {
-    Tray t;
+    ref Tray t;
     Tray operator [] (int i) { return t; }
 }
 Item it1 { n = 1; }

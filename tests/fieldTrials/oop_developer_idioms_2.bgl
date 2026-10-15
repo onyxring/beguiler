@@ -143,7 +143,7 @@ class Ticket[POOL_SIZE] : object {
     static int NextSerial = 1;
     int Serial;
     int Uses = 0;
-    Part Subject;
+    ref Part Subject;
 
     void create(Part p) { Serial = Ticket.NextSerial++; Subject = p; }
     void destroy() { printLine($"{self} closed after {Uses} use{Uses == 1 ? "" : "s"}."); }
@@ -227,7 +227,7 @@ RunningState stRunning { }
 OverheatedState stOverheated { }
 
 class Machine : object {
-    State Current;
+    ref State Current;
     func<int, int> Strategy;
     int Output;
     int Ticks;

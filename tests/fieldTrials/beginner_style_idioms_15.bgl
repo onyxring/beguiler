@@ -74,7 +74,7 @@ class Crate : object {
 value class Spot {
     int row;
     int col;
-    object owner;
+    ref object owner;
     array<char> code[8];
 
     // how many times something was dropped here
@@ -162,7 +162,7 @@ value class Spot {
 value class Parcel {
     grams heft;
     int count;
-    object holder;
+    ref object holder;
 
     Parcel operator = (Parcel o) {
         heft = o.heft;

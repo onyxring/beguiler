@@ -105,7 +105,7 @@ class Valve : object {
     int rate = RATE;                // the #define: read here, hidden in the methods
     bool primed = false;            // the attribute
     int limit = LIMIT;              // the const
-    Valve valve;                    // the next valve, named like the class
+    ref Valve valve;                    // the next valve, named like the class
     string label;
     string tag = TAG;               // the #define TAG, read by the initializer
 
@@ -204,7 +204,7 @@ extend class Valve {
 class Gauge : object {
     int object = 0;
     bool string = false;
-    Valve valve;
+    ref Valve valve;
     Reading reading;
     int level = 0;
 

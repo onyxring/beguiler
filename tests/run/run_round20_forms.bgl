@@ -12,7 +12,7 @@ emitter class tenths { emitter void operator = (int v) { $self = $v; } emitter i
 
 // D1213: a pooled class's stringObj member; D1214: a reference member whose class holds one.
 class Tag[2] : object { stringObj note; }
-class Holder : object { Tag owner; }
+class Holder : object { ref Tag owner; }
 Holder holderA { }
 
 // D1215: an interpolated stringObj local in a routine with a try.

@@ -80,9 +80,9 @@ Tag lastTag;
 // ===== CARTS =====
 
 class Cart : object {
-    Cart next;
-    Cart prev;
-    object load;
+    ref Cart next;
+    ref Cart prev;
+    ref object load;
     Tag tag;
     stringObj label;
     string note;
@@ -216,7 +216,7 @@ extend class Cart {
 
 class Ticket[3] : object {
     int number;
-    Cart cart;
+    ref Cart cart;
 
     void create(int n) {
         number = n;
@@ -398,12 +398,12 @@ object yard {
     // how many times the front cart was changed
     int moves = 0;
     // a cart kept to one side
-    Cart spare;
+    ref Cart spare;
     // the carts parked in the yard's bays
     array<Cart> bays[4];
     // the cart at the front of the yard
     auto front = {
-        Cart _c;
+        ref Cart _c;
         Cart operator () { return _c; }
         void operator = (Cart c) {
             _c = c;

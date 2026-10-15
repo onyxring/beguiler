@@ -581,7 +581,7 @@ class Box : object {
     Dial load;
     eTag tags;
     string label;
-    kit.chit ticket;
+    ref kit.chit ticket;
     Mass last;
     array<int> slots[4];
 
@@ -603,7 +603,7 @@ class Box : object {
 
 class Chit[CHITS] : object {
     int number;
-    Crate on;
+    ref Crate on;
     eGrade grade;
 
     void create(int n, Crate c) {

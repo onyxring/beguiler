@@ -49,7 +49,7 @@ Gauge dial { }
 class Valve : object {
     static int total = 0;
     static int made = 0;
-    Valve valve;
+    ref Valve valve;
     int bump() { Valve.total += 2; Valve.made++; Valve.made = Valve.made + 1; return Valve.total * 10 + Valve.made; }
 }
 Valve v1 { }

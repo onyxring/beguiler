@@ -169,7 +169,7 @@ value class Caption {
 //-- A named accessor holding a reference ------------------------------------------------------------------
 
 value class ZoneLink {
-    Zone _z;
+    ref Zone _z;
     int _hops;
 
     Zone operator () { return _z; }
@@ -288,10 +288,10 @@ extend class Zone {
 
 //-- Globals ------------------------------------------------------------------------------------------------
 
-Zone Lounge;
-Zone Kitchen;
-Zone Hall;
-SealedZone Vault;
+ref Zone Lounge;
+ref Zone Kitchen;
+ref Zone Hall;
+ref SealedZone Vault;
 array<Zone> Zones[4];
 
 object Panel {

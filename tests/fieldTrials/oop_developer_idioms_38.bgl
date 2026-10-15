@@ -238,7 +238,7 @@ class GarmentRecipe : Recipe {
 //-- Items -----------------------------------------------------------------------------------------------------
 
 class Item[4] : object {
-    Recipe Kind;
+    ref Recipe Kind;
     int Wear;
     int Serial;
     static int NextSerial = 100;

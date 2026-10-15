@@ -114,7 +114,7 @@ verb Tickets {
     void handler() {
         array<la5Ticket> got[4];
         int n = 0;
-        la5Ticket t;
+        ref la5Ticket t;
         do {
             n++;
             t = new la5Ticket(10 - n, n * 5);

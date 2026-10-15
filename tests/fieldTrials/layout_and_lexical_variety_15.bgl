@@ -78,7 +78,7 @@ value class Tape
 {
     int    head ;
     int    len ;
-    object holder ;
+    ref object holder ;
     Tape operator = ( Tape o ) { head = o.head ; len = o.len ; holder = o.holder ; return self ; }
     char operator [] ( int i ) { return tapeBuf[head + i] ; }
     default int span () { return len - head ; }
@@ -212,7 +212,7 @@ class Shelf : object
 {
     STATIC array<Span> spans[3] ;
     static array<int>  marks = { 3 , 1 , 4 , 1 , 5 } ;
-    Shelf next ;
+    ref Shelf next ;
     int operator [] ( int i ) { return Shelf.spans[i % 3].size() ; }
     default int widest () { return Shelf.marks.orderBy().last() ; }
     int fill ( var lo )

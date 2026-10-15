@@ -186,7 +186,7 @@ class La27Cutting[3] : object {
     string short_name = "cutting";
     name = {.cutting, .slip};
     stringObj label;
-    La27Plant from;
+    ref La27Plant from;
     bool potted = false;
     /// Cuttings taken so far.
     static int taken = 0;

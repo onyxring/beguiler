@@ -124,7 +124,7 @@ class Tray : object {
         int  operator ()        { return _n; }
         void operator = (int v) { _n = v < 0 ? 0 : v; }
     };
-    Tray next;
+    ref Tray next;
     Dim footprint;
     array<Dim> history[3];
     func<bool, Item> fits;
@@ -182,7 +182,7 @@ class Rack : object {
 }
 
 class Slip[4] : object {
-    Item item;
+    ref Item item;
     int qty;
 
     void create(Item it, int q) {

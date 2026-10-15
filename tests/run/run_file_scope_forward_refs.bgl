@@ -7,7 +7,7 @@
 object a { parent = b; int n = LIMIT; }
 func<void> f = later;
 array<int> xs = {LIMIT, 2};
-class R : object { inline int n; inline verb v; }
+class R : object { inline int n; inline ref verb v; }
 R r1 = { LIMIT, Jumpy };
 int g = h2;
 const int LIMIT = 4;

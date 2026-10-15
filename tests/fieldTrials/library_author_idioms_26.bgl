@@ -162,7 +162,7 @@ class La26Ticket[3] : object {
     string short_name = "ticket";
     name = {.ticket, .stub};
     stringObj code;
-    La26Machine from;
+    ref La26Machine from;
     bool punched = false;
     /// Tickets printed so far.
     static int printed = 0;

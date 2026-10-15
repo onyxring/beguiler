@@ -273,7 +273,7 @@ object panel {
 
 class Load : object {
     int weight = 1;
-    object goal;
+    ref object goal;
 
     bool before() {
         if (action == Examine) {

@@ -45,7 +45,7 @@ enum eShade { red, blue }
 class Token : object {
     Pos at;
     eShade shade;
-    object partner;
+    ref object partner;
 }
 
 object roomA {

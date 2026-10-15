@@ -124,7 +124,7 @@ class Rack : object {
     int bay;
     side facing;
     cell at;
-    Rack peer;
+    ref Rack peer;
     auto load = {
         int _n = 0;
         int operator () { return _n; }

@@ -589,7 +589,7 @@ value class Watt {
 }
 
 class Spark[SPARKS] : object {
-    Lamp origin;
+    ref Lamp origin;
     int charge = 0;
     static int live = 0;
 

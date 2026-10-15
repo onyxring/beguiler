@@ -5,7 +5,7 @@
 #include <array>
 #include <linq>
 #include <string>
-class Stop : object { int toll; Stop next; func<bool, Stop> allows; stringObj notes; void mark() { toll++; } }
+class Stop : object { int toll; ref Stop next; func<bool, Stop> allows; stringObj notes; void mark() { toll++; } }
 bool dear(Stop s) { return s.toll > 1; }
 Stop a { toll = 1; allows = dear; }
 Stop b { toll = 2; allows = dear; }

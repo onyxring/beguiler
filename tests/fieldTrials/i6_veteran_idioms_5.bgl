@@ -78,8 +78,8 @@ array<char> nameBuf[24];
 class Room : object {
     attributes = light;
     stringOrRoutine description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 void roomBText() { print($"Room B. Room A is south. Visits: {g_visits}."); }

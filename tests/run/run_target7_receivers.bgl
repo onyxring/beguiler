@@ -47,7 +47,7 @@ value class Handle {
 }
 array<Handle> handles[2];
 value class Peer {
-    Node _p;
+    ref Node _p;
     Node operator () { return _p; }
     void operator = (Node n) { _p = n; }
 }

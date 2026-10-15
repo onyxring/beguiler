@@ -167,7 +167,7 @@ class La28Letter[4] : object {
     string short_name = "letter";
     name = {.letter, .envelope};
     stringObj address;
-    La28Box dest;
+    ref La28Box dest;
     eLa28Service service = eLa28Service.standard;
     La28Cents paid;
     bool posted = false;

@@ -4239,7 +4239,7 @@ string i6Emitter::staticText(expression* e){
 
 // True when a class-typed global owns an instance: its class is a value class and it has no initializer.
 bool i6Emitter::globalOwnsInstance(variableDeclaration* vd){
-    if(vd == nullptr || vd->isExternal || vd->isInstanceBacking || vd->declaredExpressionValue != nullptr) return false;
+    if(vd == nullptr || vd->isExternal || vd->isInstanceBacking || vd->isRefLocal || vd->declaredExpressionValue != nullptr) return false;
     if(dynamic_cast<arrayDeclaration*>(vd) != nullptr) return false;
     classDef* cls = languageService.findClass(vd->type.name);
     return cls != nullptr && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal && isValueClass(cls);

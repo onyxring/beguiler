@@ -43,7 +43,7 @@ class Inventory : object {
     static int Writes;
     emitter int Slots { 4 }
     int Bias;
-    Inventory Peer;
+    ref Inventory Peer;
 
     int operator [] (int i) {
         if (i < 0 || i >= Slots) return -1;

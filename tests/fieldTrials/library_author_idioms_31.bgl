@@ -76,7 +76,7 @@ class La31Wire : object {
     /// How many spans long it is.
     required inline int spans;
     la31.parts.gauge gauge = la31.parts.gauge.medium;
-    la31.parts.device load;
+    ref la31.parts.device load;
     /// Wires laid so far.
     static int laid = 0;
 
@@ -92,7 +92,7 @@ class La31Device : object {
     /// Current it draws when on.
     int draw = 1;
     bool on = false;
-    La31Wire feed;
+    ref La31Wire feed;
 
     /// What it does when it runs.
     default string effect() { return "hums"; }
@@ -106,7 +106,7 @@ class La31Fan : la31.parts.device {
 
 /// A job to lay or lift a wire; made with new and done away with by delete.
 class La31Job[2] : object {
-    la31.parts.wire wire;
+    ref la31.parts.wire wire;
     bool lift = false;
     int turnsLeft;
     /// Jobs started so far.

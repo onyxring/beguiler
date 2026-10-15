@@ -115,7 +115,7 @@ class Ticket[5] : object {
     eStatus Status;
     Clock Opened;
     Clock Due;
-    SupportHandler Owner;
+    ref SupportHandler Owner;
     int Escalations;
     static int NextId = 100;
     static int Created;
@@ -181,7 +181,7 @@ class Named : object {
 }
 
 class SupportHandler : Named {
-    SupportHandler Next;
+    ref SupportHandler Next;
     array<Ticket> Queue[2];
     int Handled;
     static int Handoffs;
@@ -265,7 +265,7 @@ ManagerHandler managerC { "manager C"; }
 class HelpDesk : object {
     array<Ticket> Tickets[5];
     array<func<void, Ticket>> Listeners[2];
-    SupportHandler Entry;
+    ref SupportHandler Entry;
     int Resolved;
     static int Notifications;
 

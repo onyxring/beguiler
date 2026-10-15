@@ -113,7 +113,7 @@ class La30Tool : object {
     /// A short tag; each tool is given its own.
     const string tag = "?";
     bool broken = false;
-    La30Rack home;
+    ref La30Rack home;
     /// Jobs done with any tool.
     static int jobs = 0;
     /// Tools broken so far.
@@ -199,7 +199,7 @@ class La30Order[2] : object {
     string short_name = "order";
     name = {.order, .ticket};
     stringObj code;
-    La30Tool tool;
+    ref La30Tool tool;
     int steps;
     bool done = false;
     /// Orders opened so far.

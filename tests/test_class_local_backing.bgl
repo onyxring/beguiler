@@ -86,7 +86,7 @@ void main(){
     // Tree-citizen path: locals are bare pointer slots; var-decl-init plain-aliases
     // (matches assignment-statement plain-assign for tree-citizen locals — neither
     // dispatches operator= since there's no per-local backing to target).
-    Room here;
+    ref Room here;
     here = r1;
     here = r2;
     Room there = r1;

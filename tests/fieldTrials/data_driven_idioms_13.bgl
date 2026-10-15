@@ -57,7 +57,7 @@ value class Span {
 class Bin : object {
     inline int code;
     inline string tag;
-    Bin next;
+    ref Bin next;
 }
 
 Bin binA { 10, "red", "bin A"; }

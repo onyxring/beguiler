@@ -109,7 +109,7 @@ object planner { int pattern = 8; }
 
 // D1160: `delete outer.member` in an inline accessor.
 object dock {
-    Token held;
+    ref Token held;
     auto clear = { int _c; int operator () { return _c; } void operator = (int v) { delete outer.held; _c = v; } }
 }
 

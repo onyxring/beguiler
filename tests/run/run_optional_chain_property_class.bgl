@@ -10,7 +10,7 @@ object table { "table"; parent = room; }
 object apple { "apple"; parent = table; }
 object holder(object o) { return o?.parent ?? nowhere; }
 object grand(object o) { return o?.parent.parent ?? nowhere; }
-class Person : object { object dog; }
+class Person : object { ref object dog; }
 object kennel { "kennel"; }
 object rex { "rex"; parent = kennel; }
 Person hugo { "hugo"; dog = rex; }

@@ -10,7 +10,7 @@ class thing : object { }
 thing shirt { }
 
 class rule : object {
-    inline thing matcher;
+    inline ref thing matcher;
     inline int   pri;
     eVerdict run() { return eVerdict.stop; }
 }

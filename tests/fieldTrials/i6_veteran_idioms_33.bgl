@@ -48,7 +48,7 @@ extend extern class object {
 // ---------------------------------------------------------------- globals
 
 array<Valve> pipeline = {valveA, valveB, valveC, valveD};
-Valve lastValve;
+ref Valve lastValve;
 stringObj journal;
 Seal noSeal;
 Seal lastSeal;
@@ -433,8 +433,8 @@ class Valve : object {
         return null;
     }
     int code;
-    Valve next;
-    Valve prev;
+    ref Valve next;
+    ref Valve prev;
     int flow;
     int hits;
     bool awarded;

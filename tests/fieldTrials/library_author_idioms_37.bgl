@@ -164,8 +164,8 @@ class La37Tray : La37Bin {
 /// A ticket for moving pieces; made with new and returned with delete.
 class La37Ticket[2] : object {
     string short_name = "ticket";
-    La37Bin from;
-    La37Bin to;
+    ref La37Bin from;
+    ref La37Bin to;
     La37Pair p;
 
     void create(La37Bin f, La37Bin t) {

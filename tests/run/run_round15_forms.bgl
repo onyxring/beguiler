@@ -86,7 +86,7 @@ object plate {
 object keeper {
     object Fallback = roomA;
     auto Target = {
-        object _o;
+        ref object _o;
         object operator ()           { return _o; }
         void   operator = (object v) { _o = v; }
     }

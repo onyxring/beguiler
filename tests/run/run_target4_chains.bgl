@@ -7,7 +7,7 @@
 #include <linq>
 #include <string>
 class Car : object {
-    Car next;
+    ref Car next;
     int code;
     array<int> loads[4];
     Car after(int n = 1) { Car c = self; while (n > 0 && c != null) { c = c.next; n--; } return c; }
@@ -30,7 +30,7 @@ array<int> all = {1, 2, 3};
 array<int> any = {1, 2, 3};
 class Cart : object {
     int weight = 1;
-    Cart next;
+    ref Cart next;
     stringObj label;
 }
 Cart cartA { weight = 2; label = "red"; }

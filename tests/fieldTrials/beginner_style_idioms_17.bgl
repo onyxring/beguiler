@@ -309,7 +309,7 @@ Bin tray {
 
     eBand mode = eBand.low;
     var held;
-    object top;
+    ref object top;
     int used = 0;
     place here;
 

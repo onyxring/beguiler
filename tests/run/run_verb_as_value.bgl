@@ -8,7 +8,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 verb Wave { grammar = { {.wave} }; void handler() { print("waved"); } }
 verb Clap { grammar = { {.clap} }; void handler() { print("clapped"); } }
-class rule : object { inline verb act; inline int n; }
+class rule : object { inline ref verb act; inline int n; }
 rule r1 = { Wave, 3 };
 rule r2 { act = Clap; n = 4; }
 void main(){

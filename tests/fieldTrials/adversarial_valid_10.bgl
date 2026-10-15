@@ -158,7 +158,7 @@ array<int> spare = { 7, 8, 9 };
 
 class rule : object {
     inline string tag;
-    inline Circuit target;
+    inline ref Circuit target;
     inline func<int, Circuit> measure;
 }
 

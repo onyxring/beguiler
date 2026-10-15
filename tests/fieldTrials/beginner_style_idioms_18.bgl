@@ -140,7 +140,7 @@ class Token[3] : Bin {
     ref Spot cur;
     var tag;
     eBand kind = eBand.low;
-    object home;
+    ref object home;
     array<int> marks[4];
 
     void create(int w, object h) {
@@ -301,7 +301,7 @@ Bin bench {
     array<array<int>> rows = { { 0, 0, 0 }, { 0, 0 }, { 0 } };
     array<string> labels = { "left", "middle", "right" };
     grams load;
-    Token held;
+    ref Token held;
     place here;
     var lastSeen;
 

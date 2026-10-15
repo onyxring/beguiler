@@ -42,7 +42,7 @@ class Card[3] : object, bglAllocated {
     int       serial = 0;
 }
 
-Card held;
+ref Card held;
 int  cardsMade = 0;
 
 object roomA {

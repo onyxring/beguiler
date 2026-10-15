@@ -19,7 +19,7 @@ Crate c1 { key = 8; }
 Crate c2 { key = 2; }
 
 // A base class's fields of its own kind are the subclass's on a subclass.
-class Node : object { int key; selfType next; array<selfType> kids[4]; }
+class Node : object { int key; ref selfType next; array<selfType> kids[4]; }
 class Room2 : Node { int area = 5; }
 Room2 r1 { key = 1; }
 Room2 r2 { key = 2; area = 3; }

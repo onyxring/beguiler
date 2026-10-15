@@ -176,10 +176,10 @@ Plaque plaqueC {
 
 object warden {
     "warden";
-    object holding;
+    ref object holding;
     int handoffs = 0;
     auto charge = {
-        object _held;
+        ref object _held;
         object operator () { return _held; }
         void operator = (object v) {
             _held = v;
@@ -271,7 +271,7 @@ object tinBox {
 class Vault : object {
     int code;
     int tries = 0;
-    object keeper;
+    ref object keeper;
     emitter object keeperOf() { ($self.keeper) }
 
     bool attempt(int guess) {

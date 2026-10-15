@@ -13,7 +13,7 @@ value class Size { int w; int h; Size operator = (Size o) { w = o.w; h = o.h; re
 class Job : object {
     int N;
     Cell Pos;
-    Job Next;
+    ref Job Next;
     array<Cell> Path[3];
     array<Job> Deps[3];
     auto Hits = {
@@ -34,7 +34,7 @@ Job Me() { return jobA; }
 class Box : object {
     int n;
     Size size;
-    Box next;
+    ref Box next;
     Box self2() { return self; }
     Box bump() { n++; return self; }
     Box first() { return self; }

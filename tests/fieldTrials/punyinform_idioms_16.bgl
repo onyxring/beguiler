@@ -98,7 +98,7 @@ object ledger {
     int total = 0;
     int sets = 0;
     int rejects = 0;
-    object holder;
+    ref object holder;
     stringObj note;
 
     auto cap = {
@@ -173,7 +173,7 @@ class Shelf : object {
 }
 
 class Tagged : object {
-    object owner;
+    ref object owner;
 }
 
 class Gadget : Shelf, Tagged {

@@ -49,7 +49,7 @@ object kit
     alias bench = benchA ;
     alias fm    for fmtLeaf ;
 
-    part  best ;                         // a member typed by the object's own alias, named bare
+    ref part  best ;                         // a member typed by the object's own alias, named bare
     grade floor = grade.low ;
     int   asks  = 0 ;
 
@@ -90,7 +90,7 @@ extend class fmtRoot { fmtMid  mid ; }
 
 // ---- globals --------------------------------------------------------------------------------------
 
-kit.part              gLast ;
+ref kit.part              gLast ;
 grade                 gGoal    = grade.high ;            // bare: imported from kit
 kit.flag              gSeen    = kit.flag.oiled ;
 kit.span              gWindow  = kit.span{ lo = 2 ; hi = 9 ; } ;
@@ -441,7 +441,7 @@ alias class Cog for depot.gear { }
 
 class Tag[ TAGS ] : object
 {
-    kit.part owner ;
+    ref kit.part owner ;
     int n = 0 ;
     static int made = 0 ;
     void create ( part p , int k ) { owner = p ; n = k ; made++ ; kit.part.made++ ; }

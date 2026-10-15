@@ -112,7 +112,7 @@ class Bin : object {
     int limit = LIMIT;
     int number = 0;
     bool open = true;
-    Bin bin;
+    ref Bin bin;
     object crib = crib;
     static int total = 0;
     int qty() { return ::qty[slot]; }

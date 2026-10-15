@@ -65,7 +65,7 @@ Thing ironBar    { "iron bar", 6;    name = {.iron, .bar};     parent = roomA; d
 //-- Rule book -----------------------------------------------------------------
 
 class Rule : object {
-    inline verb act;
+    inline ref verb act;
     inline object | func<bool, object> match;
     inline func<eVerdict, object> body;
     int fired = 0;

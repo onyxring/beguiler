@@ -210,8 +210,8 @@ extend extern class array {
 
 class Room : object {
     string description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 Room roomA {

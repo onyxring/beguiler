@@ -1117,7 +1117,7 @@ void bglParser::recordObjectMemberInits(){
     // need the same once-only init (a local's per-call reset leaves a stringObj member's buffer alone).
     set<string> backingsDone;
     auto sweepBacking = [&](variableDeclaration* vd){
-        if(vd == nullptr || vd->isExternal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) return;
+        if(vd == nullptr || vd->isExternal || vd->isRefLocal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) return;
         classDef* cls = languageService.findClass(vd->type.name);
         if(cls == nullptr || !isValueClass(cls) || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;
         // A file-scope variable of a value class owns `_bglGlobal_<name>`, which the emitter makes.

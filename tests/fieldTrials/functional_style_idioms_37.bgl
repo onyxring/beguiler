@@ -89,7 +89,7 @@ value class Gauge {
 
 // Reads as the node it holds.
 value class Peer {
-    Node _p;
+    ref Node _p;
     Node operator ()         { return _p; }
     void operator = (Node n) { _p = n; }
 }
@@ -113,7 +113,7 @@ class Node : object {
     string label;
     char tag = '.';
     int load;
-    Node peer;
+    ref Node peer;
     array<Node> links[MAXLINKS];
     array<int> loads[MAXLINKS];
     Pt at;
@@ -174,7 +174,7 @@ class Relay : Node {
 }
 
 class Token[3] : object {
-    Node target;
+    ref Node target;
     int qty;
 
     void create(Node n, int q = 1) {
@@ -208,7 +208,7 @@ array<Pt> marks[4];
 array<Handle> handles[3];
 array<int> sharedLog[8];
 array<int> otherLog[8];
-Token held;
+ref Token held;
 
 //-- Pure helpers -----------------------------------------------------------------------------------
 

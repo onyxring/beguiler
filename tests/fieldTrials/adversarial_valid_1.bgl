@@ -132,7 +132,7 @@ extend reading {
 class Chip[3] {
     float weight;
     reading tag;
-    Chip next;
+    ref Chip next;
 
     void create(float w) {
         weight = w;
@@ -196,7 +196,7 @@ object dial {
     float scale = 1.5;
     int turns = 0;
     reading last = "none";
-    Chip held;
+    ref Chip held;
 
     auto level = {
         float _raw = 0.0;

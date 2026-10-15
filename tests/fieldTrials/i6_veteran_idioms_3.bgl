@@ -85,7 +85,7 @@ extern int CountLit();
 
 int weightOf(object o) {
     int t = 0;
-    object x;
+    ref object x;
     for (x in o.children) t = t + x.weight;
     return t;
 }

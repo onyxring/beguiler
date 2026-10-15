@@ -60,7 +60,7 @@ extend post {
 
 Grams weighedTotal;
 array<Grams> binLoad[NBINS];
-post.parcel lastWeighed;
+ref post.parcel lastWeighed;
 post.zone lastZone = post.zone.inland;
 array<Parcel> booked = {parcelRed, parcelBlue, parcelGreen};
 

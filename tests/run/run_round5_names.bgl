@@ -31,7 +31,7 @@ class Item : object { int Rarity = 3; }
 Item rock { }
 class Node : object {
     int Val;
-    Node Next;
+    ref Node Next;
     void Ping() { print(Val); }
     void PingNext() { Next.Ping(); }
     void PingMaybe() { Next?.Ping(); }

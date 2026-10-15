@@ -57,7 +57,7 @@ Material crate  { "crate";  name = {.crate};  label = "crate";  grade = eGrade.p
 
 class Recipe : object {
     string label;
-    Material output;
+    ref Material output;
     int yield = 1;
     array<Material> inputs[3];
     array<int> amounts[3];
@@ -216,7 +216,7 @@ int largestRun(Recipe r) {
 }
 
 value class Shortfall {
-    Material what;
+    ref Material what;
     int need = 0;
 
     Shortfall operator = (Shortfall o) {

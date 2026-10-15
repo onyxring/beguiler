@@ -23,7 +23,7 @@ int D() { int entries = 7; return entries + ::entries; }
 int Total() { return 100; }
 object gauge {
     int high = 9;
-    Pump best;
+    ref Pump best;
     int Above() {
         int high = 1;
         return pumps.filter((Pump p) => p.flow > high).count();
@@ -47,7 +47,7 @@ object gauge {
 }
 object meter {
     int high = 4;
-    Pump level;
+    ref Pump level;
     int Count() { return pumps.filter((Pump level) => level.flow > high).count(); }
 }
 void main() {

@@ -218,7 +218,7 @@ void bumpRaw(ref Tally t, int by) {
 // ===== TAGS (inline members) =====
 class Tag : object {
     inline string label;
-    inline object owner;
+    inline ref object owner;
 
     object holder() {
         return owner ?? player;

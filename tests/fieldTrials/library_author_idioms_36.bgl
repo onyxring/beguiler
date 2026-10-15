@@ -132,7 +132,7 @@ alias class La36Shelf for object {
 /// A slip for moving some pieces; made with new and done away with by delete.
 class La36Slip[3] : object {
     string short_name = "slip";
-    la36.kit.item item;
+    ref la36.kit.item item;
     la36.kit.qty qty;
     la36.kit.side side = la36.kit.side.fore;
 
@@ -150,7 +150,7 @@ class La36Slip[3] : object {
 /// Why something could not be done; thrown, caught and deleted.
 class La36Fault[2] : object {
     string short_name = "fault";
-    la36.kit.item at;
+    ref la36.kit.item at;
     string why;
 
     void create(la36.kit.item where, string reason) {

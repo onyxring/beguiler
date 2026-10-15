@@ -73,7 +73,7 @@ class pane[3] {
     string title;
     bool   boxed;
     cell   at;
-    textGridWindow win;
+    ref textGridWindow win;
     func<void, textGridWindow> decorate = null;
 
     void create(string t, int rows, int col, int row, bool box) {

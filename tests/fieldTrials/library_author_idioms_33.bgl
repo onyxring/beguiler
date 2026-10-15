@@ -426,7 +426,7 @@ extend class La33Bin {
 
 /// A copy slip for a bin; made with new.
 class La33Slip[LA33_SLIPS] : object {
-    La33Bin what;
+    ref La33Bin what;
     int copies;
     /// Slips issued so far.
     static int issued = 0;

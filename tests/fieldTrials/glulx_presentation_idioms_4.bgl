@@ -110,7 +110,7 @@ bool addPane() {
     for (int i = 0; i < panes.size; i++) if (panes[i] == null) { slot = i; break; }
     if (slot < 0) return false;
     textBufferWindow parent = slot > 0 && panes[slot - 1] != null ? panes[slot - 1] : null;
-    textBufferWindow w;
+    ref textBufferWindow w;
     if (parent != null) w = parent.splitDownBuffer(2, fixed, noBorder);
     else w = bgl.ui.mainWin.splitLeftBuffer(10, proportional, border, styles: paneLook);
     if (w == null) { refused++; return false; }

@@ -238,7 +238,7 @@ bool GamePreRoutine() {
 verb Tally {
     grammar = {.tally};
     void handler() {
-        object o;
+        ref object o;
         int n;
         n = 0;
         for (o = child(location); o; o = sibling(o)) n++;
@@ -280,7 +280,7 @@ verb Rouse {
 verb Unload {
     grammar = {{.unload, NOUN}};
     void handler() {
-        object o;
+        ref object o;
         if (noun.hasnt(container)) { print("That holds nothing.^"); return; }
         if (noun.hasnt(open)) { print("It is closed.^"); return; }
         for (o in noun.children) o.parent = location;

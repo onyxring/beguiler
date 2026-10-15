@@ -3,7 +3,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 #include <string>
-class Node : object { int v; Node next; }
+class Node : object { int v; ref Node next; }
 Node a { v = 1; }
 array<stringObj> labels[4];
 void main() {

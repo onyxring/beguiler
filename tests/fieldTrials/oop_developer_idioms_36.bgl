@@ -161,7 +161,7 @@ class Job : object {
     array<int> Marks[4];
     array<Job> Deps[3];
     array<Cell> Path[3];
-    Job Next;
+    ref Job Next;
     func<int, int> Weigh;
     stringObj Memo;
     static int Visits;
@@ -234,7 +234,7 @@ class Job : object {
 
 class Epic : Job {
     array<string> Notes[3];
-    Job Lead;
+    ref Job Lead;
     hide Effort.operator = (int);
 
     replace string Kind() { return "epic"; }
@@ -289,7 +289,7 @@ object Board {
 //-- The builder -----------------------------------------------------------------------------------------------
 
 class Draft[3] : object {
-    Job Target;
+    ref Job Target;
     stringObj Text;
     int Steps;
     static int Live;
@@ -329,7 +329,7 @@ array<Cell> Spots[3];
 array<array<Job>> Grid = { {jobA, jobB}, {jobC} };
 func<Job, int> Pick = (int i) => Board.All[i];
 func<Cell, int> CellAt = (int i) => Board.At(i).Pos;
-Draft Pending;
+ref Draft Pending;
 
 void Shift(ref Cell c, int by) {
     c.X += by;

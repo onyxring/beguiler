@@ -4,7 +4,7 @@
 // EXPECT_OUTPUT: 7 7 1 1 6 9 9
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-class Tray { int code; Tray spare; }
+class Tray { int code; ref Tray spare; }
 class SealedTray : Tray { int seal = 3; }
 SealedTray trayD { int extra = 7; code = 4; }
 Tray trayA { code = 1; spare = trayD; }
@@ -20,7 +20,7 @@ int fresh() {
     return t.seen.length;
 }
 class Stop {
-    Stop next;
+    ref Stop next;
     auto load = {
         int _l;
         int operator () { return _l; }
@@ -29,7 +29,7 @@ class Stop {
 }
 Stop stopA { }
 Stop stopB { }
-object route { Stop head; }
+object route { ref Stop head; }
 #using route;
 void main() {
     bglInit();

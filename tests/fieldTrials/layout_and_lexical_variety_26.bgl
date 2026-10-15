@@ -408,7 +408,7 @@ verb Scoop
     } ;
     void handler ()
     {
-        Jar j ;
+        ref Jar j ;
         int asked = 0 ;
         if (second == null) j = (Jar) noun ;
         else

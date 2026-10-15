@@ -111,9 +111,9 @@ class Tag[3] : object {
 // --- crates -----------------------------------------------------------------------------------------
 
 class Crate : object {
-    Crate under;
-    Crate inner;
-    Tag tag;
+    ref Crate under;
+    ref Crate inner;
+    ref Tag tag;
     string label;
     int code;
     Mark mark;

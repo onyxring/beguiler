@@ -40,7 +40,7 @@ primitive class grams : int {
 value class Spot {
     int row;
     int col;
-    object owner;
+    ref object owner;
 
     Spot operator = (Spot o) {
         row = o.row;

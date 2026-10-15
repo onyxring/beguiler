@@ -56,7 +56,7 @@ value class La13Cell {
 /// A label of up to eight characters, with a link to the next.
 class La13Label : object {
     array<char> text = "--------";
-    La13Label next;
+    ref La13Label next;
 
     /// One character of the label; a dot past its end.
     char operator [] (int i) {

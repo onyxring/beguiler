@@ -246,7 +246,7 @@ class La16Rack : object {
     ref La16Qty pick;
     La16Qty base;
     stringObj line;
-    La16Crate owner;
+    ref La16Crate owner;
 
     /// A slot scaled by ten.
     emitter int scaled(int v) { ($v * 10) }

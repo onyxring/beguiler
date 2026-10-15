@@ -77,7 +77,7 @@ object rack { "rack"; parent = roomA; name = .rack; attributes = {container, ope
 class Relay : object {
     inline instanceName;
     inline int gain;
-    Relay next;
+    ref Relay next;
     relayState state = idle;
     lineFlag flags;
     static int linked = 0;

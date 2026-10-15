@@ -195,7 +195,7 @@ CancelledState stateCancelled { "cancelled state", Cancelled; }
 class Order : Auditable, Taggable {
     inline instanceName;
     inline int Id;
-    OrderState State;
+    ref OrderState State;
     array<LineItem> Lines[4];
     Money Paid;
     static int Transitions;

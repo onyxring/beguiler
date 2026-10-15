@@ -88,7 +88,7 @@ int nReadings;
 
 int WeighTree(object o) {
     int n = 0;
-    object x;
+    ref object x;
     if (o.is(Weighted)) n = ((Weighted)o).grams;
     for (x = o.child; x; x = x.sibling) n = n + WeighTree(x);
     return n;

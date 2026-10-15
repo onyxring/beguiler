@@ -185,7 +185,7 @@ object calendar
 /// One line of the ledger.
 value class Loan
 {
-    Book book ;
+    ref Book book ;
     int  due ;
     Loan operator = ( Loan o ) { book = o.book ; due = o.due ; return self ; }
 }

@@ -134,7 +134,7 @@ ReferenceBook bookD { "book D", 14; Author = "Bell"; }
 class Member : object {
     inline instanceName;
     inline eTier Tier;
-    FeePolicy Policy;
+    ref FeePolicy Policy;
     array<Loan> Loans[3];
     Money Fines;
     auto Strikes = {
@@ -168,8 +168,8 @@ array<Member> AllMembers = { memberA, memberB, memberC };
 //-- Loans and errors ----------------------------------------------------------------------------------------
 
 class Loan[4] : object {
-    Book Item;
-    Member Borrower;
+    ref Book Item;
+    ref Member Borrower;
     int Due;
     static int Opened;
     static int Closed;
@@ -192,7 +192,7 @@ class Loan[4] : object {
 }
 
 class LendingError[2] : object {
-    Book Item;
+    ref Book Item;
     string Reason;
     static int Raised;
 

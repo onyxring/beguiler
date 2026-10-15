@@ -78,8 +78,8 @@ class Stop : object {
     string code;
     int toll;
     int visits;
-    Stop next;
-    Stop branch;
+    ref Stop next;
+    ref Stop branch;
     func<bool, Stop> allows;
     stringObj notes;
 
@@ -154,7 +154,7 @@ Hub  mainHub   { "hub stop";   name = {.hub, .stop};                   code = "H
 
 array<Stop> line = {mainHub, alder, birch, cedar, dock, elm, fern};
 array<Stop> slots[6];
-Stop cursor;
+ref Stop cursor;
 
 //-- Pure helpers -----------------------------------------------------------------------------------
 

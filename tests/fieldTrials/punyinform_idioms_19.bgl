@@ -333,7 +333,7 @@ object clerk {
     name = {.clerk};
     description = "A clerk.";
     int ticks = 0;
-    object lastGift;
+    ref object lastGift;
 
     bool life() {
         switch (action) {

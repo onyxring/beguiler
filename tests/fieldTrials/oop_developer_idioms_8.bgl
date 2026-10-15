@@ -70,8 +70,8 @@ int Bisect(Interval range, int target, int depth, ref Interval found) {
 
 class Node : object {
     int Value;
-    Node Left;
-    Node Right;
+    ref Node Left;
+    ref Node Right;
 
     int Collect(ref Interval acc) {
         Interval before = acc;

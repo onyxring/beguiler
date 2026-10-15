@@ -4,12 +4,12 @@
 // a void lambda whose body is a `?.` call, and `.child` of an object named `box`.
 // EXPECT_OUTPUT: 3 3 3 6 7 9 2 3 3 y 5 7 7 5 6 4
 #beguilerSettings { target = z5; informName = "none"; }
-class N : object { N next; int v; void bump() { v++; } }
+class N : object { ref N next; int v; void bump() { v++; } }
 N a { v = 1; }
 N b { v = 2; }
 object ns {
     alias node for N;
-    N head;
+    ref N head;
     int sum() {
         int t = 0;
         for (node s = head; s != null; s = s.next) t += s.v;
@@ -22,7 +22,7 @@ int gsum() {
     for (node s = ns.head; s != null; s = s.next) t += s.v;
     return t;
 }
-class Nd : object { Nd next; object thing; int v; Nd self2() { return self; } void bump() { v++; } }
+class Nd : object { Nd next; ref object thing; int v; Nd self2() { return self; } void bump() { v++; } }
 object crate { }
 Nd n1 { v = 3; parent = crate; }
 object box { }
@@ -31,7 +31,7 @@ Nd p { v = 3; }
 Nd q { v = 5; }
 Nd r { v = 7; }
 object ns2 {
-    Nd head2;
+    ref Nd head2;
     void poke() { head2?.next?.bump(); }
 }
 void main() {

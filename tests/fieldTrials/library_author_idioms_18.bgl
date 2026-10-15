@@ -404,7 +404,7 @@ extend shelfA {
     La18Cents fee = 5;
     /// Where the shelf points; a cleared spot reads as Room A. Each setting trails 1 in Room A, else 2, or 0 when cleared.
     auto spot = {
-        object _at;
+        ref object _at;
         La18Cents _paid;
         object operator () { return _at ?? roomA; }
         void operator = (object o) {

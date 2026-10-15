@@ -144,7 +144,7 @@ La17Shelf shelfA {
     stringObj note;
     La17Qty held;
     var lastIn;
-    object owner;
+    ref object owner;
     int tier = 0;
 
     /// The last count filed; counts how often it was set and which marks it passed.

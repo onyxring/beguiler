@@ -469,7 +469,7 @@ class Panel : Device {
     array<Reading> marks[NMARKS];
     int nmarks;
     array<int> trail[NTRAIL];
-    Panel feed;
+    ref Panel feed;
     bool awarded;
     void Label() {
         print($"panel {code}");

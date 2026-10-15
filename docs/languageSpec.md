@@ -2041,16 +2041,16 @@ auto r = myRoom;     // Room, the object's class
 **Syntax**
 
 ```syntax
-ref ⟨type⟩ ⟨name⟩ := ⟨expression⟩ ;    // local: bound at declaration
-ref ⟨type⟩ ⟨name⟩ ;                    // member: starts empty
+ref ⟨type⟩ ⟨name⟩ := ⟨expression⟩ ;    // bound at declaration
+ref ⟨type⟩ ⟨name⟩ ;                    // starts empty
 ⟨slot⟩ := ⟨expression⟩ ;               // rebind
 ```
 
 **Description**
 
 A slot of a value class (§8.2.7) is either an **owning slot** or a **reference slot**. A slot of a
-reference class always refers to an instance, and a slot of a primitive type holds the value itself
-(§2.10.3); neither takes `ref`.
+reference class refers to an instance, as a `ref` slot does. A slot of a primitive type holds the value
+itself (§2.10.3) and can't take `ref`.
 
 **Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
 holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
@@ -2059,10 +2059,9 @@ copy operator (§9.1). A slot with an initializer starts as a copy of it.
 
 **Reference slots.** A slot declared `ref` owns nothing; it names an instance owned elsewhere. It is
 empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
-valid on local variable declarations, on parameters, and on class and object members, when their type
-is a value class or a type that manages its own storage (`stringObj`, `array<T>`); on a
-primitive type, a reference class, or an `extern` or `const` declaration it is a compile-time error. A
-`ref` parameter is bound to its argument. A member of a value class whose type is that class must be
+valid on file-scope and local variables, on parameters, and on class and object members, of any class
+type; on a primitive type, or on an `extern` or `const` declaration, it is a compile-time error. A
+`ref` parameter is bound to its argument. A slot that may be empty is declared `ref`. A member of a value class whose type is that class must be
 `ref`: owning one would own another without end.
 
 **Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches

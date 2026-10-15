@@ -1402,8 +1402,6 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // already real I6 objects with operator= dispatch. Combining with `const`, `extern`,
     // or other qualifiers doesn't make sense.
     if(isRef){
-        if(func == nullptr)
-            parsingError("'ref' is only valid on local variable declarations");
         if(isConst)
             parsingError("'ref' cannot be combined with 'const'");
         if(isExternal)

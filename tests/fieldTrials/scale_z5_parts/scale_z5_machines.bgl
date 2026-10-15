@@ -116,7 +116,7 @@ object roomM {
     "Room M";
     description = "Room M. The grid is south.";
     attributes = {light};
-    object s_to;
+    ref object s_to;
 }
 
 Machine machine1  { num = 1;  parent = roomM; }

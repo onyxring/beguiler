@@ -18,7 +18,7 @@ Room kitchen { visits = 7; }
 Window globalA;
 Window globalB;
 Window globalC = globalB;   // an initialized global holds what its initializer names
-Room here;                  // a reference: empty until assigned
+ref Room here;                  // a reference: empty until assigned
 array<Window> wins = {globalA};
 
 void main() {

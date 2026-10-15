@@ -32,7 +32,7 @@ class pooled[4] : bglAllocated { int v = 0; }
 
 object spare  : inventory { arrows = 99; }
 object second : inventory { arrows = 42; }
-object holder { ref inventory pack; pooled slot; }   // both empty (pooled is a reference class)
+object holder { ref inventory pack; ref pooled slot; }   // both empty (pooled is a reference class)
 object owner  { inventory pack; }          // owns an instance
 
 void main(){

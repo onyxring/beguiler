@@ -126,8 +126,8 @@ value class Counter {
 class Node : object {
     string Title;
     string Nick;
-    Node Next;
-    Node Up;
+    ref Node Next;
+    ref Node Up;
     array<Node> Kids[4];
     array<int> Marks[4];
     array<Cell> Path[3];
@@ -240,7 +240,7 @@ object Reg {
     int Picks;
     int Makes;
     auto Cursor = {
-        Node _n;
+        ref Node _n;
         Node operator () { return _n; }
         void operator = (Node v) { _n = v; }
         string Peek() { return _n?.Next?.Title ?? "end"; }
@@ -280,7 +280,7 @@ object Reg {
 
 class Scratch[2] : object {
     stringObj Text;
-    Node Owner;
+    ref Node Owner;
     static int Live;
 
     void create(Node n) {
@@ -302,8 +302,8 @@ class Scratch[2] : object {
 
 //-- Globals and helpers ---------------------------------------------------------------------------------------
 
-Node Hold;
-Node Nobody;
+ref Node Hold;
+ref Node Nobody;
 func<Node, string> Lookup = (string t) => Reg.Get(t);
 
 func<string, Node> Summary = (Node n) => n?.Display() ?? "none";

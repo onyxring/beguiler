@@ -73,8 +73,8 @@ value class La35Span {
 
 /// A stop on a route.
 class La35Stop : object {
-    La35Stop next;
-    La35Stop back;
+    ref La35Stop next;
+    ref La35Stop back;
     string note;
     int hits;
     eLa35Kind kind = eLa35Kind.plain;
@@ -161,7 +161,7 @@ class La35Gate : La35Stop {
 
 /// A ticket for a stop, made with new: punched as it is used.
 class La35Ticket[3] : object {
-    La35Stop at;
+    ref La35Stop at;
     stringObj memo;
     int punches;
     static int live = 0;
@@ -193,14 +193,14 @@ object la35Route {
     alias stop for La35Stop;
     alias gate for La35Gate;
     alias kind for eLa35Kind;
-    La35Stop head;
-    La35Stop spare;
+    ref La35Stop head;
+    ref La35Stop spare;
     array<La35Stop> lineup[4];
     int lookups = 0;
     int fallbacks = 0;
     int moves = 0;
     auto cursor = {
-        La35Stop _c;
+        ref La35Stop _c;
         La35Stop operator () { return _c; }
         void operator = (La35Stop s) {
             _c = s ?? outer.spare;
@@ -260,7 +260,7 @@ class La35Info : verb {
 }
 
 /// A ticket kept between turns.
-La35Ticket la35Kept;
+ref La35Ticket la35Kept;
 /// The stops in the order they were made.
 array<La35Stop> la35Stops[6];
 /// Steps one stop on; a func<> whose result is chained.

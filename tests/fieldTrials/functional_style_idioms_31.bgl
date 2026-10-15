@@ -94,7 +94,7 @@ class Bin : object {
         int  operator ()        { return _raw; }
         void operator = (int v) { _raw = v > 9 ? 9 : v; }
     };
-    Bin neighbour;
+    ref Bin neighbour;
     func<bool, Part> accepts;
 
     Bin note(int code) {

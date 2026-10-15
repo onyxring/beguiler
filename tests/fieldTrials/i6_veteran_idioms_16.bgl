@@ -288,7 +288,7 @@ class Crate[3] : Box, Stackable {
     }
 }
 
-Crate held;
+ref Crate held;
 
 // ---------------------------------------------------------------- verbs: ledger
 

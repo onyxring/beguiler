@@ -83,8 +83,8 @@ object sump asI6 pit {                  // Beguile says sump; Inform 6 says pit
     attributes = {static};
     int level;                          // the highest the water has stood; like the global
     int pours;
-    Valve valve;                        // a member named like its class
-    Pump pump;                          // the pump that drew on it last; likewise
+    ref Valve valve;                        // a member named like its class
+    ref Pump pump;                          // the pump that drew on it last; likewise
     int Gauge() {                       // like the object and the emitter
         return ::gauge.level - ::level;
     }

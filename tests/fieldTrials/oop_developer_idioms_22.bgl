@@ -188,8 +188,8 @@ GuestTeam teamG { "team G", "GST"; }
 //-- Fixtures --------------------------------------------------------------------------------------------------
 
 value class Fixture {
-    Team HomeRef;
-    Team AwayRef;
+    ref Team HomeRef;
+    ref Team AwayRef;
     int HomeGoals;
     int AwayGoals;
     bool Played;

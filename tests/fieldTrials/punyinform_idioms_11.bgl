@@ -44,8 +44,8 @@ enum eTier { low = 1, mid, high }
 class Room : object {
     attributeList attributes = {light};
     string description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 Room roomA {
@@ -213,7 +213,7 @@ class Ticket[3] : object {
 class Vault : object {
     int code = 0;
     int tries = 0;
-    object keeper;
+    ref object keeper;
     emitter bool isLocked() { ($self.code ~= 0) }
     emitter object keeperOf() { ($self.keeper) }
 
@@ -421,7 +421,7 @@ extend lamp {
 
 class Link : object {
     inline int value;
-    inline Link next;
+    inline ref Link next;
 }
 
 Link linkC { 3, null, "link C"; }

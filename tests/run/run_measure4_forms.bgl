@@ -16,7 +16,7 @@ value class Tally { int N; Tally operator = (Tally o) { N = o.N; return self; } 
 class Team : object { string label = "team A"; Tally Wins; }
 Team teamA { }
 value class Pair {
-    Team Side;
+    ref Team Side;
     int Score;
     Pair operator = (Pair o) { Side = o.Side; Score = o.Score; return self; }
 }

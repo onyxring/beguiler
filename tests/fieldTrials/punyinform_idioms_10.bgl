@@ -77,8 +77,8 @@ Pair makePair(int a, int b) {
 class Room : object {
     attributeList attributes = {light};
     string description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 class Fixture : object {
@@ -102,7 +102,7 @@ class Crate : object {
 }
 
 class Plaque : object {
-    inline object linkTo;
+    inline ref object linkTo;
     inline string title;
     required inline array<dictionaryWord> words;
 }

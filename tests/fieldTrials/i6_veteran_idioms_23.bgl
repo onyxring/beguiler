@@ -104,8 +104,8 @@ void CheckMark(Tank t) {
 }
 
 class Valve : object {
-    Tank src;
-    Tank dst;
+    ref Tank src;
+    ref Tank dst;
     bool stalled;
 
     void description() {
@@ -243,7 +243,7 @@ object bucket {
         else print($"A tin bucket holding {units} measures of water.^");
     }
     bool before() {
-        Tank t;
+        ref Tank t;
         switch (action) {
             case Fill:
                 if (units > 0) rtrue("It is already full.^");

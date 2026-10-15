@@ -5,7 +5,7 @@
 // → a nested inline object. See §6.2.1.
 
 class menu : object {
-    inline object linkTo;                 // object-ref positional slot
+    inline ref object linkTo;                 // object-ref positional slot
     inline string title;                  // scalar positional slot
     inline array<dictionaryWord> words[3];   // `inline array<>` member — a positional slot too
 }
@@ -24,7 +24,7 @@ menu{ title = "lonely"; };
 // nested INLINE OBJECT as an object-typed field value (positional first, then a named nested array).
 // `w.head` reads the member at run time — an inline member is storage that construction fills, not
 // a compile-time name for the object it was filled with, and it can be reassigned.
-class wrapper : object { inline menu head; }
+class wrapper : object { inline ref menu head; }
 wrapper w = { { root, "nested", {.x} } };
 
 void main() {

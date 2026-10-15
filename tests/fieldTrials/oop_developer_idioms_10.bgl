@@ -145,9 +145,9 @@ class Command[1] : object {
 }
 
 class MoveCmd[4] : Command {
-    object Target;
-    object From;
-    object To;
+    ref object Target;
+    ref object From;
+    ref object To;
     void create(object t, object dest) { Target = t; From = t.parent; To = dest; }
     string Title() { return "move"; }
     bool Do() {
@@ -162,8 +162,8 @@ class MoveCmd[4] : Command {
 }
 
 class GrabCmd[2] : Command {
-    object Target;
-    object From;
+    ref object Target;
+    ref object From;
     void create(object t) { Target = t; From = t.parent; }
     string Title() { return "grab"; }
     bool Do() {
@@ -177,7 +177,7 @@ class GrabCmd[2] : Command {
 }
 
 class FlagCmd[3] : Command {
-    object Target;
+    ref object Target;
     bool Had;
     void create(object t) { Target = t; Had = t.has(marked); }
     string Title() { return Had ? "unflag" : "flag"; }

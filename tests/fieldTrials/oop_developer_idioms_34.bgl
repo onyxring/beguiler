@@ -90,7 +90,7 @@ class CtPart : object {
     string Label;
     Catalog.Items.Grade Quality = Catalog.Items.Grade.Common;
     Catalog.Geo.Offset Pos;
-    Catalog.Items.Bin Home;
+    ref Catalog.Items.Bin Home;
 
     static int Made = 0;
     static Catalog.Items.Grade Best = Catalog.Items.Grade.Common;

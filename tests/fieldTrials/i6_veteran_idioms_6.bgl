@@ -57,13 +57,13 @@ enum eGrade { poor = 1, fair, good, fine = 10 }
 
 int tally;                // bumped by the stamp through ::tally
 int g_depth;              // depth the last search gave up at
-object lastFound;         // null until a search succeeds
+ref object lastFound;         // null until a search succeeds
 
 class Room : object {
     attributes = {light, proper};
     string description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 Room roomA {

@@ -468,7 +468,7 @@ value class Reading
 
 class Token[ POOL ] : object
 {
-    Jar owner ;
+    ref Jar owner ;
     int grams = 0 ;
     static int issued   = 0 ;
     static int returned = 0 ;

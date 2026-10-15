@@ -117,7 +117,7 @@ void CheckChange() {
 // ---------------------------------------------------------------- ropes
 
 class Rope : object {
-    Bell bell;
+    ref Bell bell;
     dictionaryWord tone;
     bool short_name() {
         print($"rope {bell.number}");

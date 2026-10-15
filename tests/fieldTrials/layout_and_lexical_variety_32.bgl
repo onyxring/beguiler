@@ -50,7 +50,7 @@ Charge      gTotal ;
 Charge      gSeed = Charge{ amps = 3 ; } ;
 array<Charge>
     readings[ SLOTS ] ;
-kit.lamp    gPicked ;
+ref kit.lamp    gPicked ;
 kit.shade   gShade = kit.shade.warm ;
 INT         gSteps = STEPS ;
 array<kit.lamp>

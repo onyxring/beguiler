@@ -122,8 +122,8 @@ Hub hubE { "Hub E"; Id = 4; Code = "E"; }
 array<Hub> AllHubs = { hubA, hubB, hubC, hubD, hubE };
 
 class Lane[8] : object {
-    Hub From;
-    Hub To;
+    ref Hub From;
+    ref Hub To;
     int Miles;
     bool Open = true;
 
@@ -227,8 +227,8 @@ class Parcel[6] : object {
     string Recipient;
     int Grams;
     eService Service = eService.Standard;
-    Hub Origin;
-    Hub Destination;
+    ref Hub Origin;
+    ref Hub Destination;
     int Miles;
     Money Charge;
     bool Delivered;
@@ -288,7 +288,7 @@ class PerMileRate[1] : PriceRule {
 }
 
 class RuleDecorator : PriceRule {
-    PriceRule Inner;
+    ref PriceRule Inner;
 
     Money Price(Parcel p) { return Inner.Price(p) + Extra(p); }
 
@@ -340,8 +340,8 @@ class ParcelBuilder : object {
     string Recipient;
     int Grams;
     eService Service;
-    Hub Origin;
-    Hub Destination;
+    ref Hub Origin;
+    ref Hub Destination;
 
     selfType Reset() {
         Recipient = null;
@@ -380,7 +380,7 @@ ParcelBuilder builder { }
 class Depot : object {
     array<Parcel> Queue[6];
     array<func<void, Parcel>> Listeners[2];
-    PriceRule Pricing;
+    ref PriceRule Pricing;
     Money Takings;
     int Dispatched;
 

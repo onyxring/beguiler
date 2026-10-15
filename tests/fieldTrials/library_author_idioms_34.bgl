@@ -401,7 +401,7 @@ value class La34Caption {
 
 /// The panel a panel leads to, counting how often it was changed.
 value class La34Link {
-    La34Panel _to;
+    ref La34Panel _to;
     int _hops;
 
     La34Panel operator () { return _to; }

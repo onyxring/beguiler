@@ -83,7 +83,7 @@ class menuPane[2] {
     array<string> rows[MAX_ROWS];
     array<choice> picks[MAX_ROWS];
     rowIndex cursor;
-    textGridWindow win;
+    ref textGridWindow win;
 
     void create(string t, int lines, deco look = HEADING) {
         title = t;

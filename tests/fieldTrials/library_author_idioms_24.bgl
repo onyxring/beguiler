@@ -156,7 +156,7 @@ class La24Vessel : object {
 /// A paper tag stuck to a vessel; made with new and handed back with delete.
 class La24Tag[3] : object {
     string text;
-    La24Vessel on;
+    ref La24Vessel on;
     /// Tags written so far.
     static int made = 0;
     /// Tags peeled so far.

@@ -56,7 +56,7 @@ union Key = string | object;
 class Token[4] : object {
     int code;
     int depth;
-    Token next;
+    ref Token next;
     void create(int c, int d) { code = c; depth = d; }
 }
 
@@ -106,7 +106,7 @@ Board boardA {
     var last;
     band kept;
     ref Span held;
-    Token head;
+    ref Token head;
     int tokens = 0;
 
     auto level = {
@@ -235,7 +235,7 @@ Board boardA {
 // Ledgers: a positional width, a link to the next ledger, and static step tables.
 class Ledger : object {
     inline int width;
-    Ledger link;
+    ref Ledger link;
     ref band window;
     static int audits = 0;
     static array<array<int>> steps = { {1, 2}, {3, 5, 8}, {4} };

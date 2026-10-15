@@ -21,7 +21,7 @@ int la6Flips = 0;
 bool la6IsCoin() { return noun.is(la6Coin); }
 
 /// The coin kept out of reach, set by the consumer.
-object la6Vault;
+ref object la6Vault;
 
 /// Scope: what is in reach, and the vault coin besides.
 bool la6VaultScope() {

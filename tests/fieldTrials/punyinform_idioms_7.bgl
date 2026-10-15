@@ -76,8 +76,8 @@ primitive class grams {
 
 alias class place for object {
     string description;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
 }
 
 value class Dial {

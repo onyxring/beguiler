@@ -89,7 +89,7 @@ class TkTicket : object {
     string Title;
     Company.Support.Priority Prio = Company.Support.Priority.Normal;
     Company.Support.State Status = eTkState.Active;
-    Company.Support.Desk Owner;
+    ref Company.Support.Desk Owner;
 
     default string Kind() { return "ticket"; }
     default Company.Billing.Money Quote() { return Company.Billing.Rate(Prio); }
@@ -270,7 +270,7 @@ extend Company {
 
 value class TkInvoice {
     Company.Billing.Money Amount;
-    Company.Support.Ticket Subject;
+    ref Company.Support.Ticket Subject;
 
     TkInvoice operator = (TkInvoice o) {
         Amount = o.Amount;

@@ -33,7 +33,7 @@ class Node : object {
     string label;
     int rank;
     int group;
-    Node next;
+    ref Node next;
     string note;
     literal func<bool, Node> onPush;     // fired from before(); null = no handler
     literal func<void, Node> onTake;     // fired from after()

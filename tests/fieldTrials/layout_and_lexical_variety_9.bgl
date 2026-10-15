@@ -165,7 +165,7 @@ verb Interop
 class Meter : object
 {
     int units = 0;
-    Meter next;
+    ref Meter next;
     int operator () { return units * 10; }                       // implicit
     explicit string operator () { return "a meter"; }            // only under a cast
     eBool operator ?= ( int v ) { return units - v <= 1 && v - units <= 1; }

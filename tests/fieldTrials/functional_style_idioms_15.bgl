@@ -38,7 +38,7 @@ object roomA { "Room A"; description = "Room A."; attributes = {light}; }
 //-- Probes, chained ---------------------------------------------------------------------------
 class Probe : object {
     float weight = 1.0;
-    Probe next;
+    ref Probe next;
 }
 
 Probe probeA { "probe A"; weight = 2.0; }
@@ -143,7 +143,7 @@ float square(float v) { return v * v; }
 Gauge rig {
     "rig";
     alias probe for Probe;
-    probe head;
+    ref probe head;
     ref array<float> samples;
     func<float, float> shape = halve;
     float bias = 0.25;

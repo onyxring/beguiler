@@ -103,7 +103,7 @@ class Board : object {
     inline string title;
     inline int width;
     ref array<array<int>> rows;
-    Board link;
+    ref Board link;
     int reads = 0;
 
     int operator [] (int i) {

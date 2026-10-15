@@ -85,9 +85,9 @@ class Knot : object {
     char sign = '.';
     int weight;
     int hits;
-    Knot left;
-    Knot right;
-    Knot up;
+    ref Knot left;
+    ref Knot right;
+    ref Knot up;
     array<Knot> extras[MAXEXTRAS];
     stringObj trail;
     auto grade = {
@@ -158,9 +158,9 @@ class Knot : object {
 }
 
 class Twig[4] : object {
-    Knot at;
+    ref Knot at;
     int qty;
-    Twig link;
+    ref Twig link;
 
     void create(Knot k, int q = 1) {
         at = k;
@@ -193,8 +193,8 @@ Knot lone  { "lone knot";  name = {.lone, .knot};  label = "Lone";  code = "L"; 
 
 array<Knot> knots = {knotR, ash, birch, cedar, dock, elm, fir, lone};
 array<Knot> slots[5];
-Knot cursor;
-Twig held;
+ref Knot cursor;
+ref Twig held;
 int asked;
 int floor;
 

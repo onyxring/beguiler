@@ -102,7 +102,7 @@ class La12Shelf : object {
 /// A word with a link to the next.
 class La12Tag : object {
     string word = "tag";
-    La12Tag next;
+    ref La12Tag next;
 
     /// True when another tag follows.
     emitter bool linked() { ($self.next ~= 0) }

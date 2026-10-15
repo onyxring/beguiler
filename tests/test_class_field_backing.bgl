@@ -12,8 +12,8 @@
 class point  : object { int x; int y; }
 class shape  : object {
     int kind;
-    point origin;     // different-class field → auto-backed
-    shape next;       // SAME-class field → level-0 backed, level-1 left empty
+    ref point origin;     // different-class field → auto-backed
+    ref shape next;       // SAME-class field → level-0 backed, level-1 left empty
 }
 
 shape s { }              // expect: 'point _bglField_s_origin;' and 'shape _bglField_s_next;'

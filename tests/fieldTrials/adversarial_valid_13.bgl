@@ -214,7 +214,7 @@ void flagWords(Pack p) {
 // ---- sprouts: a pooled class ------------------------------------------------------------------------------
 
 class Sprout[3] : object, bglAllocated {
-    Pack from;
+    ref Pack from;
     int day = 0;
     static int composted = 0;
 

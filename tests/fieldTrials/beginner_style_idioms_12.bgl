@@ -157,7 +157,7 @@ value class Coins {
 }
 
 extend class Coins {
-    object holder;
+    ref object holder;
 
     Coins operator += (int n) {
         cents = cents + n;
@@ -182,7 +182,7 @@ int doubleIt(int n) {
 // ===== LABELS (text I can change letter by letter) =====
 class Label : object {
     array<char> text[24];
-    object stuckOn;
+    ref object stuckOn;
 
     // a label turns into its length
     int operator () {

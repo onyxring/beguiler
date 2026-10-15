@@ -49,7 +49,7 @@ class Widget : object {
 Widget gadget { parent = room1; }
 
 void main(){
-    object p;
+    ref object p;
     int q;
     w.parent = room2;                          // assignment → move w to room2
     p = w.parent;                              // bare read  → p = parent(w)

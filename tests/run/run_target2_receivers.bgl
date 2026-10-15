@@ -7,7 +7,7 @@
 class Panel : object {
     int lvl;
     int n;
-    Panel feed;
+    ref Panel feed;
     array<int> lamps[4];
     array<int> trail[6];
     Panel Peer() { return feed; }

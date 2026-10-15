@@ -14,7 +14,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 
 class node : object {
-    node a;
+    ref node a;
     int id = 0;
     int who(){ return id; }
 }

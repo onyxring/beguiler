@@ -132,7 +132,7 @@ class Auditable : object {
 
 class BankError[2] : object {
     eErrorCode Code;
-    Account Source;
+    ref Account Source;
     int Cents;
     static int Raised;
 
@@ -283,7 +283,7 @@ class Command : object {
 }
 
 class DepositCommand[3] : Command {
-    Account Target;
+    ref Account Target;
     Money Amount;
 
     void create(Account into, Money value) {
@@ -307,7 +307,7 @@ class DepositCommand[3] : Command {
 }
 
 class WithdrawCommand[3] : Command {
-    Account Source;
+    ref Account Source;
     Money Amount;
 
     void create(Account from, Money value) {
@@ -331,8 +331,8 @@ class WithdrawCommand[3] : Command {
 }
 
 class TransferCommand[2] : Command {
-    Account Source;
-    Account Destination;
+    ref Account Source;
+    ref Account Destination;
     Money Amount;
 
     void create(Account from, Account into, Money value) {

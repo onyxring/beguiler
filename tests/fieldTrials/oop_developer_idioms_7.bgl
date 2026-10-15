@@ -183,7 +183,7 @@ class Customer : object {
     int Id;
     string Title;
     bool Real = true;
-    Customer Referrer;
+    ref Customer Referrer;
 
     emitter eBool operator ? () { ($self ~= nothing && $self.$i6Name(Customer.Real)) }
 

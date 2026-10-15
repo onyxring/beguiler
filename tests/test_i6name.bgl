@@ -32,7 +32,7 @@ emitter int  scaleTwo(int a, int b)   { $i6Name(Money.scale(int, int))($a, $b) }
 emitter int  readKey()                { $i6Name(bgl.asm.readChar)(1) }
 
 void main(){
-    Widget w;
+    ref Widget w;
     print(viaRoutine(5));
     print(isLit(w));
     print(hookName());

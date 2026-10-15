@@ -71,14 +71,14 @@ class Room : object {
     attributes = {light};
     stringOrRoutine description;
     string cant_go = "That way is blocked.";
-    object n_to;
-    object s_to;
-    object e_to;
-    object w_to;
-    object u_to;
-    object d_to;
-    object in_to;
-    object out_to;
+    ref object n_to;
+    ref object s_to;
+    ref object e_to;
+    ref object w_to;
+    ref object u_to;
+    ref object d_to;
+    ref object in_to;
+    ref object out_to;
 }
 
 class DarkRoom : Room { attributes = {!light}; }

@@ -281,7 +281,7 @@ object pointer {
     "pointer";
     object Fallback = roomA;
     auto Target = {
-        object _o;
+        ref object _o;
         object operator ()        { return _o; }
         void   operator = (object v) { _o = v ?? outer.Fallback; }
     }
@@ -300,7 +300,7 @@ object factory {
     "factory";
     int Made;
     auto Current = {
-        Part _p;
+        ref Part _p;
         Part operator () { return _p; }
         void operator = (int code) {
             if (_p != null) delete _p;

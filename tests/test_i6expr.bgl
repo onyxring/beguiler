@@ -41,7 +41,7 @@ class Counter : object {
 Counter globalC { }
 
 void main(){
-    Counter localC;
+    ref Counter localC;
     print(quad(5));
     print(viaAsm(40, 2));
     print(viaStatic());

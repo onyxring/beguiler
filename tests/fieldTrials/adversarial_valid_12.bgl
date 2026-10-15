@@ -142,7 +142,7 @@ class Scorer {
 // ---- placement history: a pooled class ------------------------------------------------------------
 
 class Move[4] : object, bglAllocated {
-    TileObj piece;
+    ref TileObj piece;
     int slot = 0;
     static int dropped = 0;
 

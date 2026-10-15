@@ -115,7 +115,7 @@ class La22Blank[3] : La22Keyed {
 /// A lock: it turns for a key of its grade or better whose cut has every notch it needs.
 class La22Lock : object {
     La22Cut need;
-    object with_key;
+    ref object with_key;
     eLa22Grade grade = eLa22Grade.tin;
     int tries = 0;
     /// Locks turned so far, either way.

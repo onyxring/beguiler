@@ -88,7 +88,7 @@ class Dial : object {
     eMode mode = eMode.idle;
     array<int> readings[4];             // settings, oldest first; like the global array
     array<int> buffer[2];               // first and last setting; like the library's input buffer
-    object location;                    // where it was last set from; like the library global
+    ref object location;                    // where it was last set from; like the library global
     int capacity = 9;                   // the highest setting; the library property
     dictionaryWord letter;
 
@@ -275,11 +275,11 @@ Reading last;
 // ---------------------------------------------------------------- the tracker
 
 object tracker {
-    object location;                    // the room the player was last in
+    ref object location;                    // the room the player was last in
     int turns;                          // turns it has run
     int score;                          // dials it has seen set
     array<object> buffer[3];            // the last three rooms
-    Dial dial;                          // the dial set last; a member named like the class
+    ref Dial dial;                          // the dial set last; a member named like the class
     int time_left;
     int moves;
 

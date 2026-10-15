@@ -70,7 +70,7 @@ class La19Job[6] : object {
     string tag;
     eLa19Pri pri = eLa19Pri.normal;
     La19Span cost;
-    object owner;
+    ref object owner;
     /// Jobs made so far.
     static int made = 0;
     /// Jobs handed back so far.

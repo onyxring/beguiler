@@ -4,7 +4,7 @@
 // EXPECT_OUTPUT: 7 7
 #beguilerSettings { target = z5; informName = "none"; }
 class Box : object { int n = 7; }
-class Holder : object { Box box asI6 theBox; }
+class Holder : object { ref Box box asI6 theBox; }
 Box gb { }
 Holder gh { box = gb; }
 void main(){ bglInit(); print(gh.box.n); Box b = gh.box; print($" {b.n}"); }
