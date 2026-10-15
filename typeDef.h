@@ -582,10 +582,8 @@ class arrayDeclaration : public variableDeclaration {
         // length slot) is PROMOTED: the compiler synthesizes a global tracked array per owning
         // instance and the property holds a pointer to it. Addressing is then identical to a
         // `ref` member, which is why isRefLocal is set alongside this.
-        bool isPromoted = false;          // true for `rawArray<T>` — a raw I6 array with NO Beguile
-                                     // tracking layer: always emits a plain `table` (word0=count,
-                                     // data at 1..N), never the <len>+<magic> trailer, even when
-                                     // `<array>` is included. Matches bare I6 array APIs (orArray).
+        bool isPromoted = false;
+        bool isRepointed = false;    // a global the program assigns as a whole: a variable over its storage
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time

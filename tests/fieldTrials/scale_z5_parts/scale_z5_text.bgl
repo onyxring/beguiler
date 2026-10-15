@@ -178,7 +178,7 @@ verb SortedVerb {
     meta = true;
     void handler() {
         array<Machine> ms[12];
-        ms = machines;
+        ms.copyFrom(machines);
         ms.sort(byStateName);
         stringObj s = "";
         for (Machine m in ms) {

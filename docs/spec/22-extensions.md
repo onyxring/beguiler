@@ -31,7 +31,7 @@ An *extension* is a file in the `beguiLib` folder that a program enables with `#
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | no | — | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; `copyFrom` | no | — | both |
 | LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | no | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
@@ -71,7 +71,7 @@ needs those characters is printed from a string literal rather than built in a b
 | `buf.length` | `int` | Current number of characters. |
 | `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
-| `buf = other` | | Copy `other`'s characters and length, up to `size`; an untracked buffer takes no more than its current length. |
+| `buf.copyFrom(other)` | | Copy `other`'s characters and length, up to `size`; an untracked buffer takes no more than its current length. |
 
 **Buffer operations, `bgl.util.buf`**
 
@@ -260,7 +260,7 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 
 **Description**
 
-The built-in part of the surface is subscripting, `size` and `length` (§12.3); the rest needs `#include <array>`. `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The built-in part of the surface is subscripting, `size`, `length` and assignment (§12.3, §12.5); the rest needs `#include <array>`, which adds the methods below.
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -271,6 +271,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `length` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it reads as `size`. |
 | `length = n` | | Set the length, at most `size`. A negative `n` is a runtime error. No effect on an untracked array. |
 | `isTracked()` | `bool` | True for a Beguile-declared array with length tracking; false for an I6-native `extern` array. |
+| `copyFrom(src)` | `void` | Copy `src`'s elements and length into this array's own storage, up to `size`; elements of an owning type are copied through their `operator =`. |
 | `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length-1`, or `-1`. |
 | `contains(item)` | `bool` | True when `item` is present. |
 | `clear()` | `void` | Zero every slot up to `size`, releasing owned elements, and set the length to `0`. |

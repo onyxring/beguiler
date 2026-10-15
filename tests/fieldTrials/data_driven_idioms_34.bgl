@@ -37,6 +37,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <linq>
 #include <string>
 
@@ -319,7 +320,8 @@ verb LotsTest {
             row.print();
             print("^");
         }
-        array<Lot> byWeight[LOT_MAX] = lots;
+        array<Lot> byWeight[LOT_MAX];
+        byWeight.copyFrom(lots);
         byWeight.sort();
         stringObj line = "By weight:";
         for (Lot l in byWeight) line += $" {l.weight.kg}";

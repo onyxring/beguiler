@@ -273,7 +273,8 @@ exactly as on an owning slot; a class with no copy operator can't be assigned th
 Reads and member writes through a reference chain normally (`node.next.id`).
 
 **Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
-compile-time error, and so is `:=` on a slot that is not `ref`.
+compile-time error, and so is `:=` on a slot that is not `ref`, except an array's: an array is a
+reference type, and `:=` re-points it as `=` does (§12.5).
 
 **Example**
 

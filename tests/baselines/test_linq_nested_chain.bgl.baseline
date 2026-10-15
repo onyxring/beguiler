@@ -128,6 +128,12 @@ array inner table 10 20 30 3 40;
     b=_bglArray.first(_bglArray.map(outer, 0, innercountplus), 0);
     c=_bglArray.length(_bglArray.filter(_bglArray.filter(outer, 0, innerbeatsx), 0, isbig), 0);
 ];
+[_bglArrEphemeral arr;
+    
+        if(arr == _bglLinqS0A or _bglLinqS0B or _bglLinqS1A or _bglLinqS1B) rtrue;
+    
+    return _bgl_replaced__bglarrephemeral_0(arr);
+];
 object _bglArray
   with get [obj prop n;
     
@@ -220,6 +226,14 @@ object _bglArray
         print " is skipped]^";
         _bglSink-->0 = 0;
         return _bglSink;
+    
+];
+[_bgl_replaced__bglarrephemeral_0 arr;
+    
+        #Ifdef _bglFramePoolWords;
+            if(arr >= _bglFramePool + _bglFrameTop * WORDSIZE && arr < _bglFramePool + _bglFramePoolWords * WORDSIZE) rtrue;
+        #Endif;
+        rfalse;
     
 ];
 array _bglsink --> 1;

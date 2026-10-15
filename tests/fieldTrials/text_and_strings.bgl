@@ -183,7 +183,7 @@ verb Words {
             return;
         }
         array<stringObj> sorted[6];
-        sorted = written;
+        sorted.copyFrom(written);
         sorted.sort();
         print("Sorted:");
         for (int i = 0; i < sorted.length; i++) print($" {sorted[i]}");

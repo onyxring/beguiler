@@ -143,6 +143,12 @@ array g_empty table 8;
     print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_2), 0, 0), 0, 0)), 0, 0)-->0 ;
     print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_3), 0, 0), 0, 0)), 4, 0)-->0 ;
 ];
+[_bglArrEphemeral arr;
+    
+        if(arr == _bglLinqS0A or _bglLinqS0B or _bglLinqS1A or _bglLinqS1B) rtrue;
+    
+    return _bgl_replaced__bglarrephemeral_0(arr);
+];
 [_bglLambda_0 a b;
     if (a > b) {
         return -1;
@@ -317,6 +323,14 @@ object _bglArray
         print " is skipped]^";
         _bglSink-->0 = 0;
         return _bglSink;
+    
+];
+[_bgl_replaced__bglarrephemeral_0 arr;
+    
+        #Ifdef _bglFramePoolWords;
+            if(arr >= _bglFramePool + _bglFrameTop * WORDSIZE && arr < _bglFramePool + _bglFramePoolWords * WORDSIZE) rtrue;
+        #Endif;
+        rfalse;
     
 ];
 array _bglsink --> 1;

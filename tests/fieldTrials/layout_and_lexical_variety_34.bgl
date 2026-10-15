@@ -269,7 +269,7 @@ verb Check
     void handler ()
     {
         array<Jar> byLoad[ 4 ] ;
-        byLoad = jars ;
+        byLoad.copyFrom( jars ) ;
         byLoad.sort() ;                                     // Vessel's <=>, from below
         print( "by load" ) ; for ( store.jar j in byLoad ) print( $" {j.cap}" ) ; printLine( "" ) ;
         Weight probeW = weighed( jarB ) ;

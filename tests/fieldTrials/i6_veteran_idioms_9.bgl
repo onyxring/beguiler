@@ -207,7 +207,7 @@ verb Echo {
         if (at >= 0) print($", ab at {at}");
         if (bgl.util.buf.startsWith(line, kThe)) print(", starts the");
         if (bgl.util.buf.endsWith(line, kBell, true)) print(", ends bell");
-        scratch = line;
+        scratch.copyFrom(line);
         bgl.util.buf.replaceAll(scratch, kA, k4);
         bgl.util.buf.reverse(scratch);
         bgl.util.buf.toUpper(scratch);

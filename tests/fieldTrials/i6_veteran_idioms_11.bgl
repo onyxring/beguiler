@@ -145,7 +145,7 @@ class Label : object {
         return sum % 1000;
     }
     void setFrom(array<char> src) {
-        text = src;
+        text.copyFrom(src);
         uses++;
     }
     void show() {
@@ -471,7 +471,7 @@ verb Lookup {
     meta = true;
     void handler() {
         array<char> probe[TAG_LEN];
-        probe = kTin;
+        probe.copyFrom(kTin);
         Label hit = findLabel(probe);
         if (hit?) print($"found {hit}");
         else print("tin missing");

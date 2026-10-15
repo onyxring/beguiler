@@ -9,6 +9,7 @@ global _bgl_thrown;
 global _bgl_tryrc;
 global _bgl_tryret;
    Array _bglFramePool --> 64;
+   Constant _bglFramePoolWords = 64;
    Global _bglFrameTop = 0;
    Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;

@@ -552,7 +552,7 @@ verb Loads {
             return;
         }
         array<int> sorted[8];
-        sorted = loadWeights;
+        sorted.copyFrom(loadWeights);
         sorted.sort();
         print("Loads:");
         int i = 0;

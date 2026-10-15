@@ -6,7 +6,7 @@
 // table, the band picked by a switch with ranges; a bnum of parcel marks set with |= from a mark word
 // table and listed by bit position; parcels as an array of a value class appended as Parcel{ … } and
 // changed through [i].member; a stage enum named by a switch and cast from an int; a waiting queue as
-// array<int> fed with enqueue, drained with dequeue, refilled by copy-assignment from a local array,
+// array<int> fed with enqueue, drained with dequeue, refilled with copyFrom from a local array,
 // trimmed with -= and sorted by a named comparator reading the parcel table; vans as objects of
 // a reference class with an instanceName, a route, a capacity, a member array of held parcel numbers
 // and methods, kept in an array<Van> and walked with for-in; a surcharge table as an
@@ -320,7 +320,7 @@ verb LoadTest {
             parcels[k].stage = loaded;
             moved++;
         }
-        queue = left;
+        queue.copyFrom(left);
         print($"Loaded {moved}; {queue.length} left waiting.^");
     }
 }

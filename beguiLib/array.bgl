@@ -57,19 +57,8 @@ extend extern class array {
     /// True when this array carries a length separate from its capacity. A `rawArray` does not.
     emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
 
-    // Value-semantic copy-on-assign: `dest = src` copies src's elements into dest's
-    // own storage (and sets dest's length), rather than aliasing the pointer. This is
-    // the capture mechanism for ephemeral arrays — a LINQ chain result or a returned
-    // local array assigned into a typed local is snapshotted into stable storage.
-    // Dest/source props are literal 0: the assignment-operator= emit path does not
-    // substitute $prop, and a whole-array LHS/RHS is always addressable. Source is
-    // assumed addressable (member-array sources — `x = obj.arr` — are out of scope).
-    //
-    // Return type is `void` (not `array<T>`) deliberately: a member whose return type
-    // is `array<...>` is routed to the array-member-declaration parser, which can't parse
-    // an `operator` name. The assignment emit path emits the body as a statement and
-    // ignores the operator's return value anyway, so `void` is correct here.
-    emitter void operator = (array<T> v)  { _bglArray.copy($self, $prop, $v, 0, $opref(=)) }
+    /// Copy `src`'s elements and length into this array's own storage, up to its capacity.
+    emitter void copyFrom(array<T> src)   { _bglArray.copy($self, $prop, $src, 0, $opref(=)) }
 
     // Ownership-aware slot write, used ONLY when the element type publishes a static
     // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain

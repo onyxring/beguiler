@@ -1,7 +1,7 @@
-// _test_array_char_copy_needs_buf.bgl — the byte copy behind `dst = src` on an array<char> is
-// <buf>'s; without it the only copy is array<T>'s word copy, which would corrupt byte data.
+// _test_array_char_copy_needs_buf.bgl — copying one array<char> into another is <buf>'s `copyFrom`;
+// without <buf> there is none.
 //
-// EXPECT_ERROR: needs #include <buf>
+// EXPECT_ERROR: its operations are <buf>'s
 
 #beguilerSettings {
     target = z5;
@@ -15,5 +15,5 @@ array<char> srcC = "hi";
 array<char> dstC[16];
 
 void main(){
-    dstC = srcC;
+    dstC.copyFrom(srcC);
 }

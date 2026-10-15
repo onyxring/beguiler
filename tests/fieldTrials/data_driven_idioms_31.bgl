@@ -285,7 +285,8 @@ verb MarksTest {
             row.print();
             print("^");
         }
-        array<Mark> byPos[MARK_COUNT] = marks;
+        array<Mark> byPos[MARK_COUNT];
+        byPos.copyFrom(marks);
         byPos.sort();
         stringObj line = "By position:";
         for (Mark m in byPos) line += $" {m.label}";
@@ -547,7 +548,8 @@ verb TradeTest {
 verb DriftTest {
     grammar = {.drift};
     void handler() {
-        array<Mark> before[MARK_COUNT] = marks;
+        array<Mark> before[MARK_COUNT];
+        before.copyFrom(marks);
         for (int i in 0 to marks.length - 1) {
             marks[i] += Pt{ 1, 0 };
             field.clamp(marks[i]);

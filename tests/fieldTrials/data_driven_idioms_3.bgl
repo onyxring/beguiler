@@ -268,7 +268,7 @@ verb HeavyTest {
     grammar = {.heavy};
     void handler() {
         array<Part> view[6];
-        view = parts;
+        view.copyFrom(parts);
         view.sort();
         printParts(view);
         view.reverse();

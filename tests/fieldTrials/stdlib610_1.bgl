@@ -399,7 +399,8 @@ verb Notes {
     grammar = {.notes};
     void handler() {
         if (readings.length == 0) { print("No notes.^"); return; }
-        array<int> sorted = readings;
+        array<int> sorted[8];
+        sorted.copyFrom(readings);
         sorted.sort();
         int total = 0;
         for (int r in readings) total += r;

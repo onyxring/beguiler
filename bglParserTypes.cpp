@@ -5147,7 +5147,10 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     // The <linq> operations walk a word array; a byte array's elements aren't words.
     if(objType == "bytearray"){
         string mn = methodNameIn; transform(mn.begin(), mn.end(), mn.begin(), ::tolower);
-        if(classDef* arrCls = languageService.findClass("array"))
+        classDef* byteCls = languageService.findClass("bytearray");
+        bool ownMethod = false;   // declared on array<char> itself (<buf>'s), not inherited from array
+        if(byteCls != nullptr) for(typeMember* m : byteCls->members) if(m->name == mn) ownMethod = true;
+        if(classDef* arrCls = languageService.findClass("array"); arrCls != nullptr && !ownMethod)
             if(auto* f = dynamic_cast<functionDef*>(findMemberInHierarchy(arrCls, [&](typeMember* m){ return m->name == mn; }));
                f != nullptr && f->src.file.find("linq.bgl") != string::npos)
                 parsingError(format("'{0}' is a <linq> operation, which works on word arrays; an array<char> "

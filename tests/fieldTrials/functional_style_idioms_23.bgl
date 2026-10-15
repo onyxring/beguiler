@@ -22,6 +22,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <linq>
 #include <string>
 
@@ -270,11 +271,11 @@ array<int> foldOnce(array<int> prog) {
 
 int foldFully(array<int> prog, ref array<int> result) {
     int passes = 0;
-    result = prog;
+    result.copyFrom(prog);
     array<int> next = foldOnce(result);
     while (next.length < result.length) {
         passes++;
-        result = next;
+        result.copyFrom(next);
         next = foldOnce(result);
     }
     return passes;

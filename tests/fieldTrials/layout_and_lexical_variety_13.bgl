@@ -76,7 +76,7 @@ value class Tag
     {
         code = o.code ;
         weight = o.weight ;
-        mark = o.mark ;                 // the bytes and their length
+        mark.copyFrom( o.mark ) ;                 // the bytes and their length
         Tag.copies++ ;
         Return self ;
     }

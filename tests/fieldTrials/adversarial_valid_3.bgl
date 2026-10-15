@@ -25,6 +25,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 #include <linq>
+#include <array>
 #include <string>
 
 extend extern class object {
@@ -210,7 +211,7 @@ class Shelf : Counted, Labeled {
         int score = 0;
         for (int r = 0; r < rows.length; r++) {
             array<string> row[4];
-            row = rows[r];
+            row.copyFrom(rows[r]);
             row.sort();
             stringObj head;
             head = row.first();

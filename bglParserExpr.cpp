@@ -6420,6 +6420,9 @@ bool bglParser::memberArrayDeclTracked(arrayDeclaration* ad){
 // `a[4]` on an `array<int> a[4]`: a constant index past the declared size is a compile-time error.
 void bglParser::rejectConstantIndexOutside(const string& path, expression* index, functionDef* func, statementBlock* body){
     if(index == nullptr || looseIdentifierMode) return;
+    // A local or parameter may be re-pointed at another array; its declared size says nothing about the one it names.
+    if(path.find('.') == string::npos && func != nullptr
+       && (qualifyFromParams(path, func) || qualifyFromBodyLocals(path, body) || qualifyFromAncestorBlocks(path, body))) return;
     rejectConstantIndexOutside(dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(path, func, body)), index);
 }
 void bglParser::rejectConstantIndexOutside(arrayDeclaration* ad, expression* index, const string& shown){

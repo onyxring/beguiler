@@ -278,7 +278,7 @@ verb ForgetPoint {
 verb SnapPoints {
     grammar = {.snap};
     void handler() {
-        snap = pts;
+        snap.copyFrom(pts);
         print($"Snapped {snap.length}.^");
     }
 }
@@ -286,7 +286,7 @@ verb SnapPoints {
 verb BackPoints {
     grammar = {.back};
     void handler() {
-        pts = snap;
+        pts.copyFrom(snap);
         snap.clear();
         showPts();
     }

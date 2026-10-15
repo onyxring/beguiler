@@ -1,0 +1,22 @@
+// test_array_assignment.bgl — arrays are references: `dst = src` and a declaration from another array
+// refer to its array (a re-pointed global becomes a variable over its storage), and `copyFrom` copies the
+// elements into the destination's own storage.
+
+#beguilerSettings {
+    target = z5;
+    informName = "none";
+    outputPath = "tests/output";
+}
+
+#include <array>
+
+array<int> src = {11, 22, 33, 44};
+array<int> dst[8];
+
+void main(){
+    bglInit();
+    dst = src;
+    array<int> keep[8];
+    keep.copyFrom(src);
+    array<int> picked = dst;
+}

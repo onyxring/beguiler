@@ -84,7 +84,7 @@ value class Gauge {
 value class Label {
     array<char> text[8];
     int uses;
-    Label operator = (Label o) { text = o.text; uses = o.uses; return self; }
+    Label operator = (Label o) { text.copyFrom(o.text); uses = o.uses; return self; }
     void set3(char a, char b, char c) {
         text[0] = a;
         text[1] = b;
@@ -556,7 +556,7 @@ verb ShowLabels {
         array<char> held[8];
         array<char> copy[8];
         b.render(held);
-        copy = held;
+        copy.copyFrom(held);
         copy[2] = 'q';
         printLine($" lengths {held.length} {copy.length}, {held[2]}{copy[2]}");
     }

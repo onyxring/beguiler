@@ -314,7 +314,8 @@ verb SortedTest {
         array<Slot> top = byQty.takeWhile((Slot s) => s.qty > 1);
         array<Slot> rest = byQty.skip(top.length).take(2);
         print($"Above one: {top.length}; next two: {rest.length}, {rest.first()} then {rest.last()}.^");
-        array<Slot> view[SLOT_COUNT] = pool;
+        array<Slot> view[SLOT_COUNT];
+        view.copyFrom(pool);
         view.sort((Slot a, Slot b) => (int)a.kind - (int)b.kind);
         print("By kind:");
         for (Slot s in view) print($" {s}");

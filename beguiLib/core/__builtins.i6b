@@ -8,6 +8,7 @@
 // locals. 
 template framePool($size) {{{
    Array _bglFramePool --> $size;
+   Constant _bglFramePoolWords = $size;
    Global _bglFrameTop = 0;
    Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;

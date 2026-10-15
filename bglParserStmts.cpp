@@ -3399,6 +3399,27 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
     return t;
 }
 
+// A whole member array read as a value (`o.log`, `((Bay)o).counts`, `(f()).log`): its owner and property.
+// Its elements live in the object, so it is copied, not referred to (until member arrays are references).
+bool bglParser::memberArraySource(expression* val, string& owner, string& prop){
+    // Only when the expression ends at the member: a chain on it (`o.log.orderBy(…)`) is a result of its own.
+    string full = val->text();
+    auto endsAtMember = [&](const string& p){
+        string pi = propertyI6Name(p);
+        auto ends = [&](const string& tail){ return full.size() > tail.size() + 1 && full.compare(full.size() - tail.size() - 1, string::npos, "." + tail) == 0; };
+        return ends(p) || ends(pi);
+    };
+    if(val->memberArrayDecl != nullptr && !val->memberArrayOwner.empty() && endsAtMember(val->memberArrayProp)){
+        if(val->memberArrayDecl->isRefLocal || val->memberArrayDecl->isRaw) return false;
+        owner = val->memberArrayOwner; prop = val->memberArrayProp;
+        return true;
+    }
+    string vText = val->text();
+    if(vText.find('.') == string::npos || vText.find('(') != string::npos) return false;
+    return splitQualifiedMember(vText, currentFunc, nullptr, owner, prop)
+        && memberArrayIsTracked(owner, prop, currentFunc, nullptr) && !memberArrayIsRef(owner, prop, currentFunc, nullptr);
+}
+
 // Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
 void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign){
     // A hide narrowed to one overload (`hide fill.operator = (int);`) blocks a write of that operand's type.
@@ -3408,6 +3429,39 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     }
     if(t.leftType != nullptr && !isBindAssign) applyImplicitConversion(val, t.leftType->name);
     if(t.leftType != nullptr && t.leftType->name == "verb") applyActionConstant(val);
+    // A whole array as the target: a member array keeps its elements in its object until member arrays
+    // become references; a global one becomes a variable over its storage, so it can be re-pointed.
+    if(t.leftType != nullptr && val != nullptr && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
+       && a.src.file.find("beguiLib") == string::npos){
+        bool member = !t.emitterProp.empty() && t.emitterProp != "0";
+        if(member){
+            // Until member arrays are references, a whole member array takes a copy into its own elements.
+            if(!memberArrayIsRef(t.emitterSelf, t.emitterProp, currentFunc, nullptr) && t.leftType->name != "bytearray"){
+                string vText = val->text(), vOwner, vProp;
+                bool fromMember = memberArraySource(val, vOwner, vProp);
+                string dst = t.emitterSelf + ", " + escapePropertyName(t.emitterProp);
+                // Elements that own instances are copied through their type's `operator =`, not shared.
+                string assign = substituteElemOps("$opref(=)", resolveArrayElementTypeDotted(t.emitterSelf, t.emitterProp, currentFunc, nullptr), "");
+                val->tokens = {fromMember ? "_bglMemberArrCopyMember(" + dst + ", " + vOwner + ", " + escapePropertyName(vProp) + ", " + assign + ")"
+                                          : "_bglMemberArrCopy(" + dst + ", " + vText + ", " + assign + ")"};
+                a.variableLeft = "_bglSink-->0";   // the copy is the statement; what it returns isn't kept
+                a.assignedExpression = val;
+                return;
+            }
+        } else {
+            // A whole member array on the right: its elements are copied into this array's storage, until
+            // member arrays are references.
+            string vOwner, vProp;
+            if(t.leftType->name != "bytearray" && memberArraySource(val, vOwner, vProp))
+                val->tokens = {"_bglArrFromMember(" + a.variableLeft + ", " + vOwner + ", " + escapePropertyName(vProp) + ", "
+                               + substituteElemOps("$opref(=)", resolveArrayElementTypeDotted(vOwner, vProp, currentFunc, nullptr), "") + ")"};
+        }
+        if(!member && a.variableLeft.find('.') == string::npos)
+            if(auto* ga = languageService.findGlobalAs<arrayDeclaration>(a.variableLeft);
+               ga != nullptr && (currentFunc == nullptr || (!qualifyFromParams(a.variableLeft, currentFunc)
+                                 && !qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()))))
+                ga->isRepointed = true;
+    }
     const string& emitterSelfForLhs = t.emitterSelf;
     classDef* classType = t.ancestorCast != nullptr ? t.ancestorCast : t.classType;
     typeDef* leftType   = t.leftType;

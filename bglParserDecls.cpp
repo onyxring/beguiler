@@ -576,11 +576,13 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 if(!elementType.empty() && !genericValueFits(expr, target, func, body))
                     parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
                         typeDisplayName(elementAwareType(expr, func, body)), typeDisplayName(target)));
-                // The library's own locals hold handles to buffers it manages; they stay aliases.
+                // Another array named plainly is referred to (arrays are references); a call's result, which
+                // may be its routine's local, or a member array, whose elements live in its object, is copied.
+                string srcText = expr->text();
+                bool plainArray = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
                 bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
                                 || arrDecl.name.rfind("_bgl", 0) == 0
-                                || arrDecl.isByteArray || arrDecl.isRaw
-                                || !languageService.arrayInUse;   // without <array>, assignment aliases too
+                                || arrDecl.isRaw || plainArray;
                 if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
                     // Without a capacity, the storage is sized from the value when the declaration runs.

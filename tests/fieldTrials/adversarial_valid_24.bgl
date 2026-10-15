@@ -336,7 +336,7 @@ verb Check {
         Pt m2 = midpoint({ 1, 1 }, { 3, 5 });
         printLine($"Twice {d}, mirrored {e}, start {atStart ? "yes" : "no"}, spread {spread}, picked {picked}, unique {unique}, total {total}, mid {m2}.");
         array<Pt> scratch[6];
-        scratch = stakes;
+        scratch.copyFrom(stakes);
         scratch.append(home);
         scratch.sort();
         print("Sorted:");

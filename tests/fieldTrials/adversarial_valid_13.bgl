@@ -31,6 +31,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 #include <linq>
+#include <array>
 #include <string>
 
 extend extern class object {
@@ -417,7 +418,8 @@ verb Label {
 verb Shuffle {
     grammar = {.shuffle, .plan};
     void handler() {
-        array<int> head = plan[0];
+        array<int> head[2];
+        head.copyFrom(plan[0]);
         plan[0].reverse();
         plan[1][0] = plan[1][0] * 2;
         int last = plan[2].popEnd();

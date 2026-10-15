@@ -28,6 +28,7 @@
 #include <bindings/i6StandardLibrary>
 #include <string>
 #include <linq>
+#include <array>
 
 // ===== COUNTS =====
 
@@ -452,7 +453,8 @@ verb ShowOrders {
             print("No orders.^");
             return;
         }
-        array<string> sorted = orderBook;
+        array<string> sorted[5];
+        sorted.copyFrom(orderBook);
         sorted.sort((string a, string b) => a.compareTo(b));
         stringObj line = "Orders: ";
         int i = 0;

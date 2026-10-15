@@ -22,6 +22,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <string>
 #include <linq>
 
@@ -103,7 +104,7 @@ int runRegistry(int x) {
 void walk(object root, int depth, func<void, object, int> visit) {
     array<object> kids = bgl.world.inParent(root);
     array<object> mine[8];
-    mine = kids;
+    mine.copyFrom(kids);
     for (object k in mine) {
         visit(k, depth);
         walk(k, depth + 1, visit);

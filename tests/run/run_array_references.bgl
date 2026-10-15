@@ -1,0 +1,48 @@
+// run_array_references — arrays are references: `=` and `:=` re-point, a declaration from another array refers
+// to it, `copyFrom` copies, and `==` is the same array. A returned local array and a whole member array are
+// copied into the destination's own storage; a re-pointed global is a variable over its storage.
+// EXPECT_OUTPUT: 99 99 9 true false 5 2 7 4 3 8 8 | hi hi ho
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <buf>
+
+array<int> g = { 1, 2, 3 };
+array<int> h = { 7, 8 };
+object box { array<int> log[4] = { 4, 5, 6 }; }
+array<char> greet = "hi";
+
+array<int> mk() { array<int> t[3]; t += 4; t += 5; return t; }
+
+void main() {
+    bglInit();
+    array<int> a[4];
+    a = g;
+    a[0] = 99;
+    array<int> b = g;
+    print($"{g[0]} {b[0]} ");
+    array<int> c[3];
+    c.copyFrom(h);
+    c[0] = 9;
+    print($"{c[0]} {a == g} {c == h} ");
+    array<int> d[3];
+    d = mk();
+    print($"{d[1]} {d.length} ");
+    g = h;
+    print($"{g[0]} ");
+    array<int> e[4];
+    e = box.log;
+    e[0] = 0;
+    print($"{box.log[0]} {e.length} ");
+    box.log = h;
+    print($"{box.log[1]} ");
+    array<int> f[2];
+    f := h;
+    print($"{f[1]} | ");
+    array<char> s[4];
+    s = greet;
+    bgl.util.buf.print(s); print(" "); bgl.util.buf.print(greet); print(" ");
+    array<char> t[4];
+    t.copyFrom(greet);
+    t[1] = 'o';
+    bgl.util.buf.print(t);
+}

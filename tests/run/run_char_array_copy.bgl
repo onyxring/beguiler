@@ -1,4 +1,4 @@
-/*  run_char_array_copy — `dst = src` on array<char> copies bytes and length (<buf>'s operator =).
+/*  run_char_array_copy — `dst.copyFrom(src)` on array<char> copies bytes and length (<buf>'s).
 
     A local destination is untracked, so the copy stops at its length word; a nested element source
     is spelled array<char>, not byteArray.  */
@@ -11,10 +11,10 @@ void main(){
     bglInit();
     array<char> p[4];
     array<char> q = "hello";
-    p = q;
+    p.copyFrom(q);
     print($"{p.length} "); bgl.util.buf.print(p);
-    g = q;
+    g.copyFrom(q);
     print($"|{g.length} "); bgl.util.buf.print(g);
-    p = progs[0];
+    p.copyFrom(progs[0]);
     print($"|{p.length} {(int)p[0]}-{(int)p[2]}");
 }

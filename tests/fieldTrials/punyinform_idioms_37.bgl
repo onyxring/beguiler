@@ -500,7 +500,7 @@ verb Sorted {
     grammar = {.sorted};
     void handler() {
         array<Price> work[6];
-        work = menu;
+        work.copyFrom(menu);
         work.sort();
         printPrices("Up", work);
         work.sort((Price a, Price b) => b <=> a);

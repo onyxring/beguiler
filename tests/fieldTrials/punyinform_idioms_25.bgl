@@ -515,7 +515,7 @@ verb Settings {
             return;
         }
         array<int> sorted[6];
-        sorted = setList;
+        sorted.copyFrom(setList);
         sorted.sort();
         print("Settings:");
         int i = 0;

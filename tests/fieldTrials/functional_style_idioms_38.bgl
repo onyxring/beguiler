@@ -22,6 +22,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <linq>
 #include <string>
 
@@ -184,7 +185,7 @@ int flow(int from, int to, int room, int rate) { return smaller(rate, smaller(fr
 // One step of the model: pipes run in order, then each tank's loss rule.
 array<int> stepLevels(array<int> lv) {
     array<int> out[MAXT];
-    out = lv;
+    out.copyFrom(lv);
     for (array<int> p in pipes) {
         int moved = flow(out[p[0]], out[p[1]], tanks[p[1]].cap, p[2]);
         if (moved > 0) {
@@ -201,7 +202,7 @@ array<int> stepLevels(array<int> lv) {
 
 array<int> iterate(array<int> start, int n, func<array<int>, array<int>> f) {
     array<int> cur[MAXT];
-    cur = start;
+    cur.copyFrom(start);
     for (int i = 0; i < n; i++) cur = f(cur);
     return cur;
 }

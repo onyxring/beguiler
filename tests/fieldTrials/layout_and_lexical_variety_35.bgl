@@ -342,7 +342,7 @@ verb Audit
         printLine( $"first {till.first().cents} last {till.last().cents} big {till.orderBy().last().cents}" ) ;
         printLine( $"take {till.take( 2 ).count()} skip {till.skip( 1 ).first().cents} while {till.takeWhile( ( Coins c ) => c.cents < 10 ).count()}" ) ;
         printLine( $"any {till.any( ( Coins c ) => c == gFloat )} {till.any( ( Coins c ) => c.cents == 12 )} all {till.all( ( Coins c ) => c > Coins{ 0 } )}" ) ;
-        spare = till ;
+        spare.copyFrom( till ) ;
         spare += Coins{ 3 } ;
         spare += gLast ;
         spare[ 0 ].cents = 77 ;

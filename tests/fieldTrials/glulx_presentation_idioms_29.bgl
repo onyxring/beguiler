@@ -353,7 +353,7 @@ void showTune() {
     printLine($"Tune: {letters}; backward: {back}; lowered A: {letters.replaceAll("A", "a")}.");
     if (letters.contains("AB")) printLine($"A rises to B at {letters.indexOf("AB") + 1}.");
     array<Bell> reversed[TUNE_MAX];
-    reversed = tune;
+    reversed.copyFrom(tune);
     reversed.reverse();
     printLine($"Last note first: {the(reversed.first())}.");
 }

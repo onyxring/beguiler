@@ -77,6 +77,14 @@
 }
 
 
+// A chain's result lives in a scratch buffer the next chain reuses: anything the program keeps of it is copied.
+replace bool _bglArrEphemeral(int arr){
+    #i6 {
+        if(arr == _bglLinqS0A or _bglLinqS0B or _bglLinqS1A or _bglLinqS1B) rtrue;
+    }
+    return replaced(arr);
+}
+
 // Beguile-side bridges to the I6 routines emitted in the #emitfirst block above.
 // Implementations live in raw I6; these declarations just make the routines
 // callable from Beguile-side helpers. extern function bodies aren't emitted —

@@ -22,6 +22,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <linq>
 #include <string>
 
@@ -354,7 +355,8 @@ verb PlanVerb {
         }
         Pack p = (Pack)noun;
         array<Item> loose = items.filter((Item i) => i.parent != p);
-        array<Item> fits = p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose;
+        array<Item> fits[8];
+        fits.copyFrom(p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose);
         int room = p.limit - p.load();
         func<Plan, array<Item>, int> planner = fits.length > 4 ? bestOf : greedy;
         Plan pl = planner(fits, room);
@@ -375,7 +377,8 @@ verb PackVerb {
         }
         Pack p = (Pack)noun;
         array<Item> loose = items.filter((Item i) => i.parent != p);
-        array<Item> fits = p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose;
+        array<Item> fits[8];
+        fits.copyFrom(p.admits != null ? loose.filter((Item i) => p.admits(p, i)) : loose);
         Plan pl = best(fits, p.limit - p.load());
         array<Item> moving = chosen(fits, pl);
         if (moving.length == 0) {
@@ -392,7 +395,8 @@ verb PackVerb {
 verb LoadsVerb {
     grammar = {{.loads}};
     void handler() {
-        array<object> packs = bgl.world.instances(Pack);    // kept: load() and itemsIn() query too
+        array<object> packs[8];
+        packs.copyFrom(bgl.world.instances(Pack));    // kept: load() and itemsIn() query too
         for (object o in packs) {
             Pack p = (Pack)o;
             print($"{p.label}: {p.load()} of {p.limit}, ");

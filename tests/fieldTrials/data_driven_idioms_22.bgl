@@ -274,7 +274,8 @@ verb DueTest {
     grammar = {.due};
     void handler() {
         if (loans.length == 0) { print("Nothing is out.^"); return; }
-        array<Loan> byDue[LOAN_MAX] = loans;
+        array<Loan> byDue[LOAN_MAX];
+        byDue.copyFrom(loans);
         byDue.sort((Loan a, Loan b) => {
             if (a.due != b.due) return a.due - b.due;
             return a.title - b.title;

@@ -291,7 +291,7 @@ verb SortTest {
         if (c >= COL_COUNT) { print($"No column {c}.^"); return; }
         sortCol = c;
         array<Item> view[ROW_COUNT];
-        view = catalog;
+        view.copyFrom(catalog);
         view.sort(byCol);
         print($"By {colNames[c]}:");
         for (Item it in view) print($" {it.label}={cell(it, cols[c])}");

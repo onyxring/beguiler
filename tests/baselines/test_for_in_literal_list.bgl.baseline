@@ -4,6 +4,7 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
    Array _bglFramePool --> 72;
+   Constant _bglFramePoolWords = 72;
    Global _bglFrameTop = 0;
    Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;

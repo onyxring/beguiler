@@ -2072,7 +2072,8 @@ exactly as on an owning slot; a class with no copy operator can't be assigned th
 Reads and member writes through a reference chain normally (`node.next.id`).
 
 **Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
-compile-time error, and so is `:=` on a slot that is not `ref`.
+compile-time error, and so is `:=` on a slot that is not `ref`, except an array's: an array is a
+reference type, and `:=` re-points it as `=` does (§12.5).
 
 **Example**
 
@@ -6611,9 +6612,10 @@ an integer (§14.2.1), a `const int` initialized with an integer literal (§3.4)
 `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
-from that array instead; the value's type decides which is meant. In a function body, `⟨name⟩` then
-gets its own storage, sized to the value's length when the declaration runs, and a copy of the value's
-elements, as `=` copies (§12.5); a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
+from that array instead; the value's type decides which is meant. `⟨name⟩` then refers to that array,
+as `=` does (§12.5). The sources §12.5 copies are copied here too: in a function body, a returned local
+array, a chain result or a whole member array gives `⟨name⟩` storage of its own, sized to the value's
+length when the declaration runs; a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
 declared capacity. The same shorthand applies to a
 list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
 length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
@@ -6749,25 +6751,39 @@ print(code);                    // → 104
 
 ```syntax
 ⟨destination⟩ = ⟨source⟩ ;
+⟨destination⟩ := ⟨source⟩ ;
+⟨destination⟩ . copyFrom ( ⟨source⟩ ) ;
 ```
 
 **Description**
 
-Assigning one array to another (`dst = src`) copies the elements; the two arrays are independent
-afterwards. This is the mechanism that captures an ephemeral array
-result (§12.6). Copying into an element of an owning element type goes through that type's
-`static operator =` (§12.10). On an `array<char>` the copy is `<buf>`'s (§22.4): it copies the bytes
-and the length, up to the destination's size; without `<buf>`, `dst = src` on an `array<char>` is a
-compile-time error.
+An array is a reference type (§2.7). `dst = src` makes `dst` refer to `src`'s array, so a change made
+through either name is seen through the other; `:=` does the same. A declaration from another array
+(`array<int> b = a;`) refers to it in the same way, and `a == b` is true when they are the same array.
+
+`dst.copyFrom(src)` copies the elements and the length of `src` into `dst`'s own storage, up to its
+capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or from `<buf>` for an
+`array<char>` (§22.2). Copying into an element of an owning element type goes through that type's
+`static operator =` (§12.10).
+
+Two sources are copied rather than referred to, as `copyFrom` would: a function's returned local
+array and a `<linq>` chain's result, whose storage is reused (§12.6), and a whole member word array on
+either side of `=`, whose elements live in its object (§12.7). The copy goes into the destination's
+own storage. An `array<char>` member holds its buffer by reference, so `=` re-points it like any other
+array.
 
 **Example**
 
 ```bgl
+#include <array>
 array<int> src = {1, 2, 3};
 array<int> dst[3];
 
-dst = src;                      // copies the elements
-dst[0] = 99;                    // src[0] is still 1
+dst = src;                      // dst refers to src's array
+dst[0] = 99;                    // src[0] is now 99 too
+array<int> spare[3];
+spare.copyFrom(src);            // spare has its own copy
+spare[0] = 5;                   // src[0] is still 99
 ```
 
 ## 12.6 Local Arrays and Lifetime
@@ -6783,7 +6799,7 @@ permanent storage and may be returned freely.
 Because a local array's storage is reclaimed on return, a returned local array is an *ephemeral*
 reference, not an owned value, exactly like an ephemeral string (§22.3): the storage it names has been
 freed by the time the caller sees it. To keep the result, assign it to a typed local, which copies it
-(§12.5). If the reference is consumed in an expression, or passed straight into another call, without
+into the local's own storage (§12.5). If the reference is consumed in an expression, or passed straight into another call, without
 first being assigned, the behavior is undefined. The same applies to results of `<array>` methods and
 chains on a local array (§22.4, §22.5).
 
@@ -6844,8 +6860,8 @@ than storage.
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
 
-A whole member array can be the target or the source of an array copy (§12.5): `holder.rows = src;`
-and `d = holder.rows;` copy the elements as for any other array.
+A whole member word array on either side of `=` is copied (§12.5): `holder.rows = src;` copies `src`'s
+elements into the member, and `d = holder.rows;` copies the member's elements into `d`'s storage.
 
 A member array is property data, with no address of its own to hand over, so it can't be passed as an
 array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
@@ -11044,7 +11060,7 @@ An *extension* is a file in the `beguiLib` folder that a program enables with `#
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | no | — | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; `copyFrom` | no | — | both |
 | LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | no | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
@@ -11084,7 +11100,7 @@ needs those characters is printed from a string literal rather than built in a b
 | `buf.length` | `int` | Current number of characters. |
 | `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
-| `buf = other` | | Copy `other`'s characters and length, up to `size`; an untracked buffer takes no more than its current length. |
+| `buf.copyFrom(other)` | | Copy `other`'s characters and length, up to `size`; an untracked buffer takes no more than its current length. |
 
 **Buffer operations, `bgl.util.buf`**
 
@@ -11273,7 +11289,7 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 
 **Description**
 
-The built-in part of the surface is subscripting, `size` and `length` (§12.3); the rest needs `#include <array>`. `<array>` adds the methods below and makes `dst = src` copy the elements of `src` into `dst` (clamped to `dst`'s capacity) and set `dst`'s length, rather than alias the array. Copy-on-assign is the capture mechanism for a returned local array and for a chain result (§22.5).
+The built-in part of the surface is subscripting, `size`, `length` and assignment (§12.3, §12.5); the rest needs `#include <array>`, which adds the methods below.
 
 Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
 
@@ -11284,6 +11300,7 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `length` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it reads as `size`. |
 | `length = n` | | Set the length, at most `size`. A negative `n` is a runtime error. No effect on an untracked array. |
 | `isTracked()` | `bool` | True for a Beguile-declared array with length tracking; false for an I6-native `extern` array. |
+| `copyFrom(src)` | `void` | Copy `src`'s elements and length into this array's own storage, up to `size`; elements of an owning type are copied through their `operator =`. |
 | `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length-1`, or `-1`. |
 | `contains(item)` | `bool` | True when `item` is present. |
 | `clear()` | `void` | Zero every slot up to `size`, releasing owned elements, and set the length to `0`. |

@@ -34,6 +34,7 @@
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"
 #includeI6 "verblib"
+#include <array>
 #include <linq>
 #include <string>
 
@@ -461,7 +462,8 @@ verb OrderTest {
             print("No such order.^");
             return;
         }
-        array<Mass> ms[SLOTS] = masses;
+        array<Mass> ms[SLOTS];
+        ms.copyFrom(masses);
         func<int, Mass, Mass> f = ways[k - 1];
         ms.sort(f);
         stringObj line = $"{wayNames[k - 1]}: ";
@@ -475,12 +477,14 @@ verb OrderTest {
 verb SortTest {
     grammar = {.sort};
     void handler() {
-        array<Mass> ms[SLOTS] = masses;
+        array<Mass> ms[SLOTS];
+        ms.copyFrom(masses);
         ms.sort();
         stringObj line = "Sorted: ";
         put(line, ms);
         line += $"; 450 at {masses.indexOf(Mass{ 450 })}, 800 in: {masses.contains(Mass.of(800)) ? "yes" : "no"}";
-        array<Parcel> ps = stock;
+        array<Parcel> ps[SLOTS];
+        ps.copyFrom(stock);
         ps.sort(Parcel::operator <=>);
         line += "; parcels:";
         for (Parcel p in ps) {

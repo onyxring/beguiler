@@ -1692,6 +1692,12 @@ framePoolSize = beguilerSettings.framePoolSize;
 
 // Scratch globals (ternary temps, switch temp, try/catch cookie + per-block save slots), each only when used.
 void i6Emitter::emitPhaseScratchGlobals(){
+// A re-pointed global array is a variable over its storage, declared before any routine can use it.
+for(typeDef* g : languageService.globals)
+    if(auto* ad = dynamic_cast<arrayDeclaration*>(g); ad != nullptr && ad->isRepointed && !ad->isRaw && !ad->isExternal){
+        string nm = ad->isByteArray ? ad->dName() : (ad->i6name.empty() ? ad->dName() : ad->i6name);
+        out << format("Global {0} = _bglarr_{0};\n", nm);
+    }
 for(int i = 0; i < languageService.ternaryTempCount; i++)
     out << format("global _bgl_temp{0};\n", i);
 if(languageService.switchTempNeeded)
@@ -2947,7 +2953,7 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
     if(!arrLoc->copySource.empty()){   // the copy itself is the assignment that follows
         string name = spillName(arrLoc->name), held = spillName(arrLoc->copyHeld);
         string src = spillName(arrLoc->copySource);
-        out << format("{0}{1} = _bglArrayLocalCopyAlloc(_bglArray.length({2}, 0), {2}, {1}); {3} = {3} + _bglFrameTaken; {2} = _bglFrameSrc;\n",
+        out << format("{0}{1} = _bglArrayLocalCopyAlloc(_bglArrLength({2}), {2}, {1}); {3} = {3} + _bglFrameTaken; {2} = _bglFrameSrc;\n",
                       indent, name, src, held);
         return;
     }
@@ -3971,6 +3977,13 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
 // One standalone `array<char>` declaration: an I6 hybrid buffer (its length at `-->0`, data from
 // `->WORDSIZE`) with its capacity in the word before it (byteArrayDecl).
 void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
+    if(arr->isRepointed && !arr->isRaw){   // as emitGlobalWordArray
+        arrayDeclaration storage(*arr);
+        storage.isRepointed = false;
+        storage.displayName = "_bglarr_" + arr->dName();
+        emitGlobalByteArray(&storage);
+        return;
+    }
     // rawArray<char>: bare bytes from offset 0, with no length word.
     if(arr->isRaw){
         auto* seed = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
@@ -3997,6 +4010,15 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
 // flat `-->` rawArray.
 // `rawArray<T>` is a bare flat block (spec §4.9.1): NO count/length/magic, subscript from
 void i6Emitter::emitGlobalWordArray(arrayDeclaration* arr){
+// A global the program re-points: its storage under another name, and a variable that starts on it.
+if(arr->isRepointed && !arr->isRaw){
+    string nm = arr->i6name.empty() ? arr->dName() : arr->i6name;
+    arrayDeclaration storage(*arr);
+    storage.isRepointed = false;
+    storage.i6name = "_bglarr_" + nm;
+    emitGlobalWordArray(&storage);   // its variable is declared up front (emitPhaseScratchGlobals)
+    return;
+}
 // `rawArray<T>` is a bare flat block (spec §4.9.1): NO count/length/magic, subscript from
 // word 0. It emits with I6's `--> N` (N zero words) / `--> v...` (literal values) form
 // rather than `table` (which prefixes a count word). (Members are unaffected — they use the

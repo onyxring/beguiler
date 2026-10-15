@@ -31,6 +31,7 @@
 #include <bindings/i6StandardLibrary>
 #include <string>
 #include <linq>
+#include <array>
 
 // ===== COUNTS =====
 
@@ -522,7 +523,7 @@ verb ShowPile {
         Homework top = pile.peek();
         print($"Next to mark: {top.subject} from desk {top.desk}.^");
         array<Homework> thick[PILE_SIZE];
-        thick = pile;
+        thick.copyFrom(pile);
         thick.sort();
         Homework thickest = thick.last();
         print($"Thickest: {thickest.subject} ({thickest.pages} pages).^");

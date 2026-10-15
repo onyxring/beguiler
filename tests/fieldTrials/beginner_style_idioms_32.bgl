@@ -31,6 +31,7 @@
 #include <bindings/i6StandardLibrary>
 #include <string>
 #include <linq>
+#include <array>
 
 // ===== COUNTS =====
 
@@ -635,7 +636,7 @@ verb ShowTill {
             return;
         }
         array<Money> sorted[TILL_SIZE];
-        sorted = till;
+        sorted.copyFrom(till);
         sorted.sort();
         print("Till:");
         for (Money c in sorted) {

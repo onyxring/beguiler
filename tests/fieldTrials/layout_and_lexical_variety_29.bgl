@@ -27,6 +27,7 @@
 #includeI6   "verblib"
 #include <bindings/i6StandardLibrary>
 #include <string>
+#include <array>
 #include <linq>
 
 #using bgl.printRules ;
@@ -423,7 +424,7 @@ verb ReadLog
             print($"{readings[i].turn}:{readings[i].heat} ") ;
         printLine("") ;
         array<Reading> sorted[LOG_MAX] ;
-        sorted = readings ;
+        sorted.copyFrom(readings) ;
         sorted.sort() ;
         printLine($"Low {sorted[0].heat}, high {sorted[sorted.length - 1].heat}.") ;
     }

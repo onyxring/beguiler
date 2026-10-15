@@ -210,7 +210,7 @@ verb Front {
 verb CopyOver {
     grammar = {.copy};
     void handler() {
-        board.tag = scratch;                         // buffer to buffer
+        board.tag.copyFrom(scratch);                         // buffer to buffer
         bgl.util.buf.toUpper(board.tag);
         stringObj fromBuf;
         fromBuf = fromBuf.append(board.tag);         // buffer into a stringObj
@@ -299,7 +299,7 @@ int churnRound(int n, bool show) {
     parts.clear();
     stringObj   keep = logText;            // the globals are changed and put back
     array<char> keepBuf[48];
-    keepBuf = scratch;
+    keepBuf.copyFrom(scratch);
     logText += $" +{n}";
     bgl.util.buf.append(scratch, "*");
     board.label = board.label + "?";
@@ -308,7 +308,7 @@ int churnRound(int n, bool show) {
         bgl.util.buf.print(scratch);
         printLine($" / {logText}");
     }
-    scratch = keepBuf;
+    scratch.copyFrom(keepBuf);
     logText = keep;
     board.label = board.label.left(board.label.length - 1);
     if (show) printLine($"Captured [{capt}], buffer [{back}].");
