@@ -37,7 +37,7 @@ class bglLanguageService{
     int tryCatchCounter = 0;         // unique ID for try/catch label generation
     int captureCounter = 0;          // unique ID for closure capture globals
     bool switchTempNeeded = false;  // set true when any switch uses guards; drives conditional _bgl_sw emission
-    bool arrayInUse = false;        // set true when `#include <array>` resolved; gates tracked-length array layout + magic stamping + for-in length-probe
+    bool arrayInUse = false;        // set true when `#include <array>` resolved; gates <array>'s methods (every array carries its length)
     bool linqInUse = false;         // set true when `#include <array>` resolved; drives LINQ scratch buffer + constant emission
     bool bufInUse = false;          // set true when `#include <buf>` resolved; gates tracked-length byteArray layout (length+magic suffix at end)
 

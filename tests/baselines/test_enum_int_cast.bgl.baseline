@@ -3,7 +3,6 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-Constant _BGL_TRACKED_ARRAYS;
    Array _bglFramePool --> 64;
    Global _bglFrameTop = 0;
    Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
@@ -25,12 +24,14 @@ Constant _BGL_TRACKED_ARRAYS;
    [ _bglFrameFree size;
       _bglFrameTop = _bglFrameTop - size;
    ];
+   ! The marker and the length, then an I6 table of `size` elements; the array is the table.
    [ _bglArrayLocalAlloc size r i;
       r = _bglFrameAlloc(size + 3);
-      r-->0 = size + 2;
+      r-->0 = $9084;
+      r-->1 = 0;
+      r = r + 2 * WORDSIZE;
+      r-->0 = size;
       for (i = 1: i <= size: i++) r-->i = 0;
-      r-->(size + 1) = 0;
-      r-->(size + 2) = $9084;
       return r;
    ];
    Global _bglFrameTaken = 0;
@@ -42,9 +43,9 @@ Constant _BGL_TRACKED_ARRAYS;
    [ _bglArrayLocalCopyAlloc n src cur top i;
       _bglFrameTaken = 0;
       _bglFrameSrc = src;
-      if (cur ~= 0 && cur-->(cur-->0) == $9084 && cur-->0 - 2 >= n) return cur;
+      if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src < top || src >= _bglFramePool + 64 * WORDSIZE) {
+      if (src - 2 * WORDSIZE < top || src >= _bglFramePool + 64 * WORDSIZE) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
@@ -53,10 +54,11 @@ Constant _BGL_TRACKED_ARRAYS;
          quit;
       }
       _bglFrameTop = _bglFrameTop + n + 3;
+      top-->0 = $9084;
+      top-->1 = n;
+      top = top + 2 * WORDSIZE;
       for (i = 1: i <= n: i++) top-->i = src-->i;
-      top-->0 = n + 2;
-      top-->(n + 1) = n;
-      top-->(n + 2) = $9084;
+      top-->0 = n;
       _bglFrameTaken = n + 3;
       _bglFrameSrc = top;
       return top;
@@ -93,6 +95,44 @@ Constant _BGL_TRACKED_ARRAYS;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
+#Ifdef TARGET_GLULX;
+[ _bglLowAddressGuard;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    return _bglLowAddressGuard;
+];
+Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it
+#Endif;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;

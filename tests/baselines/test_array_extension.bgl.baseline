@@ -3,23 +3,51 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-Constant _BGL_TRACKED_ARRAYS;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
+#Ifdef TARGET_GLULX;
+[ _bglLowAddressGuard;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    return _bglLowAddressGuard;
+];
+Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it
+#Endif;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
-    g_sparse-->(g_sparse-->0) = $9084;
-    g_sl-->(g_sl-->0) = $9084;
-    g_w-->(g_w-->0) = $9084;
-    g_ap-->(g_ap-->0) = $9084;
-    g_pp-->(g_pp-->0) = $9084;
-    g_ins-->(g_ins-->0) = $9084;
-    g_full-->(g_full-->0) = $9084;
-    g_stack-->(g_stack-->0) = $9084;
-    g_queue-->(g_queue-->0) = $9084;
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -45,26 +73,46 @@ _bglClass_Room r2
 ;
 _bglClass_Room r3
 ;
-array g_nums table 10 20 30 40 50 5 $9084;
-array g_sparse table 10;
-array g_partial table 7 8 0 9 0 5 $9084;
-array g_rooms table r1 r2 r3 3 $9084;
-array g_sw table 1 2 3 4 5 5 $9084;
-array g_rev table 10 20 30 3 $9084;
-array g_cl table 1 2 3 3 $9084;
-array g_sl table 7;
-array g_w table 7;
-array g_ap table 7;
-array g_pp table 7;
-array g_ins table 7;
-array g_full table 4;
-array g_rm table 10 20 30 40 50 5 $9084;
-array g_rv table 1 7 2 7 3 7 6 $9084;
-array g_stack table 7;
-array g_queue table 7;
-array g_back table 10 20 30 3 $9084;
-array g_unsorted table 30 10 50 20 40 5 $9084;
-array g_descending table 1 2 3 4 5 5 $9084;
+Array _bglhdr_g_nums --> $9084 5;
+array g_nums table 10 20 30 40 50;
+Array _bglhdr_g_sparse --> $9084 0;
+array g_sparse table 8;
+Array _bglhdr_g_partial --> $9084 5;
+array g_partial table 7 8 0 9 0;
+Array _bglhdr_g_rooms --> $9084 3;
+array g_rooms table r1 r2 r3;
+Array _bglhdr_g_sw --> $9084 5;
+array g_sw table 1 2 3 4 5;
+Array _bglhdr_g_rev --> $9084 3;
+array g_rev table 10 20 30;
+Array _bglhdr_g_cl --> $9084 3;
+array g_cl table 1 2 3;
+Array _bglhdr_g_sl --> $9084 0;
+array g_sl table 5;
+Array _bglhdr_g_w --> $9084 0;
+array g_w table 5;
+Array _bglhdr_g_ap --> $9084 0;
+array g_ap table 5;
+Array _bglhdr_g_pp --> $9084 0;
+array g_pp table 5;
+Array _bglhdr_g_ins --> $9084 0;
+array g_ins table 5;
+Array _bglhdr_g_full --> $9084 0;
+array g_full table 2;
+Array _bglhdr_g_rm --> $9084 5;
+array g_rm table 10 20 30 40 50;
+Array _bglhdr_g_rv --> $9084 6;
+array g_rv table 1 7 2 7 3 7;
+Array _bglhdr_g_stack --> $9084 0;
+array g_stack table 5;
+Array _bglhdr_g_queue --> $9084 0;
+array g_queue table 5;
+Array _bglhdr_g_back --> $9084 3;
+array g_back table 10 20 30;
+Array _bglhdr_g_unsorted --> $9084 5;
+array g_unsorted table 30 10 50 20 40;
+Array _bglhdr_g_descending --> $9084 5;
+array g_descending table 1 2 3 4 5;
 [main _bgl_tempL0;
     bglinit();
     if (_bglArray.isTracked(g_nums, 0)) {
@@ -206,10 +254,7 @@ array g_descending table 1 2 3 4 5 5 $9084;
     return 0;
 ];
 object _bglArray
-  with rawGet [addr slot;
-     return addr-->slot; 
-  ],
-       get [obj prop n;
+  with get [obj prop n;
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
@@ -221,24 +266,17 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       isTracked [obj prop hdr;
+       isTracked [obj prop;
      if(metaclass(obj)==object) rfalse; 
-    hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
+    return _bglarrtracked(obj);
   ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,0)-2;
-    }
-    return self.rawget(obj,0);
+    return _bglarrsize(obj);
   ],
        length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,self.rawget(obj,0)-1);
-    }
-    return self.rawget(obj,0);
+    return _bglarrlength(obj);
   ],
        setLength [obj prop n cap;
     if (n < 0) {
@@ -250,9 +288,7 @@ object _bglArray
         n=cap;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    if (self.istracked(obj,prop)) {
-        self.set(obj, prop, self.size(obj,prop), n);
-    }
+    _bglarrsetlength(obj, n);
   ],
        indexOf [obj prop val op len t e;
     len=self.length(obj,prop);
@@ -429,10 +465,7 @@ object _bglArray
 [_bglAt arr i w n;
     n = 0;
     
-        n = arr-->0;
-        #Ifdef _BGL_TRACKED_ARRAYS;
-            if(n > 1 && arr-->n == $9084) n = n - 2;
-        #Endif;
+        n = _bglArrSize(arr);
         if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
         return _bglOutOfRange(i, n, w);
     
@@ -451,3 +484,22 @@ object _bglArray
     
 ];
 array _bglsink --> 1;
+[_bglArrLength arr;
+    
+        if(_bglArrTracked(arr)) return arr-->(-1);
+        return arr-->0;
+    
+];
+[_bglArrSetLength arr n;
+     if(_bglArrTracked(arr)) arr-->(-1) = n; 
+];
+[_bglArrSize arr;
+     return arr-->0; 
+];
+[_bglArrTracked arr;
+    
+        if(arr == 0) rfalse;
+        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
+        rfalse;
+    
+];

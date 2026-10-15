@@ -3,7 +3,7 @@
 // typed by a #using-imported alias used above the extend, `alias X for` an imported alias, an alias added
 // by a later `extend` used as a type in the object's own body, static members through a class alias
 // path, and a for-in over a value-class array whose last slot was never filled.
-// EXPECT_OUTPUT: 3 0 5 2 2 4 4 4 6 3 3 0
+// EXPECT_OUTPUT: 3 0 5 2 2 4 4 4 6 3 2 0
 #beguilerSettings { target = z5; informName = "none"; }
 enum eKind { bolt, nut }
 value class PLen { inline int mm; PLen operator = (PLen o) { mm = o.mm; return self; } }

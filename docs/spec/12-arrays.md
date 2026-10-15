@@ -333,7 +333,7 @@ receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it
 
 | | `array<T>` | `rawArray<T>` |
 |---|---|---|
-| Layout | a count word, then the elements; with `<array>` included, a length word and a marker word follow the elements, and the count word counts them too | elements only |
+| Layout | an I6 `table`: the count word (the capacity), then the elements; the length and a marker word sit in the two words before it | elements only |
 | `size` / `length` | available | unavailable; the length is passed explicitly |
 | Length tracking | yes | none |
 
@@ -371,10 +371,10 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A file-scope `rawArray<T>` declared with an initializer is emitted as exactly the I6 array its values
-make: the elements, with no count word, length trailer or magic word. It has the same elements-only
+make: the elements, with no count word, length or marker word. It has the same elements-only
 layout as a `rawArray<T>` parameter, so it is passed wherever a `rawArray<T>` is expected, and its
 length is known only to the code that declared it. An I6 API that reads an array by a leading count
-word takes an array declared in an I6 island (§15.2).
+word takes an `array<T>`, which is an I6 table whose count word is its capacity.
 
 **Example**
 

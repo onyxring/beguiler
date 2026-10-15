@@ -4,19 +4,23 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 Constant _BGL_LINQ_SCRATCH_SIZE = 32;
-Constant _BGL_TRACKED_ARRAYS;
 
     ! MAX_DEPTH = number of nesting levels: depth 0 is a top-level chain, depth 1 is a chain
     ! started inside a depth-0 chain lambda, and so on. 2 covers the common one-level nested
     ! case (a chain inside a predicate or mapper); deeper nesting trips the _bglLinqEnter guard.
-    ! Each level costs one buffer PAIR (2 x _BGL_LINQ_SCRATCH_SIZE+2 words) of always-reserved
+    ! Each level costs one buffer PAIR (2 x _BGL_LINQ_SCRATCH_SIZE+3 words) of always-reserved
     ! static memory, so the default is kept small (Z5 story-size budget). To allow deeper nesting,
-    ! raise the constant AND add matching buffer decls + selector arms + startup stamps.
+    ! raise the constant AND add matching buffer decls + selector arms. Each buffer is a Beguile
+    ! array: the marker and its length, then the table.
     Constant _BGL_LINQ_MAXDEPTH = 2;
-    Array _bglLinqS0A table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS0B table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS1A table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS1B table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglhdr_bglLinqS0A --> $9084 0;
+    Array _bglLinqS0A table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS0B --> $9084 0;
+    Array _bglLinqS0B table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS1A --> $9084 0;
+    Array _bglLinqS1A table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS1B --> $9084 0;
+    Array _bglLinqS1B table _BGL_LINQ_SCRATCH_SIZE;
     Global _bglLinqActiveDepth = 0;
 
     [ _bglLinqBuf d h ;
@@ -49,17 +53,48 @@ Constant _BGL_TRACKED_ARRAYS;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglInitDone = 0;
+#Ifdef TARGET_GLULX;
+[ _bglLowAddressGuard;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    return _bglLowAddressGuard;
+];
+Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it
+#Endif;
 [bglInit;
     if(_bglInitDone) return;
     _bglInitDone = 1;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
-    g_empty-->(g_empty-->0) = $9084;
-
-    _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;
-    _bglLinqS0B-->(_bglLinqS0B-->0) = $9084;  _bglLinqS0B-->(_bglLinqS0B-->0 - 1) = 0;
-    _bglLinqS1A-->(_bglLinqS1A-->0) = $9084;  _bglLinqS1A-->(_bglLinqS1A-->0 - 1) = 0;
-    _bglLinqS1B-->(_bglLinqS1B-->0) = $9084;  _bglLinqS1B-->(_bglLinqS1B-->0 - 1) = 0;
-
 ];
  Constant NO_ATTRIBUTE 0; 
 object _zcode
@@ -74,8 +109,10 @@ object bgl
         return 0;
     
 ];
-array g_nums table 10 20 30 40 50 5 $9084;
-array g_empty table 10;
+Array _bglhdr_g_nums --> $9084 5;
+array g_nums table 10 20 30 40 50;
+Array _bglhdr_g_empty --> $9084 0;
+array g_empty table 8;
 [main;
     bglinit();
     print _bglArray.first(g_nums, 0);
@@ -147,39 +184,19 @@ array g_empty table 10;
     return y > 0;
 ];
 object _bglArray
-  with rawGet [addr slot;
-     return addr-->slot; 
-  ],
-       get [obj prop n;
+  with get [obj prop n;
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
-       set [obj prop n v;
-    
-            if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
-            obj-->(n+1) = v;
-        
-  ],
-       isTracked [obj prop hdr;
-     if(metaclass(obj)==object) rfalse; 
-    hdr = self.rawget(obj,0);
-    return self.rawget(obj,hdr)==36996 && self.rawget(obj,hdr-1)>=0;
-  ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,0)-2;
-    }
-    return self.rawget(obj,0);
+    return _bglarrsize(obj);
   ],
        length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
-    if (self.istracked(obj,prop)) {
-        return self.rawget(obj,self.rawget(obj,0)-1);
-    }
-    return self.rawget(obj,0);
+    return _bglarrlength(obj);
   ],
        setLength [obj prop n cap;
     if (n < 0) {
@@ -191,9 +208,7 @@ object _bglArray
         n=cap;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    if (self.istracked(obj,prop)) {
-        self.set(obj, prop, self.size(obj,prop), n);
-    }
+    _bglarrsetlength(obj, n);
   ],
        filter [obj prop pred dst cap writeCount srcLen i elem;
     dst = _bgllinqenter(obj);
@@ -269,10 +284,7 @@ object _bglArray
 [_bglAt arr i w n;
     n = 0;
     
-        n = arr-->0;
-        #Ifdef _BGL_TRACKED_ARRAYS;
-            if(n > 1 && arr-->n == $9084) n = n - 2;
-        #Endif;
+        n = _bglArrSize(arr);
         if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
         return _bglOutOfRange(i, n, w);
     
@@ -291,3 +303,22 @@ object _bglArray
     
 ];
 array _bglsink --> 1;
+[_bglArrLength arr;
+    
+        if(_bglArrTracked(arr)) return arr-->(-1);
+        return arr-->0;
+    
+];
+[_bglArrSetLength arr n;
+     if(_bglArrTracked(arr)) arr-->(-1) = n; 
+];
+[_bglArrSize arr;
+     return arr-->0; 
+];
+[_bglArrTracked arr;
+    
+        if(arr == 0) rfalse;
+        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
+        rfalse;
+    
+];

@@ -238,7 +238,7 @@ A Z-machine story shares fixed tables between the program, the runtime library a
 | Attributes | 48 | Library attributes and a program's `attribute` declarations |
 | Common properties | 61 | Library properties and a program's `property` declarations |
 | Readable memory | 64K | Objects (every slot of a pooled class copies all its properties), arrays, the `<string>` pool's buffers |
-| Entries in one array | 32,764 | One `array<T>` (a tracked array spends three words of the I6 limit) |
+| Entries in one array | 32,767 | One `array<T>`, its capacity (the length and marker are a separate two-word array before it) |
 
 The compiler reports an array declared larger than the limit itself. The others depend on what the
 library declares, so Inform 6 finds them; the compiler then reports which capacity ran out in its own

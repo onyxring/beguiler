@@ -145,18 +145,12 @@ class i6Emitter{
         int xpGlobalsNeeded = 0;                           // how many _bglXPn globals were emitted
         int framePoolSize = 64;                            // configurable via beguilerSettings framePoolSize
 
-        // Names of sized-uninitialized Beguile-declared word arrays. The compiler emits these
-        // with the compact `Array foo table N+2;` form (all zeros — far smaller in .inf source
-        // than an explicit zero list for large arrays) and registers the name here so bglInit
-        // can write the $9084 magic at startup. List-initialized arrays bake the magic into
-        // the initializer values and don't need to be registered.
         // True when bglInit() has work to do — a length header to stamp, a `#startup` block, or a
         // deferred global initializer. Drives the unreachable-init warning in resolvedOutput().
         bool bglInitHasWork = false;
         void noteRoutineParam(const string& routine, const string& param);
         map<string, set<string>> routineParams;   // routine (lowercase) → its parameters' I6 names, for the unused-parameter filter
-        vector<string> trackedArraysNeedingMagicInit;
-        // Byte-array analog of trackedArraysNeedingMagicInit. When `<buf>` is included, sized-
+        // When `<buf>` is included, sized-
         // uninitialized `array<char>` declarations get 4 trailing bytes (length-hi, length-lo,
         // magic-hi $90, magic-lo $84) so `_bglBuf` can detect tracked bufs and read length.
         // Names registered here get their magic+length stamped at startup.
@@ -165,6 +159,7 @@ class i6Emitter{
         struct TrackedByteMember { string raw; string lvalue; int size; };
         vector<TrackedByteMember> trackedByteMembers;
         static int i6StringChars(const string& lit);
+        string arrayHeader(const string& name, int length);
         string byteCapacityPrefix(const string& name, int capacity);
         string byteArrayDecl(const string& name, class arrayDeclaration* arr, int size, bool startsEmpty = false);
         set<const variableDeclaration*> runtimeMemberValues;   // object member values bglInit assigns
@@ -231,8 +226,6 @@ class i6Emitter{
         void emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList);
         // #emitfirst blocks, plus the placeholder resolvedOutput() replaces with the fired #storedEmitFirst blocks.
         void emitPhaseEmitFirstBlocks();
-        // Registers sized-uninitialised tracked word arrays so bglInit can stamp their $9084 magic. Emits nothing.
-        void collectTrackedWordArrays();
         // Registers sized-uninitialised tracked byte arrays and declares the globals bglInit must assign to.
         void emitPhaseTrackedByteArrayGlobals();
         // The synthesised bglInit routine: array magic stamps, sized-buffer setup, startup blocks, global inits.

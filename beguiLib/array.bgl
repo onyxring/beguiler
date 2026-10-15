@@ -51,8 +51,7 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 //   • global/local array     → $self is the array address, $prop a 0 sentinel
 //     (tracked layout). The compiler fills $self/$prop per call site.
 extend extern class array {
-    // Tracked-aware overrides of the core's raw `$val-->0` size/length.
-    // Probe a magic marker stamped by the compiler when `<array>` is included.
+    // Member and global arrays alike, through the dual-form helpers.
     /// How many elements the array can hold. Fixed at declaration.
     replace emitter int  size             { _bglArray.size($self, $prop) }
     /// True when this array carries a length separate from its capacity. A `rawArray` does not.
@@ -154,19 +153,9 @@ extend extern class arrayLength {
 
 
 //-----------------------------------------------------------------------------
-// _bglArray — utility object holding the tracked-array detection + metadata
-// helpers. Lives in the <array> extension (not core) per the zero-byte-core
-// principle: programs that don't #include <array> get plain N-slot I6
-// arrays with no runtime detection overhead.
-//
-// Detection (`isTracked`) probes two slots, both must pass:
-//   arr-->(arr-->0)     == $9084           (1-in-65k on untracked)
-//   arr-->(arr-->0 - 1) >= 0 (signed)      (1-in-2 on untracked)
-// Combined false-positive rate on Z-machine: 1-in-131k.
-//
-// Untracked extern arrays fall back to I6-native size semantics gracefully:
-// length() reports size, setLength() is silent no-op. isTracked() is the
-// authoritative check for defensive code.
+// _bglArray — the <array> methods' runtime. Every Beguile array carries its length (core's
+// _bglArrTracked/_bglArrSize/_bglArrLength read it); an array Inform 6 declares has none, so for it
+// length() reports size and setLength() does nothing.
 //
 // Note on slot math:
 //   operator[i] is `arr-->(i+1)`, so subscript indices are biased by 1
@@ -223,8 +212,7 @@ superposed object _bglArray {
     // length == size. Global/local arrays use the tracked layout when <array> stamped a marker.
     bool isTracked(var obj, var prop){
         #i6 { if(metaclass(obj)==object) rfalse; }
-        var hdr = rawGet(obj, 0);
-        return rawGet(obj, hdr) == $9084 && rawGet(obj, hdr - 1) >= 0;
+        return _bglArrTracked(obj);
     }
 
     int size(var obj, var prop){
@@ -233,15 +221,12 @@ superposed object _bglArray {
         // length first would have shifted every subscript. `rawArray<T>` members opt out of
         // the slot entirely and reject the operations that would read it.
         #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; }
-        if(isTracked(obj, prop)) return rawGet(obj, 0) - 2;
-        return rawGet(obj, 0);
+        return _bglArrSize(obj);
     }
 
     int length(var obj, var prop){
         #i6 { if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); }
-        if(isTracked(obj, prop)) return rawGet(obj, rawGet(obj, 0) - 1);
-        // Untracked fallback: report size so length() never lies bigger than truth.
-        return rawGet(obj, 0);
+        return _bglArrLength(obj);
     }
 
     void setLength(var obj, var prop, int n){
@@ -252,11 +237,7 @@ superposed object _bglArray {
         int cap = size(obj, prop);
         if(n > cap) n = cap;   // never past capacity: later reads would walk off the end
         #i6 { if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } }
-        if(isTracked(obj, prop)){
-            // length slot = element index size() of the raw allocation.
-            set(obj, prop, size(obj, prop), n);
-        }
-        // Untracked / members: silent no-op (no length word to maintain).
+        _bglArrSetLength(obj, n);   // an array Inform 6 declares: no length word, nothing to set
     }
 
     // ── Algorithm methods ─────────────────────────────────────────────────────

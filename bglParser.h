@@ -272,6 +272,9 @@ class bglParser {
         void resolveStubParamAliases();
         void validateEqualityPairs();
         void resolveArrayInitialGlobals();
+        // Does a member array carry the trailing length slot? Must match the emitter's rule.
+        bool memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
+                                  functionDef* func, statementBlock* body);
         void validateRequiredMembers();
         void resolveDeletes();   // pick each `delete`'s pool once every class is known
         // A Beguile-declared global named like an I6 statement keyword (`jump`, `move`, …) would read as
@@ -1122,9 +1125,6 @@ class bglParser {
         // Is a member array declared `ref`? It then holds a pointer, addressed as a value.
         bool memberArrayIsRef(const std::string& ownerName, const std::string& propName,
                               functionDef* func, statementBlock* body);
-        // Does a member array carry the trailing length slot? Must match the emitter's rule.
-        bool memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
-                                  functionDef* func, statementBlock* body);
         bool splitQualifiedMember(const string& name, functionDef* func, statementBlock* body,
                                   string& ownerOut, string& propOut);
         // The I6 property name for a member: its `asI6` alias, else a name clear of a global variable

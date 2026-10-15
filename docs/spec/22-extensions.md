@@ -31,8 +31,8 @@ An *extension* is a file in the `beguiLib` folder that a program enables with `#
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
-| LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | yes | `<array>` | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | no | — | both |
+| LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | no | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
 | Glulx images | `#include <glulxImage>` | the `glulxImage` handle; `eImages` metadata | no | — | Glulx |
@@ -315,7 +315,7 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which writes the length headers of sized tracked arrays (§21.2). Writing `arr[i] = v` never changes the length.
+Writing `arr[i] = v` never changes the length.
 
 **See also** §12.3, §12.10, §22.5.
 

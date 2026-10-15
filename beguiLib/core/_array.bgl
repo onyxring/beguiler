@@ -12,13 +12,13 @@
 extern emitter class array<T>{
     replace emitter T    operator[](int i)        { _bglAt($val, $i, 0)-->0 }       /// The element at `i`.
     replace emitter T    operator[]=(int i, T v)  { _bglAt($val, $i, 1)-->0 = $v }  /// Set the element at `i`.
-    replace emitter int  size                     { $val-->0 }             /// How many elements the array can hold.
-    typesealed arrayLength length;                                         /// How many elements are in use; the same as `size` unless `<array>` is included.
+    replace emitter int  size                     { _bglArrSize($val) }    /// How many elements the array can hold.
+    typesealed arrayLength length;                                         /// How many elements are in use.
 }
 
 /// The type of an array's `length`: how many elements are in use. `<array>` makes it assignable.
 extern emitter class arrayLength {
-    emitter int operator()                        { $self-->0 }            /// How many elements are in use.
+    emitter int operator()                        { _bglArrLength($self) } /// How many elements are in use.
 }
 
 /// A bare block of memory with no length, for passing to and from Inform 6 code; `rawArray<char>` holds bytes.
@@ -64,13 +64,34 @@ superposed int _bglOutOfRange(int i, int n, int w){
 superposed int _bglAt(int arr, int i, int w){
     int n = 0;
     #i6 {
-        n = arr-->0;
-        #Ifdef _BGL_TRACKED_ARRAYS;
-            if(n > 1 && arr-->n == $9084) n = n - 2;
-        #Endif;
+        n = _bglArrSize(arr);
         if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
         return _bglOutOfRange(i, n, w);
     }
+}
+// A Beguile array is an I6 `table` (word 0 its capacity) preceded by two words: the marker $9084, then
+// its length. An array Inform 6 declares has neither, and its length is its size.
+superposed bool _bglArrTracked(int arr){
+    #i6 {
+        if(arr == 0) rfalse;
+        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
+        rfalse;
+    }
+}
+// How many elements a global or local array can hold.
+superposed int _bglArrSize(int arr){
+    #i6 { return arr-->0; }
+}
+// How many elements of a global or local array are in use.
+superposed int _bglArrLength(int arr){
+    #i6 {
+        if(_bglArrTracked(arr)) return arr-->(-1);
+        return arr-->0;
+    }
+}
+// Set how many elements of a global or local array are in use; an array Inform 6 declares has no length.
+superposed void _bglArrSetLength(int arr, int n){
+    #i6 { if(_bglArrTracked(arr)) arr-->(-1) = n; }
 }
 // The address of character `i` of an array<char>, whose capacity is in the word before it.
 superposed int _bglByteAt(int arr, int i, int w){

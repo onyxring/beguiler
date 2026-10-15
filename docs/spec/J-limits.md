@@ -15,7 +15,7 @@ is specified in the section named in the last column; this table does not add li
 | Attributes, shared with the library | 48 | Z-machine | §18.12 |
 | Common properties, shared with the library | 61 | Z-machine | §18.12 |
 | Readable memory | 64K | Z-machine | §18.12 |
-| Entries in one array | 32,764 | Z-machine | §18.12 |
+| Entries in one array | 32,767 | Z-machine | §18.12 |
 | Parameters of a pooled class's `create()` | 3 | both | §8.2.6 |
 | `create()` and `destroy()` declarations per pooled class | one of each | both | §8.2.6 |
 | Type parameters per class; only the first binds | 1 | both | §8.1.1 |

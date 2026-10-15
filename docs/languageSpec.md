@@ -6898,7 +6898,7 @@ receiving it as a `rawArray<T>` parameter allows ordinary subscript syntax on it
 
 | | `array<T>` | `rawArray<T>` |
 |---|---|---|
-| Layout | a count word, then the elements; with `<array>` included, a length word and a marker word follow the elements, and the count word counts them too | elements only |
+| Layout | an I6 `table`: the count word (the capacity), then the elements; the length and a marker word sit in the two words before it | elements only |
 | `size` / `length` | available | unavailable; the length is passed explicitly |
 | Length tracking | yes | none |
 
@@ -6936,10 +6936,10 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 **Description**
 
 A file-scope `rawArray<T>` declared with an initializer is emitted as exactly the I6 array its values
-make: the elements, with no count word, length trailer or magic word. It has the same elements-only
+make: the elements, with no count word, length or marker word. It has the same elements-only
 layout as a `rawArray<T>` parameter, so it is passed wherever a `rawArray<T>` is expected, and its
 length is known only to the code that declared it. An I6 API that reads an array by a leading count
-word takes an array declared in an I6 island (§15.2).
+word takes an `array<T>`, which is an I6 table whose count word is its capacity.
 
 **Example**
 
@@ -9739,7 +9739,7 @@ A Z-machine story shares fixed tables between the program, the runtime library a
 | Attributes | 48 | Library attributes and a program's `attribute` declarations |
 | Common properties | 61 | Library properties and a program's `property` declarations |
 | Readable memory | 64K | Objects (every slot of a pooled class copies all its properties), arrays, the `<string>` pool's buffers |
-| Entries in one array | 32,764 | One `array<T>` (a tracked array spends three words of the I6 limit) |
+| Entries in one array | 32,767 | One `array<T>`, its capacity (the length and marker are a separate two-word array before it) |
 
 The compiler reports an array declared larger than the limit itself. The others depend on what the
 library declares, so Inform 6 finds them; the compiler then reports which capacity ran out in its own
@@ -9906,8 +9906,8 @@ I6 whose name is also a Beguile global:
 <file>: warning: I6 routine 'Score' collides with Beguile-declared global of the same name
 ```
 
-**Unreachable `bglInit()`** (§21.2). The program has runtime initialization to do — a sized tracked
-array or byte array to stamp, a `#startup` block, or a deferred global initializer — and nothing in
+**Unreachable `bglInit()`** (§21.2). The program has runtime initialization to do — a sized byte array
+to stamp, a `#startup` block, or a deferred global initializer — and nothing in
 the transpiled file calls `bglInit()`. The program still builds and still runs; it runs on
 uninitialized data.
 
@@ -10053,15 +10053,15 @@ bglInit();
 
 `bglInit()` is a routine the compiler synthesizes for every program; its position in the generated file is given in §18.8. It runs at most once however often it is called and, in order:
 
-1. the length headers of sized tracked arrays and byte arrays (§12.3, §22.2, §22.4);
+1. the length headers of sized byte arrays (§12.4, §22.2);
 2. every `#startup` block in the program, in file-inclusion order (§14.4.1);
 3. the deferred initializers of globals, in declaration order (§3.6): for a class-typed global whose type declares a parameterless `init` (§8.5), the `init` body and then the `operator =` that applies a declared value; for any global whose initializer is not a constant expression, that initializer.
 
 A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§23.3.1). A program built without a binding, or with `autoInitialize = false` (§17.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
 
-Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized tracked array reports its raw header word as its length and a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
+Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
 
-Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size` and `length` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
+Extensions that need `bglInit()` say so in their entry in §22: `<string>` does, and so does `<buf>`, whose sized, uninitialized tracked buffers have no length header until it runs. Word arrays are complete at compile time, so `<array>`, `<linq>`, `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**
 
@@ -11044,8 +11044,8 @@ An *extension* is a file in the `beguiLib` folder that a program enables with `#
 |---|---|---|---|---|---|
 | Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
 | Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | yes (length headers of sized arrays) | — | both |
-| LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | yes | `<array>` | both |
+| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; copy-on-assign | no | — | both |
+| LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | no | `<array>` | both |
 | Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
 | Glulx images | `#include <glulxImage>` | the `glulxImage` handle; `eImages` metadata | no | — | Glulx |
@@ -11328,7 +11328,7 @@ void Main() {
 
 **Notes**
 
-Requires `bglInit()`, which writes the length headers of sized tracked arrays (§21.2). Writing `arr[i] = v` never changes the length.
+Writing `arr[i] = v` never changes the length.
 
 **See also** §12.3, §12.10, §22.5.
 
@@ -13006,7 +13006,7 @@ is specified in the section named in the last column; this table does not add li
 | Attributes, shared with the library | 48 | Z-machine | §18.12 |
 | Common properties, shared with the library | 61 | Z-machine | §18.12 |
 | Readable memory | 64K | Z-machine | §18.12 |
-| Entries in one array | 32,764 | Z-machine | §18.12 |
+| Entries in one array | 32,767 | Z-machine | §18.12 |
 | Parameters of a pooled class's `create()` | 3 | both | §8.2.6 |
 | `create()` and `destroy()` declarations per pooled class | one of each | both | §8.2.6 |
 | Type parameters per class; only the first binds | 1 | both | §8.1.1 |

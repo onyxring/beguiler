@@ -63,15 +63,15 @@ bglInit();
 
 `bglInit()` is a routine the compiler synthesizes for every program; its position in the generated file is given in §18.8. It runs at most once however often it is called and, in order:
 
-1. the length headers of sized tracked arrays and byte arrays (§12.3, §22.2, §22.4);
+1. the length headers of sized byte arrays (§12.4, §22.2);
 2. every `#startup` block in the program, in file-inclusion order (§14.4.1);
 3. the deferred initializers of globals, in declaration order (§3.6): for a class-typed global whose type declares a parameterless `init` (§8.5), the `init` body and then the `operator =` that applies a declared value; for any global whose initializer is not a constant expression, that initializer.
 
 A program built on an IF library binding does not call `bglInit()` itself: the binding wraps the library's `main` so that `bglInit()` runs first (§23.3.1). A program built without a binding, or with `autoInitialize = false` (§17.4), must call `bglInit()` from its entry point before using anything that depends on it. The call is always available and is harmless when nothing has registered work.
 
-Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized tracked array reports its raw header word as its length and a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
+Omitting it does not stop the build and does not stop the program: it runs on uninitialized data, where a sized byte array is still a null pointer. The compiler therefore warns when the program has initialization to do and nothing in the transpiled file calls `bglInit()` (§19.3).
 
-Extensions that need `bglInit()` say so in their entry in §22: `<string>` and `<linq>` do, and so do `<array>` and `<buf>`, whose sized, uninitialized tracked arrays have no length header until it runs: before `bglInit()`, such an array reports its raw header word from `size` and `length` and `append` fails; arrays declared with an initializer list are complete at compile time. `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
+Extensions that need `bglInit()` say so in their entry in §22: `<string>` does, and so does `<buf>`, whose sized, uninitialized tracked buffers have no length header until it runs. Word arrays are complete at compile time, so `<array>`, `<linq>`, `<ui>`, `<glulxWindow>` and `<glulxImage>` do not need it.
 
 **Example**
 

@@ -2882,8 +2882,6 @@ bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::str
         "indexof", "reverse", "sort", "sortdefault"
     };
     if(needsLengthWord.count(methName) == 0) return false;
-    // Without <array> nothing is tracked; the method lookup says where these come from.
-    if(!languageService.arrayInUse) return false;
     if(memberArrayIsTracked(owner, prop, func, body)) return false;
     string what = methName == "length =" ? string("Assigning 'length'") : "'" + methName + "()'";
     // A member declared `array<T>` that names an additive property: the declaration is what's wrong.
@@ -2898,9 +2896,11 @@ bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::str
     return true;
 }
 
-bool bglParser::memberArrayIsTracked(const std::string& ownerNameIn, const std::string& propName,
+bool bglParser::memberArrayIsTracked(const std::string& ownerNameIn, const std::string& propNameIn,
                                      functionDef* func, statementBlock* body){
-    if(!languageService.arrayInUse) return false;
+    // A member renamed away from a clash (`_m_sizes`) is looked up by its own name.
+    const string propName = propNameIn.rfind("_m_", 0) == 0 && clashRenamedMember(propNameIn.substr(3)) == propNameIn
+                          ? propNameIn.substr(3) : propNameIn;
     // An owner written as its I6 name (`_box` for an object named by a reserved word) is that object.
     string ownerName = ownerNameIn;
     for(typeDef* t : languageService.objectInstances)

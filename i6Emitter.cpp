@@ -843,10 +843,10 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
                     string prop = fm->i6name.empty() ? fm->dName() : fm->i6name;
                     // Value-class elements are instances the words point at: only the length word empties it.
                     if(ec != nullptr && isValueClass(ec)){
-                        if(languageService.arrayInUse && !ad->isRaw) out << format("{0}{1}.&{2}-->{3} = 0;\n", indent, inst, prop, ad->arraySize);
+                        if(!ad->isRaw) out << format("{0}{1}.&{2}-->{3} = 0;\n", indent, inst, prop, ad->arraySize);
                         continue;
                     }
-                    int words = ad->arraySize + (languageService.arrayInUse && !ad->isRaw ? 1 : 0);
+                    int words = ad->arraySize + (!ad->isRaw ? 1 : 0);
                     if(words > 64) continue;
                     for(int k = 0; k < words; k++) out << format("{0}{1}.&{2}-->{3} = 0;\n", indent, inst, prop, k);
                     continue;
@@ -1692,10 +1692,6 @@ framePoolSize = beguilerSettings.framePoolSize;
 
 // Scratch globals (ternary temps, switch temp, try/catch cookie + per-block save slots), each only when used.
 void i6Emitter::emitPhaseScratchGlobals(){
-// Tells the library's raw I6 which array layout is in force: `<array>`'s length trailer, or the
-// core's length in word 0. First, so code emitted ahead of everything else can test it.
-if(languageService.arrayInUse)
-    out << "Constant _BGL_TRACKED_ARRAYS;\n";
 for(int i = 0; i < languageService.ternaryTempCount; i++)
     out << format("global _bgl_temp{0};\n", i);
 if(languageService.switchTempNeeded)
@@ -1878,24 +1874,6 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
     }
 }
 
-// Registers sized-uninitialised tracked word arrays so bglInit can stamp their $9084 magic. Emits nothing.
-void i6Emitter::collectTrackedWordArrays(){
-if(languageService.arrayInUse){
-    for(typeDef* g : languageService.globals){
-        auto* arr = dynamic_cast<arrayDeclaration*>(g);
-        if(arr == nullptr) continue;
-        if(arr->isExternal || arr->isByteArray || arr->isRaw) continue;  // rawArray: no tracking, no magic stamp
-        if(arr->isSuperposed) continue;  // superposed arrays may not be emitted; a bglInit stamp
-                                         // would dangle. They self-init at their point of use.
-        // Sized-uninit only — list-init arrays bake the magic inline.
-        if(arr->arraySize > 0 && arr->stringInitializer.empty()
-           && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
-            trackedArraysNeedingMagicInit.push_back(arr->i6name.empty() ? arr->dName() : arr->i6name);
-        }
-    }
-}
-}
-
 // Registers sized-uninitialised tracked byte arrays and declares the globals bglInit must assign to.
 void i6Emitter::emitPhaseTrackedByteArrayGlobals(){
 if(languageService.bufInUse){
@@ -2039,17 +2017,19 @@ void i6Emitter::emitPhaseBglInit(){
         pushSourceMap(currentLine() + 1, bglInitSrc.file, bglInitSrc.line);
 }
 out << "global _bglInitDone = 0;\n";
+// On Glulx a property value that is the address where a routine starts is called rather than read
+// (`RunRoutines(player, capacity)` with the library's capacity 100), and the program's first routine
+// starts at 100, just past I6's Main__. This one comes first: called through such a value it returns
+// its own address, the value itself, and its length keeps any other routine from starting below 1124.
+out << "#Ifdef TARGET_GLULX;\n[ _bglLowAddressGuard;";
+for(int k = 0; k < 1024; k++) out << (k % 32 == 0 ? "\n    @nop;" : " @nop;");
+out << "\n    return _bglLowAddressGuard;\n];\nGlobal _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it\n#Endif;\n";
 out << "[bglInit;\n";
 out << "    if(_bglInitDone) return;\n";
 out << "    _bglInitDone = 1;\n";
 // Glulx starts with no output system until the library selects Glk, so text a startup value prints
 // into a buffer (a string literal) would be lost.
 out << "    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;\n";
-// Stamp the $9084 magic onto every sized-uninitialized tracked array.
-// (List-initialized arrays bake the magic in at compile time and don't need this.)
-// Form: `arr-->(arr-->0) = $9084;` — write the last slot of the allocation.
-for(const string& arrName : trackedArraysNeedingMagicInit)
-    out << "    " << arrName << "-->(" << arrName << "-->0) = $9084;\n";
 // Sized-buffer setup for tracked char arrays (`array<char> X[N]` with `<buf>`).
 // <buf> knows its tracked buffers by a registry.
 for(const string& arrName : trackedByteArraysNeedingMagicInit)
@@ -2063,7 +2043,7 @@ for(const string& block : languageService.startupBlocks)
 for(auto& [varName, body] : languageService.globalInits)
     out << "    " << body << "\n";
 out << "];\n";
-bglInitHasWork = !trackedArraysNeedingMagicInit.empty() || !trackedByteArraysNeedingMagicInit.empty() || !trackedByteMembers.empty() || !runtimeMemberInits.empty()
+bglInitHasWork = !trackedByteArraysNeedingMagicInit.empty() || !trackedByteMembers.empty() || !runtimeMemberInits.empty()
               || !languageService.startupBlocks.empty() || !languageService.globalInits.empty();
 }
 
@@ -2262,16 +2242,6 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // Emit #emitfirst blocks — raw I6 after ICL headers, before bglInit
     emitPhaseEmitFirstBlocks();
 
-    // Pre-pass: scan all globals to identify sized-uninitialized tracked word arrays.
-    // These get the compact `Array foo table N+2;` emission (later, in Pass 3) plus
-    // a magic-stamp statement in bglInit. We must do this BEFORE bglInit is synthesised
-    // so the stamp statements appear in the routine body. Walks variableDeclaration
-    // arrayDeclaration instances directly to avoid re-running the global-emission path.
-    //
-    // Gated on languageService.arrayInUse: programs that don't #include <array> get
-    // plain N-slot I6 arrays with no header/magic overhead. Tracked-length semantics
-    // are an opt-in via the <array> extension (zero-byte core principle).
-    collectTrackedWordArrays();
     // Byte-array analog: when `<buf>` is included, sized-uninit `array<char>` declarations
     // get 4 trailing bytes for length(2) + magic(2). Pre-pass collects them so bglInit can
     // stamp the magic at startup. String-initialized byte arrays opt out — their content
@@ -2641,7 +2611,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             } else {
                 // capacity + the trailing length slot (see the member length-slot rule). A
                 // list-initialised member is full, so its length is the seeded count.
-                bool trackedMember = languageService.arrayInUse && !arr->isRaw
+                bool trackedMember = !arr->isRaw
                                   && !languageService.isAdditiveProperty(
                                          arr->i6name.empty() ? arr->name : arr->i6name);
                 int seeded = 0;
@@ -2937,14 +2907,14 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
                 if(auto* inner = dynamic_cast<initializerList*>(outer->elements[i])){
                     int k = max(1, (int)inner->elements.size());   // an empty `{}` row still has storage, length 0
                     string slot = format("({0}-->{1})", ptr, i + 1);
-                    bool tracked = languageService.arrayInUse;
+                    bool tracked = true;
                     out << format("{0}{1}-->{2} = {3}({4});\n", indent, ptr, i + 1,
                                   tracked ? "_bglArrayLocalAlloc" : "_bglArrayLocalAllocPlain", k);
                     fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", k + (tracked ? 3 : 1))});
                     allocInner(slot, inner);
                 }
         };
-        if(languageService.arrayInUse && !arr->isRaw){
+        if(!arr->isRaw){
             out << format("{0}{1} = _bglArrayLocalAlloc({2});\n", indent, name, count);
             std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
             if(dtor.empty()) dtor = valueElementRoutine(arr->elementType, "_bglValFree_");
@@ -2989,21 +2959,16 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
                       exprText(arrLoc->declaredExpressionValue));
         return;
     }
-    // List-initialized local word array (`array<T> name = {a, b, c}`). The
-    // framePool slot was allocated in emitFunction (header/zeros/length=0/magic
-    // already laid down). Here we fill the data slots and set the tracked
-    // length. operator[] maps element i to raw slot i+1; the length slot lives
-    // at raw slot N+1 (just past the data). Byte arrays use the global-emission
-    // path instead, so they're excluded.
+    // List-initialized local word array (`array<T> name = {a, b, c}`): emitFunction allocated it (marker,
+    // length 0, zeroed table); fill the elements (element i at slot i+1) and set the length, the word
+    // before the table. Byte arrays use the global-emission path instead.
     if(!arrLoc->isByteArray){
         if(auto* list = dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue)){
             string name = spillName(arrLoc->name);
             int len = (int)list->elements.size();
-            // The length slot sits just past the *capacity*, which a declared `[N]`
-            // fixes independently of the seed length. _bglArrayLocalAlloc already
-            // zeroed the slice, so unseeded slots need no explicit write.
+            // A declared `[N]` fixes the capacity apart from the seed; unseeded slots are already zero.
             int cap = arrLoc->arraySize > 0 ? arrLoc->arraySize : len;
-            bool tracked = languageService.arrayInUse && !arrLoc->isRaw;   // tracked layout has a length slot at cap+1
+            bool tracked = !arrLoc->isRaw;
             // A nested list fills the per-call inner array emitLocalArrayAllocs put in its slot.
             std::function<void(const string&, initializerList*, int)> fill = [&](const string& ptr, initializerList* l, int c){
                 int i = 0;
@@ -3017,7 +2982,7 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
                         out << format("{0}{1}-->{2} = {3};\n", indent, ptr, i + (arrLoc->isRaw ? 0 : 1), exprText(elem));
                     i++;
                 }
-                if(tracked) out << format("{0}{1}-->{2} = {3};\n", indent, ptr, c + 1, (int)l->elements.size());
+                if(tracked) out << format("{0}{1}-->(-1) = {2};\n", indent, ptr, (int)l->elements.size());
             };
             fill(name, list, cap);
             return;
@@ -3034,9 +2999,9 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
             if(dtor.empty()) dtor = valueElementRoutine(arrLoc->elementType, "_bglValFree_");
             if(!dtor.empty()) out << format("{0}_bglArray.freeAll({1}, 0, {2});\n", indent, name, dtor);
         }
-        int last = arrLoc->arraySize + ((languageService.arrayInUse && !arrLoc->isRaw) ? 1 : 0);
-        for(int k = arrLoc->isRaw ? 0 : 1; k <= last; k++)
+        for(int k = arrLoc->isRaw ? 0 : 1; k <= arrLoc->arraySize; k++)
             out << format("{0}{1}-->{2} = 0;\n", indent, name, k);
+        if(!arrLoc->isRaw) out << format("{0}{1}-->(-1) = 0;\n", indent, name);
     }
     return;
 }
@@ -3377,16 +3342,13 @@ void i6Emitter::emitForInStatement(forInStatement* fi, const string& indent){
         openTemplate = "forIn.openMember";
         closeTemplate = "forIn.closeMember";   // its own close (byte-identical to forIn.close for now,
                                                // so a variant can grow a distinct tail without touching the others)
+        bool tracked = parser.memberArrayIsTracked(owner, prop, nullptr, nullptr);   // its length is in its last word
         prop = parser.propertyI6Name(prop);
         arrayArg = owner + ".&" + prop;
-        lengthExpr = "(" + owner + ".#" + prop + ")/WORDSIZE";
+        lengthExpr = tracked ? owner + ".&" + prop + "-->((" + owner + ".#" + prop + ")/WORDSIZE - 1)"
+                             : "(" + owner + ".#" + prop + ")/WORDSIZE";
     } else {
-        // Length probe: when <array> is included, use the tracked-aware _bglArray.length
-        // dispatch. Without it, fall back to the raw slot count ($array-->0) — matches the
-        // untracked global-array layout emitted at the same arrayInUse=false gate above.
-        lengthExpr = languageService.arrayInUse
-            ? "_bglArray.length(" + arrayVarS + ", 0)"   // dual-form: global/local → 0 prop sentinel
-            : arrayVarS + "-->0";
+        lengthExpr = "_bglArrLength(" + arrayVarS + ")";
     }
     applyTemplate(openTemplate,
         {{"counter", spillName(fi->counterVar)}, {"array", arrayArg},
@@ -4031,12 +3993,8 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
     out << byteArrayDecl(arr->dName(), arr, arr->arraySize, languageService.bufInUse);   // <buf> makes length assignable
 }
 
-// One standalone word array: tracked `table` layout, plain `table`, or a flat `-->` rawArray.
-// ── Word-array paths.
-// With `<array>` included (languageService.arrayInUse): tracked-length layout —
-// N data slots + 1 length + 1 magic = N+2 total.
-// Without: plain N-slot I6 table. Zero-byte-core principle: programs that
-// don't use `<array>` get untracked I6-native arrays with no overhead.
+// One standalone word array: the tracked `table` layout (N data slots + length + marker = N+2), or a
+// flat `-->` rawArray.
 // `rawArray<T>` is a bare flat block (spec §4.9.1): NO count/length/magic, subscript from
 void i6Emitter::emitGlobalWordArray(arrayDeclaration* arr){
 // `rawArray<T>` is a bare flat block (spec §4.9.1): NO count/length/magic, subscript from
@@ -4044,24 +4002,20 @@ void i6Emitter::emitGlobalWordArray(arrayDeclaration* arr){
 // rather than `table` (which prefixes a count word). (Members are unaffected — they use the
 // property `.&prop-->n` mechanism.)
 const string arrName = arr->i6name.empty() ? arr->dName() : arr->i6name;
-bool tracked = languageService.arrayInUse && !arr->isRaw;
+bool tracked = !arr->isRaw;
 auto* list = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
 if(arr->arraySize > 0 && list == nullptr) {
     if(arr->isRaw){
         out << format("array {0} --> {1};\n", arrName, arr->arraySize);  // N flat zero words
         return;
     }
-    // Sized, uninitialized. Magic+length get stamped at startup by bglInit when
-    // tracked (pre-pass collected the name into trackedArraysNeedingMagicInit).
-    int slots = tracked ? arr->arraySize + 2 : arr->arraySize;
-    out << format("array {0} table {1};\n", arrName, slots);
+    // Sized, uninitialized: N zeroed elements, length 0.
+    out << arrayHeader(arrName, 0) << format("array {0} table {1};\n", arrName, arr->arraySize);
     return;
 }
 
 if(list != nullptr){
-    // List-initialized. With tracking, bake the magic + length into the
-    // initializer trailing slots. Without, just emit the data. rawArray uses the flat
-    // `-->` form (no count/length/magic).
+    // List-initialized: the length is the seed's count. rawArray uses the flat `-->` form (no length).
     //
     // A declared `[N]` fixes the capacity independently of the seed: the
     // seed fills the leading slots, the remainder are zeroed out to N, and
@@ -4078,10 +4032,9 @@ if(list != nullptr){
         entries.push_back(!t.empty() && t.front() == '-' ? "(" + t + ")" : t);
     }
     for(int pad = len; pad < cap; pad++) entries.push_back("0");   // unused capacity
-    if(tracked){
-        entries.push_back(to_string(len));   // length = seeded count, not capacity
-        entries.push_back("$9084");          // magic
-    }
+    if(tracked) out << arrayHeader(arrName, len);
+    // An empty list has no elements, and I6 has no empty table: one word holding the capacity, 0.
+    if(tracked && entries.empty()){ out << format("array {0} --> [ 0 ];\n", arrName); return; }
     out << format("array {0} {1}", arrName, arr->isRaw ? "-->" : "table");
     // A lone entry would be read by I6 as the array's size; the bracket form makes it an entry.
     if(entries.size() == 1) out << " [ " << entries[0] << " ]";
@@ -4259,11 +4212,7 @@ std::function<void(vector<typeMember*>&)> emitPromoted = [&](vector<typeMember*>
         if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
             if(arr->isPromoted && arr->arraySize > 0){
                 string nm = promotedArrayName(obj->dName(), arr->dName());
-                out << format("array {0} table", nm);
-                for(int k = 0; k < arr->arraySize; k++) out << " 0";
-                out << " 0";        // length: starts empty, grows through append
-                out << " $9084";    // tracked marker
-                out << ";\n";
+                out << arrayHeader(nm, 0) << format("array {0} table {1};\n", nm, arr->arraySize);
             }
 };
 emitPromoted(obj->members);
@@ -4438,7 +4387,7 @@ for(typeMember* m : obj->members){
             // kin, which I6 reads word by word. A trailing length would be read as a
             // dictionary word and corrupt matching, so those keep the bare layout no
             // matter what. Same reasoning as rawArray, applied by element type.
-            bool trackedMember = languageService.arrayInUse && !arr->isRaw
+            bool trackedMember = !arr->isRaw
                               && !languageService.isAdditiveProperty(
                                      arr->i6name.empty() ? arr->name : arr->i6name);
             int seeded = 0;
@@ -5063,12 +5012,11 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                 for(expression* e : list->elements) init.push_back(staticText(e));
             string proto;
             for(int i = 0; i < ad->arraySize; i++) proto += " " + (i < (int)init.size() && !init[i].empty() ? init[i] : string("0"));
-            proto += format(" {0} $9084", init.size());   // length, tracked marker
             i6RawNode* tabs = new i6RawNode();
-            tabs->text = format("Array {0}_proto table{1};\n", base, proto);
+            tabs->text = arrayHeader(base + "_proto", (int)init.size()) + format("Array {0}_proto table{1};\n", base, proto);
             string elems;
             for(int k = 0; k < N; k++){
-                tabs->text += format("Array {0}_{1} table{2};\n", base, k, proto);
+                tabs->text += arrayHeader(format("{0}_{1}", base, k), (int)init.size()) + format("Array {0}_{1} table{2};\n", base, k, proto);
                 elems += format(" {0}_{1}", base, k);
             }
             tabs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
@@ -5156,13 +5104,13 @@ void i6Emitter::synthesizePooledOwnedMembers(){
     if(needRowSets){
         i6RawNode* rows = new i6RawNode();
         rows->text = "[ _bglRowsTake dst set proto r k i j s d;\n"
-                     "    for(i = 0: i < r: i++){ d = set-->(k*r + i); s = proto-->i; for(j = 0: j <= s-->0: j++) d-->j = s-->j; dst-->i = d; }\n];\n"
+                     "    for(i = 0: i < r: i++){ d = set-->(k*r + i); s = proto-->i; for(j = 0: j <= s-->0: j++) d-->j = s-->j; d-->(-1) = s-->(-1); dst-->i = d; }\n];\n"
                      "[ _bglRowsSlot dst set r n k; for(k = 0: k < n: k++) if(set-->(k*r) == dst-->0) return k; return 0; ];\n";
         languageService.globals.push_back(rows);
     }
     if(needTableClear){
         i6RawNode* clr = new i6RawNode();
-        clr->text = "[ _bglTableCopy d s i; for(i = 1: i < d-->0: i++) d-->i = s-->i; ];\n";   // data and length; the marker stays
+        clr->text = "[ _bglTableCopy d s i; for(i = 1: i <= d-->0: i++) d-->i = s-->i; d-->(-1) = s-->(-1); ];\n";   // elements and length
         languageService.globals.push_back(clr);
     }
     if(needByteFill){
@@ -5938,6 +5886,12 @@ int i6Emitter::i6StringChars(const string& lit){
 
 // An array<char>'s capacity, in the word just before it: I6 lays consecutive arrays out contiguously,
 // and the buffer's own first word is its length.
+// The two words before a word array's table: the marker, then its length. I6 lays arrays out in source
+// order, so this one sits immediately before the array it heads.
+string i6Emitter::arrayHeader(const string& name, int length){
+    return format("Array _bglhdr_{0} --> $9084 {1};\n", name, length);
+}
+
 string i6Emitter::byteCapacityPrefix(const string& name, int capacity){
     bool glulx = beguilerSettings.target == "glulx";
     unsigned v = (unsigned)max(capacity, 0);

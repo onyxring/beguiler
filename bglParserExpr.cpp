@@ -217,7 +217,7 @@ string bglParser::valueSlotText(const string& elemText, const string& elemType){
 // The same for an $i6Expr placeholder standing for a member array, with `$prop` left for the emitter's binding.
 static string i6ExprMemberSizeText(const string& placeholder, const string& which, const string& type){
     string words = "((" + placeholder + ".#$prop)/WORDSIZE)";
-    if(!languageService.arrayInUse || type.rfind("rawarray", 0) == 0) return words;
+    if(type.rfind("rawarray", 0) == 0) return words;
     return which == "size" ? "(" + words + " - 1)" : "(" + placeholder + ".&$prop-->(" + words + " - 1))";
 }
 
@@ -6413,7 +6413,7 @@ string bglParser::checkedMemberSlot(const string& owner, const string& prop, con
 
 // Whether a member array keeps its length in its last word (see memberArrayIsTracked).
 bool bglParser::memberArrayDeclTracked(arrayDeclaration* ad){
-    if(ad == nullptr || !languageService.arrayInUse) return false;
+    if(ad == nullptr) return false;
     return !ad->isRaw && !languageService.isAdditiveProperty(ad->i6name.empty() ? ad->name : ad->i6name);
 }
 

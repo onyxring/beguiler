@@ -26,21 +26,26 @@
 //
 // Per-buffer capacity is _BGL_LINQ_SCRATCH_SIZE (#beguilerSettings.linqScratchSize,
 // default 32). Max nesting is _BGL_LINQ_MAXDEPTH. To resize the pool, edit the
-// constant AND add/remove buffer decls + selector arms + #startup stamps to match
+// constant AND add/remove buffer decls + selector arms to match
 // (I6 cannot declare arrays in a loop — same convention as bglWorld's pool).
 //-----------------------------------------------------------------------------
 #emitfirst{
     ! MAX_DEPTH = number of nesting levels: depth 0 is a top-level chain, depth 1 is a chain
     ! started inside a depth-0 chain lambda, and so on. 2 covers the common one-level nested
     ! case (a chain inside a predicate or mapper); deeper nesting trips the _bglLinqEnter guard.
-    ! Each level costs one buffer PAIR (2 x _BGL_LINQ_SCRATCH_SIZE+2 words) of always-reserved
+    ! Each level costs one buffer PAIR (2 x _BGL_LINQ_SCRATCH_SIZE+3 words) of always-reserved
     ! static memory, so the default is kept small (Z5 story-size budget). To allow deeper nesting,
-    ! raise the constant AND add matching buffer decls + selector arms + startup stamps.
+    ! raise the constant AND add matching buffer decls + selector arms. Each buffer is a Beguile
+    ! array: the marker and its length, then the table.
     Constant _BGL_LINQ_MAXDEPTH = 2;
-    Array _bglLinqS0A table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS0B table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS1A table _BGL_LINQ_SCRATCH_SIZE + 2;
-    Array _bglLinqS1B table _BGL_LINQ_SCRATCH_SIZE + 2;
+    Array _bglhdr_bglLinqS0A --> $9084 0;
+    Array _bglLinqS0A table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS0B --> $9084 0;
+    Array _bglLinqS0B table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS1A --> $9084 0;
+    Array _bglLinqS1A table _BGL_LINQ_SCRATCH_SIZE;
+    Array _bglhdr_bglLinqS1B --> $9084 0;
+    Array _bglLinqS1B table _BGL_LINQ_SCRATCH_SIZE;
     Global _bglLinqActiveDepth = 0;
 
     [ _bglLinqBuf d h ;
@@ -71,14 +76,6 @@
     ];
 }
 
-// Stamp magic + zero length on every LINQ scratch buffer at program start so
-// detection (_bglArray.isTracked / length) works before any chain runs.
-#startup{
-    _bglLinqS0A-->(_bglLinqS0A-->0) = $9084;  _bglLinqS0A-->(_bglLinqS0A-->0 - 1) = 0;
-    _bglLinqS0B-->(_bglLinqS0B-->0) = $9084;  _bglLinqS0B-->(_bglLinqS0B-->0 - 1) = 0;
-    _bglLinqS1A-->(_bglLinqS1A-->0) = $9084;  _bglLinqS1A-->(_bglLinqS1A-->0 - 1) = 0;
-    _bglLinqS1B-->(_bglLinqS1B-->0) = $9084;  _bglLinqS1B-->(_bglLinqS1B-->0 - 1) = 0;
-}
 
 // Beguile-side bridges to the I6 routines emitted in the #emitfirst block above.
 // Implementations live in raw I6; these declarations just make the routines

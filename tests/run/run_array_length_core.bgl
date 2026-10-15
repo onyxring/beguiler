@@ -1,0 +1,16 @@
+// run_array_length_core — every array carries its length without `#include <array>`: a sized array starts
+// at 0, one with values at their count; globals, members, for-in and locals alike.
+// EXPECT_OUTPUT: 0 4 2 4 3 3 | 2 4 2 3 1
+#beguilerSettings { target = z5; informName = "none"; }
+array<int> z[4];
+array<int> g[4] = { 7, 8 };
+array<int> w = { 1, 2, 3 };
+object kit { array<int> nums[4] = { 7, 8 }; array<int> big[3]; }
+void main() {
+    bglInit();
+    print($"{z.length} {z.size} {g.length} {g.size} {w.length} {w.size} | ");
+    int n = 0; for (int v in g) n++;
+    print($"{n} {kit.nums.size} {kit.nums.length} {kit.big.size} ");
+    array<int> loc[5] = { 9 };
+    print(loc.length);
+}

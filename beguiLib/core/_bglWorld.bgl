@@ -30,18 +30,9 @@ superposed array<object> _bglWorldNextBuf(){
     return _bglWorldBuf0;
 }
 
-// Record a filled buffer's length where `length` reads it: in `<array>`'s trailer when a program
-// includes `<array>`, otherwise in word 0. bgl.world depends only on the core's arrays, so it doesn't
-// bring `<array>` into every program.
+// Record a filled buffer's length in the word after its elements, where `length` reads it.
 superposed void _bglWorldStamp(array<object> buf, int count){
-    #i6 {
-        #Ifdef _BGL_TRACKED_ARRAYS;
-            buf-->(buf-->0)     = $9084;
-            buf-->(buf-->0 - 1) = count;
-        #Ifnot;
-            buf-->0 = count;
-        #Endif;
-    }
+    #i6 { buf-->(-1) = count; }
 }
 
 // Collect every object.
