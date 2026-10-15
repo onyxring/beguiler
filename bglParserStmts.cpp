@@ -856,6 +856,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         if(body != nullptr) body->statements.push_back(&tmpDecl);
         i6RawNode& assign = *(new i6RawNode());
         assign.text = arrName + " = " + arrExprText + ";";
+        assign.cooked = true;   // a local named like the member (`made` beside `bench.made`) is still renamed
         if(body != nullptr) body->statements.push_back(&assign);
         arrElemType = "var";
     }
@@ -2092,6 +2093,8 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
         if(isMember && !memberArrayIsRef(memOwner, memProp, func, body))
             subscriptText = checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), false,
                                               memberArrayIsTracked(memOwner, memProp, func, body));
+        else if(isMember && getMethod->isEmitter)   // the pointer the member holds
+            subscriptText = chainedSubscriptRead(getMethod, objectI6Name(memOwner) + "." + propertyI6Name(memProp), indexExpr->text(), arrType);
     }
     subscriptText = valueSlotText(subscriptText, elemType);
     // Read member name and dispatch
@@ -2164,7 +2167,7 @@ bool bglParser::processChainedSubscriptWrite(const string& arrPathIn, expression
     if(splitQualifiedMember(arrPath, func, body, memberOwner, memberProp)){
         isMember = true;
         refMember = memberArrayIsRef(memberOwner, memberProp, func, body);
-        if(arrPath.find('.') == string::npos) arrPath = memberOwner + "." + memberProp;
+        if(arrPath.find('.') == string::npos) arrPath = memberOwner + "." + propertyI6Name(memberProp);
     }
     // A bare member is typed by its Beguile name; the qualified path may carry its I6 name (`_m_grid`).
     bool bare = arrPathIn.find('.') == string::npos;
@@ -2538,6 +2541,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // path is already a property access; a bare name resolving to a member qualifies to one.
     string memOwner, memProp;
     bool isMemberWordArray = false;
+    string pointerSlot;   // a member held through a pointer: its element's address, from the array's own `operator []`
     if(isWordArrayType(arrType)){
         if(innerDot != string::npos){
             memOwner = selfValue; memProp = propValue; isMemberWordArray = true;
@@ -2546,8 +2550,12 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
         }
         else isMemberWordArray = splitQualifiedMember(arrPath, func, body, memOwner, memProp);
     if(isMemberWordArray && memberArrayIsRef(memOwner, memProp, func, body)){
-        arrPath = memOwner + "." + memProp;   // the pointer the member holds
+        arrPath = objectI6Name(memOwner) + "." + propertyI6Name(memProp);   // the pointer the member holds
+        selfValue = arrPath; propValue = "0";
         isMemberWordArray = false;
+        if(classDef* ac = !operatorRef(elemType, "=").empty() ? getDispatchClass(arrType) : nullptr)
+            if(functionDef* gm = findArraySubscriptOp(ac, elemType, /*isWrite=*/false))
+                pointerSlot = chainedSubscriptRead(gm, arrPath, indexExpr->text(), arrType);
     }
     }
 
@@ -2572,7 +2580,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // happens later, in substituteElemOps. Comparing against "0" here made this true for
     // EVERY element type, so every subscript write took the setOwnedAt routine instead of
     // the inline store, and a non-array receiver (stringObj) got "<$prop undefined>".
-    if(!isMemberWordArray && !operatorRef(elemType, "=").empty()){
+    if(!isMemberWordArray && pointerSlot.empty() && !operatorRef(elemType, "=").empty()){
         functionDef* owned = nullptr;
         if(auto* ac = languageService.findClass("array"))
             owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
@@ -2585,8 +2593,9 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
                 "#include <array>.", typeDisplayName(elemType)));
         setMethod = owned;
     }
-    if(isMemberWordArray){
-        string slot = checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), true,
+    if(isMemberWordArray || !pointerSlot.empty()){
+        string slot = !pointerSlot.empty() ? pointerSlot
+                    : checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), true,
                                         memberArrayIsTracked(memOwner, memProp, func, body));
         // An element type that owns storage stores through its assign routine, which copies into the
         // slot's own instance; `slot` is read twice, so an index with side effects can't share it.
@@ -3399,8 +3408,8 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
     return t;
 }
 
-// A whole member array read as a value (`o.log`, `((Bay)o).counts`, `(f()).log`): its owner and property.
-// Its elements live in the object, so it is copied, not referred to (until member arrays are references).
+// A whole member array that is its property's data, read as a value (`o.log`, `((Bay)o).counts`, `(f()).log`):
+// its owner and property. Its elements live in the object, so it is copied, not referred to.
 bool bglParser::memberArraySource(expression* val, string& owner, string& prop){
     // Only when the expression ends at the member: a chain on it (`o.log.orderBy(…)`) is a result of its own.
     string full = val->text();
@@ -3429,13 +3438,14 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     }
     if(t.leftType != nullptr && !isBindAssign) applyImplicitConversion(val, t.leftType->name);
     if(t.leftType != nullptr && t.leftType->name == "verb") applyActionConstant(val);
-    // A whole array as the target: a member array keeps its elements in its object until member arrays
-    // become references; a global one becomes a variable over its storage, so it can be re-pointed.
+    // A whole array as the target: an inline member array keeps its elements in its object; a global one
+    // becomes a variable over its storage, so it can be re-pointed.
+    string storeText;   // the store into a global or member array, which takes the place of its `operator =`
     if(t.leftType != nullptr && val != nullptr && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
        && a.src.file.find("beguiLib") == string::npos){
         bool member = !t.emitterProp.empty() && t.emitterProp != "0";
         if(member){
-            // Until member arrays are references, a whole member array takes a copy into its own elements.
+            // A member array that is its property's data takes a copy into its own elements.
             if(!memberArrayIsRef(t.emitterSelf, t.emitterProp, currentFunc, nullptr) && t.leftType->name != "bytearray"){
                 string vText = val->text(), vOwner, vProp;
                 bool fromMember = memberArraySource(val, vOwner, vProp);
@@ -3456,11 +3466,27 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 val->tokens = {"_bglArrFromMember(" + a.variableLeft + ", " + vOwner + ", " + escapePropertyName(vProp) + ", "
                                + substituteElemOps("$opref(=)", resolveArrayElementTypeDotted(vOwner, vProp, currentFunc, nullptr), "") + ")"};
         }
+        bool lasting = member;   // a global or member outlives the routine; a local array assigned to it is copied
         if(!member && a.variableLeft.find('.') == string::npos)
             if(auto* ga = languageService.findGlobalAs<arrayDeclaration>(a.variableLeft);
                ga != nullptr && (currentFunc == nullptr || (!qualifyFromParams(a.variableLeft, currentFunc)
-                                 && !qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()))))
+                                 && !qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())))){
                 ga->isRepointed = true;
+                lasting = true;
+            }
+        string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`
+        bool pointerMember = !member && a.variableLeft.find('.') != string::npos
+            && splitQualifiedMember(a.variableLeft, currentFunc, nullptr, lOwner, lProp);
+        if((lasting || pointerMember) && currentFunc != nullptr && t.leftType->name == "bytearray")
+            storeText = "_bglByteArrStore(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)
+                      + ", " + val->text() + ")";
+        else if((lasting || pointerMember) && currentFunc != nullptr){
+            string dst = member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft;
+            string elem = member ? resolveArrayElementTypeDotted(t.emitterSelf, t.emitterProp, currentFunc, nullptr)
+                        : pointerMember ? resolveArrayElementTypeDotted(lOwner, lProp, currentFunc, nullptr)
+                                 : resolveArrayElementType(a.variableLeft, currentFunc, nullptr);
+            storeText = "_bglArrStore(" + dst + ", " + val->text() + ", " + substituteElemOps("$opref(=)", elem, "") + ")";
+        }
     }
     const string& emitterSelfForLhs = t.emitterSelf;
     classDef* classType = t.ancestorCast != nullptr ? t.ancestorCast : t.classType;
@@ -3479,6 +3505,11 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     }
     if(val != nullptr && !isBindAssign) rejectNullIntoValueClass(val, classType);
     if(val != nullptr && !isBindAssign) rejectUnionInto(val, classType);
+    if(!storeText.empty()){
+        val->tokens = {storeText};
+        a.assignedExpression = val;
+        return;
+    }
     // Only `:=` skips operator= dispatch — that is what rebinding means. A plain `=`
     // on a `ref` slot assigns THROUGH the reference: it dispatches the type's
     // operator= into whatever the slot currently points at, exactly as it would on a
@@ -4212,7 +4243,11 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             // property where a pointer belongs. I6 then refuses to read it with `.`.
             string cOwner, cProp;
             bool cIsMember = lhs.find('.') != string::npos && splitQualifiedMember(lhs, func, body, cOwner, cProp);   // lhs is qualified already
-            if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)) cIsMember = false;
+            string selfText = lhs;
+            if(cIsMember && memberArrayIsRef(cOwner, cProp, func, body)){
+                cIsMember = false;
+                selfText = objectI6Name(cOwner) + "." + propertyI6Name(cProp);   // the pointer the member holds
+            }
             emitterBindings pb;   // $self stays deferred to emit time; only $prop/$opref resolve here
             if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
                 pb.prop = cIsMember ? cProp : "0";
@@ -4229,7 +4264,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             a.emitterParam = opFunc->params[0]->name;
             // An array is addressed as (owner, property); any other member type is the member itself.
             bool arrayTarget = isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray";
-            a.emitterSelf = cIsMember && arrayTarget ? cOwner : lhs;
+            a.emitterSelf = cIsMember && arrayTarget ? cOwner : selfText;
             if(body != nullptr) body->statements.push_back(&a);
             emitterFound = true;
         }
@@ -4658,7 +4693,8 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
         // as a value — (obj.prop, 0) — not as inline property data. Checked against the
         // resolved owner/property rather than the path text, which varies by call site.
         if(isMemberArr && memberArrayIsRef(memOwner, memProp, func, body)){
-            selfValue = memOwner + "." + memProp;   // the pointer the member holds
+            selfValue = objectI6Name(memOwner) + "." + propertyI6Name(memProp);   // the pointer the member holds
+            propValue = "0";
             isMemberArr = false;
         }
         if(isMemberArr) rejectRawMemberLengthOp(memOwner, memProp, methodName, func, body);

@@ -110,7 +110,7 @@ value class Route {
     inline array<Pt> stops[3];
     int cost;
     Route operator = (Route o) {
-        stops = o.stops;
+        stops.copyFrom(o.stops);
         cost = o.cost;
         return self;
     }

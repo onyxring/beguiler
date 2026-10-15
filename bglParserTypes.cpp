@@ -2802,8 +2802,20 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
 // elsewhere, so every operation addresses it as a value (obj.prop, 0) rather than as inline
 // property data (obj, prop). Addressing it the member way indexes the slot the pointer lives
 // in. Same resolution shape as memberArrayIsTracked, including `self` inside a body.
-bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string& propName,
+// Whether a member array's property holds a pointer (`ref`, or promoted), including one known so far
+// only by its pre-pass stub, which hasn't been promoted yet.
+bool bglParser::heldByPointer(const arrayDeclaration* ad){
+    if(ad == nullptr) return false;
+    if(ad->isRefLocal || !ad->isPrePassStub) return ad->isRefLocal;
+    arrayDeclaration sized(*ad);   // a stub may not know its capacity yet
+    if(sized.arraySize <= 0) sized.arraySize = 1;
+    return memberArrayPromotes(sized);
+}
+
+bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string& propNameIn,
                                  functionDef* func, statementBlock* body){
+    string propName = propNameIn;   // a clash-renamed member (`_m_sizes`) is its Beguile name to a stub
+    if(propName.rfind("_m_", 0) == 0 && clashRenamedMember(propName.substr(3)) == propName) propName = propName.substr(3);
     auto check = [&](vector<typeMember*>& members) -> int {   // -1 unknown, 0 no, 1 yes
         arrayDeclaration* stub = nullptr;
         for(typeMember* m : members)
@@ -2813,11 +2825,8 @@ bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string
                     if(stub == nullptr) stub = ad;
                 }
         if(stub == nullptr) return -1;
-        // Declared further down: its stub's `ref`, or the size that will promote it.
-        if(stub->isRefLocal) return 1;
-        const string& tg = beguilerSettings.target;
-        bool isZ = !tg.empty() && (tg[0] == 'z' || tg[0] == 'Z');
-        return isZ && !stub->isRaw && stub->arraySize + 1 > 32 ? 1 : 0;
+        // Declared further down: its stub's `ref`, or the promotion its declaration will get.
+        return heldByPointer(stub) ? 1 : 0;
     };
     // `self` in an inline accessor is the accessor's own class, not the object hosting it.
     if(ownerName == "self" && currentClass != nullptr && currentClass->name.rfind("_bglaccessor", 0) == 0){
@@ -2837,9 +2846,9 @@ bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string
                                         : (currentClass ? currentClass->name : string()))
                                       : ownerName;
     if(owner.empty()) return false;
-    // A computed owner (`(get()).big`, a cast's receiver): a `ref` (or promoted) member when every
-    // member array of that name is one.
-    if(owner[0] == '('){
+    // An owner of no known type (`(get()).big`, a cast's receiver, a lambda's capture): a `ref` (or
+    // promoted) member when every member array of that name is one.
+    auto byNameOnly = [&]{
         int found = -1;
         auto scan = [&](vector<typeMember*>& members){ int r = check(members); if(r >= 0) found = found == -1 ? r : min(found, r); };
         for(typeDef* g : languageService.globals)
@@ -2847,10 +2856,12 @@ bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string
         for(typeDef* t : languageService.objectInstances)
             if(auto* od = dynamic_cast<objectDef*>(t)) scan(od->members);
         return found == 1;
-    }
+    };
+    if(owner[0] == '(') return byNameOnly();
     string rt = owner.find('.') == string::npos ? resolveIdentifierType(owner, func, body)
                                                 : resolvePathType(owner, func, body);   // `root.branch.Items`
     typeDef& td = languageService.getType(rt.empty() ? owner : rt);
+    if(dynamic_cast<objectDef*>(&td) == nullptr && dynamic_cast<classDef*>(&td) == nullptr) return byNameOnly();
     if(auto* od = dynamic_cast<objectDef*>(&td)){
         int r = check(od->members); if(r >= 0) return r == 1;
         for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
@@ -2861,7 +2872,7 @@ bool bglParser::memberArrayIsRef(const std::string& ownerName, const std::string
         for(classDef* c = cd; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0]){
             int rc = check(c->members); if(rc >= 0) return rc == 1;
         }
-    return false;
+    return byNameOnly();   // a receiver typed above the member's class (`((Bay)o).counts` reads as `o.counts`)
 }
 
 // A RAW member array — `rawArray<T>`, or `array<dictionaryWord>`, whose layout I6 owns — is

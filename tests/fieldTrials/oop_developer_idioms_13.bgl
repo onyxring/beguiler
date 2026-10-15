@@ -118,7 +118,7 @@ value class Phrase {
     array<string> Words[3];
     int Uses;
     Phrase operator = (Phrase o) {
-        Words = o.Words;
+        Words.copyFrom(o.Words);
         Uses = o.Uses;
         return self;
     }

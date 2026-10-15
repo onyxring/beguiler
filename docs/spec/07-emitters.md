@@ -246,7 +246,7 @@ emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
 > **When to reach for it.** A global function with no `asI6` clause emits under its own name, so a body
 > may simply write that name; `$i6Name` buys nothing there. Use it where the emitted identifier is
 > *not* the Beguile one: anything carrying an `asI6` clause, a member or method (which emit as property
-> names), a promoted member array, and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
+> names), and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
 > mangling gains a parameter-type discriminator as soon as a second overload of that name is
 > declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
 

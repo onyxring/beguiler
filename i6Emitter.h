@@ -72,8 +72,8 @@ class i6Emitter{
         // re-declare them.
         set<string> earlyDeclaredGlobals;
         set<string> earlyStaticGlobals;   // class statics declared ahead of every class, by I6 name
-        // Storage name for a member array promoted out of its property (see
-        // promoteMemberArrayIfOversized). One per owning instance.
+        // Storage name for a member array held through its property (see memberArrayPromotes).
+        // One per owning instance.
         static std::string promotedArrayName(const std::string& owner, const std::string& prop){
             return "_bglPromoted_" + owner + "_" + prop;
         }

@@ -110,26 +110,28 @@ object bgl
         return 0;
     
 ];
+Array _bglhdr__bglPromoted_widget_nums --> $9084 3;
+array _bglPromoted_widget_nums table 30 10 20;
 object widget
-  with nums 30 10 20 3 ,
+  with nums _bglPromoted_widget_nums,
        findIt [;
-    return _bglArray.indexOf(self, nums, 20, 0);
+    return _bglArray.indexOf(self.nums, 0, 20, 0);
   ],
        hasIt [;
-    return (_bglArray.indexOf(self, nums, 10, 0) >= 0);
+    return (_bglArray.indexOf(self.nums, 0, 10, 0) >= 0);
   ],
        lenOf [;
-    return (self.&nums-->(((self.#nums)/WORDSIZE) - 1));
+    return _bglArray.length(self.nums, 0);
   ],
        sortIt [;
-    _bglArray.sortDefault(self, nums, 0);
+    _bglArray.sortDefault(self.nums, 0, 0);
   ],
        pushIt [v;
-    _bglArray.push(self, nums, v, 0);
+    _bglArray.push(self.nums, 0, v, 0);
   ],
        sumGt [n;
     _bglCap0 = n;
-    return _bglArray.length(_bglArray.filter(self, nums, _bglLambda_0), 0);
+    return _bglArray.length(_bglArray.filter(self.nums, 0, _bglLambda_0), 0);
   ]
 ;
 Array _bglhdr_g --> $9084 3;
@@ -144,7 +146,7 @@ array g table 30 10 20;
     return _bglArray.length(_bglArray.filter(g, 0, _bglLambda_1), 0);
 ];
 [extFind;
-    return _bglArray.indexOf(widget, nums, 20, 0);
+    return _bglArray.indexOf(widget.nums, 0, 20, 0);
 ];
 [isOdd x;
     return (x % 2) ~= 0;

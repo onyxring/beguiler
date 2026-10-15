@@ -551,7 +551,7 @@ La23Info La23Rank {
     grammar = {.rank};
     void handler() {
         array<La23Holder> order[4];
-        order = la23Scale.holders;
+        order.copyFrom(la23Scale.holders);
         order.sort((La23Holder a, La23Holder b) => b.load() - a.load());
         for (La23Holder h in order) print($"{h}={h.load()} ");
         La23Holder top = order.first();

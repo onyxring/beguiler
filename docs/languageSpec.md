@@ -3720,7 +3720,7 @@ emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
 > **When to reach for it.** A global function with no `asI6` clause emits under its own name, so a body
 > may simply write that name; `$i6Name` buys nothing there. Use it where the emitted identifier is
 > *not* the Beguile one: anything carrying an `asI6` clause, a member or method (which emit as property
-> names), a promoted member array, and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
+> names), and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
 > mangling gains a parameter-type discriminator as soon as a second overload of that name is
 > declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
 
@@ -4112,12 +4112,10 @@ compile-time error. `array<Room>` binds `T` to `Room` in the array's method sign
 
 An `extend extern class array` block adds emitters to every array, and `T` in their signatures binds
 the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
-array's own layout. For a global or local array, `$self` is the array and element `i` is
-`$self-->(i+1)`. For a member array, `$self` is the owning object, `$prop` the property, and
-element `i` is `$self.&$prop-->i`; `$prop` is `0` for a non-member array (§7.3). A member array
-too large to live inline in its property is stored separately (§12.7), and its emitters see it in the
-global form: `$self` is the stored array and `$prop` is `0`. A read can
-instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
+array's own layout. For a global, local or member array, `$self` is the array, element `i` is
+`$self-->(i+1)`, and `$prop` is `0` (§7.3). An `array<dictionaryWord>` member is its property's data
+(§12.7): `$self` is the owning object, `$prop` the property, and element `i` is `$self.&$prop-->i`. A
+read can instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
 
 **Example**
 
@@ -6390,8 +6388,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
 `length` and the `<array>` methods (§22.4) behave identically, and element type checking follows
 the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
-or a brace initializer. Storage rules for member arrays, including the Z-machine property-size limit
-and `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
+or a brace initializer. Storage rules for member arrays, including `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
 use for additive properties in §11.7.2.
 
 **Example**
@@ -6614,7 +6611,7 @@ third is the one-element form of the second: a single value of the element type 
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. `⟨name⟩` then refers to that array,
 as `=` does (§12.5). The sources §12.5 copies are copied here too: in a function body, a returned local
-array, a chain result or a whole member array gives `⟨name⟩` storage of its own, sized to the value's
+array or a chain result gives `⟨name⟩` storage of its own, sized to the value's
 length when the declaration runs; a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
 declared capacity. The same shorthand applies to a
 list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
@@ -6767,10 +6764,9 @@ capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or 
 `static operator =` (§12.10).
 
 Two sources are copied rather than referred to, as `copyFrom` would: a function's returned local
-array and a `<linq>` chain's result, whose storage is reused (§12.6), and a whole member word array on
-either side of `=`, whose elements live in its object (§12.7). The copy goes into the destination's
-own storage. An `array<char>` member holds its buffer by reference, so `=` re-points it like any other
-array.
+array and a `<linq>` chain's result, whose storage is reused (§12.6). The copy goes into the
+destination's own storage. A global or member array given an array declared in a function body takes a
+copy into its own storage the same way, since that array's storage is freed when its routine returns.
 
 **Example**
 
@@ -6835,21 +6831,16 @@ ref array<⟨type⟩> ⟨name⟩ ;
 
 **Description**
 
-An `array<T>` declared as a class or object member (§8.3.1, §11.8) has the same semantics as any other
-array: `length`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
-instance of a class has its own copy of a member array, with the declared capacity and initializer.
+An `array<T>` declared as a class or object member (§8.3.1, §11.8) is an array like any other:
+`length`, `append()`, `pop()` and the rest behave identically, and the member is a reference (§12.5).
+Storage is per instance: every instance of a class has an array of its own, with the declared capacity
+and initializer, and the member refers to it until it is given another array. An emitter on a member
+array sees it as it sees a global array: `$self` is the array and `$prop` is `0` (§8.1.1).
 
-| Declared capacity | Storage |
-|---|---|
-| fits in one property | inline in the object's property, with the length in a trailing slot |
-| too large for one property | separate storage owned by that instance; the property refers to it |
-
-An emitter on a member array stored separately sees it as it sees a global array: `$self` is the
-stored array and `$prop` is `0` (§8.1.1).
-
-Two member kinds always keep the bare I6 layout and are never moved to separate storage: a
-`rawArray<T>` member (§12.8.3), where exceeding the property limit is an error, and a member bound to
-an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
+Three member kinds are their property's data rather than a reference to an array: a `rawArray<T>`
+member (§12.8.3), where exceeding the property limit is an error; a member bound to an `additive`
+property, which must be declared `rawArray<T>` (§11.7.2); and an `array<dictionaryWord>` member, which
+the library reads as parser data.
 
 A member array is declared with a capacity or at least one element. In a class body, a member every
 object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,
@@ -6860,12 +6851,9 @@ than storage.
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
 
-A whole member word array on either side of `=` is copied (§12.5): `holder.rows = src;` copies `src`'s
-elements into the member, and `d = holder.rows;` copies the member's elements into `d`'s storage.
-
-A member array is property data, with no address of its own to hand over, so it can't be passed as an
-array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
-member is declared `ref` and bound to an array that lives elsewhere.
+`holder.rows = src;` makes the member refer to `src`'s array, and `d = holder.rows;` makes `d` refer to
+the member's; `copyFrom` copies instead (§12.5). A member array is passed as an array argument like any
+other array, and a write through the parameter is seen through the member.
 
 **Example**
 
@@ -6884,11 +6872,8 @@ w.log += 5;           // appends to shared
 
 **Notes**
 
-> **[Z-machine]** A property holds at most 32 words, counting the length slot, so a member array
-> larger than that uses separate storage. Byte-array members (`array<char>`) are not subject to the
-> property limit.
-
-> **[Glulx]** Properties have no practical size limit; member arrays are always stored inline.
+> **[Z-machine]** A property holds at most 32 words. A member array's storage is separate from its
+> property, so its capacity isn't limited by that; a `rawArray<T>` member's is (§12.8.3).
 
 ## 12.8 `rawArray<T>`
 
@@ -12632,7 +12617,7 @@ and unrecognized `##name` text, passes through to the output unchanged. Full rul
 | `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
 | `$name` | The argument supplied for the parameter declared as `name`. | §7.3 |
 | `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position. Its presence makes the body responsible for the store. | §7.3.2 |
-| `$prop` | In an `array<T>` emitter, the property name of an object-member array; `0` for a global array. | §7.3, §12.7 |
+| `$prop` | In an `array<T>` emitter, the property name of a member array that is its property's data (`array<dictionaryWord>`); `0` for every other array. | §7.3, §12.7 |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (routine name for `static`, property name for an instance operator, `0` for an emitter or none); `T` selects an overload. | §7.3.1 |
 | `$oprefReq(op[, T])` | As `$opref`, with a compile-time warning when nothing is found. | §7.3.1 |
 | `$i6Expr(expr)` | The I6 a Beguile expression emits, expanded inline — how one emitter reaches another. Binds the body's tokens as typed values; one expression or one void call; cycles and chains deeper than eight are errors. | §7.3.4 |
@@ -13017,7 +13002,7 @@ is specified in the section named in the last column; this table does not add li
 | Local slots per routine, parameters and locals together; one slot is reserved for the frame pointer, so a routine needing more than 14 spills to the frame pool | 15 | Z-machine | §18.10 |
 | Arguments passed natively on a routine call; the rest travel through compiler-emitted globals | 5 | Z-machine | §18.10 |
 | Frame pool size, in words (`framePoolSize`) | 64 by default; at least 1 | both | §17.4, §18.10 |
-| Words per object property, counting the length slot; a larger member array uses separate storage | 32 | Z-machine | §12.7 |
+| Words per object property (a `rawArray<T>` member's capacity) | 32 | Z-machine | §12.8.3 |
 | Distinct values in one `bnum`; one more is a compile-time error | 16 / 32 | Z-machine / Glulx | §2.7.2 |
 | Global variables, shared with the library and the runtime | 233 | Z-machine | §18.12 |
 | Attributes, shared with the library | 48 | Z-machine | §18.12 |

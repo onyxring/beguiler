@@ -518,7 +518,7 @@ verb More {
         Queue[1][0] = Queue[0];
         printLine($"deps {Board.At(2)[0].Title} {Board.At(2)[1].Title} {jobA.Deps[2].Title} {epicE.Deps[0].Title} len {jobC.Deps.length} {jobA.Deps.length}");
         jobC.Deps.length = 2;
-        jobC.Marks = Board.At(1).Marks;
+        jobC.Marks.copyFrom(Board.At(1).Marks);
         Board.At(2).Marks[0] = Board.At(2).Marks.length;
         Board.At(1).Marks.clear();
         Board.At(1).Marks += 9;

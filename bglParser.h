@@ -591,7 +591,9 @@ class bglParser {
         // (the caller should NOT continue member processing). Otherwise parses a variable
         // declaration into `members` and returns false.
         // Promote a member array too large for an I6 property into a synthesized global.
-        void promoteMemberArrayIfOversized(arrayDeclaration& arrDecl);
+        void promoteMemberArray(arrayDeclaration& arrDecl);
+        bool memberArrayPromotes(const arrayDeclaration& arrDecl);
+        bool heldByPointer(const arrayDeclaration* ad);
         void addInlineOrder(classDef& cls, const string& name);
         bool notePositional(classDef& cls, const string& name);
         map<classDef*, set<string>> positionalNoted;

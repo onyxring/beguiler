@@ -48,7 +48,7 @@ third is the one-element form of the second: a single value of the element type 
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
 from that array instead; the value's type decides which is meant. `⟨name⟩` then refers to that array,
 as `=` does (§12.5). The sources §12.5 copies are copied here too: in a function body, a returned local
-array, a chain result or a whole member array gives `⟨name⟩` storage of its own, sized to the value's
+array or a chain result gives `⟨name⟩` storage of its own, sized to the value's
 length when the declaration runs; a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
 declared capacity. The same shorthand applies to a
 list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
@@ -201,10 +201,9 @@ capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or 
 `static operator =` (§12.10).
 
 Two sources are copied rather than referred to, as `copyFrom` would: a function's returned local
-array and a `<linq>` chain's result, whose storage is reused (§12.6), and a whole member word array on
-either side of `=`, whose elements live in its object (§12.7). The copy goes into the destination's
-own storage. An `array<char>` member holds its buffer by reference, so `=` re-points it like any other
-array.
+array and a `<linq>` chain's result, whose storage is reused (§12.6). The copy goes into the
+destination's own storage. A global or member array given an array declared in a function body takes a
+copy into its own storage the same way, since that array's storage is freed when its routine returns.
 
 **Example**
 
@@ -269,21 +268,16 @@ ref array<⟨type⟩> ⟨name⟩ ;
 
 **Description**
 
-An `array<T>` declared as a class or object member (§8.3.1, §11.8) has the same semantics as any other
-array: `length`, `append()`, `pop()` and the rest behave identically. Storage is per instance: every
-instance of a class has its own copy of a member array, with the declared capacity and initializer.
+An `array<T>` declared as a class or object member (§8.3.1, §11.8) is an array like any other:
+`length`, `append()`, `pop()` and the rest behave identically, and the member is a reference (§12.5).
+Storage is per instance: every instance of a class has an array of its own, with the declared capacity
+and initializer, and the member refers to it until it is given another array. An emitter on a member
+array sees it as it sees a global array: `$self` is the array and `$prop` is `0` (§8.1.1).
 
-| Declared capacity | Storage |
-|---|---|
-| fits in one property | inline in the object's property, with the length in a trailing slot |
-| too large for one property | separate storage owned by that instance; the property refers to it |
-
-An emitter on a member array stored separately sees it as it sees a global array: `$self` is the
-stored array and `$prop` is `0` (§8.1.1).
-
-Two member kinds always keep the bare I6 layout and are never moved to separate storage: a
-`rawArray<T>` member (§12.8.3), where exceeding the property limit is an error, and a member bound to
-an `additive` property, which must be declared `rawArray<T>` (§11.7.2).
+Three member kinds are their property's data rather than a reference to an array: a `rawArray<T>`
+member (§12.8.3), where exceeding the property limit is an error; a member bound to an `additive`
+property, which must be declared `rawArray<T>` (§11.7.2); and an `array<dictionaryWord>` member, which
+the library reads as parser data.
 
 A member array is declared with a capacity or at least one element. In a class body, a member every
 object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,
@@ -294,12 +288,9 @@ than storage.
 A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
 is bound with `:=` (§3.7), and owns no storage of its own.
 
-A whole member word array on either side of `=` is copied (§12.5): `holder.rows = src;` copies `src`'s
-elements into the member, and `d = holder.rows;` copies the member's elements into `d`'s storage.
-
-A member array is property data, with no address of its own to hand over, so it can't be passed as an
-array argument (a compile-time error). A routine that needs it takes the owning object instead, or the
-member is declared `ref` and bound to an array that lives elsewhere.
+`holder.rows = src;` makes the member refer to `src`'s array, and `d = holder.rows;` makes `d` refer to
+the member's; `copyFrom` copies instead (§12.5). A member array is passed as an array argument like any
+other array, and a write through the parameter is seen through the member.
 
 **Example**
 
@@ -318,11 +309,8 @@ w.log += 5;           // appends to shared
 
 **Notes**
 
-> **[Z-machine]** A property holds at most 32 words, counting the length slot, so a member array
-> larger than that uses separate storage. Byte-array members (`array<char>`) are not subject to the
-> property limit.
-
-> **[Glulx]** Properties have no practical size limit; member arrays are always stored inline.
+> **[Z-machine]** A property holds at most 32 words. A member array's storage is separate from its
+> property, so its capacity isn't limited by that; a `rawArray<T>` member's is (§12.8.3).
 
 ## 12.8 `rawArray<T>`
 

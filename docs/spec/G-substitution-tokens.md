@@ -14,7 +14,7 @@ and unrecognized `##name` text, passes through to the output unchanged. Full rul
 | `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
 | `$name` | The argument supplied for the parameter declared as `name`. | §7.3 |
 | `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position. Its presence makes the body responsible for the store. | §7.3.2 |
-| `$prop` | In an `array<T>` emitter, the property name of an object-member array; `0` for a global array. | §7.3, §12.7 |
+| `$prop` | In an `array<T>` emitter, the property name of a member array that is its property's data (`array<dictionaryWord>`); `0` for every other array. | §7.3, §12.7 |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (routine name for `static`, property name for an instance operator, `0` for an emitter or none); `T` selects an overload. | §7.3.1 |
 | `$oprefReq(op[, T])` | As `$opref`, with a compile-time warning when nothing is found. | §7.3.1 |
 | `$i6Expr(expr)` | The I6 a Beguile expression emits, expanded inline — how one emitter reaches another. Binds the body's tokens as typed values; one expression or one void call; cycles and chains deeper than eight are errors. | §7.3.4 |

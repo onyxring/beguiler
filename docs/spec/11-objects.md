@@ -719,8 +719,7 @@ rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
 A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
 `length` and the `<array>` methods (§22.4) behave identically, and element type checking follows
 the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
-or a brace initializer. Storage rules for member arrays, including the Z-machine property-size limit
-and `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
+or a brace initializer. Storage rules for member arrays, including `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
 use for additive properties in §11.7.2.
 
 **Example**

@@ -1,7 +1,7 @@
 // run_array_references — arrays are references: `=` and `:=` re-point, a declaration from another array refers
-// to it, `copyFrom` copies, and `==` is the same array. A returned local array and a whole member array are
-// copied into the destination's own storage; a re-pointed global is a variable over its storage.
-// EXPECT_OUTPUT: 99 99 9 true false 5 2 7 4 3 8 8 | hi hi ho
+// to it, `copyFrom` copies, and `==` is the same array. A member array is a reference too. A returned local
+// array is copied into the destination's own storage; a re-pointed global is a variable over its storage.
+// EXPECT_OUTPUT: 99 99 9 true false 5 2 7 0 3 8 8 | hi hi ho
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 #include <buf>

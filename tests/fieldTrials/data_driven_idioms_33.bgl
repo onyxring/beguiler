@@ -468,7 +468,7 @@ verb CopyTest {
             return;
         }
         array<int> snap[KIND_COUNT];
-        snap = ((Bay)noun).counts;
+        snap.copyFrom(((Bay)noun).counts);
         ((Bay)noun).counts.sort();
         stringObj line = "Sorted:";
         for (int k in 0 to ((Bay)noun).counts.length - 1) line += $" {((Bay)noun).counts[k]}";
@@ -476,7 +476,7 @@ verb CopyTest {
         line += $"; swapped {((Bay)noun).counts[0]}..{((Bay)noun).counts[3]}";
         line += $"; max at {((Bay)noun).counts.indexOf(snap[mostKind(snap)])}";
         printLine(line);
-        ((Bay)noun).counts = snap;
+        ((Bay)noun).counts.copyFrom(snap);
         print("Restored: ");
         printCounts((Bay)noun);
         print($"; snap {snap.length}.^");

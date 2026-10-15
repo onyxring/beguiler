@@ -578,10 +578,9 @@ class arrayDeclaration : public variableDeclaration {
         int arraySize = 0;           // N in array<T> name[N]; 0 if list-initialized
         bool isByteArray = false;    // true for array<char> — emit with -> instead of -->
         bool isRaw = false;
-        // A member array too large for an I6 property (32 words on Z, including the trailing
-        // length slot) is PROMOTED: the compiler synthesizes a global tracked array per owning
-        // instance and the property holds a pointer to it. Addressing is then identical to a
-        // `ref` member, which is why isRefLocal is set alongside this.
+        // A PROMOTED member array lives in a global per owning instance and the property holds a
+        // pointer to it. Addressing is then identical to a `ref` member, which is why isRefLocal
+        // is set alongside this.
         bool isPromoted = false;
         bool isRepointed = false;    // a global the program assigns as a whole: a variable over its storage
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")

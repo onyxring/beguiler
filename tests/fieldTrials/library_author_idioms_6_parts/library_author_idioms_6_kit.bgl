@@ -32,7 +32,7 @@ extend extern class array {
     emitter T tail()            { $i6Expr($self[$self.length - 1]) }
     /// How many elements in use equal an item; global and local arrays only.
     emitter int countOf(T item) { La6_CountOf($self, $i6Expr($self.length), $item, $opref(==)) }
-    /// True for an array that is an object's member.
+    /// True for an array that is its owner's property data (a raw member array), not a reference.
     emitter bool isMember       { ($prop ~= 0) }
 }
 

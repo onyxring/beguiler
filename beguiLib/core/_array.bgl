@@ -113,10 +113,29 @@ superposed bool _bglArrEphemeral(int arr){
 // are copied into dst's own storage (up to its capacity). `assign` is the element type's static
 // `operator =` when its elements own instances: each is copied into dst's own slot rather than shared.
 superposed int _bglArrAssign(int dst, int src, var assign = 0){
+    #i6 {
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return src;
+        return _bglArrCopyInto(dst, src, assign);
+    }
+}
+// `dst = src` where dst is a global or member array: as _bglArrAssign, but any array in the frame pool is
+// copied, since a routine's local array doesn't outlive its call.
+superposed int _bglArrStore(int dst, int src, var assign = 0){
+    #i6 {
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrTracked(dst)) return src;
+        #Ifdef _bglFramePoolWords;
+            if(_bglUnsignedCompare(src, _bglFramePool) >= 0
+               && _bglUnsignedCompare(src, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0)
+                return _bglArrCopyInto(dst, src, assign);
+        #Endif;
+        return _bglArrAssign(dst, src, assign);
+    }
+}
+// src's elements and length, up to dst's capacity, copied into dst; returns dst.
+superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
     int i = 0;
     int n = 0;
     #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return src;
         n = _bglArrLength(src);
         if(n > dst-->0) n = dst-->0;
         for(i = 1 : i <= n : i++){
@@ -127,7 +146,7 @@ superposed int _bglArrAssign(int dst, int src, var assign = 0){
         return dst;
     }
 }
-// A whole member array assigned from `src` (until member arrays are references): src's elements and length,
+// A whole member array that is its property's data, assigned from `src`: src's elements and length,
 // up to its capacity, copied into the property, whose last word is the length; `assign` as for _bglArrAssign.
 superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
     int i = 0;
@@ -145,7 +164,7 @@ superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
         return 0;
     }
 }
-// One whole member array assigned from another (until member arrays are references).
+// One such member array assigned from another.
 superposed int _bglMemberArrCopyMember(var obj, var prop, var sobj, var sprop, var assign = 0){
     int i = 0;
     int n = 0;
@@ -162,7 +181,7 @@ superposed int _bglMemberArrCopyMember(var obj, var prop, var sobj, var sprop, v
         return 0;
     }
 }
-// `dst = obj.member` (until member arrays are references): the member's elements and length copied into dst's
+// `dst = obj.member`, a member that is its property's data: the member's elements and length copied into dst's
 // storage, up to its capacity. Returns dst.
 superposed int _bglArrFromMember(int dst, var obj, var prop, var assign = 0){
     int i = 0;
@@ -181,10 +200,29 @@ superposed int _bglArrFromMember(int dst, var obj, var prop, var assign = 0){
 }
 // The same for an array<char>: its capacity is the word before it, its length word 0, its bytes after.
 superposed int _bglByteArrAssign(int dst, int src){
+    #i6 {
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src)) return src;
+        return _bglByteArrCopyInto(dst, src);
+    }
+}
+// `dst = src` where dst is a global or member array<char>: as _bglByteArrAssign, but any array in the frame
+// pool is copied, as for _bglArrStore.
+superposed int _bglByteArrStore(int dst, int src){
+    #i6 {
+        if(src == 0 || dst == 0 || dst == src) return src;
+        #Ifdef _bglFramePoolWords;
+            if(_bglUnsignedCompare(src, _bglFramePool) >= 0
+               && _bglUnsignedCompare(src, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0)
+                return _bglByteArrCopyInto(dst, src);
+        #Endif;
+        return _bglByteArrAssign(dst, src);
+    }
+}
+// src's characters and length, up to dst's capacity, copied into dst; returns dst.
+superposed int _bglByteArrCopyInto(int dst, int src){
     int i = 0;
     int n = 0;
     #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src)) return src;
         n = src-->0;
         if(n > dst-->(-1)) n = dst-->(-1);
         for(i = 0 : i < n : i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);

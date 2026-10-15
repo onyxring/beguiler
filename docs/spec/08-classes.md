@@ -97,12 +97,10 @@ compile-time error. `array<Room>` binds `T` to `Room` in the array's method sign
 
 An `extend extern class array` block adds emitters to every array, and `T` in their signatures binds
 the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
-array's own layout. For a global or local array, `$self` is the array and element `i` is
-`$self-->(i+1)`. For a member array, `$self` is the owning object, `$prop` the property, and
-element `i` is `$self.&$prop-->i`; `$prop` is `0` for a non-member array (§7.3). A member array
-too large to live inline in its property is stored separately (§12.7), and its emitters see it in the
-global form: `$self` is the stored array and `$prop` is `0`. A read can
-instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
+array's own layout. For a global, local or member array, `$self` is the array, element `i` is
+`$self-->(i+1)`, and `$prop` is `0` (§7.3). An `array<dictionaryWord>` member is its property's data
+(§12.7): `$self` is the owning object, `$prop` the property, and element `i` is `$self.&$prop-->i`. A
+read can instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right form for either.
 
 **Example**
 

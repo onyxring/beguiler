@@ -529,7 +529,7 @@ La27Info La27Rank {
     grammar = {.rank};
     void handler() {
         array<La27Plant> order[4];
-        order = la27Garden.beds;
+        order.copyFrom(la27Garden.beds);
         order.sort((La27Plant a, La27Plant b) => b.growth - a.growth);
         for (La27Plant p in order) print($"{p}={p.growth} ");
         La27Plant top = order.first();

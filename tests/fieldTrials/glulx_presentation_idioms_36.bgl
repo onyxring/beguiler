@@ -155,7 +155,7 @@ value class Swatch {
         label = o.label;
         base = o.base;
         against := o.against;
-        steps = o.steps;
+        steps.copyFrom(o.steps);
         return self;
     }
 

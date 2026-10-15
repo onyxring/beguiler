@@ -756,13 +756,13 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
     arr.type = base->type;
     arr.elementType = base->elementType;
     arr.isRaw = base->isRaw;
-    arr.isRefLocal = base->isRefLocal;
+    arr.isRefLocal = base->isRefLocal && !base->isPromoted;   // a promoted base is promoted again below
     arr.declaredExpressionValue = list;
     // An additive property (`name`) adds to the class's words rather than replacing them, so it
     // carries only its own; padding it out to the class's count would add `0` words.
     arr.arraySize = languageService.isAdditiveProperty(arr.i6name.empty() ? arr.name : arr.i6name)
                   ? (int)list->elements.size() : max(base->arraySize, (int)list->elements.size());
-    promoteMemberArrayIfOversized(arr);
+    promoteMemberArray(arr);
     return &arr;
 }
 
@@ -1736,23 +1736,24 @@ void bglParser::processI6InlineMember(objectDef& obj){
     obj.members.push_back((typeMember*)&node);
 }
 
-// An I6 property holds at most 32 words on the Z-machine; Glulx has no practical limit.
-// A member array that does not fit — counting the trailing length slot — is PROMOTED: the
-// emitter synthesizes a global tracked array per owning instance and the property holds a
-// pointer to it. Marking it `ref` is what routes every access through the pointer form, so
-// promotion reuses that addressing wholesale rather than adding a third representation.
-// A rawArray is never promoted: it exists to BE an I6 property array, so exceeding the limit
-// is a real error the developer needs to see rather than have silently rewritten.
-void bglParser::promoteMemberArrayIfOversized(arrayDeclaration& arrDecl){
-    if(arrDecl.isRaw || arrDecl.isRefLocal) return;
-    if(arrDecl.elementType == "dictionaryword") return;   // I6 parser data; never rewritten
-    const string& t = beguilerSettings.target;
-    bool isZ = !t.empty() && (t[0] == 'z' || t[0] == 'Z');
-    if(!isZ) return;                                       // Glulx properties are effectively unbounded
-    const int I6_PROPERTY_WORD_LIMIT = 32;                 // hard I6 limit; length slot counts toward it
-    if(arrDecl.arraySize + 1 <= I6_PROPERTY_WORD_LIMIT) return;
+// A member word array is a reference, like every array: its storage is a global per owning
+// instance and the property holds a pointer to it, so `=` can re-point it. Marking it `ref`
+// routes every access through the pointer form. Exempt: a rawArray and `array<dictionaryWord>`,
+// which exist to BE I6 property data; an additive property (`name`), which I6 merges along the
+// class chain; `array<char>`, whose property already holds a pointer to its buffer; and a static array, one global.
+bool bglParser::memberArrayPromotes(const arrayDeclaration& arrDecl){
+    if(arrDecl.isRaw || arrDecl.isRefLocal || arrDecl.isStatic) return false;
+    if(arrDecl.elementType == "dictionaryword") return false;
+    if(arrDecl.isByteArray || arrDecl.elementType == "char") return false;
+    auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
+    if(arrDecl.arraySize <= 0 && (seed == nullptr || seed->elements.empty())) return false;
+    return !languageService.isAdditiveProperty(arrDecl.i6name.empty() ? arrDecl.name : arrDecl.i6name);
+}
+
+void bglParser::promoteMemberArray(arrayDeclaration& arrDecl){
+    if(!memberArrayPromotes(arrDecl)) return;
     arrDecl.isPromoted = true;
-    arrDecl.isRefLocal = true;   // addressed as a pointer from here on
+    arrDecl.isRefLocal = true;
 }
 
 bool bglParser::processArrayMember(vector<typeMember*>& members, const string& ownerDName, verbObjectDef* vodForGrammarRules,
@@ -1909,7 +1910,6 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         arrDecl.arraySize = readCompileTimeInt("an array's capacity");
         if(arrDecl.arraySize < 1)
             parsingError(format("Array '{0}' needs a capacity of at least 1.", arrDecl.dName()));
-        promoteMemberArrayIfOversized(arrDecl);
         file.getToken(token::bracketClose);
         sym = file.getToken({token::endStatement, token::assignment});
     }
@@ -2006,6 +2006,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         noteValueElementArray(*g, nullptr, false);
     } else
     if(!arrDecl.isRefLocal) noteValueElementArray(arrDecl, dynamic_cast<classDef*>(ctx), false);
+    promoteMemberArray(arrDecl);
     warnMemberHidesDefine(arrDecl.name, arrDecl.dName());
     // Replace pre-pass stub if present (pre-scan registers a variableDeclaration stub for
     // every property/array declaration so forward references resolve in sibling methods).
@@ -2933,6 +2934,10 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
     // aggregate with runtime fields — `Type{ runtimeA, runtimeB }` — be passed to a routine (§6.2.1).
     // The per-site static object thus doubles as the per-site value temp (recursion caveat: a
     // recursive call reusing the same site reuses this instance — same limitation as class locals).
+    for(typeMember* m : od.members)
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(m)){
+            if(!ad->isPromoted && !ad->isRefLocal) promoteMemberArray(*ad);
+        }
     if(func != nullptr){
         auto isRuntimeScalar = [](const std::string& t){
             return t=="int" || t=="uint" || t=="char" || t=="float" || t=="bool";
@@ -2949,8 +2954,9 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
                         string whyEl;
                         if(e == nullptr || isLiteralValue(e, whyEl)) continue;
                         i6RawNode* inj = new i6RawNode();
-                        inj->text = objName + ".&" + memberI6Name(cls->name, ad->name) + "-->" + to_string(k)
-                                  + " = " + e->text() + ";";
+                        inj->text = ad->isPromoted
+                            ? "(" + objName + "." + memberI6Name(cls->name, ad->name) + ")-->" + to_string(k + 1) + " = " + e->text() + ";"
+                            : objName + ".&" + memberI6Name(cls->name, ad->name) + "-->" + to_string(k) + " = " + e->text() + ";";
                         inj->cooked = true;
                         pendingInjections.push_back(inj);
                         expression* zero = new expression();
@@ -3565,7 +3571,7 @@ void bglParser::giveInstanceOwnRows(objectDef& obj){
     vector<variableDeclaration*> overrides;
     obj.objectClass->forEachMember([&](typeMember* m){
         auto* a = dynamic_cast<arrayDeclaration*>(m);
-        if(a == nullptr || a->isRefLocal || a->isStatic || !isArrayOfArraysElement(a->elementType) || own.count(a->name)) return;
+        if(a == nullptr || (a->isRefLocal && !a->isPromoted) || a->isStatic || !isArrayOfArraysElement(a->elementType) || own.count(a->name)) return;
         auto* list = dynamic_cast<initializerList*>(a->declaredExpressionValue);
         if(list == nullptr) return;
         own.insert(a->name);

@@ -119,8 +119,10 @@ Array _bglcap_g_buf -> 0 0 0 32;
 Array g_buf buffer 32;
 Array _bglcap_g_short -> 0 0 0 8;
 Array g_short buffer 8;
+Array _bglhdr__bglPromoted_inventory_slots --> $9084 0;
+array _bglPromoted_inventory_slots table 6;
 object inventory
-  with slots 0 0 0 0 0 0 0 ,
+  with slots _bglPromoted_inventory_slots,
        count 0
 ;
 [main i b last first middle last_c firstSh lastSh c;

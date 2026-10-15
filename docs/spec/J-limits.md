@@ -9,7 +9,7 @@ is specified in the section named in the last column; this table does not add li
 | Local slots per routine, parameters and locals together; one slot is reserved for the frame pointer, so a routine needing more than 14 spills to the frame pool | 15 | Z-machine | §18.10 |
 | Arguments passed natively on a routine call; the rest travel through compiler-emitted globals | 5 | Z-machine | §18.10 |
 | Frame pool size, in words (`framePoolSize`) | 64 by default; at least 1 | both | §17.4, §18.10 |
-| Words per object property, counting the length slot; a larger member array uses separate storage | 32 | Z-machine | §12.7 |
+| Words per object property (a `rawArray<T>` member's capacity) | 32 | Z-machine | §12.8.3 |
 | Distinct values in one `bnum`; one more is a compile-time error | 16 / 32 | Z-machine / Glulx | §2.7.2 |
 | Global variables, shared with the library and the runtime | 233 | Z-machine | §18.12 |
 | Attributes, shared with the library | 48 | Z-machine | §18.12 |

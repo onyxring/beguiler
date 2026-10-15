@@ -1,6 +1,5 @@
 /* A constant index past an array's declared size is a compile-time error. */
-// EXPECT_ERROR: Index 4 is outside 'perKind', which holds 4 elements (0 to 3).
+// EXPECT_ERROR: Index 4 is outside 'slots', which holds 4 elements (0 to 3).
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-class Tally : object { array<int> perKind[4]; }
-Tally t { }
-void main(){ print(t.perKind[4]); }
+array<int> slots[4];
+void main(){ print(slots[4]); }

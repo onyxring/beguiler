@@ -839,7 +839,16 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
                 if(auto* ad = dynamic_cast<arrayDeclaration*>(fm)){
                     // A word array is emptied: every word of its property, the length word included.
                     classDef* ec = languageService.findClass(ad->elementType);
-                    if(ad->isByteArray || ad->isRefLocal || ad->isPromoted || ad->arraySize <= 0) continue;
+                    if(ad->isPromoted){
+                        // Pointed back at its own storage, emptied.
+                        string prop = fm->i6name.empty() ? fm->dName() : fm->i6name;
+                        string storage = promotedArrayName(inst, ad->dName());
+                        out << format("{0}{1}.{2} = {3}; _bglArrSetLength({3}, 0);\n", indent, inst, prop, storage);
+                        if(ec == nullptr || !isValueClass(ec))
+                            for(int k = 1; k <= ad->arraySize && k <= 64; k++) out << format("{0}{1}-->{2} = 0;\n", indent, storage, k);
+                        continue;
+                    }
+                    if(ad->isByteArray || ad->isRefLocal || ad->arraySize <= 0) continue;
                     string prop = fm->i6name.empty() ? fm->dName() : fm->i6name;
                     // Value-class elements are instances the words point at: only the length word empties it.
                     if(ec != nullptr && isValueClass(ec)){
@@ -2610,8 +2619,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             if(arr->isPromoted){
                 // Storage lives in a per-instance global, so the class declares the
                 // property and nothing else; each instance overrides it with a pointer
-                // to its own. Emitting the data here would exceed the I6 property limit,
-                // which is the very thing promotion exists to avoid.
+                // to its own.
             } else if(extIt != externalArrayNames.end()){
                 out << extIt->second;
             } else {
@@ -3971,6 +3979,20 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
         if(first){ clause = "with "; first = false; } else { clause += ", "; }
         clause += format("{0} {1}", ad->i6name.empty() ? ad->dName() : ad->i6name, buf);
     });
+    // Its own storage for each member word array, which the property points at.
+    cls->forEachMember([&](typeMember* m){
+        auto* ad = dynamic_cast<arrayDeclaration*>(m);
+        if(ad == nullptr || !ad->isPromoted || !seen.insert(ad->name).second) return;
+        if(init != nullptr)
+            for(typeMember* im : init->members)
+                if(auto* own = dynamic_cast<arrayDeclaration*>(im); own && own->name == ad->name && own->isPromoted) ad = own;
+        arrayDeclaration storage(*ad);
+        storage.i6name = promotedArrayName(instanceName, ad->dName());
+        storage.isRepointed = false;
+        emitGlobalWordArray(&storage);
+        if(first){ clause = "with "; first = false; } else { clause += ", "; }
+        clause += format("{0} {1}", ad->i6name.empty() ? ad->dName() : ad->i6name, storage.i6name);
+    });
     return clause;
 }
 
@@ -4229,12 +4251,15 @@ string i6Emitter::globalInstanceName(variableDeclaration* varNode){
 }
 // Standalone tracked globals backing this instance's promoted member arrays (own and inherited).
 void i6Emitter::emitObjectPromotedArrays(objectDef* obj){
+set<string> seen;   // an instance's own declaration overrides its class's
 std::function<void(vector<typeMember*>&)> emitPromoted = [&](vector<typeMember*>& members){
     for(typeMember* m : members)
         if(auto* arr = dynamic_cast<arrayDeclaration*>(m))
-            if(arr->isPromoted && arr->arraySize > 0){
-                string nm = promotedArrayName(obj->dName(), arr->dName());
-                out << arrayHeader(nm, 0) << format("array {0} table {1};\n", nm, arr->arraySize);
+            if(arr->isPromoted && seen.insert(arr->name).second){
+                arrayDeclaration storage(*arr);
+                storage.i6name = promotedArrayName(obj->dName(), arr->dName());
+                storage.isRepointed = false;
+                emitGlobalWordArray(&storage);
             }
 };
 emitPromoted(obj->members);
@@ -4356,7 +4381,7 @@ if(obj->objectClass != nullptr)
         if(auto* a = dynamic_cast<arrayDeclaration*>(m))
             if(a->isPromoted && !ownArrNames.count(a->name)){
                 ownArrNames.insert(a->name);
-                inheritedOwned.push_back({a->dName(), promotedArrayName(obj->dName(), a->dName())});
+                inheritedOwned.push_back({a->i6name.empty() ? a->dName() : a->i6name, promotedArrayName(obj->dName(), a->dName())});
             }
     });
     }
@@ -4393,9 +4418,8 @@ for(typeMember* m : obj->members){
         out << (arr->i6name.empty() ? arr->dName() : arr->i6name) << " ";
         auto extIt = externalArrayNames.find(arr->name);
         if(arr->isPromoted){
-            // Too large for an I6 property: the storage is a synthesized global emitted
-            // just above, and the property holds a pointer to it. One global PER OWNING
-            // INSTANCE, so each object keeps independent state.
+            // The storage is a global emitted just above, one per owning instance, and the
+            // property holds a pointer to it.
             out << promotedArrayName(obj->dName(), arr->dName());
         } else if(extIt != externalArrayNames.end()){
             // String-initialized array: emit pointer to external global array
@@ -4576,11 +4600,9 @@ void i6Emitter::emitObject(objectDef* obj){
     // reaches it here — this guard keeps it emission-free.
     if(obj->isExternal) return;
 
-    // Storage for member arrays promoted out of their property (see
-    // promoteMemberArrayIfOversized). Emitted BEFORE the object so the `with prop <name>`
-    // pointer has a declared target. One global per owning instance, using the tracked
-    // layout — header, data, length, magic — so the promoted member behaves exactly like
-    // any other array through the `ref` addressing its declaration was marked with.
+    // Storage for member arrays held through their property (see memberArrayPromotes).
+    // Emitted BEFORE the object so the `with prop <name>` pointer has a declared target.
+    // One global per owning instance, with the header every array carries.
     emitObjectPromotedArrays(obj);
 
     // The header members: the object's name and its initial parent, when set.
@@ -4813,7 +4835,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
         vector<variableDeclaration*> owned;
         vector<arrayDeclaration*> bytes;   // array<char> members: a buffer per slot, not the class's one
         vector<arrayDeclaration*> nested;  // array-of-arrays members: a set of rows per slot, not the class's one
-        vector<arrayDeclaration*> promoted; // member arrays too large for a property: a table per slot
+        vector<arrayDeclaration*> promoted; // member word arrays held through a pointer: a table per slot
         set<string> seenName;
         cd->forEachMember([&](typeMember* m){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
@@ -4822,7 +4844,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             if(ad && ad->isByteArray && !ad->isRefLocal && !ad->isStatic && !seenName.count(ad->name)){
                 bytes.push_back(ad); seenName.insert(ad->name);
             }
-            if(ad && ad->isPromoted && !ad->isByteArray && !ad->isStatic && ad->arraySize > 0 && !seenName.count(ad->name)){
+            if(ad && ad->isPromoted && !ad->isByteArray && !ad->isStatic && !seenName.count(ad->name)){
                 promoted.push_back(ad); seenName.insert(ad->name);
             }
             if(ad && !ad->isByteArray && !ad->isRefLocal && !ad->isStatic && isArrayOfArraysElement(ad->elementType)
@@ -4967,6 +4989,14 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                     }
                     // A word array member is emptied: its elements and the length in its last word.
                     if(auto* fad = dynamic_cast<arrayDeclaration*>(fvd)){
+                        if(fad->isPromoted){   // through the pointer the property holds
+                            createInject += format("_bglArrSetLength({0}.{1}, 0);\n", path, fi6);
+                            classDef* ec = languageService.findClass(fad->elementType);
+                            if(ec == nullptr || !isValueClass(ec))
+                                for(int k = 1; k <= fad->arraySize && k <= 64; k++)
+                                    createInject += format("({0}.{1})-->{2} = 0;\n", path, fi6, k);
+                            continue;
+                        }
                         if(!fad->isByteArray && !fad->isRefLocal && fad->arraySize > 0)
                             for(int k = 0; k <= fad->arraySize; k++)
                                 createInject += format("{0}.&{1}-->{2} = 0;\n", path, fi6, k);
@@ -5032,19 +5062,44 @@ void i6Emitter::synthesizePooledOwnedMembers(){
             vector<string> init;
             if(auto* list = dynamic_cast<initializerList*>(ad->declaredExpressionValue))
                 for(expression* e : list->elements) init.push_back(staticText(e));
-            string proto;
-            for(int i = 0; i < ad->arraySize; i++) proto += " " + (i < (int)init.size() && !init[i].empty() ? init[i] : string("0"));
+            int cap = max(ad->arraySize, (int)init.size());
+            if(cap <= 0) continue;
+            // Rows written in place (`{ {1, 2}, {3} }`): each slot's table holds rows of its own.
+            vector<arrayDeclaration*> protoRows;
+            if(isArrayOfArraysElement(ad->elementType))
+                for(const string& t : init)
+                    if(auto* row = languageService.findGlobalAs<arrayDeclaration>(t)) protoRows.push_back(row);
+            if(protoRows.size() != init.size()) protoRows.clear();
+            auto tableOf = [&](const vector<string>& items){
+                string t;
+                for(int i = 0; i < cap; i++) t += " " + (i < (int)items.size() && !items[i].empty() ? items[i] : string("0"));
+                return t;
+            };
             i6RawNode* tabs = new i6RawNode();
-            tabs->text = arrayHeader(base + "_proto", (int)init.size()) + format("Array {0}_proto table{1};\n", base, proto);
+            tabs->text = arrayHeader(base + "_proto", (int)init.size()) + format("Array {0}_proto table{1};\n", base, tableOf(init));
             string elems;
             for(int k = 0; k < N; k++){
-                tabs->text += arrayHeader(format("{0}_{1}", base, k), (int)init.size()) + format("Array {0}_{1} table{2};\n", base, k, proto);
+                vector<string> mine = init;
+                for(size_t i = 0; i < protoRows.size(); i++){
+                    auto* row = new arrayDeclaration(*protoRows[i]);
+                    row->name = row->displayName = format("{0}_{1}_{2}", base, k, i);
+                    insertBefore(row);
+                    mine[i] = row->name;
+                }
+                tabs->text += arrayHeader(format("{0}_{1}", base, k), (int)init.size()) + format("Array {0}_{1} table{2};\n", base, k, tableOf(mine));
                 elems += format(" {0}_{1}", base, k);
             }
             tabs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
             insertBefore(tabs);
             // create(): a free table holding the class's initial elements; destroy(): back to the free list.
-            createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top; _bglTableCopy(self.{1}, {0}_proto);\n", base, memI6);
+            if(protoRows.empty())
+                createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top; _bglTableCopy(self.{1}, {0}_proto);\n", base, memI6);
+            else {
+                createInject += format("{0}_top = {0}_top - 1; self.{1} = {0}_free-->{0}_top; _bglArrSetLength(self.{1}, {2});\n",
+                                       base, memI6, protoRows.size());
+                for(size_t i = 0; i < protoRows.size(); i++)
+                    createInject += format("_bglTableCopy((self.{0})-->{1}, {2});\n", memI6, i + 1, protoRows[i]->name);
+            }
             destroyInject += format("{0}_free-->{0}_top = self.{1}; {0}_top = {0}_top + 1;\n", base, memI6);
             needTableClear = true;
         }

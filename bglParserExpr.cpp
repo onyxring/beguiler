@@ -167,7 +167,8 @@ bglParser::ArrayReceiver bglParser::arrayReceiver(string& objName, const string&
     // the property READ where the pointer lives (splitQualifiedMember yields `self` for a bare
     // member inside a body, so this joins to `self.nums`, not the raw `nums`).
     if(r.isMember && memberArrayIsRef(r.owner, r.prop, func, body)){
-        objName = r.owner + "." + r.prop;
+        string q = r.owner.find('.') == string::npos && func != nullptr ? qualifyIdentifier(r.owner, func, body) : "";
+        objName = objectI6Name(q.empty() ? r.owner : q) + "." + propertyI6Name(r.prop);   // a lambda reads its capture
         r.isMember = false;
     }
     // A static array reached through an instance (`level.history` in an accessor) is one global array.
@@ -2838,7 +2839,7 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
     bool isMemberWordArray = isWordArrayType(arrType) &&
         splitQualifiedMember(arrName, func, body, memberOwner, memberProp);
     if(isMemberWordArray && memberArrayIsRef(memberOwner, memberProp, func, body)){
-        arrName = memberOwner + "." + memberProp;   // read the pointer, not the slot
+        arrName = objectI6Name(memberOwner) + "." + propertyI6Name(memberProp);   // read the pointer, not the slot
         isMemberWordArray = false;
     }
     // A bare member that holds a pointer (array<char>, stringObj, a class with operator []) is self's.
@@ -2973,7 +2974,7 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
             arrayDeclaration* memberArr = elemCls == nullptr ? nullptr :
                 dynamic_cast<arrayDeclaration*>(findMemberInHierarchy(elemCls, [&](typeMember* m){
                     return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == member.value; }));
-            if(memberArr != nullptr && !memberArr->isRefLocal && file.peekToken().is(token::bracketOpen)
+            if(memberArr != nullptr && !heldByPointer(memberArr) && file.peekToken().is(token::bracketOpen)
                && isWordArrayType(expr->resolvedType)){
                 file.getToken();   // '['
                 expression* innerIndex = parseExpression(file.getToken(), {token::bracketClose}, func, body);
@@ -3266,7 +3267,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
         if(propType.empty()) propType = memberDeclType(currentType, memberName);   // an object's own member
         string readRet;
         string read = expandMemberValueEmitter(optTemp, "", currentType, memberName, func, body, readRet);
-        if(read.empty()) read = applyPropertyClassRead(optTemp, propType, readRet);
+        if(read.empty()){ ArrayReceiver whole; read = applyPropertyClassRead(optTemp, propType, readRet, isWordArrayType(currentType) ? &whole : nullptr); }
         if(read.empty()){
             string plain = optTemp + "." + memberI6Name(currentType, memberName);
             bool keep = readingForBind || (after != nullptr
@@ -3309,6 +3310,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                     emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
                     if(!chainArrProp.empty()){ mb.prop = chainArrProp; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
+                    else if(isWordArrayType(currentType)){ mb.prop = "0"; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
                     mb.fn = method;
                     for(expression* a : callArgs) mb.args.push_back(a->text());
                     for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
@@ -3349,7 +3351,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 injText += " " + optTemp + " = " + arraySizeRead(member.value) + ";";
                 chainArrProp.clear(); chainArr = nullptr;
                 currentType = "int";
-            } else if(memberArr != nullptr && !memberArr->isRefLocal && (afterMember.is(token::period) || afterMember.is("?."))){
+            } else if(memberArr != nullptr && !heldByPointer(memberArr) && (afterMember.is(token::period) || afterMember.is("?."))){
                 // Stop at the array: its owner stays in the temporary for the next step.
                 chainArrProp = memberI6Name(currentType, member.value);
                 chainArr = memberArr;
@@ -3358,14 +3360,18 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                 // `x?.history[1]`: an element of the member array, read once the receiver is known.
                 expression* idx = parseExpression(file.getToken(), {token::bracketClose}, func, body);
                 string prop = memberI6Name(currentType, member.value);
-                string read = memberArr->isRefLocal
-                    ? chainedSubscriptRead(dynamic_cast<functionDef*>(findMemberInHierarchy(getDispatchClass("array<" + memberArr->elementType + ">"),
+                string read = heldByPointer(memberArr)
+                    ? valueSlotText(chainedSubscriptRead(dynamic_cast<functionDef*>(findMemberInHierarchy(getDispatchClass("array<" + memberArr->elementType + ">"),
                           [](typeMember* m){ auto* f = dynamic_cast<functionDef*>(m); return f && f->name == "[]" && f->params.size() == 1; })),
-                          optTemp + "." + prop, idx->text(), "array<" + memberArr->elementType + ">")
+                          optTemp + "." + prop, idx->text(), "array<" + memberArr->elementType + ">"), memberArr->elementType)
                     : valueSlotText(checkedMemberSlot(optTemp, prop, idx->text(), false, memberArrayDeclTracked(memberArr)), memberArr->elementType);
                 injText += " " + optTemp + " = " + read + ";";
                 currentType = memberArr->elementType;
                 afterMember = exprNext(st);
+            } else if(memberArr != nullptr && heldByPointer(memberArr) && (afterMember.is(token::period) || afterMember.is("?."))){
+                // A member array held through a pointer is a value: the next step works on the array itself.
+                injText += " " + optTemp + " = " + optTemp + "." + memberI6Name(currentType, member.value) + ";";
+                currentType = "array<" + memberArr->elementType + ">";
             } else if(classDef* pc = getDispatchClass(propType.empty() ? memberDeclType(currentType, member.value) : propType);
                       pc != nullptr && pc->isEmitterClass && pc->isExternal && !pc->isPrimitive && afterMember.is(token::period)
                       && languageService.findEnum(propType.empty() ? memberDeclType(currentType, member.value) : propType) == nullptr
@@ -3446,6 +3452,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
                     if(auto* blk = dynamic_cast<i6Block*>(method->body)){
                         emitterBindings mb; mb.self = optTemp; mb.val = optTemp; mb.trim = emitterTrim::wsSemi;
                         if(!chainArrProp.empty()){ mb.prop = chainArrProp; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
+                    else if(isWordArrayType(currentType)){ mb.prop = "0"; mb.elemType = arrayElemType(currentType); mb.elemContext = methName; }
                         mb.fn = method;
                         for(expression* a : callArgs) mb.args.push_back(a->text());
                         for(expression* a : callArgs) mb.argTypes.push_back(a->resolvedType);
@@ -4134,10 +4141,18 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
             // owned elsewhere). Binding to bare `obj` would index the object.
             bool holdsPointer = (propType == "bytearray")
                              || memberArrayIsRef(objName, propName, func, body);
-            string recv = holdsPointer ? (objName + "." + propName) : objName;
+            string owner = func != nullptr ? qualifyIdentifier(objName, func, body) : objName;   // a lambda reads its capture
+            if(owner.empty()) owner = objName;
+            string recv = holdsPointer ? (objectI6Name(owner) + "." + propertyI6Name(propName)) : objName;
             emitterBindings mb; mb.self = recv; mb.val = recv; mb.prop = propName;
             mb.fn = getMethod; mb.args.push_back(indexExpr->text());
-            expr->tokens.push_back(expandEmitterBody(blk, mb));
+            string text = expandEmitterBody(blk, mb);
+            if(isWordArrayType(propType)) text = valueSlotText(text, elemType);
+            expr->tokens.push_back(text);
+            if(file.peekToken().is(token::bracketOpen) && expr->tokens.size() == 1){   // a row, or an element with `[]`
+                expr->resolvedType = elemType;
+                chainSubscripts(expr, text, func, body);
+            }
         }
     // `fx.steps[1](3)`: the element is a function value, called — parenthesized, as for a global array.
     if(!expr->tokens.empty() && file.peekToken().is(token::parenOpen) && elemType.rfind("func", 0) == 0){
@@ -4426,7 +4441,7 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
         if(plainMember && isWordArrayType(propType))
             if(classDef* oc = languageService.classOf(memberOwnerType))
                 if(auto* ad = dynamic_cast<arrayDeclaration*>(findMemberInHierarchy(oc, [&](typeMember* m){
-                       return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == member.value; })); ad && !ad->isRefLocal){
+                       return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == member.value; })); ad && !heldByPointer(ad)){
                     expr->memberArrayOwner = objText;
                     expr->memberArrayProp = memberI6Name(memberOwnerType, member.value);
                     expr->memberArrayDecl = ad;
@@ -5554,7 +5569,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         // `self.next.self.id` instead of `self.next.id`).
         // `<expr>.items[i]` — an element of a member word array, which is inline property data.
         if(auto* ad = dynamic_cast<arrayDeclaration*>(pm);
-           ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && !ad->isRefLocal){
+           ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && !heldByPointer(ad)){
             string owner = parenthesizeReceiver(receiverText(expr));
             expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
             rejectConstantIndexOutside(ad, indexExpr, member.originalValue);
@@ -5571,15 +5586,19 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
         }
         // `<expr>.big[i]`: a member array held through a pointer (promoted, or `ref`) is subscripted as a value.
         if(auto* ad = dynamic_cast<arrayDeclaration*>(pm);
-           ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && ad->isRefLocal){
+           ad != nullptr && afterMember.is(token::bracketOpen) && isWordArrayType(mtype) && heldByPointer(ad)){
             string ptr = parenthesizeReceiver(receiverText(expr)) + "." + memberI6Name(expr->resolvedType, member.value);
             expression* indexExpr = parseExpression(file.getToken(), {token::bracketClose}, func, st.body);
             string at = "array<" + ad->elementType + ">";
             classDef* ac = getDispatchClass(at);
             functionDef* gm = ac ? dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
                 auto* f = dynamic_cast<functionDef*>(m); return f && f->name == "[]" && f->params.size() == 1; })) : nullptr;
-            replaceReceiver(expr, chainedSubscriptRead(gm, ptr, indexExpr->text(), at));
+            replaceReceiver(expr, valueSlotText(chainedSubscriptRead(gm, ptr, indexExpr->text(), at), ad->elementType));
             expr->resolvedType = ad->elementType;
+            if(file.peekToken().is(token::bracketOpen) && isArrayOfArraysElement(ad->elementType)){
+                string row = expr->tokens.back();
+                chainSubscripts(expr, row, func, st.body);
+            }
             cur = exprNext(st);
             return ExprStep::Continue;
         }
@@ -5587,7 +5606,7 @@ bglParser::ExprStep bglParser::parseExprDotChainRead(ExprParseState& st, token& 
             string recv = receiverText(expr), whole = expr->text();
             if(parenthesizeReceiver(recv) != recv && parenthesizeReceiver(whole) != whole)
                 replaceReceiver(expr, "(" + recv + ")");
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(pm); ad != nullptr && isWordArrayType(mtype) && !ad->isRefLocal){
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(pm); ad != nullptr && isWordArrayType(mtype) && !heldByPointer(ad)){
                 expr->memberArrayOwner = receiverText(expr);
                 expr->memberArrayProp = memberI6Name(expr->resolvedType, member.value);
                 expr->memberArrayDecl = ad;

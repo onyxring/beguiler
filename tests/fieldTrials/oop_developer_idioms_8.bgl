@@ -105,7 +105,7 @@ value class Gauge {
     Gauge operator = (Gauge o) {
         Level = o.Level;
         Seen = o.Seen;
-        History = o.History;
+        History.copyFrom(o.History);
         return self;
     }
 

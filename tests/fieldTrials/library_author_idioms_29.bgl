@@ -564,7 +564,7 @@ La29Info La29Rank {
     grammar = {.rank};
     void handler() {
         array<La29Slip> order[3];
-        order = la29Desk.slips;
+        order.copyFrom(la29Desk.slips);
         order.sort((La29Slip a, La29Slip b) => b.due.d - a.due.d);
         for (La29Slip s in order) print($"{s.code}={s.due.d} ");
         if (order.length == 0) print("none");

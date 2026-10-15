@@ -588,7 +588,7 @@ extend class Post {
 value class Path {
     array<Pt> legs[3];
     Path operator = (Path o) {
-        legs = o.legs;
+        legs.copyFrom(o.legs);
         return self;
     }
     void add(Pt p) {

@@ -80,8 +80,10 @@ Array _bglhdr_g_rooms --> $9084 2;
 array g_rooms table r1 r2;
 Array _bglcap_g_buf -> 0 32;
 Array g_buf buffer 32;
+Array _bglhdr__bglPromoted_inventory_slots --> $9084 0;
+array _bglPromoted_inventory_slots table 6;
 object inventory
-  with slots 0 0 0 0 0 0 0 ,
+  with slots _bglPromoted_inventory_slots,
        count 0
 ;
 [main i b r o c ch;
