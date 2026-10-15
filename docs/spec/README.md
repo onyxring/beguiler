@@ -446,6 +446,7 @@ appendices are for lookup.
 - [Appendix J Limits](J-limits.md)
 - [Appendix K Gotchas](K-gotchas.md)
   - [K.1 A Method Named Like a Library Property Is That Property](K-gotchas.md#k1-a-method-named-like-a-library-property-is-that-property)
+  - [K.2 An Array Member Assigned in a Copy Operator Is Shared](K-gotchas.md#k2-an-array-member-assigned-in-a-copy-operator-is-shared)
 <!-- /toc -->
 
 ---
