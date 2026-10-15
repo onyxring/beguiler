@@ -328,7 +328,9 @@ object _bglArray
 [_bgl_replaced__bglarrephemeral_0 arr;
     
         #Ifdef _bglFramePoolWords;
-            if(arr >= _bglFramePool + _bglFrameTop * WORDSIZE && arr < _bglFramePool + _bglFramePoolWords * WORDSIZE) rtrue;
+            ! Addresses compare unsigned: on the Z-machine one above 32767 is negative as a signed word.
+            if(_bglUnsignedCompare(arr, _bglFramePool + _bglFrameTop * WORDSIZE) >= 0
+               && _bglUnsignedCompare(arr, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0) rtrue;
         #Endif;
         rfalse;
     
@@ -352,4 +354,21 @@ array _bglsink --> 1;
         if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
         rfalse;
     
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];

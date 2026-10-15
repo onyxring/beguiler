@@ -46,7 +46,7 @@ Constant beguiler = 5;
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src - 2 * WORDSIZE < top || src >= _bglFramePool + 76 * WORDSIZE) {
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 76 * WORDSIZE) >= 0) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
@@ -192,4 +192,21 @@ _bglClass_Room cloakroom
     _bglFrm-->0 = _bgl_tempL0; if (~~(_bglFrm-->0 ~= nothing)) { _bglFrm-->0 = cloakroom; }
     nested = _bglFrm-->0;
     _bglFrameFree(1);
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];

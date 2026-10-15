@@ -50,7 +50,7 @@ template framePool($size) {{{
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src - 2 * WORDSIZE < top || src >= _bglFramePool + $size * WORDSIZE) {
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + $size * WORDSIZE) >= 0) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }

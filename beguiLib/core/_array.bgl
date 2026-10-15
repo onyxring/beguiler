@@ -102,7 +102,9 @@ superposed void _bglArrSetLength(int arr, int n){
 superposed bool _bglArrEphemeral(int arr){
     #i6 {
         #Ifdef _bglFramePoolWords;
-            if(arr >= _bglFramePool + _bglFrameTop * WORDSIZE && arr < _bglFramePool + _bglFramePoolWords * WORDSIZE) rtrue;
+            ! Addresses compare unsigned: on the Z-machine one above 32767 is negative as a signed word.
+            if(_bglUnsignedCompare(arr, _bglFramePool + _bglFrameTop * WORDSIZE) >= 0
+               && _bglUnsignedCompare(arr, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0) rtrue;
         #Endif;
         rfalse;
     }

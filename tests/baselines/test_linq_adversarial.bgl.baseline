@@ -47,7 +47,7 @@ Constant _BGL_LINQ_SCRATCH_SIZE = 32;
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src - 2 * WORDSIZE < top || src >= _bglFramePool + 64 * WORDSIZE) {
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 64 * WORDSIZE) >= 0) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
@@ -738,10 +738,29 @@ object _bglArray
         return _bglSink;
     
 ];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+];
 [_bgl_replaced__bglarrephemeral_0 arr;
     
         #Ifdef _bglFramePoolWords;
-            if(arr >= _bglFramePool + _bglFrameTop * WORDSIZE && arr < _bglFramePool + _bglFramePoolWords * WORDSIZE) rtrue;
+            ! Addresses compare unsigned: on the Z-machine one above 32767 is negative as a signed word.
+            if(_bglUnsignedCompare(arr, _bglFramePool + _bglFrameTop * WORDSIZE) >= 0
+               && _bglUnsignedCompare(arr, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0) rtrue;
         #Endif;
         rfalse;
     

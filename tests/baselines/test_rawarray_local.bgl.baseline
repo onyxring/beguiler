@@ -46,7 +46,7 @@ Constant beguiler = 5;
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (src - 2 * WORDSIZE < top || src >= _bglFramePool + 64 * WORDSIZE) {
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 64 * WORDSIZE) >= 0) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
@@ -228,6 +228,23 @@ object bgl
 ];
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 2147483647;
+    v=y & 2147483647;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
