@@ -62,7 +62,7 @@ reference. Part I can therefore be read front to back. Parts II and III and the 
 reference material for lookup.
 
 For a runtime or library name, start at Appendix I; for a reserved word, Appendix A; for an operator,
-Appendix C; for a numeric limit, Appendix J. The terms of art used throughout — program, target,
+Appendix C; for a numeric limit, Appendix J; for behavior that tends to surprise, Appendix K. The terms of art used throughout — program, target,
 directive, emitter, island, binding and the rest — are defined once, in the Glossary (Appendix H).
 
 The conventions below apply to every chapter. The language itself is introduced in the next chapter,

@@ -444,6 +444,8 @@ appendices are for lookup.
   - [H.2 Symbols](H-glossary.md#h2-symbols)
 - [Appendix I Symbol and Method Index](I-symbol-index.md)
 - [Appendix J Limits](J-limits.md)
+- [Appendix K Gotchas](K-gotchas.md)
+  - [K.1 A Method Named Like a Library Property Is That Property](K-gotchas.md#k1-a-method-named-like-a-library-property-is-that-property)
 <!-- /toc -->
 
 ---

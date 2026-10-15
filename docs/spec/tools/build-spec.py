@@ -25,9 +25,9 @@ slug = _toc.slug
 
 TOC_RE     = re.compile(r'<!-- toc -->.*?<!-- /toc -->\n?', re.S)
 H_RE       = re.compile(r'^(#{1,6})\s+(.*?)\s*$')
-TOP_ENTRY  = re.compile(r'^- \[(?P<title>[^\]]+)\]\((?P<file>[0-9A-J][^)#]*\.md)\)\s*$')
+TOP_ENTRY  = re.compile(r'^- \[(?P<title>[^\]]+)\]\((?P<file>[0-9A-K][^)#]*\.md)\)\s*$')
 PART_RE    = re.compile(r'^\*\*(?P<label>[^*]+)\*\*\s*$')
-LINK_RE    = re.compile(r'\]\((?P<file>[0-9A-J][A-Za-z0-9_.-]*\.md)(?P<frag>#[^)]*)?\)')
+LINK_RE    = re.compile(r'\]\((?P<file>[0-9A-K][A-Za-z0-9_.-]*\.md)(?P<frag>#[^)]*)?\)')
 
 BANNER = """<!-- GENERATED FILE — do not edit.
      Built from docs/spec/ by docs/spec/tools/build-spec.py.
