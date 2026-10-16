@@ -584,11 +584,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
                                 || arrDecl.name.rfind("_bgl", 0) == 0
                                 || arrDecl.isRaw || !sharedBuffer;
-                // A local declared from a call or a step's result owns that array; a capacity of its own would go unused.
-                bool ownsResult = func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray
-                               && elementType != "char" && holdsHandle
-                               && !(expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos);
-                if(canReread && ((arrDecl.arraySize > 0 && !ownsResult) || !holdsHandle)){
+                if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
                     // Without a capacity, the storage is sized from the value when the declaration runs.
                     pendingInjections.clear();

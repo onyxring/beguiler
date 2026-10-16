@@ -274,11 +274,19 @@ superposed object _bglArray {
         // An array with no instances of its own (a step's result, an array declared from a value) holds pointers:
         // a write copies into the instance a slot points at, and only an empty slot takes the pointer.
         if(ownedDtor(obj, prop, 1) == 0){
-            if(cur == 0) set(obj, prop, n, v);
-            else assign(cur, v);
+            if(cur != 0) assign(cur, v);
+            else if(!refusesStruct(v)) set(obj, prop, n, v);
             return;
         }
         set(obj, prop, n, assign(cur, v));
+    }
+
+    // A struct can't be added to an array that shares its elements: it has no instances to copy into, and a
+    // pointer to the struct (a local, a function's result) would go stale.
+    bool refusesStruct(var v){
+        #i6 { if(metaclass(v) ~= Object) rfalse; }
+        print("^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^");
+        return true;
     }
 
     // Zero every slot up to size; length drops to 0.
@@ -332,7 +340,10 @@ superposed object _bglArray {
     bool append(var obj, var prop, var val, var assign = 0){
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
-        if(assign != 0 && ownedDtor(obj, prop, 1) == 0) set(obj, prop, len, val);
+        if(assign != 0 && ownedDtor(obj, prop, 1) == 0){
+            if(refusesStruct(val)) return false;
+            set(obj, prop, len, val);
+        }
         else setOwned(obj, prop, len, val, assign);
         setLength(obj, prop, len + 1);
         return true;
@@ -345,6 +356,7 @@ superposed object _bglArray {
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
         if(pos < 0 || pos > len) return false;
+        if(assign != 0 && ownedDtor(obj, prop, 1) == 0 && refusesStruct(val)) return false;
         // shift right from end down to pos. The shift moves owned values between slots
         // verbatim — a raw set, not setOwned, since ownership is being relocated rather
         // than assigned; routing it through assign would copy into the destination's own

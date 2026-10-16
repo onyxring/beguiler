@@ -1455,15 +1455,22 @@ object _bglArray
     }
     cur = self.get(obj,prop,n);
     if (self.owneddtor(obj,prop,1)==0) {
-        if (cur==0) {
-            self.set(obj, prop, n, v);
+        if (cur~=0) {
+            assign(cur, v);
         }
         else {
-            assign(cur, v);
+            if ((~~self.refusesstruct(v))) {
+                self.set(obj, prop, n, v);
+            }
         }
         return;
     }
     self.set(obj, prop, n, assign(cur,v));
+  ],
+       refusesStruct [v;
+     if(metaclass(v) ~= Object) rfalse; 
+    print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
+    return true;
   ],
        swap [obj prop pos1 pos2 tmp;
     tmp = self.get(obj,prop,pos1);
@@ -1483,6 +1490,9 @@ object _bglArray
         return false;
     }
     if (assign~=0 && self.owneddtor(obj,prop,1)==0) {
+        if (self.refusesstruct(val)) {
+            return false;
+        }
         self.set(obj, prop, len, val);
     }
     else {
@@ -1497,6 +1507,9 @@ object _bglArray
         return false;
     }
     if (pos < 0 || pos > len) {
+        return false;
+    }
+    if (assign~=0 && self.owneddtor(obj,prop,1)==0&&self.refusesstruct(val)) {
         return false;
     }
     for (i = len : i > pos : i--) {

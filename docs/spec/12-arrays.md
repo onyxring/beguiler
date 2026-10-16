@@ -507,7 +507,19 @@ filled slots at once than it declared runs out, which is a run-time error.
 
 An array of a struct with no capacity of its own (a `<linq>` result, a returned array, a local declared from
 another array) holds the instances of the array it came from: changing an element through it changes the source,
-and removing one gives nothing back.
+and removing one gives nothing back. It has no instances to copy a new element into, so adding one (`+=`, `append`,
+`insert`, `push`, a store past its length) is a run-time error; declare the array with a capacity to grow it:
+
+```bgl
+#include <linq>
+struct Coin { int value; }
+array<Coin> purse = { Coin{ value = 5; }, Coin{ value = 20; }, Coin{ value = 10; } };
+Coin spare;
+array<Coin> big = purse.filter((Coin c) => c.value >= 10);       // shares purse's coins
+big += spare;                                                     // run-time error
+array<Coin> mine[8] = purse.filter((Coin c) => c.value >= 10);   // eight coins of its own, two copied in
+mine += spare;                                                    // copied into the third
+```
 
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named

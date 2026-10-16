@@ -1,0 +1,26 @@
+// run_struct_shared_append — an array sharing its struct elements (a <linq> result) refuses new elements; a sized
+// declaration from the same result owns its instances, so appends copy and later calls don't change them.
+// EXPECT_OUTPUT: [Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]
+// EXPECT_OUTPUT: [Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]
+// EXPECT_OUTPUT: big 20 10 | mine 20 10 4 19 | purse 5 20 10
+#beguilerSettings { target = z5; heapSize = 512; }
+#include <array>
+#include <linq>
+struct Coin { int value; }
+array<Coin> purse = { Coin{ value = 5; }, Coin{ value = 20; }, Coin{ value = 10; } };
+Coin worn(Coin c) { c.value--; return c; }
+void main(){
+    bglInit();
+    array<Coin> big = purse.filter((Coin c) => c.value >= 10);
+    big += worn(purse[0]);
+    big.insert(0, worn(purse[1]));
+    print("big");
+    for (Coin c in big) print($" {c.value}");
+    array<Coin> mine[8] = purse.filter((Coin c) => c.value >= 10);
+    mine += worn(purse[0]);
+    mine += worn(purse[1]);
+    print(" | mine");
+    for (Coin c in mine) print($" {c.value}");
+    print(" | purse");
+    for (Coin c in purse) print($" {c.value}");
+}
