@@ -1,7 +1,7 @@
-// run_linq_value_copies — a variable that takes a <linq> result over a struct gets copies of its own:
-// changing or removing them leaves the source alone; steps inside a chain read the source as it is. A function's
-// returned result, taken by a local, goes back to the heap with it.
-// EXPECT_OUTPUT: high 7 9 | set 1 | hand 7 | removed 1 left 2 | hand 4 7 | kept 9 | sevens 10 used 10 | used 0
+// run_linq_struct_results — a <linq> result over a struct array holds the source's instances: changing an element
+// through it changes the source, and removing one releases nothing. An array with a capacity of its own takes copies
+// (`kept`). A function's returned result, taken by a local, goes back to the heap with it.
+// EXPECT_OUTPUT: high 7 9 | set 1 | hand 1 | removed 1 left 2 | hand 4 1 | kept 9 | sevens 0 used 0 | used 0
 #beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
 #include <linq>
 struct Card { int n = 0; Card operator = (Card o) { n = o.n; return self; } }

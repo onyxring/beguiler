@@ -342,6 +342,7 @@ class i6Emitter{
         // reset-to-defaults backing. The static analogue is create+populate in emitObject.
         void synthesizePooledOwnedMembers();
         void synthesizeValueElementPools();
+        bool valuePoolsDone = false;
         map<string, string> ownedCopyRoutines;
         map<string, string> currentCallEscapes;   // routines this function calls that a local of the name hides
         string restoreCallEscapes(string code);   // pooled class's I6 name → its owned-member-aware copy routine

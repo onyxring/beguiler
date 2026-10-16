@@ -144,57 +144,51 @@ object _zcode
 object bgl
   with zcode _zcode
 ;
-Array _bglhdr__bglPromoted_widget_nums --> $9084 3;
-array _bglPromoted_widget_nums table 10 20 30;
 object widget
-  with nums _bglPromoted_widget_nums,
+  with nums 10 20 30 3 ,
        readElem [;
-    return  _bglAt(self.nums, 1, 0)-->0 ;
+    return _bglMemberAt(self, nums, 1, 2)-->0;
   ],
        writeElem [;
-    _bglAt(self.nums, 0, 1)-->0 = 99;
+    _bglMemberAt(self, nums, 0, 3)-->0 = 99;
   ],
        sumElems [t x _bglfi1;
     t = 0;
        _bglfi1 = 0;
-       for (: _bglfi1 < _bglArrLength(self.nums) : _bglfi1++) {
-          x = self.nums-->(_bglfi1+1);
+       for (: _bglfi1 < (self.&nums-->(((self.#nums)/WORDSIZE) - 1)) : _bglfi1++) {
+          x = self.&nums-->(_bglfi1);
         t=t + x;
        }
     return t;
   ],
        sizeOf [;
-    return _bglArrSize(self.nums);
+    return (((self.#nums)/WORDSIZE) - 1);
   ],
        lengthOf [;
-    return _bglArrLength(self.nums);
+    return (self.&nums-->(((self.#nums)/WORDSIZE) - 1));
   ]
 ;
 class _bglClass_gadget
   class object
   with
-    readings ,
+    readings 1 2 3 4 4 ,
     peek[i;
-        return  _bglAt(self.readings, i, 0)-->0 ;
+        return _bglMemberAt(self, readings, i, 2)-->0;
     ],
     poke[i v;
-        _bglAt(self.readings, i, 1)-->0 = v;
+        _bglMemberAt(self, readings, i, 3)-->0 = v;
     ],
-    total[t x _bglfia2 _bglfi3;
+    total[t x _bglfi2;
         t = 0;
-        _bglfia2 = self.readings;
-           _bglfi3 = 0;
-           for (: _bglfi3 < _bglArrLength(_bglfia2) : _bglfi3++) {
-              x = _bglfia2-->(_bglfi3+1);
+           _bglfi2 = 0;
+           for (: _bglfi2 < (self.&readings-->(((self.#readings)/WORDSIZE) - 1)) : _bglfi2++) {
+              x = self.&readings-->(_bglfi2);
             t=t + x;
            }
         return t;
     ]
 ;
-Array _bglhdr__bglPromoted_g1_readings --> $9084 4;
-array _bglPromoted_g1_readings table 1 2 3 4;
 _bglClass_gadget g1
-  with readings _bglPromoted_g1_readings
 ;
 Array _bglhdr_g_nums --> $9084 3;
 array g_nums table 7 8 9;
@@ -206,22 +200,6 @@ array g_nums table 7 8 9;
     loc-->(-1) = 2;
     rb= _bglAt(loc, 0, 0)-->0;
     _bglHeapLocalDrop();
-];
-[_bglArrLength arr;
-    
-        if(_bglArrTracked(arr)) return arr-->(-1);
-        return arr-->0;
-    
-];
-[_bglArrSize arr;
-     return arr-->0; 
-];
-[_bglArrTracked arr;
-    
-        if(arr == 0) rfalse;
-        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
-        rfalse;
-    
 ];
 [_bglAt arr i w n;
     n = 0;
@@ -244,6 +222,15 @@ array g_nums table 7 8 9;
         _bglFrameTop--;
         _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
         _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
+    
+];
+[_bglMemberAt obj prop i f n;
+    n = 0;
+    
+        n = obj.#prop / WORDSIZE;
+        if(f & 2) n--;
+        if(i >= 0 && i < n) return obj.&prop + i * WORDSIZE;
+        return _bglOutOfRange(i, n, f & 1);
     
 ];
 [_bglOutOfRange i n w;
@@ -277,6 +264,9 @@ array g_nums table 7 8 9;
     return -1;
 ];
 array _bglsink --> 1;
+[_bglArrSize arr;
+     return arr-->0; 
+];
 [_bglHeapAlloc n kind need o b nb a i;
     need = 0;
     o = 0;

@@ -1327,6 +1327,16 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
     // the argument is assigned to it through the class's `operator =`. The root assignment makes the
     // parameter refer to the argument, which it already does, so only a class with a copying
     // `operator =` needs an instance: the argument is copied into it at entry.
+    // An array parameter takes an array nothing owns (a call's or a chain's result passed straight in): it is freed
+    // as the routine exits, unless the routine returns it or keeps it.
+    // (Its owner local joins the body once the body is parsed: declareParamOwners.)
+    for(paramDef* p : funcDef.params){
+        if(!isWordArrayType(p->type.name) || p->type.name == "array<char>" || p->isRef) continue;
+        p->adoptOwner = "_bglownp_" + p->name;
+        funcDef.cleanups.push_back({p->name, "_bglHeapDropOwned(" + p->adoptOwner + ");"});
+        if(find(paramOwnerFuncs.begin(), paramOwnerFuncs.end(), &funcDef) == paramOwnerFuncs.end())
+            paramOwnerFuncs.push_back(&funcDef);
+    }
     for(size_t pi = 0; pi < funcDef.params.size(); pi++){
         paramDef* p = funcDef.params[pi];
         // A `ref` to a value held in the word itself: the routine hands the word back on every exit.
@@ -2034,7 +2044,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         openConditionals.resize(conditionalBase);
         parsingError(format("The '#if' at line {0} has no '#endif'.", line));
     }
-    if(includeDepth == 1) writeAutoCopyOperators();
+    if(includeDepth == 1){ writeAutoCopyOperators(); declareParamOwners(); }
     //emit.out<<endl;
     file.close();
     usingImports = savedUsingImports;  // restore parent file's imports
@@ -3565,3 +3575,20 @@ eCompileContext bglParser::getCurrentCompileContext(){
 
 
 bglParser parser;
+
+// The hidden locals that own the arrays a routine's array parameters adopt (synthesizeParamBackings).
+void bglParser::declareParamOwners(){
+    for(functionDef* fd : paramOwnerFuncs){
+        auto* top = dynamic_cast<statementBlock*>(fd->body);
+        if(top == nullptr){ for(paramDef* p : fd->params) p->adoptOwner.clear(); continue; }
+        for(paramDef* p : fd->params){
+            if(p->adoptOwner.empty()) continue;
+            auto* own = new variableDeclaration();
+            own->name = own->displayName = p->adoptOwner;
+            own->type = languageService.getType("var");
+            own->isSynthetic = true;
+            top->statements.insert(top->statements.begin(), own);
+        }
+    }
+    paramOwnerFuncs.clear();
+}

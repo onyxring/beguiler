@@ -1,0 +1,113 @@
+Room A
+Room A.
+
+> pipe
+evens squared: 64 4 16
+sorted: 1 2 3 4 5 7 8 9
+ordered: 1 2 3 4 5 7 8 9
+top three: 7 8 9
+odd middle: 3 5
+distinct: 3 1 2
+countdown: 6 5 4 3 2 1
+sum of squares 1..5 55
+
+> store
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf: 33 14 3
+
+> reuse
+reused the heap: 9100 200
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf: 33 14 3
+
+> collect
+collected; second collection frees nothing: true
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf 0: 10 11 12
+shelf 2: 1 2
+
+> freeone
+sum 86, grew true, freed back: true
+
+> handoff
+handed to I6
+
+> reuse
+reused the heap: 9100 200
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf: 33 14 3
+
+> peek
+I6 holds: 31 41 59
+
+> collect
+collected; second collection frees nothing: true
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf 0: 10 11 12
+shelf 2: 1 2
+
+> peek
+I6 holds: 31 41 59
+
+> letgo
+I6 let go
+
+> peek
+I6 holds nothing
+
+#repeat 15
+> tick
+tick 3640
+
+> trail
+trail: 4 5 6 7 8 9 10 11 12 13 14 15
+length 12, sum 114, evens 6
+
+> reuse
+reused the heap: 9100 200
+kept: 5 7 8 9
+box: 4 3 2 1
+shelf: 33 14 3
+
+> points
+points: (4,1) (-2,3) (0,5) (3,-3) (1,1)
+scaled (12,3), mirrored sum (3,5), a still (4,1), pts[0] still (4,1)
+near: (4,1) (-2,3) (0,5) (1,1)
+near changed: (99,1) (0,5) (1,1)
+points again: (99,1) (-2,3) (0,5) (3,-3) (1,1)
+by distance: (1,1) (-2,3) (0,5) (3,-3) (99,1)
+pts[4] still (1,77), any far true, all near origin false
+distances: 100 5 5 6 78
+
+> recurse 3
+walk 3 from origin 18, origin still (0,0)
+
+> recurse 5
+walk 5 from origin 45, origin still (0,0)
+
+> points
+points: (99,1) (-2,3) (0,5) (3,-3) (1,77)
+scaled (297,3), mirrored sum (3,100), a still (99,1), pts[0] still (99,1)
+near: (-2,3) (0,5)
+near changed: (99,3)
+points again: (99,1) (99,3) (0,5) (3,-3) (1,77)
+by distance: (0,5) (3,-3) (1,77) (99,1) (99,3)
+pts[4] still (1,77), any far true, all near origin false
+distances: 100 102 77 6 78
+
+> trail
+trail: 4 5 6 7 8 9 10 11 12 13 14 15
+length 12, sum 114, evens 6
+
+> churn 25
+churn 25: squares 1890, pipeline 1076, shrink 100, sorted 118
+heap back where it was: true
+
+> churn 40
+churn 40: squares 3100, pipeline 1736, shrink 160, sorted 195
+heap back where it was: true

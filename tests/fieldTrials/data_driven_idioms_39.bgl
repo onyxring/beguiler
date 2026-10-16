@@ -1,0 +1,224 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a table of samples kept as an array of structs. A Sample struct with positional members, no
+// copy operator (the automatic one), `==` by id and `<=>` by value, a method reading a parallel table, its
+// own `print()`, and `extend struct` adding a field and a method; a file-scope `array<Sample>` initialized
+// with inline struct objects beside parallel site tables; `orderBy()` (through `<=>`) and `orderBy(compare)`,
+// `filter`/`map`/`count`/`first`/`any`/`all`, with the result taken by a local (its own copies: changing,
+// marking or removing them leaves the source alone) and used inline in a chain; a function returning its
+// local `array<Sample>` and another returning a local `array<int>`; a global array of Sample filled with
+// `+=` (copies), trimmed with `-=` (by `==`), `sort()`ed and changed through an element; an array of arrays
+// of int read by two subscripts, one row taken by a local and written through (the same row), and an
+// element written by two subscripts; a local array counting by a call in its subscript; `kept =
+// kept.filter(…)` then `+=` up to the capacity `kept` had; the heap through `bgl.gc.size`/`used`/`peak`,
+// a local array freed with `bgl.gc.free`, a returned array kept to the routine's end, and
+// `bgl.gc.collect()` keeping only the array a global refers to.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 1024;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Tables ----------------------------------------------------------------------
+
+array<string> siteName = { "north", "east", "south" };
+array<int> siteLimit = { 30, 20, 50 };
+
+array<array<int>> bands = { { 0, 20 }, { 21, 40 }, { 41, 99 } };
+array<string> bandName = { "low", "mid", "high" };
+
+//-- Samples ---------------------------------------------------------------------
+
+struct Sample {
+    inline int id;
+    inline int site;
+    inline int val;
+    bool operator == (Sample o) { return id == o.id; }
+    int operator <=> (Sample o) { return val - o.val; }
+    bool Over() { return val > siteLimit[site]; }
+    void print() { print($"#{id}:{val}"); }
+}
+
+extend struct Sample {
+    int marks;
+    void Mark() { marks++; }
+}
+
+array<Sample> samples[8] = { Sample{ 1, 0, 40 }, Sample{ 2, 1, 15 }, Sample{ 3, 2, 55 }, Sample{ 4, 0, 22 }, Sample{ 5, 1, 31 } };
+array<Sample> work[8];
+array<int> kept[6] = { 3, 8, 1, 9 };
+
+//-- Helpers ---------------------------------------------------------------------
+
+array<Sample> AtLeast(int min) {
+    array<Sample> out[8];
+    for (Sample s in samples) {
+        if (s.val >= min) out += s;
+    }
+    return out;
+}
+
+array<int> Squares(int n) {
+    array<int> r[6];
+    for (int i = 1; i <= n; i++) r += i * i;
+    return r;
+}
+
+int BandOf(int v) {
+    for (int b = 0; b < bands.length; b++) {
+        if (v >= bands[b][0] && v <= bands[b][1]) return b;
+    }
+    return -1;
+}
+
+stringObj Listing(string head, array<Sample> list) {
+    stringObj line = head;
+    for (Sample s in list) line += $" {s}";
+    return line;
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb HeapTest {
+    grammar = {.heap};
+    void handler() {
+        bgl.gc.collect();
+        printLine($"size {bgl.gc.size > 900} used {bgl.gc.used} peak {bgl.gc.peak}");
+        array<int> big[50];
+        printLine($"local {bgl.gc.used}");
+        bgl.gc.free(big);
+        array<int> sq = Squares(3);
+        printLine($"freed, returned {bgl.gc.used} peak {bgl.gc.peak}; {sq.length} {sq[2]}");
+    }
+}
+
+verb TableTest {
+    grammar = {.table};
+    void handler() {
+        for (Sample s in samples)
+            printLine($"{s} {siteName[s.site]} limit {siteLimit[s.site]}{s.Over() ? " over" : ""}");
+    }
+}
+
+verb OrderedTest {
+    grammar = {.ordered};
+    void handler() {
+        array<Sample> byVal = samples.orderBy();
+        byVal[0].val = 99;
+        byVal.remove(1);
+        printLine(Listing("by value:", byVal));
+        printLine(Listing("source:", samples));
+        printLine($"lengths {byVal.length} {samples.length}");
+    }
+}
+
+verb OverTest {
+    grammar = {.over};
+    void handler() {
+        array<Sample> hot = samples.filter((Sample s) => s.Over());
+        for (int i = 0; i < hot.length; i++) hot[i].Mark();
+        hot[0].val = 0;
+        printLine($"hot {hot.count()}: first {hot.first()} marks {hot[0].marks}; source #1 {samples[0].val} marks {samples[0].marks}");
+        int n = samples.filter((Sample s) => s.Over()).count();
+        Sample top = samples.orderBy((Sample a, Sample b) => b.val - a.val).first();
+        top.val++;
+        stringObj ids = "ids:";
+        for (var v in samples.filter((Sample s) => !s.Over()).map((Sample s) => s.id)) ids += $" {v}";
+        printLine($"{n} over, top {top} source {samples[2]}; {ids}");
+        printLine($"any over 50 {samples.any((Sample s) => s.val > 50)}, all over 10 {samples.all((Sample s) => s.val > 10)}");
+    }
+}
+
+verb LocalTest {
+    grammar = {.local};
+    void handler() {
+        array<Sample> big = AtLeast(30);
+        big.sort();
+        big[0].val = 1;
+        big.remove(2);
+        stringObj line = Listing("at least 30:", big);
+        printLine($"{line}; source {samples[4]}");
+        printLine($"index {big.indexOf(Sample{ 1, 0, 0 })} {big.contains(Sample{ 3, 0, 0 })}");
+        array<int> sq = Squares(4);
+        int sum = 0;
+        for (int v in sq) sum += v;
+        printLine($"squares {sq.length} sum {sum} last {sq[3]}");
+    }
+}
+
+verb WorkTest {
+    grammar = {.work};
+    void handler() {
+        work.clear();
+        for (Sample s in samples) work += s;
+        work -= Sample{ 2, 0, 0 };
+        work[0].Mark();
+        work[0].val = 7;
+        work.sort();
+        stringObj line = "work:";
+        for (Sample s in work) line += $" {s}/{s.marks}";
+        printLine($"{line}; source {samples[0]}/{samples[0].marks}");
+    }
+}
+
+verb BandsTest {
+    grammar = {.bands};
+    void handler() {
+        array<int> counts[3] = { 0, 0, 0 };
+        for (Sample s in samples) counts[BandOf(s.val)]++;
+        printLine($"{bandName[0]} {counts[0]} {bandName[1]} {counts[1]} {bandName[2]} {counts[2]}");
+        array<int> edge = bands[1];
+        edge[1] = 30;
+        bands[2][0] = 31;
+        for (int i = 0; i < 3; i++) counts[i] = 0;
+        for (Sample s in samples) counts[BandOf(s.val)]++;
+        printLine($"after: low {counts[0]} mid {counts[1]} high {counts[2]}; mid ends {bands[1][1]}, high starts {bands[2][0]}");
+    }
+}
+
+verb HeldTest {
+    grammar = {.keep};
+    void handler() {
+        kept = kept.filter((int v) => v > 2);
+        kept += 4;
+        kept += 5;
+        kept += 6;
+        stringObj line = "kept:";
+        for (int v in kept) line += $" {v}";
+        printLine($"{line} ({kept.length})");
+    }
+}
+
+verb GcTest {
+    grammar = {.gc};
+    void handler() {
+        bgl.gc.collect();
+        printLine($"used {bgl.gc.used} kept {kept.length} peak ok {bgl.gc.peak >= 56}");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

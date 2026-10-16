@@ -468,7 +468,7 @@ verb CopyTest {
             return;
         }
         array<int> snap[KIND_COUNT];
-        snap.copyFrom(((Bay)noun).counts);
+        snap = ((Bay)noun).counts;
         ((Bay)noun).counts.sort();
         stringObj line = "Sorted:";
         for (int k in 0 to ((Bay)noun).counts.length - 1) line += $" {((Bay)noun).counts[k]}";

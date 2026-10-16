@@ -1,0 +1,337 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-ninth PunyInform program, about arrays as reference types and the heap while the
+// binding collects at the prompt: one room and a small heap. A `Coin` struct with its own copy operator
+// is passed to and returned from pure functions (a worn copy, the older of two, the oldest of an array),
+// held in a global `array<Coin>` with inline initial instances, ordered and filtered by lambdas into
+// locals that own copies (changed without touching the source), and kept per call across a recursion
+// that also allocates a local array. A global ledger is replaced every turn by a function that returns a
+// new local array (`ledger = withEntry(ledger, n)`) and must hold its values over many prompts while
+// garbage from each turn (results passed straight into another function, `<linq>` chains, `cur = f(cur)`
+// loops) is collected at the prompt; `<linq>` results are stored into another array's elements and an
+// object's member array, and survive; `bgl.gc.collect` and `bgl.gc.used` compared against a baseline
+// taken many turns earlier; `bgl.gc.free` on a local; `bgl.gc.keep` on a local array handed to an `#i6`
+// routine that keeps it in an I6 global, read back several prompts later through an `extern`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    heapSize = 400;
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+
+#includeI6 "puny"
+
+extend extern class object {
+    string description;
+}
+
+// --- I6 side ----------------------------------------------------------------------------------------
+
+#i6 {
+    Global keptByI6;
+    [ KeepRow a; keptByI6 = a; ];
+    [ ForgetRow; keptByI6 = 0; ];
+}
+extern void KeepRow(array<int> a);
+extern void ForgetRow();
+extern array<int> keptByI6;
+
+// --- coins ------------------------------------------------------------------------------------------
+
+struct Coin {
+    int value;
+    int year;
+
+    Coin operator = (Coin o) {
+        value = o.value;
+        year = o.year;
+        return self;
+    }
+}
+
+array<Coin> purse = {
+    Coin{ value = 5; year = 1990; },
+    Coin{ value = 20; year = 1985; },
+    Coin{ value = 1; year = 2001; },
+    Coin{ value = 10; year = 1990; },
+    Coin{ value = 50; year = 1977; }
+};
+
+Coin spare;
+
+// Changes its own copy only.
+Coin scuffed(Coin c) {
+    if (c.value > 0) c.value--;
+    return c;
+}
+
+Coin older(Coin a, Coin b) {
+    if (b.year < a.year) return b;
+    return a;
+}
+
+Coin oldest(array<Coin> cs) {
+    Coin best = cs[0];
+    for (Coin c in cs) best = older(best, c);
+    return best;
+}
+
+int byYear(Coin a, Coin b) {
+    if (a.year != b.year) return a.year - b.year;
+    return a.value - b.value;
+}
+
+array<int> values(array<Coin> cs) {
+    array<int> out[8];
+    for (Coin c in cs) out += c.value;
+    return out;
+}
+
+// Each call wears its own copy, keeps it and a local array across the inner call.
+int wearDown(Coin c, int n) {
+    if (n == 0) return 0;
+    Coin d = scuffed(c);
+    array<int> here[2];
+    here += d.value;
+    int inner = wearDown(d, n - 1);
+    if (here[0] != d.value || d.value != c.value - 1) return -1000;
+    return inner + here[0];
+}
+
+void showCoin(Coin c) { print($"{c.value}/{c.year}"); }
+
+void showCoins(string label, array<Coin> cs) {
+    print(label);
+    print(":");
+    for (Coin c in cs) {
+        print(" ");
+        showCoin(c);
+    }
+    printLine("");
+}
+
+// --- numbers ----------------------------------------------------------------------------------------
+
+const int LEDGERCAP = 10;
+
+array<int> ledger[LEDGERCAP];
+array<array<int>> snaps[3];
+int deposits = 0;
+int baseline = -1;
+
+array<int> withEntry(array<int> xs, int v) {
+    array<int> out[LEDGERCAP];
+    for (int x in xs.skip(xs.length == LEDGERCAP ? 1 : 0)) out += x;
+    out += v;
+    return out;
+}
+
+array<int> doubled(array<int> xs) {
+    array<int> out[LEDGERCAP];
+    for (int x in xs) out += x * 2;
+    return out;
+}
+
+array<int> dropFirst(array<int> xs) {
+    array<int> out[LEDGERCAP];
+    for (int x in xs.skip(1)) out += x;
+    return out;
+}
+
+int total(array<int> xs) {
+    int s = 0;
+    for (int x in xs) s += x;
+    return s;
+}
+
+void showInts(string label, array<int> xs) {
+    print(label);
+    print(":");
+    for (int x in xs) print($" {x}");
+    printLine("");
+}
+
+// --- room -------------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {proper, light};
+}
+
+object tray {
+    "tray";
+    parent = roomA;
+    name = {.tray};
+    description = "A tray.";
+    attributes = {static};
+    array<int> best[LEDGERCAP];
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Coins {
+    meta = true;
+    grammar = {.coins};
+    void handler() {
+        showCoins("purse", purse);
+        printLine($"values {total(values(purse))}, oldest {oldest(purse).year}, worn first {scuffed(purse[0]).value}, first still {purse[0].value}");
+        Coin a = older(purse[0], purse[3]);
+        a.value = 99;
+        printLine($"older of 1990s {a.year}, purse[0] still {purse[0].value}, wear 4 from 20 {wearDown(purse[1], 4)}, purse[1] still {purse[1].value}");
+    }
+}
+
+verb Ordered {
+    meta = true;
+    grammar = {.ordered};
+    void handler() {
+        array<Coin> sorted = purse.orderBy(byYear);
+        showCoins("by year", sorted);
+        sorted[0].value = 0;
+        sorted.remove(4);
+        showCoins("changed", sorted);
+        showCoins("purse", purse);
+    }
+}
+
+verb Rich {
+    meta = true;
+    grammar = {.rich};
+    void handler() {
+        array<Coin> big = purse.filter((Coin c) => c.value >= 10);
+        for (int i = 0; i < big.length; i++) big[i] = scuffed(big[i]);
+        showCoins("big worn", big);
+        showCoins("purse", purse);
+        printLine($"any before 1980 {purse.any((Coin c) => c.year < 1980)}, all after 1980 {purse.all((Coin c) => c.year > 1980)}, distinct values {values(purse).distinct().count()}");
+    }
+}
+
+verb Deposit {
+    grammar = {.deposit};
+    void handler() {
+        deposits++;
+        ledger = withEntry(ledger, deposits * 3);
+        printLine("Deposited.");
+    }
+}
+
+verb ShowLedger {
+    meta = true;
+    grammar = {.ledger};
+    void handler() {
+        showInts("ledger", ledger);
+        printLine($"{ledger.length} entries, total {total(ledger)}, doubled total {total(doubled(ledger))}, top three {total(ledger.orderBy().skip(ledger.length - 3))}");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        array<int> cur = doubled(ledger);
+        int steps = 0;
+        while (cur.length > 0) {
+            cur = dropFirst(cur);
+            steps++;
+        }
+        int t = total(ledger.filter((int x) => x % 2 == 0).map((var x) => x / 2).orderBy().take(4));
+        printLine($"Churned {steps}, {t}.");
+    }
+}
+
+verb Snap {
+    meta = true;
+    grammar = {.snap};
+    void handler() {
+        if (snaps.length == snaps.size) snaps.remove(0);
+        snaps += ledger.filter((int x) => x % 4 == 0).orderBy();
+        tray.best = ledger.orderBy().skip(ledger.length - 2);
+        printLine($"{snaps.length} snaps.");
+    }
+}
+
+verb ShowSnaps {
+    meta = true;
+    grammar = {.snaps};
+    void handler() {
+        for (array<int> s in snaps) showInts("snap", s);
+        array<int> best = tray.best;
+        showInts("tray", best);
+    }
+}
+
+verb TakeBaseline {
+    meta = true;
+    grammar = {.baseline};
+    void handler() {
+        bgl.gc.collect();
+        baseline = bgl.gc.used;
+        printLine("Baseline taken.");
+    }
+}
+
+verb Recheck {
+    meta = true;
+    grammar = {.recheck};
+    void handler() {
+        bgl.gc.collect();
+        printLine($"Under half the heap: {bgl.gc.used * 2 < bgl.gc.size}. Near the baseline: {bgl.gc.used < baseline + 40}.");
+    }
+}
+
+verb Scratch {
+    meta = true;
+    grammar = {.scratch};
+    void handler() {
+        int before = bgl.gc.used;
+        array<int> t = doubled(ledger);
+        int s = total(t);
+        bgl.gc.free(t);
+        printLine($"Scratch {s}, freed: {bgl.gc.used == before}.");
+    }
+}
+
+verb Handoff {
+    meta = true;
+    grammar = {.handoff};
+    void handler() {
+        array<int> row[4];
+        for (Coin c in purse.filter((Coin c) => c.year == 1990)) row += c.value;
+        row += 7;
+        bgl.gc.keep(row);
+        KeepRow(row);
+        printLine("Handed over.");
+    }
+}
+
+verb Peek {
+    meta = true;
+    grammar = {.peek};
+    void handler() {
+        if (keptByI6 == null) {
+            printLine("Nothing kept.");
+            return;
+        }
+        showInts("kept", keptByI6);
+    }
+}
+
+verb Forget {
+    meta = true;
+    grammar = {.forget};
+    void handler() {
+        ForgetRow();
+        printLine("Forgotten.");
+    }
+}
+
+bool Initialise() {
+    rfalse;
+}

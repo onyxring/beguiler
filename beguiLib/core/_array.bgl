@@ -15,7 +15,7 @@ extern emitter class array<T>{
     replace emitter int  size                     { _bglArrSize($val) }    /// How many elements the array can hold.
     typesealed arrayLength length;                                         /// How many elements are in use.
     /// Refer to `v`'s array. (Taking a function's returned local array copies it into this array's storage.)
-    emitter void operator = (array<T> v)          { $self = _bglArrAssign($self, $v, $opref(=), $opref(deinit)) }
+    emitter void operator = (array<T> v)          { _bglArrCopyFrom($self, $v, $opref(=)) }
 }
 
 /// The type of an array's `length`: how many elements are in use. `<array>` makes it assignable.
@@ -109,26 +109,6 @@ superposed bool _bglArrEphemeral(int arr){
         rfalse;
     }
 }
-// `dst = src` on arrays: dst refers to src's array, which another reference now keeps (so its owner's exit
-// won't free it), unless src is ephemeral, when its elements and length are copied into dst's own storage
-// (up to its capacity). `assign` is the element type's static
-// `operator =` when its elements own instances: each is copied into dst's own slot rather than shared, and a
-// step's result taken by reference gets copies of its own, which `dtor` releases.
-superposed int _bglArrAssign(int dst, int src, var assign = 0, var dtor = 0){
-    #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)){
-            _bglHeapOwnElements(src, assign, dtor);
-            if(_bglHeapIsFresh(src)) return src;   ! the variable's owner takes it, or the collector frees it
-            return _bglHeapEscape(src);
-        }
-        return _bglArrCopyInto(dst, src, assign);
-    }
-}
-// `dst = src` where dst is a global or member array: as _bglArrAssign; a heap array stored there has left the
-// routine that made it, so that routine's exit doesn't free it.
-superposed int _bglArrStore(int dst, int src, var assign = 0, var dtor = 0){
-    #i6 { return _bglArrAssign(dst, _bglHeapEscape(src), assign, dtor); }
-}
 // src's elements and length, up to dst's capacity, copied into dst; returns dst.
 superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
     int i = 0;
@@ -142,6 +122,27 @@ superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
         }
         dst-->(-1) = n;
         return dst;
+    }
+}
+// `dst = src` on arrays: src's elements and length, up to dst's capacity, copied into dst's own storage. A source
+// nothing owns (a step's result, a call's returned array) is freed once copied. Returns dst.
+superposed int _bglArrCopyFrom(int dst, int src, var assign = 0){
+    #i6 {
+        if(dst == 0){ print "^[Beguile run-time error: copying into an array that is null; bind it with := first]^"; return 0; }
+        if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
+        if(src == 0 || dst == src) return dst;
+        if(_bglHeapBorrows(dst)) assign = 0;   ! an array with no instances of its own takes the pointers
+        _bglArrCopyInto(dst, src, assign);
+        if(_bglHeapIsFresh(src)) _bglHeapFree(src);
+        return dst;
+    }
+}
+// The same as an element type's assignment, for an array of arrays: a slot that holds an array is copied into;
+// an empty one (an append) takes the array itself, which another reference now keeps.
+superposed int _bglArrCopyAssign(int cur, int src){
+    #i6 {
+        if(cur == 0) return _bglHeapEscape(src);
+        return _bglArrCopyFrom(cur, src);
     }
 }
 // A whole member array that is its property's data, assigned from `src`: src's elements and length,

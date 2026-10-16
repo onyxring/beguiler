@@ -605,12 +605,18 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                     }
                 } else {
                     arrDecl.declaredExpressionValue = expr;
-                    // A local declared from a call or a step's result may own that array (§12.6); one declared
-                    // from another array's name refers to it, which keeps that array from being freed early.
+                    // A local declared from a call or a step's result owns that array (§12.6); one declared from
+                    // another array's name owns a copy of it.
                     if(func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray && elementType != "char"){
                         bool plainName = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
-                        if(plainName) expr->tokens.assign(1, "_bglHeapEscape(" + srcText + ")");
-                        else giveOwner(arrDecl);
+                        string mOwner, mProp;
+                        if(!arrDecl.isRefLocal && !declaringRefArray && memberArraySource(expr, mOwner, mProp)){
+                            // A member array is its property's data: the local gets a copy of it.
+                            expr->tokens.assign(1, "_bglHeapCopyOfMember(" + mOwner + ", " + escapePropertyName(mProp) + ")");
+                            plainName = false;
+                        }
+                        if(plainName && !arrDecl.isRefLocal && !declaringRefArray) expr->tokens.assign(1, "_bglHeapCopyOf(" + srcText + ")");
+                        if(!plainName || (!arrDecl.isRefLocal && !declaringRefArray)) giveOwner(arrDecl);
                     }
                 }
             }
@@ -2342,13 +2348,10 @@ void bglParser::rejectUnionInto(expression* val, classDef* target){
     }
 }
 
-// A local array that owns the array it takes from a call or a step's result: the hidden local holding it, and
-// its element type's `operator =` and deinit when the elements own instances.
+// A local array that owns the array it takes from a call or a step's result: the hidden local holding it.
 void bglParser::giveOwner(arrayDeclaration& ad){
     if(!ad.ownerVar.empty()) return;
     ad.ownerVar = "_bglown_" + ad.name;
-    string assign = substituteElemOps("$opref(=)", ad.elementType, "");
-    if(assign != "0") ad.ownerElementOps = assign + ", " + substituteElemOps("$opref(deinit)", ad.elementType, "");
 }
 void bglParser::declareOwner(functionDef* func, arrayDeclaration& ad){
     auto* top = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;

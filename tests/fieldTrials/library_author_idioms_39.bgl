@@ -1,0 +1,242 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a kit part declaring structs and the functions that use them, and a consumer. The kit's
+// span struct has its own copy operator (marking the copy) and an `operator = (int)`, with +, == and
+// += (int) overloads; its mark struct has no copy operator, and the consumer's `extend struct` adds a
+// stringObj note, a heat and methods, which the automatic copy must then carry through `=`, through a
+// parameter, through an array slot and through a cell struct holding a mark. Two `superposed struct`s:
+// one unused, one used through an alias. A namespace object aliases the structs, one of them declared
+// after it, and its API returns heap arrays (an int array of widths, an array of marks freed with
+// bgl.gc.free) and takes an array the I6 side keeps (bgl.gc.keep), which survives a collection run
+// while many returned arrays are dropped. Struct members of a class and of an object are copied
+// between instances; an array of cells takes a copy of a cell whose mark carries the added note, and a
+// slot never stored into is reached through its members; a global of a struct declared in a part
+// included at the very end is used by a verb; the consumer names the types bare after #using and by
+// their dotted path.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#i6 { Constant bglStringPoolReserve 40; }
+
+#include "library_author_idioms_39_parts/library_author_idioms_39_kit"
+
+extend extern class object {
+    string description;
+}
+
+#using la39
+
+/// The consumer's additions to the kit's mark: a note and a heat, copied with it.
+extend struct La39Mark {
+    stringObj note;
+    int heat;
+
+    /// Raises the heat.
+    void warm(int by) { heat += by; }
+
+    /// Prints "row,col 'note' hN".
+    void show() { print($"{row},{col} '{note}' h{heat}"); }
+}
+
+/// A shelf with a reach and a place.
+class La39Shelf : object {
+    int no;
+    span reach;
+    mark spot;
+
+    /// Prints the shelf's number, reach and place.
+    void report() {
+        print($"shelf {no} ");
+        reach.show();
+        print(" at ");
+        spot.show();
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+La39Shelf shelfA {
+    no = 1;
+    reach = {2, 5};
+    spot = {1, 1};
+}
+
+La39Shelf shelfB {
+    no = 2;
+}
+
+/// A board holding a cell of its own.
+object board {
+    cell home;
+    int marks = 0;
+}
+
+La39Tally la39Count;
+
+verb Spans {
+    grammar = {.spans};
+    void handler() {
+        span a = la39.between(7, 3);
+        span b = 4;
+        span c = a + b;
+        b += 2;
+        print("a ");
+        a.show();
+        print($" {a.copied}; b ");
+        b.show();
+        print($" {b.copied}; c ");
+        c.show();
+        print($"; same {a == c}, {a == b}; ");
+        array<span> list[3];
+        list += a;
+        list += b;
+        list += c;
+        array<int> w = la39.widths(list);
+        print($"widths {w.length}:");
+        for (int x in w) print($" {x}");
+        print($"; slot copied {list[1].copied}; built {la39.built}.^");
+    }
+}
+
+verb Marks {
+    grammar = {.marks};
+    void handler() {
+        mark m;
+        m.row = 2;
+        m.col = 3;
+        m.note = "hot";
+        m.warm(5);
+        mark n = m;
+        m.note = "cold";
+        m.warm(1);
+        m.col = 9;
+        n.show();
+        print(" / ");
+        m.show();
+        int before = bgl.gc.used;
+        array<mark> trail = la39.walk(n, 3);
+        print($"; walk {trail.length}:");
+        for (mark t in trail) {
+            print(" ");
+            t.show();
+        }
+        bgl.gc.free(trail);
+        print($"; heap back {bgl.gc.used == before}.^");
+    }
+}
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelfB.reach = shelfA.reach;
+        shelfA.reach += 1;
+        shelfB.spot = shelfA.spot;
+        shelfA.spot.note = "a";
+        shelfA.spot.warm(2);
+        shelfA.report();
+        print("; ");
+        shelfB.report();
+        print($"; copied {shelfB.reach.copied}.^");
+    }
+}
+
+verb Cells {
+    grammar = {.board};
+    void handler() {
+        cell c;
+        c.at = shelfA.spot;
+        c.reach = la39.between(10, 4);
+        c.weight = 3;
+        board.home = c;
+        c.at.note = "moved";
+        c.weight = 0;
+        board.marks++;
+        print($"weigh {la39.weigh(board.home)} {la39.weigh(c)}; home ");
+        board.home.at.show();
+        print($" {board.home.reach.copied}; c ");
+        c.at.show();
+        print($"; marks {board.marks}.^");
+    }
+}
+
+verb Grid {
+    grammar = {.grid};
+    void handler() {
+        array<cell> grid[3];
+        cell c;
+        c.at = shelfA.spot;
+        c.weight = 2;
+        grid += c;
+        grid[2].weight = 5;
+        c.at.note = "gone";
+        print($"grid {grid.length}: ");
+        grid[0].at.show();
+        print($" {grid[0].weight}; ");
+        grid[2].at.show();
+        print($" {grid[2].weight}.^");
+    }
+}
+
+verb Hold {
+    grammar = {.hold};
+    void handler() {
+        array<int> r[4];
+        r += 3;
+        r += 4;
+        r += 5;
+        la39.hold(r);
+        print($"Held, sum {La39_HeldSum()}.^");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        array<span> list[2];
+        list += la39.between(1, 9);
+        list += la39.between(2, 4);
+        int total = 0;
+        for (int i = 0; i < 40; i++) {
+            array<int> w = la39.widths(list);
+            total += w[0] + w[1];
+        }
+        bgl.gc.collect();
+        print($"Churned {total}; held sum {La39_HeldSum()}.^");
+    }
+}
+
+verb Tally {
+    grammar = {.tally};
+    void handler() {
+        pair p;
+        p.a = la39.between(1, 2);
+        p.b = la39.between(9, 6);
+        la39Count.add(p.a);
+        la39Count.add(p.b);
+        la39.pair q = p;
+        q.b += 10;
+        print($"gap {p.gap()} {q.gap()}; tally {la39Count.n} ");
+        la39Count.total.show();
+        print($" {la39Count.total.copied}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+#include "library_author_idioms_39_parts/library_author_idioms_39_late"

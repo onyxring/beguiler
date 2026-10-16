@@ -147,7 +147,7 @@ struct Tally {
     array<Qty> recent[LOG_MAX];
     stringObj note;
     int hits;
-    Tally operator = (Tally o) { recent.copyFrom(o.recent); note = o.note; hits = o.hits; return self; }
+    Tally operator = (Tally o) { recent = o.recent; note = o.note; hits = o.hits; return self; }
     void log(Qty q) {
         if (recent.length == LOG_MAX) recent.remove(0);
         recent += q;

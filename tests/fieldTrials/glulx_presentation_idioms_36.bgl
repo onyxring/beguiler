@@ -159,7 +159,7 @@ struct Swatch {
         label = o.label;
         base = o.base;
         against := o.against;
-        steps.copyFrom(o.steps);
+        steps = o.steps;
         return self;
     }
 

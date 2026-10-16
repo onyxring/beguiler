@@ -683,6 +683,7 @@ There are four kinds:
 | `primitive class int` | primitive | the value itself | copies the value | copies the value | compile-time error |
 | `class Room` | object (reference) | its own object when declared with no value; else the instance it is given | refers to the same instance | shares the instance | a reference, empty until bound |
 | `class Note` with `operator = (Note o)` | object that copies | as an object | copies into its own instance | shares the instance | a reference, empty until bound |
+| `array<int> a[4]` | object that copies | its own storage | copies into its own storage | shares the array | a reference, empty until bound |
 | `struct Vec2` | struct (value) | its own instance | copies into its own instance | copies | shares one instance |
 
 - **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
@@ -697,7 +698,8 @@ There are four kinds:
   through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
   declared `ref` (§3.7).
 - **Objects that copy** — a class that declares a copy operator copies on `=` into the slot's own
-  instance; parameters and returns still share (§8.2.9).
+  instance; parameters and returns still share (§8.2.9). Arrays behave the same way: an array with storage
+  owns it, `=` copies into it, parameters and returns share, and only a `ref array` re-points (§12.5).
 - **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment, passing and returning copy, through
   the struct's copy operator, which it gets automatically when it declares none. A struct is never

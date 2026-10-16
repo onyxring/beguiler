@@ -694,6 +694,8 @@ class bglParser {
         vector<classDef*> autoCopyStructs;
         map<functionDef*, string> returnInstances;   // a routine returning a struct: the instance its result is copied into   // structs whose copy operator is written for them, once every field is known
         void writeAutoCopyOperators();
+        vector<functionDef*> paramOwnerFuncs;   // routines with array parameters that adopt what they're given
+        void declareParamOwners();
         void declareOwner(class functionDef* func, class arrayDeclaration& ad);
         // Errors when `value`, stored into a slot of type `slotType` whose `literalMembers` apply, is not
         // known at compile time. `what` describes the slot for the message.
@@ -1215,6 +1217,8 @@ class bglParser {
         // or instance type. Use anywhere dispatch needs to walk methods/operators by type.
         string currentSelfTypeName();
         classDef* getDispatchClass(const string& typeName);
+        // The emitter `operator =` of `cls` that takes a `valueType`, inherited ones included, or null.
+        functionDef* emitterAssignOperator(classDef* cls, const string& valueType);
     private:
         static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
         static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names

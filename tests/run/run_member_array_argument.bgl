@@ -1,8 +1,0 @@
-// run_member_array_argument — a member array is a reference like any array: it can be passed to an array
-// parameter, and a write through the parameter is seen through the member.
-// EXPECT_OUTPUT: 2 9 3
-#beguilerSettings { target = z5; informName = "none"; }
-#include <array>
-object h { array<int> recent[4] = {1, 2}; }
-void bump(array<int> a){ print(a.length); print(" "); a[0] = 9; a += 3; }
-void main(){ bump(h.recent); print($"{h.recent[0]} {h.recent.length}"); }

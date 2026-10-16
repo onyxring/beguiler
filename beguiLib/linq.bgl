@@ -26,9 +26,9 @@ superposed array<var> _bglLinqEnter(int n){
         return _bglHeapFresh(n);
     }
 }
-// An unbound chain result (`prop` -1: the array a previous step returned, held by nothing) is freed once read.
+// A step's input that a call or a previous step returned (`prop` -1) is freed once read, when nothing holds it.
 superposed void _bglLinqUsed(var obj, var prop){
-    #i6 { if(prop == -1) _bglHeapFree(obj); }
+    #i6 { if(prop == -1 && _bglHeapIsFresh(obj)) _bglHeapFree(obj); }
 }
 // A chain step has finished.
 superposed void _bglLinqLeave(){

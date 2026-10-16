@@ -46,11 +46,10 @@ an integer (§14.2.1), a `const int` initialized with an integer literal (§3.4)
 `#beguilerSettings` property (§17.7). The second is an initialized array: capacity and length equal to the number of values. The
 third is the one-element form of the second: a single value of the element type needs no braces, so
 `array<int> x = 3;` is `array<int> x = {3};`. A value that is itself an array initializes `⟨name⟩`
-from that array instead; the value's type decides which is meant. `⟨name⟩` then refers to that array,
-as `=` does (§12.5). The sources §12.5 copies are copied here too: in a function body, a returned local
-array or a chain result gives `⟨name⟩` storage of its own, sized to the value's
-length when the declaration runs; a sized local (`array<int> x[⟨n⟩] = build();`) copies into its
-declared capacity. The same shorthand applies to a
+from that array instead; the value's type decides which is meant. A local declared from a call's or a
+chain's result takes that array; one declared from another array gets a copy of its own, with that array's
+capacity; a sized declaration (`array<int> x[⟨n⟩] = src;`) copies into its declared capacity (§12.5, §12.6).
+At file scope the value is copied in at startup. The same shorthand applies to a
 list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
 length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
 error.
@@ -186,24 +185,20 @@ print(code);                    // → 104
 ```syntax
 ⟨destination⟩ = ⟨source⟩ ;
 ⟨ref destination⟩ := ⟨source⟩ ;
-⟨destination⟩ . copyFrom ( ⟨source⟩ ) ;
 ```
 
 **Description**
 
-An array is a reference type (§2.7). `dst = src` makes `dst` refer to `src`'s array, so a change made
-through either name is seen through the other; on a `ref array` (§3.7), `:=` does the same. A declaration from another array
-(`array<int> b = a;`) refers to it in the same way, and `a == b` is true when they are the same array.
+An array owns its storage, as an object with a copy operator owns its instance (§2.10.3): `dst = src` copies
+`src`'s elements and length into `dst`'s storage, up to `dst`'s capacity, and the two stay independent. That
+holds for every array with storage of its own: a global, a local, a member (whose storage is its property's
+data, §12.7). `dst.copyFrom(src)` from `<array>` does the same. A source nothing else holds, a chain's result
+or a call's returned array, is freed once it is copied.
 
-`dst.copyFrom(src)` copies the elements and the length of `src` into `dst`'s own storage, up to its
-capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or from `<buf>` for an
-`array<char>` (§22.2). Copying into an element of an owning element type goes through that type's
-`static operator =` (§12.10).
-
-A function's returned local array and a `<linq>` chain's result are arrays like any other: the
-destination refers to them (§12.6). Giving a parameter another array re-points the parameter only, as
-in C#; the caller's array is unchanged. To fill an array the caller passes in, copy into it with
-`copyFrom`, or return the new array.
+Only a `ref array` (§3.7) re-points: `r := a` makes `r` refer to `a`'s array, and `=` through `r` copies into
+the array it refers to. Parameters and returns share, as for every object: a function's array parameter refers
+to the caller's array, and a returned array passes to the caller (§12.6). `a == b` is true when they are the
+same array.
 
 **Example**
 
@@ -212,30 +207,32 @@ in C#; the caller's array is unchanged. To fill an array the caller passes in, c
 array<int> src = {1, 2, 3};
 array<int> dst[3];
 
-dst = src;                      // dst refers to src's array
-dst[0] = 99;                    // src[0] is now 99 too
-array<int> spare[3];
-spare.copyFrom(src);            // spare has its own copy
-spare[0] = 5;                   // src[0] is still 99
+dst = src;                      // dst has its own copy
+dst[0] = 99;                    // src[0] is still 1
+ref array<int> same := src;     // same refers to src's array
+same[0] = 5;                    // src[0] is now 5
 ```
 
 ## 12.6 Local Arrays, the Heap and Collection
 
 **Description**
 
-A local array (declared inside a function body, sized or initialized) is allocated from the **heap**
-each time its declaration runs, so each call, including a recursive one, has its own array. A local
-array declared in a loop body starts each pass empty, as a block-scoped local does in C# and C++. File-scope
-and member arrays live in permanent storage and are never freed.
+A local array (declared inside a function body, sized or initialized) takes its storage from the **heap** when its
+routine is entered, one array per call, so each call, a recursive one included, has its own. A local array declared
+in a loop body is that one array, emptied each time its declaration runs. File-scope and member arrays live in
+permanent storage and are never freed.
 
-An array lives as long as something refers to it, as in C# and TypeScript. A function may return its
-local array, store it in a global, a member or another array, or pass it to a function that keeps it;
-the reference stays good. `<linq>` results (§22.5) are heap arrays too.
+A local array declared from a call's result or a chain's result (`array<int> e = evens(nums);`) takes that array:
+nothing is copied. One declared from another array (`array<int> c = a;` or `= obj.arr`) gets a copy of its own.
+
+A heap array lives as long as something refers to it, as in C# and TypeScript: a function may return its local
+array, append it to an array of arrays, or bind a `ref` global or member to it with `:=`, and the reference stays
+good. `<linq>` results (§22.5) are heap arrays too.
 
 Arrays are freed in two ways:
 
-- **At the routine's exit.** A local array that no reference has left is freed as its routine returns.
-  So is an array a local was declared from (`array<int> e = evens(nums);`) when nothing else took it.
+- **At the routine's exit.** A local array that no reference has left is freed as its routine returns,
+  and so is an array a local took from a call or a chain.
   A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
   arrays to the collector, since the raw code may have kept one.
 - **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
@@ -258,7 +255,7 @@ array<int> build() {
     return tmp;                 // the caller gets this array
 }
 
-array<int> keep = build();      // keep refers to build's array
+array<int> keep = build();      // keep takes build's array
 int n = keep[0];                // → 1
 ```
 
@@ -285,16 +282,15 @@ ref array<⟨type⟩> ⟨name⟩ ;
 
 **Description**
 
-An `array<T>` declared as a class or object member (§8.3.1, §11.8) is an array like any other:
-`length`, `append()`, `pop()` and the rest behave identically, and the member is a reference (§12.5).
-Storage is per instance: every instance of a class has an array of its own, with the declared capacity
-and initializer, and the member refers to it until it is given another array. An emitter on a member
-array sees it as it sees a global array: `$self` is the array and `$prop` is `0` (§8.1.1).
+An `array<T>` declared as a class or object member (§8.3.1, §11.8) is its property's data, as Inform 6 has it:
+the elements are in the property, so Inform 6 code (the library's `found_in`, an extension walking `obj.&prop`)
+reads it directly. `length`, `append()`, `pop()` and the rest behave as for any array, and an emitter on a member
+array sees `$self` as the owner and `$prop` as the property (§8.1.1). Every instance of a class has an array of
+its own, with the declared capacity and initializer.
 
-Three member kinds are their property's data rather than a reference to an array: a `rawArray<T>`
-member (§12.8.3), where exceeding the property limit is an error; a member bound to an `additive`
-property, which must be declared `rawArray<T>` (§11.7.2); and an `array<dictionaryWord>` member, which
-the library reads as parser data.
+`holder.rows = src;` copies into the member, and `d = holder.rows;` copies out of it (§12.5); `array<int> c =
+holder.rows;` gives a local a copy of its own. A member array is its owner's data, with no address of its own, so
+it can't be passed as an argument: pass its owner, or copy it into an array first.
 
 A member array is declared with a capacity or at least one element. In a class body, a member every
 object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,
@@ -302,19 +298,15 @@ object must give is declared `required` with neither (§8.3.6); one that may sta
 compile-time error, except in an `extern` or `emitter` class, whose body describes a layout rather
 than storage.
 
-A member may also be declared `ref`, in which case it holds a reference to an array owned elsewhere,
-is bound with `:=` (§3.7), and owns no storage of its own.
-
-`holder.rows = src;` makes the member refer to `src`'s array, and `d = holder.rows;` makes `d` refer to
-the member's; `copyFrom` copies instead (§12.5). A member array is passed as an array argument like any
-other array, and a write through the parameter is seen through the member.
+A member may also be declared `ref`: it holds a reference to an array owned elsewhere, is bound with `:=`
+(§3.7), and owns no storage. A `ref` member can be passed as an argument.
 
 **Example**
 
 ```bgl
 #include <array>
 class Inventory : object {
-    array<object> held[8];                  // per-instance storage
+    array<object> held[8];                  // per-instance, in the property
 }
 
 array<int> shared[8];
@@ -326,8 +318,9 @@ w.log += 5;           // appends to shared
 
 **Notes**
 
-> **[Z-machine]** A property holds at most 32 words. A member array's storage is separate from its
-> property, so its capacity isn't limited by that; a `rawArray<T>` member's is (§12.8.3).
+> **[Z-machine]** A property holds at most 32 words. A member array larger than that (counting the length
+> word) is kept in a table of its own, with the property holding its address; it behaves the same, but Inform 6
+> code no longer finds the elements in the property. A `rawArray<T>` member can't exceed the limit (§12.8.3).
 
 ## 12.8 `rawArray<T>`
 
@@ -448,6 +441,10 @@ the outer array with `row` typed `array<T>`. A nested array may be declared as a
 arrays are allocated per call with it (§12.6). A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
 
+A slot holds a reference to its inner array. `grid[i] = row;` copies `row` into the array the slot holds, as `=`
+on any array does (§12.5); appending (`grid += row;`) stores `row` itself in the new slot, and the outer array then
+keeps it alive.
+
 **Example**
 
 ```bgl
@@ -499,24 +496,26 @@ which copies the incoming value into the buffer the slot owns. That store is `<a
 element write into an array of an owning type without `#include <array>` is a compile-time error. Passing an already-allocated value
 allocates a second time; the original is not released.
 
-**Arrays of a struct.** Each slot of an array of a struct (§8.2.7) owns an instance, as a
-variable of the class does. The compiler supplies the store and the release: a slot takes its
-instance from the class's pool the first time it is stored into or one of its members is reached
-(`a[0].n = 7` on a slot never stored into), starting from the class's defaults; a store copies the
-value in through the class's copy operator, `operator = (T o)`.
-`remove`, `removeValue`, `-=`, `clear` and a local array's scope exit return instances to the pool.
-The pool holds one instance per slot of every array of the class, so every slot can be filled at
-once; a local array's slots count once, so a recursive routine whose calls all hold filled slots
-can run out, which is a run-time error.
+**Arrays of a struct.** An array of a struct (§8.2.7) declared with a capacity or a list owns an instance per slot,
+as a variable of the struct does. Struct instances are Inform 6 objects, which exist only at compile time, so the
+compiler makes them: one set per struct, holding as many instances as the program's arrays of that struct declare
+slots, handed to a slot the first time it is stored into or one of its members is reached (`a[0].n = 7` on a slot
+never stored into), starting from the struct's defaults. `a[i] = v` and `a += v` copy `v` into the slot's instance
+through the struct's copy operator. `remove`, `removeValue`, `-=`, `clear` and a local array's exit give instances
+back, so each call of a routine, a recursive one included, has instances of its own; a program that holds more
+filled slots at once than it declared runs out, which is a run-time error.
 
-- A local array of a struct needs a capacity (`[n]`), a list initializer or a value to refer to.
+An array of a struct with no capacity of its own (a `<linq>` result, a returned array, a local declared from
+another array) holds the instances of the array it came from: changing an element through it changes the source,
+and removing one gives nothing back.
+
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
   instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
   gives its slot a copy of its initial value.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
-- `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance without returning it to the pool.
+- `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance, which stays the array's.
 - An element store into a member array of a class that manages its own storage (`stringObj`) reads
   the slot twice, so its index is a variable or a constant; a computed index is a compile-time error.
 

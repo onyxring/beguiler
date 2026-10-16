@@ -199,6 +199,7 @@ _bglClass_Room r3
 ];
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     

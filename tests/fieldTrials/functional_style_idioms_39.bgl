@@ -1,0 +1,443 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: arrays as reference types with heap lifetime, written in a functional style on z5 with a
+// small heap. Pure functions return their local arrays (range, squares, push, merge) and are called in
+// loops hundreds of times inside one turn through helpers whose locals go back to the heap at exit;
+// results are passed straight into another function, assigned back (`xs = xs.filter(…)`), stored into a
+// global array, an object's member array and another array's element, and must survive later calls that
+// reuse the heap and collections at the prompt; `cur = f(cur)` loops; a recursive merge sort over
+// `take`/`skip` results and a recursive countdown that each allocate local arrays; `<linq>` pipelines of
+// filter/map/orderBy/take/skip/distinct whose intermediates are freed. A `Pt` struct with no copy
+// operator of its own is passed to and returned from pure functions (copies), held in a global
+// `array<Pt>` with inline initial instances, filtered and ordered by lambdas into locals that own copies
+// (changed and removed without touching the source), and kept as a local across a recursive walk that
+// also allocates a local array per call. `bgl.gc.free`, `bgl.gc.collect` and `bgl.gc.used` compared
+// before and after rather than printed raw; a trail kept in a global across many turns while the
+// library collects at the prompt; `bgl.gc.keep` on an array handed to an `#i6` routine that stores it
+// in an I6 global, read back by a later verb through an `extern`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 640;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int ROWCAP = 8;
+const int TRAILCAP = 12;
+
+//-- I6 side ---------------------------------------------------------------------------------------
+
+#i6 {
+    Global heldRow;
+    [ HoldRow a; heldRow = a; ];
+    [ DropRow; heldRow = 0; ];
+}
+extern void HoldRow(array<int> a);
+extern void DropRow();
+extern array<int> heldRow;
+
+//-- Data ------------------------------------------------------------------------------------------
+
+array<int> seed = {5, 3, 8, 1, 9, 2, 7, 4};
+array<int> kept[ROWCAP];
+array<array<int>> shelf[4];
+array<int> trail[TRAILCAP];
+int ticks = 0;
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    attributes = {scenery};
+    array<int> data[ROWCAP];
+}
+
+//-- Pure helpers ----------------------------------------------------------------------------------
+
+array<int> range(int lo, int n) {
+    array<int> out[ROWCAP];
+    for (int i = 0; i < n; i++) out += lo + i;
+    return out;
+}
+
+array<int> squares(array<int> xs) {
+    array<int> out[ROWCAP];
+    for (int x in xs) out += x * x;
+    return out;
+}
+
+int sum(array<int> xs) {
+    int s = 0;
+    for (int x in xs) s += x;
+    return s;
+}
+
+bool isEven(int x) { return x % 2 == 0; }
+
+// Appends v, dropping the oldest when full.
+array<int> push(array<int> xs, int v) {
+    array<int> out[TRAILCAP];
+    for (int x in xs.skip(xs.length == TRAILCAP ? 1 : 0)) out += x;
+    out += v;
+    return out;
+}
+
+// One step of a shrinking sequence: halve every element, keep the non-zero ones.
+array<int> halveAll(array<int> xs) {
+    array<int> out[ROWCAP];
+    for (int x in xs) {
+        if (x / 2 > 0) out += x / 2;
+    }
+    return out;
+}
+
+array<int> merge(array<int> a, array<int> b) {
+    array<int> out[ROWCAP];
+    int i = 0;
+    int j = 0;
+    while (i < a.length || j < b.length) {
+        if (j >= b.length || (i < a.length && a[i] <= b[j])) {
+            out += a[i];
+            i++;
+        } else {
+            out += b[j];
+            j++;
+        }
+    }
+    return out;
+}
+
+array<int> msort(array<int> xs) {
+    if (xs.length <= 1) {
+        array<int> one[ROWCAP];
+        one.copyFrom(xs);
+        return one;
+    }
+    int h = xs.length / 2;
+    array<int> a = msort(xs.take(h));
+    array<int> b = msort(xs.skip(h));
+    return merge(a, b);
+}
+
+array<int> countdown(int n) {
+    array<int> out[ROWCAP];
+    if (n == 0) return out;
+    array<int> rest = countdown(n - 1);
+    out += n;
+    for (int v in rest) out += v;
+    return out;
+}
+
+void show(string label, array<int> xs) {
+    print(label);
+    print(":");
+    for (int x in xs) print($" {x}");
+    print("^");
+}
+
+//-- Loop bodies: each call's arrays go back to the heap as it returns -----------------------------
+
+int churnOnce(int k) {
+    array<int> r = range(k, 5);
+    return sum(squares(r));
+}
+
+int pipelineOnce(int k) {
+    array<int> xs = range(k, ROWCAP);
+    xs = xs.filter(isEven);
+    array<var> sq = xs.map((var x) => x * x).orderBy().take(3);
+    return sum(sq);
+}
+
+int shrinkOnce(int start) {
+    array<int> cur = range(start, 6);
+    int steps = 0;
+    while (cur.length > 0) {
+        cur = halveAll(cur);
+        steps++;
+    }
+    return steps;
+}
+
+int sortOnce(int k) {
+    array<int> s = msort(seed);
+    return s[k % ROWCAP];
+}
+
+//-- Structs ---------------------------------------------------------------------------------------
+
+struct Pt {
+    int x;
+    int y;
+}
+
+Pt origin;
+Pt unit = Pt{ x = 1; y = 2; };
+
+array<Pt> pts = { Pt{ x = 4; y = 1; }, Pt{ x = -2; y = 3; }, Pt{ x = 0; y = 5; }, Pt{ x = 3; y = -3; }, Pt{ x = 1; y = 1; } };
+
+int absInt(int v) { return v < 0 ? -v : v; }
+int dist(Pt p) { return absInt(p.x) + absInt(p.y); }
+
+Pt add(Pt a, Pt b) {
+    Pt r;
+    r.x = a.x + b.x;
+    r.y = a.y + b.y;
+    return r;
+}
+
+// Changes its own copy only.
+Pt scaled(Pt p, int k) {
+    p.x = p.x * k;
+    p.y = p.y * k;
+    return p;
+}
+
+Pt mirrored(Pt p) {
+    int t = p.x;
+    p.x = p.y;
+    p.y = t;
+    return p;
+}
+
+int byDist(Pt a, Pt b) {
+    int d = dist(a) - dist(b);
+    if (d != 0) return d;
+    return a.x - b.x;
+}
+
+// Each level keeps its own struct and array across the inner call.
+int walk(Pt p, int depth) {
+    if (depth == 0) return 0;
+    Pt q = add(p, unit);
+    array<int> here[2];
+    here += q.x;
+    here += q.y;
+    int inner = walk(q, depth - 1);
+    if (here[0] != q.x || here[1] != q.y || q.x != p.x + 1) return -1000;
+    return inner + here[0] + here[1];
+}
+
+void showPt(Pt p) { print($"({p.x},{p.y})"); }
+
+void showPts(string label, array<Pt> ps) {
+    print(label);
+    print(":");
+    for (Pt p in ps) {
+        print(" ");
+        showPt(p);
+    }
+    print("^");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb ChurnVerb {
+    grammar = {{.churn, NUMBER}};
+    void handler() {
+        int before = bgl.gc.used;
+        int n = parsed_number;
+        int total = 0;
+        int pipe = 0;
+        int shrink = 0;
+        int sorted = 0;
+        for (int i = 0; i < n; i++) {
+            total += churnOnce(i % 4);
+            pipe += pipelineOnce(i % 3);
+            shrink += shrinkOnce(8 + i % 2);
+            sorted += sortOnce(i);
+        }
+        print($"churn {n}: squares {total}, pipeline {pipe}, shrink {shrink}, sorted {sorted}^");
+        print($"heap back where it was: {bgl.gc.used == before}^");
+    }
+}
+
+verb PipeVerb {
+    grammar = {{.pipe}};
+    void handler() {
+        show("evens squared", squares(seed.filter(isEven)));
+        show("sorted", msort(seed));
+        show("ordered", seed.orderBy());
+        show("top three", seed.orderBy().skip(5));
+        show("odd middle", seed.filter((int x) => !isEven(x)).orderBy().skip(1).take(2));
+        array<int> dup = {3, 1, 3, 2, 1, 3};
+        show("distinct", dup.distinct());
+        show("countdown", countdown(6));
+        print($"sum of squares 1..5 {sum(squares(range(1, 5)))}^");
+    }
+}
+
+verb StoreVerb {
+    grammar = {{.store}};
+    void handler() {
+        kept = seed.filter((int x) => x > 4).orderBy();
+        box.data = countdown(4);
+        shelf.clear();
+        shelf += range(10, 3);
+        shelf += squares(range(1, 3));
+        shelf += msort(seed).take(2);
+        show("kept", kept);
+        array<int> boxCopy = box.data;
+        show("box", boxCopy);
+        print("shelf:");
+        for (array<int> row in shelf) print($" {sum(row)}");
+        print("^");
+    }
+}
+
+verb ReuseVerb {
+    grammar = {{.reuse}};
+    void handler() {
+        int t = 0;
+        int s = 0;
+        for (int i = 0; i < 50; i++) {
+            t += pipelineOnce(i % 10);
+            s += shrinkOnce(8 + i % 2);
+        }
+        print($"reused the heap: {t} {s}^");
+        show("kept", kept);
+        array<int> boxCopy = box.data;
+        show("box", boxCopy);
+        print("shelf:");
+        for (array<int> row in shelf) print($" {sum(row)}");
+        print("^");
+    }
+}
+
+verb CollectVerb {
+    grammar = {{.collect}};
+    void handler() {
+        bgl.gc.collect();
+        int after = bgl.gc.used;
+        bgl.gc.collect();
+        print($"collected; second collection frees nothing: {bgl.gc.used == after}^");
+        show("kept", kept);
+        array<int> boxCopy = box.data;
+        show("box", boxCopy);
+        show("shelf 0", shelf[0]);
+        show("shelf 2", shelf[2]);
+    }
+}
+
+verb FreeVerb {
+    grammar = {{.freeone}};
+    void handler() {
+        int before = bgl.gc.used;
+        array<int> t = range(20, 4);
+        int s = sum(t);
+        bool grew = bgl.gc.used > before;
+        bgl.gc.free(t);
+        print($"sum {s}, grew {grew}, freed back: {bgl.gc.used == before}^");
+    }
+}
+
+verb TickVerb {
+    grammar = {{.tick}};
+    void handler() {
+        ticks++;
+        trail = push(trail, ticks);
+        int t = 0;
+        for (int i = 0; i < 20; i++) t += pipelineOnce(i % 10);
+        print($"tick {t}^");
+    }
+}
+
+verb TrailVerb {
+    grammar = {{.trail}};
+    void handler() {
+        show("trail", trail);
+        print($"length {trail.length}, sum {sum(trail)}, evens {trail.filter(isEven).count()}^");
+    }
+}
+
+verb PointsVerb {
+    grammar = {{.points}};
+    void handler() {
+        showPts("points", pts);
+        Pt a = pts[0];
+        Pt b = scaled(a, 3);
+        Pt c = mirrored(add(a, unit));
+        print("scaled ");
+        showPt(b);
+        print(", mirrored sum ");
+        showPt(c);
+        print(", a still ");
+        showPt(a);
+        print(", pts[0] still ");
+        showPt(pts[0]);
+        print("^");
+        array<Pt> near = pts.filter((Pt p) => dist(p) <= 5);
+        showPts("near", near);
+        near[0].x = 99;
+        near.remove(1);
+        showPts("near changed", near);
+        showPts("points again", pts);
+        array<Pt> byD = pts.orderBy(byDist);
+        showPts("by distance", byD);
+        byD[0].y = 77;
+        print($"pts[4] still ({pts[4].x},{pts[4].y}), any far {pts.any((Pt p) => dist(p) > 5)}, all near origin {pts.all((Pt p) => dist(p) < 8)}^");
+        array<int> ds[ROWCAP];
+        ds = pts.map((var p) => dist((Pt)p));
+        show("distances", ds);
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.recurse, NUMBER}};
+    void handler() {
+        print($"walk {parsed_number} from origin {walk(origin, parsed_number)}, origin still ({origin.x},{origin.y})^");
+    }
+}
+
+verb HoldVerb {
+    grammar = {{.handoff}};
+    void handler() {
+        array<int> t[4];
+        t += 31;
+        t += 41;
+        t += 59;
+        bgl.gc.keep(t);
+        HoldRow(t);
+        print("handed to I6^");
+    }
+}
+
+verb PeekVerb {
+    grammar = {{.peek}};
+    void handler() {
+        if (heldRow == null) {
+            print("I6 holds nothing^");
+            return;
+        }
+        show("I6 holds", heldRow);
+    }
+}
+
+verb DropVerb {
+    grammar = {{.letgo}};
+    void handler() {
+        DropRow();
+        print("I6 let go^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

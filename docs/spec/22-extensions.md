@@ -351,7 +351,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 
 **Chain results.** Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given, so a result assigned back (`held = held.filter(…)`) has the room `held` had. A step's input that was itself a step's result is freed as soon as the step has read it, so only the chain's final result remains; it is freed like any other array once nothing refers to it.
 
-**Value-class elements.** A variable that takes a result over a struct (or another element type that owns its instances, such as `stringObj`) gets copies of the elements, as an assignment of one struct variable to another does: changing or removing them leaves the source alone. The steps inside a chain read the source's elements without copying them.
+**Struct elements.** A result over an array of a struct holds the source's instances (§12.10): changing an element through it changes the source. Assigning a result into an array with a capacity of its own (`kept = hand.filter(…);`) copies the elements into that array's instances.
 
 **Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to any depth.
 

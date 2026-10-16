@@ -1,0 +1,71 @@
+Room A
+Room A.
+> coins
+purse: 5/1990 20/1985 1/2001 10/1990 50/1977
+values 86, oldest 1977, worn first 4, first still 5
+older of 1990s 1990, purse[0] still 5, wear 4 from 20 70, purse[1] still 20
+> ordered
+by year: 50/1977 20/1985 5/1990 10/1990 1/2001
+changed: 0/1977 20/1985 5/1990 10/1990
+purse: 5/1990 20/1985 1/2001 10/1990 0/1977
+> rich
+big worn: 19/1985 9/1990
+purse: 5/1990 19/1985 1/2001 9/1990 0/1977
+any before 1980 true, all after 1980 false, distinct values 5
+> ledger
+ledger:
+0 entries, total 0, doubled total 0, top three 0
+> scratch
+Scratch 0, freed: true.
+> handoff
+Handed over.
+> peek
+kept: 5 9 7
+#repeat 14
+> deposit
+Deposited.
+> ledger
+ledger: 15 18 21 24 27 30 33 36 39 42
+10 entries, total 285, doubled total 570, top three 117
+> snap
+1 snaps.
+> snaps
+snap: 24 36
+tray: 39 42
+> baseline
+Baseline taken.
+#repeat 25
+> churn
+Churned 10, 54.
+> recheck
+Under half the heap: true. Near the baseline: true.
+> peek
+kept: 5 9 7
+> ledger
+ledger: 15 18 21 24 27 30 33 36 39 42
+10 entries, total 285, doubled total 570, top three 117
+> snaps
+snap: 24 36
+tray: 39 42
+#repeat 4
+> deposit
+Deposited.
+> snap
+2 snaps.
+> snaps
+snap: 24 36
+snap: 36 48
+tray: 51 54
+> forget
+Forgotten.
+> peek
+Nothing kept.
+> ledger
+ledger: 27 30 33 36 39 42 45 48 51 54
+10 entries, total 405, doubled total 810, top three 153
+> scratch
+Scratch 810, freed: true.
+> coins
+purse: 5/1990 19/1985 1/2001 9/1990 0/1977
+values 34, oldest 1977, worn first 4, first still 5
+older of 1990s 1990, purse[0] still 5, wear 4 from 20 66, purse[1] still 19

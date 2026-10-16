@@ -1,0 +1,38 @@
+Room A
+Room A.
+> names
+struct 5, crate 10, bumped 6, same true.
+> names
+struct 11, crate 22, bumped 12, same false.
+> hollow
+one 1 1.
+> dials
+d 6, e 10, twice 7, after 10.
+> nest
+o2 0/2/1, o3 8/2, o4 8/0, slots 7 9/3.
+> nest
+o2 0/2/1, o3 8/2, o4 8/0, slots 7 9/3.
+> links
+chain 153 453 3, l1 1.
+> fold
+1:5/6 2:3/5 3:0/3 sum 6, depth 3, start 0.
+> fold
+1:5/6 2:3/5 3:0/3 sum 6, depth 3, start 0.
+> tags
+k(2,3) 105 5 5.
+> cards
+A 1/2, B 7/1, C 1/1.
+> cards
+A 1/4, B 7/2, C 1/2.
+> diag
+(9,2)(2,4)(3,6) then (1,2)(2,4) then 0, wide 1 0.
+> chain
+big 20, none 0, empty 0 0 false true 0, ordered 6, wide 2.
+> diag
+(9,2)(2,4)(3,6) then (1,2)(2,4) then 0, wide 1 0.
+> chain
+big 20, none 0, empty 0 0 false true 0, ordered 6, wide 2.
+> slots
+slots 3 [blank] 4 [blank].
+> slots
+slots 3 [blank] 4 [blank].

@@ -2431,7 +2431,10 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
     rejectConstantIndexOutside(arrPath, indexExpr, func, body);
-    file.getToken(token::assignment);
+    // `a[i] := v` re-points the slot at v itself; `=` assigns as the element type does.
+    token op = file.getToken();
+    bool bind = op.is(token::bindAssignment);
+    if(!bind) op.assert(token::assignment);
     expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
     if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(arrPath, func, body)))
         if(arr->literalElements) checkLiteralElements(*arr, {valExpr});
@@ -2627,10 +2630,33 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // happens later, in substituteElemOps. Comparing against "0" here made this true for
     // EVERY element type, so every subscript write took the setOwnedAt routine instead of
     // the inline store, and a non-array receiver (stringObj) got "<$prop undefined>".
-    // An array stored into another array's element has left the routine that made it.
-    if(isWordArrayType(elemType) && elemType != "array<char>")
-        valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
-    if(!isMemberWordArray && pointerSlot.empty() && !operatorRef(elemType, "=").empty()){
+    if(bind){
+        classDef* ec = getDispatchClass(elemType);
+        bool holdsInstances = isWordArrayType(elemType) || (ec != nullptr && !ec->isPrimitive && !ec->isEmitterClass);
+        if(!holdsInstances)
+            parsingError(format("':=' re-points a slot that holds an instance or an array; an element of '{0}' is a value, "
+                                "so use '='.", typeDisplayName(elemType)));
+        if(isWordArrayType(elemType)) valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
+        // The instance the slot owned goes back before the slot takes another.
+        if(owningValueElementClass(elemType) != nullptr && pointerSlot.empty() && body != nullptr){
+            string dtor = substituteElemOps("$opref(deinit)", elemType);
+            if(dtor != "0"){
+                auto* give = new i6RawNode(); give->cooked = true;
+                give->text = dtor + "(_bglArray.get(" + (isMemberWordArray ? memOwner + ", " + escapePropertyName(memProp) : arrPath + ", 0")
+                           + ", " + indexExpr->text() + "));";
+                pendingInjections.push_back(give);
+            }
+        }
+    }
+    // An element that is an array is assigned as an array is: copied into the array the slot holds (an empty
+    // slot takes the array itself).
+    else if(isWordArrayType(elemType) && elemType != "array<char>"){
+        if(!isMemberWordArray && pointerSlot.empty())
+            valExpr->tokens.assign(1, "_bglArrCopyAssign(_bglAt(" + arrPath + ", " + indexExpr->text() + ", 0)-->0, " + valExpr->text() + ")");
+        else
+            valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
+    }
+    if(!bind && !isMemberWordArray && pointerSlot.empty() && !operatorRef(elemType, "=").empty()){
         functionDef* owned = nullptr;
         if(auto* ac = languageService.findClass("array"))
             owned = dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
@@ -2652,7 +2678,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
         // A value class's element is its slot's own instance, given the value through the class's `operator =`
         // for the value's type; the slot is read once.
         functionDef* slotOp = nullptr;
-        if(classDef* vc = languageService.findClass(elemType); vc != nullptr && isValueClass(vc) && !vc->isEmitterClass){
+        if(classDef* vc = languageService.findClass(elemType); !bind && vc != nullptr && isValueClass(vc) && !vc->isEmitterClass){
             slotOp = findAssignOperator(vc, valExpr->resolvedType, [](functionDef* f){ return !f->isEmitter; }, true);
         }
         if(slotOp != nullptr){
@@ -2664,7 +2690,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
         } else {
         bool isStaticAssign = false;
         operatorRef(elemType, "=", elemType, &isStaticAssign);
-        string assign = isStaticAssign || owningValueElementClass(elemType) != nullptr ? substituteElemOps("$opref(=)", elemType) : "0";
+        string assign = !bind && (isStaticAssign || owningValueElementClass(elemType) != nullptr) ? substituteElemOps("$opref(=)", elemType) : "0";
         if(assign != "0" && !regex_match(indexExpr->text(), regex("\\s*[A-Za-z0-9_.$]+\\s*")))
             parsingError(format("an element of an array<{0}> is copied in through {0}'s operator =; index this member "
                 "array with a variable or constant.", typeDisplayName(elemType)));
@@ -3508,73 +3534,51 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     }
     if(t.leftType != nullptr && !isBindAssign) applyImplicitConversion(val, t.leftType->name);
     if(t.leftType != nullptr && t.leftType->name == "verb") applyActionConstant(val);
-    // A whole array as the target: an inline member array keeps its elements in its object; a global one
-    // becomes a variable over its storage, so it can be re-pointed.
-    string storeText;   // the store into a global or member array, which takes the place of its `operator =`
+    // A whole array as the target. `=` copies into the array the slot owns (an inline member's property data, or the
+    // array a global, local, `ref` slot or promoted member holds); `:=` binds a `ref` slot to the array itself.
+    string storeText;   // the copy, which takes the place of the array's `operator =`
     if(t.leftType != nullptr && val != nullptr && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
        && a.src.file.find("beguiLib") == string::npos){
         bool member = !t.emitterProp.empty() && t.emitterProp != "0";
-        if(member){
-            // A member array that is its property's data takes a copy into its own elements.
-            if(!memberArrayIsRef(t.emitterSelf, t.emitterProp, currentFunc, nullptr) && t.leftType->name != "bytearray"){
-                string vText = val->text(), vOwner, vProp;
-                bool fromMember = memberArraySource(val, vOwner, vProp);
-                string dst = t.emitterSelf + ", " + escapePropertyName(t.emitterProp);
-                // Elements that own instances are copied through their type's `operator =`, not shared.
-                string assign = substituteElemOps("$opref(=)", resolveArrayElementTypeDotted(t.emitterSelf, t.emitterProp, currentFunc, nullptr), "");
-                val->tokens = {fromMember ? "_bglMemberArrCopyMember(" + dst + ", " + vOwner + ", " + escapePropertyName(vProp) + ", " + assign + ")"
-                                          : "_bglMemberArrCopy(" + dst + ", " + vText + ", " + assign + ")"};
-                a.variableLeft = "_bglSink-->0";   // the copy is the statement; what it returns isn't kept
+        string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`
+        bool pointerMember = !member && a.variableLeft.find('.') != string::npos
+            && splitQualifiedMember(a.variableLeft, currentFunc, nullptr, lOwner, lProp);
+        bool localSlot = !member && !pointerMember && currentFunc != nullptr && a.variableLeft.find('.') == string::npos
+            && (qualifyFromParams(a.variableLeft, currentFunc)
+                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
+        if(isBindAssign){
+            // A global or member bound to an array keeps it past the routine that made it.
+            if(!localSlot && currentFunc != nullptr && t.leftType->name != "bytearray")
+                val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
+        } else if(t.leftType->name == "bytearray"){
+            if(!localSlot && currentFunc != nullptr){
+                val->tokens = {"_bglByteArrCopyInto(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)
+                               + ", " + val->text() + ")"};
+                a.variableLeft = "_bglSink-->0";   // the copy is the statement
                 a.assignedExpression = val;
                 return;
             }
         } else {
-            // A whole member array on the right: its elements are copied into this array's storage, until
-            // member arrays are references.
-            string vOwner, vProp;
-            if(t.leftType->name != "bytearray" && memberArraySource(val, vOwner, vProp))
-                val->tokens = {"_bglArrFromMember(" + a.variableLeft + ", " + vOwner + ", " + escapePropertyName(vProp) + ", "
-                               + substituteElemOps("$opref(=)", resolveArrayElementTypeDotted(vOwner, vProp, currentFunc, nullptr), "") + ")"};
-        }
-        bool lasting = member;   // a global or member outlives the routine; a local array assigned to it is copied
-        if(!member && a.variableLeft.find('.') == string::npos)
-            if(auto* ga = languageService.findGlobalAs<arrayDeclaration>(a.variableLeft);
-               ga != nullptr && (currentFunc == nullptr || (!qualifyFromParams(a.variableLeft, currentFunc)
-                                 && !qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())))){
-                // One declared `ref`, with no storage, is already a plain variable.
-                if(ga->arraySize > 0 || dynamic_cast<initializerList*>(ga->declaredExpressionValue) != nullptr
-                   || !ga->stringInitializer.empty())
-                    ga->isRepointed = true;
-                lasting = true;
-            }
-        string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`
-        bool pointerMember = !member && a.variableLeft.find('.') != string::npos
-            && splitQualifiedMember(a.variableLeft, currentFunc, nullptr, lOwner, lProp);
-        if((lasting || pointerMember) && currentFunc != nullptr && t.leftType->name == "bytearray")
-            storeText = "_bglByteArrStore(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)
-                      + ", " + val->text() + ")";
-        else if((lasting || pointerMember) && currentFunc != nullptr){
-            string dst = member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft;
             string elem = member ? resolveArrayElementTypeDotted(t.emitterSelf, t.emitterProp, currentFunc, nullptr)
                         : pointerMember ? resolveArrayElementTypeDotted(lOwner, lProp, currentFunc, nullptr)
                                  : resolveArrayElementType(a.variableLeft, currentFunc, nullptr);
-            storeText = "_bglArrStore(" + dst + ", " + val->text() + ", " + substituteElemOps("$opref(=)", elem, "") + ", "
-                      + substituteElemOps("$opref(deinit)", elem, "") + ")";
-        }
-        // A local array given a call's or a step's result owns it, as one declared from it does.
-        else if(!member && !pointerMember && currentFunc != nullptr && t.leftType->name != "bytearray"
-                && !(val->tokens.size() == 1 && val->text().find_first_of(".([") == string::npos))
-            if(auto* ad = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(a.variableLeft, currentFunc,
-                   activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
-               ad != nullptr && !ad->isRaw && !ad->isByteArray && ad->elementType != "char"
-               && languageService.findGlobalAs<variableDeclaration>(a.variableLeft) != ad){
-                giveOwner(*ad);
-                declareOwner(currentFunc, *ad);
-                auto* adopt = new i6RawNode(); adopt->cooked = true;
-                adopt->text = ad->ownerVar + " = _bglHeapReown(" + ad->ownerVar + ", " + a.variableLeft
-                            + (ad->ownerElementOps.empty() ? "" : ", " + ad->ownerElementOps) + ");";
-                postInjections.push_back(adopt);
+            string assign = substituteElemOps("$opref(=)", elem, "");
+            string vOwner, vProp;
+            bool fromMember = memberArraySource(val, vOwner, vProp);
+            if(member && !memberArrayIsRef(t.emitterSelf, t.emitterProp, currentFunc, nullptr)){
+                // A member array that is its property's data takes a copy into its own elements.
+                string dst = t.emitterSelf + ", " + escapePropertyName(t.emitterProp);
+                val->tokens = {fromMember ? "_bglMemberArrCopyMember(" + dst + ", " + vOwner + ", " + escapePropertyName(vProp) + ", " + assign + ")"
+                                          : "_bglMemberArrCopy(" + dst + ", " + val->text() + ", " + assign + ")"};
+            } else {
+                string dst = member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft;
+                val->tokens = {fromMember ? "_bglArrFromMember(" + dst + ", " + vOwner + ", " + escapePropertyName(vProp) + ", " + assign + ")"
+                                          : "_bglArrCopyFrom(" + dst + ", " + val->text() + ", " + assign + ")"};
             }
+            a.variableLeft = "_bglSink-->0";   // the copy is the statement; what it returns isn't kept
+            a.assignedExpression = val;
+            return;
+        }
     }
     const string& emitterSelfForLhs = t.emitterSelf;
     classDef* classType = t.ancestorCast != nullptr ? t.ancestorCast : t.classType;

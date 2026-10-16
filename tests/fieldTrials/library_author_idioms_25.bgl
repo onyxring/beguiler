@@ -510,7 +510,7 @@ La25Info La25Rank {
     grammar = {.rank};
     void handler() {
         array<La25Light> order[4];
-        order.copyFrom(la25Shed.lights);
+        order = la25Shed.lights;
         order.sort((La25Light a, La25Light b) => b.fuel.units - a.fuel.units);
         for (La25Light v in order) print($"{v}={v.fuel.units} ");
         La25Light top = order.first();

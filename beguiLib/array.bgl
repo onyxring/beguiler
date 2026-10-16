@@ -269,7 +269,8 @@ superposed object _bglArray {
     // store — which is how a type that owns storage can allocate on first write and copy into
     // its own buffer thereafter, without _bglArray knowing anything about the type.
     void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
-        if(assign == 0){ set(obj, prop, n, v); return; }
+        // An array with no instances of its own (a step's result, an array declared from a value) holds pointers.
+        if(assign == 0 || ownedDtor(obj, prop, 1) == 0){ set(obj, prop, n, v); return; }
         set(obj, prop, n, assign(get(obj, prop, n), v));
     }
 

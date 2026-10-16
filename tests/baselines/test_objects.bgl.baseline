@@ -66,10 +66,8 @@ object lobby
        exitsouth 0,
        visitcount 0
 ;
-Array _bglhdr__bglPromoted_inventory_items --> $9084 0;
-array _bglPromoted_inventory_items table 10;
 object inventory
-  with items _bglPromoted_inventory_items,
+  with items 0 0 0 0 0 0 0 0 0 0 0 ,
        count 0
 ;
 object gameState
@@ -83,14 +81,15 @@ object gameState
     gamestate.gamescore = 10;
     gamestate.gamemoves = 1;
     inventory.count = 3;
-    first =  _bglAt(inventory.items, 0, 0)-->0 ;
+    first = _bglMemberAt(inventory, items, 0, 2)-->0;
 ];
-[_bglAt arr i w n;
+[_bglMemberAt obj prop i f n;
     n = 0;
     
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
+        n = obj.#prop / WORDSIZE;
+        if(f & 2) n--;
+        if(i >= 0 && i < n) return obj.&prop + i * WORDSIZE;
+        return _bglOutOfRange(i, n, f & 1);
     
 ];
 [_bglOutOfRange i n w;
@@ -107,6 +106,3 @@ object gameState
     
 ];
 array _bglsink --> 1;
-[_bglArrSize arr;
-     return arr-->0; 
-];

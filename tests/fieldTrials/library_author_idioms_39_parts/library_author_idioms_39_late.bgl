@@ -1,0 +1,16 @@
+/*  Field trial part — included by library_author_idioms_39.bgl. Not a trial on its own.  */
+
+#once
+
+/// Spans added up: how many, and the smallest span holding them all.
+struct La39Tally {
+    int n;
+    la39.span total;
+
+    /// Takes in one more span.
+    void add(La39Span s) {
+        if (n == 0) total = s;
+        else total = total + s;
+        n++;
+    }
+}

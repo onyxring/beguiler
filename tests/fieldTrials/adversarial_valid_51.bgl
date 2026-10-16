@@ -1,0 +1,339 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but awkward code around structs and heap arrays, with routines written above the
+// structs they use. `struct` as an ordinary name where no name follows it: a class member, an object's
+// value for it, a local (incremented, compared, interpolated) and a parameter `Struct`; the keyword in
+// other cases (`STRUCT`, `Struct`, `extend STRUCT`). A struct with no fields, extended with a method
+// only, copied and passed; a struct whose only operator is `operator = (int)`, which still copies its
+// own kind; a struct whose field is a struct declared later, whose field is a third struct declared
+// later still, copied whole, by its middle and by its innermost part, and through an array slot; a
+// struct with a `ref` field to its own type, bound into a chain, walked with `if (!cur)`, copied (the
+// copy shares the chain); a recursive routine whose struct locals and parameters keep their values
+// across the inner call; `((Pt)self)` casts to a converted struct calling a method of the same name;
+// global instances of a class with a copy operator assigned to each other and through a `ref`; a local
+// array of a struct returned and taken, written through, freed with bgl.gc.free and the variable reused;
+// zero-length arrays (an empty returned array, a filter that matches nothing) counted, walked and
+// passed; a <linq> chain whose result is passed straight to a function as its argument; a local array
+// of a struct with initialized int and stringObj fields, its slots reached before any store.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+// ---- routines, above the structs they use ------------------------------------------------------------
+
+int bumped(int Struct) { return Struct + 1; }
+
+int dialTwice(Dial x) {
+    x.v++;
+    return x.v;
+}
+
+int hollowOne(Hollow h) { return h.one(); }
+
+Acc fold(Acc a, int n) {
+    if (n == 0) return a;
+    Acc mine = a;
+    mine.sum += n;
+    mine.depth++;
+    Acc r = fold(mine, n - 1);
+    print($"{n}:{a.sum}/{mine.sum} ");
+    return r;
+}
+
+int chainDigits(ref Link start) {
+    int t = 0;
+    ref Link cur := start;
+    while (true) {
+        if (!cur) break;
+        t = t * 10 + cur.v;
+        cur := cur.next;
+    }
+    return t;
+}
+
+array<Pt> diag(int n) {
+    array<Pt> a[4];
+    for (int i = 1; i <= n; i++) a += Pt{ i, i * 2 };
+    return a;
+}
+
+int total(array<int> xs) {
+    int t = 0;
+    for (int x in xs) t += x;
+    return t;
+}
+
+int wide(array<Pt> ps) {
+    int k = 0;
+    for (Pt p in ps) if (p.x > 1) k++;
+    return k;
+}
+
+int deepOf(Outer o) { return o.mid.deep.v; }
+
+// ---- the structs -----------------------------------------------------------------------------------------
+
+STRUCT Hollow { }
+
+extend STRUCT Hollow {
+    int one() { return 1; }
+}
+
+Struct Dial {
+    int v;
+    Dial operator = (int n) {
+        v = n * 2;
+        return self;
+    }
+}
+
+struct Outer {
+    Middle mid;
+    int tag;
+}
+
+struct Acc {
+    int sum;
+    int depth;
+}
+
+struct Link {
+    int v;
+    ref Link next;
+}
+
+struct Pt {
+    inline int x;
+    inline int y;
+    int sum() { return x + y; }
+    void show() { print($"({x},{y})"); }
+}
+
+struct Tagged {
+    inline char tag;
+    inline int x;
+    inline int y;
+    explicit Pt operator () {
+        Pt p;
+        p.x = x;
+        p.y = y;
+        return p;
+    }
+    int sum() { return 100 + ((Pt)self).sum(); }
+    void show() {
+        print((char)tag);
+        ((Pt)self).show();
+    }
+}
+
+struct Middle {
+    Inner deep;
+    int m;
+}
+
+struct Inner {
+    int v;
+}
+
+struct Label {
+    int n = 3;
+    stringObj text = "blank";
+}
+
+// ---- classes, objects and globals ----------------------------------------------------------------------
+
+class Crate : object {
+    int struct;
+}
+
+Crate crateA {
+    struct = 4;
+}
+
+class Card : object {
+    int n;
+    int copies;
+    Card operator = (Card o) {
+        n = o.n;
+        copies++;
+        return self;
+    }
+}
+
+Card cardA { n = 1; }
+Card cardB { n = 2; }
+Card cardC;
+
+Link l1;
+Link l2;
+Link l3;
+
+array<int> nums = { 4, 9, 2, 7 };
+array<Outer> outers[2];
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb Names {
+    grammar = {.names};
+    void handler() {
+        int struct = crateA.struct;
+        struct++;
+        crateA.struct = struct * 2;
+        print($"struct {struct}, crate {crateA.struct}, bumped {bumped(struct)}, same {struct == 5}.^");
+    }
+}
+
+verb Hollows {
+    grammar = {.hollow};
+    void handler() {
+        Hollow h;
+        Hollow k = h;
+        k = h;
+        print($"one {k.one()} {hollowOne(h)}.^");
+    }
+}
+
+verb Dials {
+    grammar = {.dials};
+    void handler() {
+        Dial d = 3;
+        Dial e = d;
+        int t = dialTwice(e);
+        e = 5;
+        print($"d {d.v}, e {e.v}, twice {t}, after {e.v}.^");
+    }
+}
+
+verb Nest {
+    grammar = {.nest};
+    void handler() {
+        Outer o1;
+        o1.mid.deep.v = 7;
+        o1.mid.m = 2;
+        o1.tag = 1;
+        Outer o2 = o1;
+        o1.mid.deep.v = 8;
+        Outer o3;
+        o3.mid = o1.mid;
+        o1.mid.m = 3;
+        Outer o4;
+        o4.mid.deep = o1.mid.deep;
+        o1.mid.deep.v = 9;
+        outers.clear();
+        outers += o2;
+        outers += o1;
+        o2.mid.deep.v = 0;
+        print($"o2 {deepOf(o2)}/{o2.mid.m}/{o2.tag}, o3 {o3.mid.deep.v}/{o3.mid.m}, o4 {o4.mid.deep.v}/{o4.mid.m}, slots {outers[0].mid.deep.v} {outers[1].mid.deep.v}/{outers[1].mid.m}.^");
+    }
+}
+
+verb Links {
+    grammar = {.links};
+    void handler() {
+        l1.v = 1;
+        l2.v = 2;
+        l3.v = 3;
+        l1.next := l2;
+        l2.next := l3;
+        Link l4 = l1;
+        l4.v = 4;
+        l2.v = 5;
+        print($"chain {chainDigits(l1)} {chainDigits(l4)} {chainDigits(l3)}, l1 {l1.v}.^");
+    }
+}
+
+verb Folds {
+    grammar = {.fold};
+    void handler() {
+        Acc a;
+        Acc r = fold(a, 3);
+        print($"sum {r.sum}, depth {r.depth}, start {a.sum}.^");
+    }
+}
+
+verb Tags {
+    grammar = {.tags};
+    void handler() {
+        Tagged t = Tagged{ 'k', 2, 3 };
+        t.show();
+        Pt p = (Pt)t;
+        print($" {t.sum()} {p.sum()} {((Pt)t).sum()}.^");
+    }
+}
+
+verb Cards {
+    grammar = {.cards};
+    void handler() {
+        cardC = cardA;
+        cardA = cardB;
+        cardB = cardC;
+        ref Card r := cardA;
+        r = cardC;
+        r := cardB;
+        r.n = 7;
+        print($"A {cardA.n}/{cardA.copies}, B {cardB.n}/{cardB.copies}, C {cardC.n}/{cardC.copies}.^");
+    }
+}
+
+verb Diags {
+    grammar = {.diag};
+    void handler() {
+        array<Pt> d = diag(3);
+        d[0].x = 9;
+        for (Pt p in d) p.show();
+        bgl.gc.free(d);
+        array<Pt> d2 = diag(2);
+        print(" then ");
+        for (Pt p in d2) p.show();
+        array<Pt> none = diag(0);
+        print($" then {none.length}");
+        for (Pt p in none) print("?");
+        print($", wide {wide(d2)} {wide(none)}.^");
+    }
+}
+
+verb Chains {
+    grammar = {.chain};
+    void handler() {
+        int big = total(nums.filter((int x) => x > 3));
+        int none = total(nums.filter((int x) => x > 50));
+        array<int> empty = nums.filter((int x) => x < 0);
+        print($"big {big}, none {none}, empty {empty.length} {empty.count()} {empty.any((int x) => x > 0)} {empty.all((int x) => x > 0)} {empty.first()}");
+        print($", ordered {total(nums.orderBy().take(2))}, wide {wide(diag(3).filter((Pt p) => p.y > 2))}.^");
+    }
+}
+
+verb Slots {
+    grammar = {.slots};
+    void handler() {
+        array<Label> ls[2];
+        ls[1].n++;
+        print($"slots {ls[0].n} [{ls[0].text}] {ls[1].n} [{ls[1].text}].^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

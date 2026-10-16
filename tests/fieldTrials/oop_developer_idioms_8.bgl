@@ -105,7 +105,7 @@ struct Gauge {
     Gauge operator = (Gauge o) {
         Level = o.Level;
         Seen = o.Seen;
-        History.copyFrom(o.History);
+        History = o.History;
         return self;
     }
 

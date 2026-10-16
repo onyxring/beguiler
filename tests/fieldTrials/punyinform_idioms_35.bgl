@@ -249,7 +249,7 @@ struct Batch {
     array<int> vals[3];
 
     Batch operator = (Batch o) {
-        vals.copyFrom(o.vals);
+        vals = o.vals;
         return self;
     }
 
@@ -691,7 +691,7 @@ verb Copy {
             printLine($"You can't copy {the(noun)}.");
             return;
         }
-        trayD.slots.copyFrom(((Tray)noun).slots);
+        trayD.slots = ((Tray)noun).slots;
         printLine($"The gray tray now holds {trayD.slots.length}, first {trayD[0]}, last {trayD[trayD.slots.length - 1]}.");
     }
 }

@@ -1,7 +1,7 @@
 // run_gc_return_value_array — a function returns its local array of a struct: the caller gets the array and
-// the instances its slots own; each call's array is separate, a declaration from one refers to it (which leaves that one
-// to the collector), and the other goes back to the heap with its owner.
-// EXPECT_OUTPUT: 14 2 2 | 1 9 | used 10 | collected 0
+// the instances its slots own; each call's array is separate, a declaration from one holds that array's instances,
+// and all of them go back to the heap with their owners.
+// EXPECT_OUTPUT: 14 2 2 | 1 9 | used 0 | collected 0
 #beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
 #include <array>
 struct Row { int id = 0; Row operator = (Row o) { id = o.id; return self; } }

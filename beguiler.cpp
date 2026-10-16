@@ -395,6 +395,7 @@ void beguiler::runPostParseChecks() {
     parser.validateRequiredMembers();
     parser.renameI6KeywordNames();
     parser.resolveDeletes();
+    emitter.synthesizeValueElementPools();   // its instances are objects whose members the next pass initializes
     parser.recordObjectMemberInits();
 
     // Apply defaults declared on beguilerSettingsType schema members for any unset fields

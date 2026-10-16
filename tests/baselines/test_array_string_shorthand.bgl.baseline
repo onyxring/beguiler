@@ -111,22 +111,17 @@ Array _bglhdr_payload --> $9084 1;
 array payload table [ "opaque" ];
 class _bglClass_Tagged
   with
-    tags 
+    tags "solo" 1 
 ;
-Array _bglhdr__bglPromoted_t_tags --> $9084 1;
-array _bglPromoted_t_tags table [ "solo" ];
 _bglClass_Tagged t
-  with tags _bglPromoted_t_tags
 ;
 class _bglClass_Holder
   class object
   with
     items 0 
 ;
-Array _bglhdr__bglPromoted_h_items --> $9084 1;
-array _bglPromoted_h_items table [ "single" ];
 _bglClass_Holder h
-  with items _bglPromoted_h_items
+  with items "single" 1 
 ;
 [_bgl_float__oplteqgt a b;
     

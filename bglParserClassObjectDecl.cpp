@@ -1755,17 +1755,20 @@ void bglParser::processI6InlineMember(objectDef& obj){
     obj.members.push_back((typeMember*)&node);
 }
 
-// A member word array is a reference, like every array: its storage is a global per owning
-// instance and the property holds a pointer to it, so `=` can re-point it. Marking it `ref`
-// routes every access through the pointer form. Exempt: a rawArray and `array<dictionaryWord>`,
-// which exist to BE I6 property data; an additive property (`name`), which I6 merges along the
-// class chain; `array<char>`, whose property already holds a pointer to its buffer; and a static array, one global.
+// A member array is its property's data, as Inform 6 has it, unless it doesn't fit: a Z-machine property holds at
+// most 32 words, counting the length slot. One that doesn't fit is promoted: its storage is a global per owning
+// instance and the property holds a pointer to it, which every access goes through. Exempt: a rawArray and
+// `array<dictionaryWord>`, which exist to BE I6 property data; an additive property (`name`), which I6 merges along
+// the class chain; `array<char>`, whose property already holds a pointer to its buffer; and a static array.
 bool bglParser::memberArrayPromotes(const arrayDeclaration& arrDecl){
     if(arrDecl.isRaw || arrDecl.isRefLocal || arrDecl.isStatic) return false;
     if(arrDecl.elementType == "dictionaryword") return false;
     if(arrDecl.isByteArray || arrDecl.elementType == "char") return false;
-    auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue);
-    if(arrDecl.arraySize <= 0 && (seed == nullptr || seed->elements.empty())) return false;
+    const string& t = beguilerSettings.target;
+    if(t.empty() || (t[0] != 'z' && t[0] != 'Z')) return false;   // Glulx properties are effectively unbounded
+    int count = arrDecl.arraySize;
+    if(auto* seed = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue)) count = max(count, (int)seed->elements.size());
+    if(count + 1 <= 32) return false;
     return !languageService.isAdditiveProperty(arrDecl.i6name.empty() ? arrDecl.name : arrDecl.i6name);
 }
 

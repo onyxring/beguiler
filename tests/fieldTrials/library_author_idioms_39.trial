@@ -1,0 +1,30 @@
+Room A
+Room A.
+> spans
+a [3..7] true; b [6..6] false; c [3..7]; same true, false; widths 3: 4 0 4; slot copied true; built 1.
+> marks
+2,3 'hot' h5 / 2,9 'cold' h6; walk 3: 2,3 'hot' h5 2,4 'hot' h5 2,5 'hot' h5; heap back true.
+> churn
+Churned 400; held sum -1.
+> hold
+Held, sum 12.
+> churn
+Churned 400; held sum 12.
+> shelves
+shelf 1 [3..6] at 1,1 'a' h2; shelf 2 [2..5] at 1,1 '' h0; copied true.
+> grid
+grid 1: 1,1 'a' h2 2; 0,0 '' h0 5.
+> board
+weigh 9 6; home 1,1 'a' h2 true; c 1,1 'moved' h2; marks 1.
+> shelves
+shelf 1 [4..7] at 1,1 'a' h4; shelf 2 [3..6] at 1,1 'a' h2; copied true.
+> tally
+gap 4 14; tally 2 [1..9] true.
+> tally
+gap 4 14; tally 4 [1..9] true.
+> spans
+a [3..7] true; b [6..6] false; c [3..7]; same true, false; widths 3: 4 0 4; slot copied true; built 11.
+> marks
+2,3 'hot' h5 / 2,9 'cold' h6; walk 3: 2,3 'hot' h5 2,4 'hot' h5 2,5 'hot' h5; heap back true.
+> churn
+Churned 400; held sum 12.

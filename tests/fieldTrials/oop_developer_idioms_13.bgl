@@ -118,7 +118,7 @@ struct Phrase {
     array<string> Words[3];
     int Uses;
     Phrase operator = (Phrase o) {
-        Words.copyFrom(o.Words);
+        Words = o.Words;
         Uses = o.Uses;
         return self;
     }

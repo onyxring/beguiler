@@ -1,0 +1,56 @@
+Room A
+Room A.
+
+> vectors
+(4,-2) (2,-6) (3,6) len 7 3
+false true true false true true
+sum (5,0)
+(-3,3) tag 1; a (3,-4) tag 0
+(-4,5) tag 2
+
+> copies
+a (1,2)/3 b (10,2)/0
+again b (1,2)/3
+shove (101,2)/9 a (1,2)/3
+pull a (1,1)/4
+pick (0,1) a (1,1)
+ref a (1,2)/3 b (1,8)
+
+> copies
+a (1,2)/3 b (10,2)/0
+again b (1,2)/3
+shove (101,2)/9 a (1,2)/3
+pull a (1,1)/4
+pick (0,1) a (1,1)
+ref a (1,2)/3 b (1,8)
+
+> segments
+s2 (1,1)-(4,5) north w2 mid (2,3)/6 span 7
+s1 (0,1) south w7 mid (2,9) span 8
+pin (42,2) 42
+longer south w0 s1 w7
+
+> meters
+3m0 2m5 5m5 0m1 total 505 stretch 1010 c 5m5
+
+> headings
+1120 180 3
+H<3@90> <9@90>
+
+> dial
+10 0 4 10
+
+> notes
+start c 1
+b 1 alpha a 5 beta
+scribbled b 11
+q 99 a 5 beta
+b 5 beta c 77 false
+
+> path
+steps (-1,0) (2,2) (5,2) (10,4)
+at 2 tag 4 first (-1,-1)/1 v (5,0)
+
+> path
+steps (-1,0) (2,2) (5,2) (10,4)
+at 2 tag 4 first (-1,-1)/1 v (5,0)

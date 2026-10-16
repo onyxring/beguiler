@@ -62,14 +62,17 @@ array g_src table 1 2 3;
 [getList;
     return _bglHeapReturn(g_src);
 ];
-[sumList xs total x _bglfi1;
+[sumList xs _bglret _bglownp_xs total x _bglfi1;
+    _bglownp_xs = _bglHeapAdopt(xs);
     total = 0;
        _bglfi1 = 0;
        for (: _bglfi1 < _bglArrLength(xs) : _bglfi1++) {
           x = xs-->(_bglfi1+1);
         total=total + x;
        }
-    return total;
+    _bglret = total;
+    _bglHeapDropOwned(_bglownp_xs);
+    return _bglret;
 ];
 [main x _bglfia2 _bglfi3 total;
     _bglfia2 = getlist();
@@ -83,6 +86,7 @@ array g_src table 1 2 3;
 ];
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     
@@ -94,9 +98,13 @@ array g_src table 1 2 3;
         rfalse;
     
 ];
-[_bglHeapReturn a;
+[_bglHeapAdopt a b;
+    b = 0;
     
-        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 8) return 0;
+        b-->2 = b-->2 & ~8;
+        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     
 ];
@@ -112,10 +120,36 @@ array g_src table 1 2 3;
         return b;
     
 ];
+[_bglHeapDropOwned a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        _bglHeapRelease(b);
+    
+];
 [_bglHeapIsStart b;
     
         if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
+    
+];
+[_bglHeapRelease b a i;
+    a = 0;
+    i = 0;
+    
+        a = b + 5 * WORDSIZE;
+        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
+        a-->(-2) = $DEAD;
+        b-->2 = 0;
+        _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    
+];
+[_bglHeapReturn a;
+    
+        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
+        return a;
     
 ];
 [_bglHeapBitMask b m k;

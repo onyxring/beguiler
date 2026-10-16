@@ -559,7 +559,7 @@ La24Info La24Rank {
     grammar = {.rank};
     void handler() {
         array<La24Vessel> order[6];
-        order.copyFrom(la24Cellar.vessels);
+        order = la24Cellar.vessels;
         order.sort((La24Vessel a, La24Vessel b) => b.held.ml - a.held.ml);
         for (La24Vessel v in order) print($"{v}={v.held.ml} ");
         La24Vessel top = order.first();

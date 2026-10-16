@@ -1,0 +1,59 @@
+// run_array_copy_model — an array owns its storage: `=` copies into a global, a local or an inline member; a local
+// declared from a call takes the array, one declared from another array gets a copy; `ref` shares and re-points with
+// `:=`, a slot too (`hand[0] := ace`). A struct array's slots own instances (appends copy); a result borrows them. A
+// `ref array` not yet bound is empty.
+// EXPECT_OUTPUT: 1 2 66 3 | 7 14 2 | 99 | 55 | 6 | 9 4 true | 20 3 2 2 5 | 0 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+object box { array<int> items = {1, 2, 3}; }
+array<int> g[4];
+array<int> mk(int n) { array<int> t[4]; t += n; t += n * 2; return t; }
+struct Card { int n; }
+Card ace;
+array<Card> hand[3];
+array<array<int>> rows[2];
+array<int> r1 = {1, 2};
+struct Ticket { int n; }
+array<Ticket> tickets[4];
+ref array<int> none;
+void arrays() {
+    g = box.items;
+    box.items = mk(7);
+    array<int> l[4];
+    l = g;
+    l[0] = 99;
+    array<int> c = g;
+    c[1] = 55;
+    ref array<int> r := g;
+    r[2] = 66;
+    array<int> e = mk(3);
+    print($"{g[0]} {g[1]} {g[2]} {g.length} | {box.items[0]} {box.items[1]} {box.items.length} | {l[0]} | {c[1]} | {e[1]} | ");
+}
+void slots() {
+    Card c; c.n = 4;
+    hand += c;
+    hand[0] := ace;
+    hand[0].n = 9;
+    rows += r1;
+    rows[0] := null;
+    print($"{ace.n} {c.n} {rows[0] == null} | ");
+}
+void structs() {
+    Ticket t;
+    t.n = 1; tickets += t;
+    t.n = 2; tickets += t;
+    t.n = 3; tickets += t;
+    array<Ticket> big = tickets.filter((Ticket k) => k.n > 1);
+    big[0].n = 20;
+    tickets.remove(0);
+    array<Ticket> tmp[3];
+    tmp[0].n = 5;
+    print($"{tickets[0].n} {tickets[1].n} {tickets.length} {big.length} {tmp[0].n} | ");
+}
+void main(){
+    bglInit();
+    arrays(); slots(); structs();
+    int n = 0;
+    for (int v in none) n++;
+    print($"{n} {none.length}");
+}

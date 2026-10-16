@@ -1587,12 +1587,22 @@ object _bglArray
     }
     return -1;
   ],
-       setOwned [obj prop n _l_v assign;
+       setOwned [obj prop n _l_v assign cur;
     if (assign==0) {
         self.set(obj, prop, n, _l_v);
         return;
     }
-    self.set(obj, prop, n, assign(self.get(obj,prop,n),_l_v));
+    cur = self.get(obj,prop,n);
+    if (self.owneddtor(obj,prop,1)==0) {
+        if (cur==0) {
+            self.set(obj, prop, n, _l_v);
+        }
+        else {
+            assign(cur, _l_v);
+        }
+        return;
+    }
+    self.set(obj, prop, n, assign(cur,_l_v));
   ],
        swap [obj prop pos1 pos2 tmp;
     tmp = self.get(obj,prop,pos1);
@@ -1611,7 +1621,12 @@ object _bglArray
     if (len >= self.size(obj,prop)) {
         return false;
     }
-    self.setOwned(obj, prop, len, val, assign);
+    if (assign~=0 && self.owneddtor(obj,prop,1)==0) {
+        self.set(obj, prop, len, val);
+    }
+    else {
+        self.setOwned(obj, prop, len, val, assign);
+    }
     self.setLength(obj, prop, len + 1);
     return true;
   ],
@@ -1633,6 +1648,15 @@ object _bglArray
   ],
        prepend [obj prop val assign;
     return self.insert(obj,prop,0,val,assign);
+  ],
+       ownedDtor [obj prop dtor b;
+    b = 0;
+    
+            if(dtor == 0 || metaclass(obj) == object) return dtor;
+            b = _bglHeapBlockOf(obj);
+            if(b ~= 0 && b-->1 == 0) return 0;
+            return dtor;
+        
   ],
        sortDefault [obj prop cmp;
     if (cmp==0) {
@@ -1769,6 +1793,7 @@ object _bglStringLockStack
 array _bglsink --> 1;
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     

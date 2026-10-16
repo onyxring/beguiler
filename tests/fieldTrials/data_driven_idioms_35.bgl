@@ -67,7 +67,7 @@ struct PkSpan {
 struct PkTally {
     array<pk.len> seen[4];
     int hits;
-    PkTally operator = (PkTally o) { seen.copyFrom(o.seen); hits = o.hits; return self; }
+    PkTally operator = (PkTally o) { seen = o.seen; hits = o.hits; return self; }
     void log(pk.len l) {
         if (seen.length == 4) seen.remove(0);
         seen += l;

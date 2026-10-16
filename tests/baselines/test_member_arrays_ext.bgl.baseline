@@ -68,28 +68,26 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr__bglPromoted_widget_nums --> $9084 3;
-array _bglPromoted_widget_nums table 30 10 20;
 object widget
-  with nums _bglPromoted_widget_nums,
+  with nums 30 10 20 3 ,
        findIt [;
-    return _bglArray.indexOf(self.nums, 0, 20, 0);
+    return _bglArray.indexOf(self, nums, 20, 0);
   ],
        hasIt [;
-    return (_bglArray.indexOf(self.nums, 0, 10, 0) >= 0);
+    return (_bglArray.indexOf(self, nums, 10, 0) >= 0);
   ],
        lenOf [;
-    return _bglArray.length(self.nums, 0);
+    return (self.&nums-->(((self.#nums)/WORDSIZE) - 1));
   ],
        sortIt [;
-    _bglArray.sortDefault(self.nums, 0, 0);
+    _bglArray.sortDefault(self, nums, 0);
   ],
        pushIt [v;
-    _bglArray.push(self.nums, 0, v, 0);
+    _bglArray.push(self, nums, v, 0);
   ],
        sumGt [n;
     _bglCap0 = n;
-    return _bglArray.length(_bglArray.filter(self.nums, 0, _bglLambda_0), 0);
+    return _bglArray.length(_bglArray.filter(self, nums, _bglLambda_0), 0);
   ]
 ;
 Array _bglhdr_g --> $9084 3;
@@ -104,7 +102,7 @@ array g table 30 10 20;
     return _bglArray.length(_bglArray.filter(g, 0, _bglLambda_1), 0);
 ];
 [extFind;
-    return _bglArray.indexOf(widget.nums, 0, 20, 0);
+    return _bglArray.indexOf(widget, nums, 20, 0);
 ];
 [isOdd x;
     return (x % 2) ~= 0;
@@ -167,12 +165,22 @@ object _bglArray
     }
     return -1;
   ],
-       setOwned [obj prop n v assign;
+       setOwned [obj prop n v assign cur;
     if (assign==0) {
         self.set(obj, prop, n, v);
         return;
     }
-    self.set(obj, prop, n, assign(self.get(obj,prop,n),v));
+    cur = self.get(obj,prop,n);
+    if (self.owneddtor(obj,prop,1)==0) {
+        if (cur==0) {
+            self.set(obj, prop, n, v);
+        }
+        else {
+            assign(cur, v);
+        }
+        return;
+    }
+    self.set(obj, prop, n, assign(cur,v));
   ],
        insert [obj prop pos val assign len i;
     len=self.length(obj,prop);
@@ -189,6 +197,15 @@ object _bglArray
     self.setOwned(obj, prop, pos, val, assign);
     self.setLength(obj, prop, len + 1);
     return true;
+  ],
+       ownedDtor [obj prop dtor b;
+    b = 0;
+    
+            if(dtor == 0 || metaclass(obj) == object) return dtor;
+            b = _bglHeapBlockOf(obj);
+            if(b ~= 0 && b-->1 == 0) return 0;
+            return dtor;
+        
   ],
        push [obj prop val assign;
     self.insert(obj, prop, 0, val, assign);
@@ -282,10 +299,10 @@ object _bglArray
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
     
 ];
-[_bglHeapReown own a assign dtor n;
+[_bglHeapReown own a n;
     n = 0;
     
-        n = _bglHeapAdopt(a, assign, dtor);
+        n = _bglHeapAdopt(a);
         if(own ~= a) _bglHeapDropOwned(own);
         return n;
     
@@ -307,7 +324,7 @@ object _bglArray
      _bglLinqActiveDepth--; 
 ];
 [_bglLinqUsed obj prop;
-     if(prop == -1) _bglHeapFree(obj); 
+     if(prop == -1 && _bglHeapIsFresh(obj)) _bglHeapFree(obj); 
 ];
 [_bglOutOfRange i n w;
     
@@ -325,6 +342,7 @@ object _bglArray
 array _bglsink --> 1;
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     
@@ -342,12 +360,11 @@ array _bglsink --> 1;
         rfalse;
     
 ];
-[_bglHeapAdopt a assign dtor b;
+[_bglHeapAdopt a b;
     b = 0;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        _bglHeapOwnElements(a, assign, dtor);
         b-->2 = b-->2 & ~8;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
@@ -378,15 +395,12 @@ array _bglsink --> 1;
         return a;
     
 ];
-[_bglHeapOwnElements a assign dtor b i;
+[_bglHeapIsFresh a b;
     b = 0;
-    i = 0;
     
-        if(assign == 0) return;
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
-        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
-        b-->1 = dtor;
+        if(b ~= 0 && (b-->2 & 12) == 8) rtrue;
+        rfalse;
     
 ];
 [_bglHeapAlloc n kind need o b nb a i;

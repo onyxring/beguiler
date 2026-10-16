@@ -136,6 +136,7 @@ object stone cage
 ];
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     
@@ -216,8 +217,10 @@ object _bglWorld
     }
     return _bglHeapReturn(_bglworldbuf0);
 ];
-[_bglWorldStamp buf count;
+[_bglWorldStamp buf count _bglownp_buf;
+    _bglownp_buf = _bglHeapAdopt(buf);
      buf-->(-1) = count; 
+    _bglHeapDropOwned(_bglownp_buf);
 ];
 Array _bglhdr__bglworldbuf0 --> $9084 0;
 array _bglworldbuf0 table 128;
@@ -227,46 +230,11 @@ Array _bglhdr__bglworldbuf2 --> $9084 0;
 array _bglworldbuf2 table 128;
 Array _bglhdr__bglworldbuf3 --> $9084 0;
 array _bglworldbuf3 table 128;
-[_bglHeapDropOwned a b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
-        _bglHeapRelease(b);
-    
-];
-[_bglHeapRelease b a i;
-    a = 0;
-    i = 0;
-    
-        a = b + 5 * WORDSIZE;
-        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
-        a-->(-2) = $DEAD;
-        b-->2 = 0;
-        _bglHeap-->2 = _bglHeap-->2 - b-->0;
-    
-];
-[_bglHeapReown own a assign dtor n;
-    n = 0;
-    
-        n = _bglHeapAdopt(a, assign, dtor);
-        if(own ~= a) _bglHeapDropOwned(own);
-        return n;
-    
-];
-[_bglHeapReturn a;
-    
-        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
-        return a;
-    
-];
-[_bglHeapAdopt a assign dtor b;
+[_bglHeapAdopt a b;
     b = 0;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        _bglHeapOwnElements(a, assign, dtor);
         b-->2 = b-->2 & ~8;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
@@ -284,21 +252,44 @@ array _bglworldbuf3 table 128;
         return b;
     
 ];
+[_bglHeapDropOwned a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        _bglHeapRelease(b);
+    
+];
 [_bglHeapIsStart b;
     
         if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
     
 ];
-[_bglHeapOwnElements a assign dtor b i;
-    b = 0;
+[_bglHeapRelease b a i;
+    a = 0;
     i = 0;
     
-        if(assign == 0) return;
-        b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
-        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
-        b-->1 = dtor;
+        a = b + 5 * WORDSIZE;
+        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
+        a-->(-2) = $DEAD;
+        b-->2 = 0;
+        _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    
+];
+[_bglHeapReown own a n;
+    n = 0;
+    
+        n = _bglHeapAdopt(a);
+        if(own ~= a) _bglHeapDropOwned(own);
+        return n;
+    
+];
+[_bglHeapReturn a;
+    
+        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
+        return a;
     
 ];
 [_bglHeapBitMask b m k;

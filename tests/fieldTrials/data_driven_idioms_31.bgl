@@ -107,7 +107,7 @@ struct Route {
     inline array<Pt> stops[3];
     int cost;
     Route operator = (Route o) {
-        stops.copyFrom(o.stops);
+        stops = o.stops;
         cost = o.cost;
         return self;
     }

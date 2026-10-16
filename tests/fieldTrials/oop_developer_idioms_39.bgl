@@ -1,0 +1,389 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, thirty-ninth pass: value types.
+// A Vec struct with positional members and no copy operator (the automatic one), `+`/`-`/`*` returning
+// inline struct values, `==`/`!=`, a `<=>` that `<`/`>` and `sort()` use, `+=` expanded through `+`, its own
+// `print()` inside interpolation; `extend struct` adding a field (`tag`) and methods, one copying `self`
+// into a local; globals copied with `=`, a parameter changed inside a function without reaching the caller,
+// a returned struct changed without reaching its source, a `ref` parameter and a `ref` local bound with
+// `:=`, assigned through (copying into the referent) and re-bound; a Seg struct whose automatic copy covers
+// nested struct fields, a `stringObj` field, a `ref` field (shared, not copied) and fields `extend struct`
+// adds, passed by value to a function choosing between two with `?:`; a Meters struct declaring
+// `operator =` from int (in a declaration and a statement) beside methods taking a Meters; a Heading struct
+// with an `explicit` conversion to Polar, calling Polar's methods through `((Polar)self)`; an accessor
+// struct (getter and clamping setter) owned by an object, with `+=` going through both; a Note class with
+// a copy operator: a global given another at startup, `b = a` copying, a parameter sharing, a local given
+// a function's result owning a copy, a `ref Note` copying through and re-binding; an object owning an
+// `array<Vec>` filled by copies, sorted by `<=>`, searched with `indexOf` and an element passed by `ref`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+int Mag(int n) { return n < 0 ? -n : n; }
+
+//-- Vec: a struct with the automatic copy operator -------------------------------------------------------------
+
+struct Vec {
+    inline int x;
+    inline int y;
+
+    Vec operator + (Vec o) {
+        Vec r;
+        r.x = x + o.x;
+        r.y = y + o.y;
+        return r;
+    }
+
+    Vec operator - (Vec o) { return Vec{ x - o.x, y - o.y }; }
+    Vec operator * (int k) { return Vec{ x * k, y * k }; }
+    bool operator == (Vec o) { return x == o.x && y == o.y; }
+    bool operator != (Vec o) { return !(self == o); }
+    int operator <=> (Vec o) { return Len() - o.Len(); }
+
+    int Len() { return Mag(x) + Mag(y); }
+
+    void print() { print($"({x},{y})"); }
+}
+
+extend struct Vec {
+    int tag;
+
+    Vec Flip() {
+        Vec r = self;
+        r.x = y;
+        r.y = x;
+        return r;
+    }
+
+    void Bump() {
+        x++;
+        tag++;
+    }
+}
+
+Vec gA = Vec{ 1, 2 };
+Vec gB;
+
+Vec Shove(Vec v) {
+    v.x += 100;
+    v.tag = 9;
+    return v;
+}
+
+void Pull(ref Vec v) {
+    v.y -= 1;
+    v.tag++;
+}
+
+Vec PickA() { return gA; }
+
+//-- Seg: nested structs, a stringObj and a ref field ----------------------------------------------------------
+
+struct Seg {
+    Vec From;
+    Vec To;
+    stringObj Label;
+    ref Vec Pin;
+
+    int Span() {
+        Vec d = To - From;
+        return d.Len();
+    }
+}
+
+extend struct Seg {
+    int Weight;
+    Vec Mid;
+}
+
+Seg Longer(Seg a, Seg b) {
+    a.Weight = 0;
+    return a.Span() >= b.Span() ? a : b;
+}
+
+//-- Meters: assignment from int -------------------------------------------------------------------------------
+
+struct Meters {
+    inline int cm;
+
+    Meters operator = (int whole) {
+        cm = whole * 100;
+        return self;
+    }
+
+    Meters operator + (Meters o) {
+        Meters r;
+        r.cm = cm + o.cm;
+        return r;
+    }
+
+    int Total(Meters o) { return cm + o.cm; }
+
+    void print() { print($"{cm / 100}m{cm % 100}"); }
+}
+
+int Stretch(Meters o) {
+    o.cm *= 2;
+    return o.cm;
+}
+
+//-- Heading: an explicit conversion ---------------------------------------------------------------------------
+
+struct Polar {
+    int r;
+    int deg;
+    void Show() { print($"<{r}@{deg}>"); }
+    int Score() { return r * 10 + deg; }
+}
+
+struct Heading {
+    inline int deg;
+    inline int dist;
+
+    explicit Polar operator () {
+        Polar p;
+        p.r = dist;
+        p.deg = deg;
+        return p;
+    }
+
+    int Score() { return 1000 + ((Polar)self).Score(); }
+
+    void Show() {
+        print("H");
+        ((Polar)self).Show();
+    }
+}
+
+//-- Clamp: an accessor ----------------------------------------------------------------------------------------
+
+struct Clamp {
+    int _val;
+    int operator () { return _val; }
+    void operator = (int v) { _val = v < 0 ? 0 : (v > 10 ? 10 : v); }
+}
+
+object dial {
+    "dial";
+    Clamp level;
+}
+
+//-- Note: a class that copies ---------------------------------------------------------------------------------
+
+class Note : object {
+    int n;
+    stringObj text;
+
+    Note operator = (Note o) {
+        n = o.n;
+        text = o.text;
+        return self;
+    }
+}
+
+Note noteA { n = 1; }
+Note noteB;
+Note noteC = noteA;
+
+void Scribble(Note p) { p.n += 10; }
+
+Note Same(Note p) { return p; }
+
+//-- Route: an array of Vec ------------------------------------------------------------------------------------
+
+object route {
+    "route";
+    array<Vec> steps[5];
+    void Add(Vec v) { steps += v; }
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Vectors {
+    grammar = {.vectors};
+    void handler() {
+        Vec a = Vec{ 3, -4 };
+        Vec b = Vec{ 1, 2 };
+        Vec s = a + b;
+        Vec d = a - b;
+        Vec m = b * 3;
+        printLine($"{s} {d} {m} len {a.Len()} {b.Len()}");
+        printLine($"{a == b} {a != b} {a > b} {a < b} {(a <=> b) > 0} {b * 2 == Vec{ 2, 4 }}");
+        s += b;
+        printLine($"sum {s}");
+        Vec f = a.Flip();
+        f.Bump();
+        printLine($"{f} tag {f.tag}; a {a} tag {a.tag}");
+        a.Bump();
+        a.Bump();
+        Vec g = a.Flip();
+        printLine($"{g} tag {g.tag}");
+    }
+}
+
+verb Copies {
+    grammar = {.copies};
+    void handler() {
+        gA = Vec{ 1, 2 };
+        gB = Vec{ 0, 0 };
+        gB = gA;
+        gB.x = 10;
+        gA.tag = 3;
+        printLine($"a {gA}/{gA.tag} b {gB}/{gB.tag}");
+        gB = gA;
+        printLine($"again b {gB}/{gB.tag}");
+        Vec r = Shove(gA);
+        printLine($"shove {r}/{r.tag} a {gA}/{gA.tag}");
+        Pull(gA);
+        printLine($"pull a {gA}/{gA.tag}");
+        Vec p = PickA();
+        p.x = 0;
+        printLine($"pick {p} a {gA}");
+        ref Vec at := gA;
+        at.x = 7;
+        at = gB;
+        at := gB;
+        at.y = 8;
+        printLine($"ref a {gA}/{gA.tag} b {gB}");
+    }
+}
+
+verb Segments {
+    grammar = {.segments};
+    void handler() {
+        gA = Vec{ 1, 2 };
+        Seg s1;
+        s1.From = Vec{ 1, 1 };
+        s1.To = Vec{ 4, 5 };
+        s1.Label = "north";
+        s1.Pin := gA;
+        s1.Weight = 2;
+        s1.Mid = Vec{ 2, 3 };
+        s1.Mid.tag = 6;
+        Seg s2 = s1;
+        s1.From.x = 0;
+        s1.Label = "south";
+        s1.Mid.y = 9;
+        s1.Weight = 7;
+        s2.Pin.x = 42;
+        printLine($"s2 {s2.From}-{s2.To} {s2.Label} w{s2.Weight} mid {s2.Mid}/{s2.Mid.tag} span {s2.Span()}");
+        printLine($"s1 {s1.From} {s1.Label} w{s1.Weight} mid {s1.Mid} span {s1.Span()}");
+        printLine($"pin {gA} {s1.Pin.x}");
+        Seg s3 = Longer(s1, s2);
+        printLine($"longer {s3.Label} w{s3.Weight} s1 w{s1.Weight}");
+    }
+}
+
+verb MetersTest {
+    grammar = {.meters};
+    void handler() {
+        Meters a = 3;
+        Meters b;
+        b = 2;
+        b.cm += 5;
+        Meters c = a + b;
+        Meters d = c;
+        d.cm = 1;
+        printLine($"{a} {b} {c} {d} total {a.Total(b)} stretch {Stretch(c)} c {c}");
+    }
+}
+
+verb Headings {
+    grammar = {.headings};
+    void handler() {
+        Heading h = Heading{ 90, 3 };
+        Polar p = (Polar)h;
+        p.r = 9;
+        printLine($"{h.Score()} {p.Score()} {h.dist}");
+        h.Show();
+        print(" ");
+        p.Show();
+        print("^");
+    }
+}
+
+verb DialTest {
+    grammar = {.dial};
+    void handler() {
+        dial.level = 15;
+        int a = dial.level;
+        dial.level = -3;
+        int b = dial.level;
+        dial.level = dial.level + 4;
+        int c = dial.level;
+        dial.level += 7;
+        printLine($"{a} {b} {c} {dial.level}");
+    }
+}
+
+verb Notes {
+    grammar = {.notes};
+    void handler() {
+        printLine($"start c {noteC.n}");
+        noteA.n = 1;
+        noteA.text = "alpha";
+        noteB = noteA;
+        noteA.n = 5;
+        noteA.text = "beta";
+        printLine($"b {noteB.n} {noteB.text} a {noteA.n} {noteA.text}");
+        Scribble(noteB);
+        printLine($"scribbled b {noteB.n}");
+        Note q = Same(noteA);
+        q.n = 99;
+        printLine($"q {q.n} a {noteA.n} {q.text}");
+        ref Note rn := noteB;
+        rn = noteA;
+        rn := noteC;
+        rn.n = 77;
+        printLine($"b {noteB.n} {noteB.text} c {noteC.n} {noteB == noteA}");
+    }
+}
+
+verb Path {
+    grammar = {.path};
+    void handler() {
+        route.steps.clear();
+        Vec v = Vec{ 2, 2 };
+        route.Add(v);
+        v.x = 5;
+        route.Add(v);
+        route.Add(Vec{ -1, 0 });
+        route.Add(v * 2);
+        v.y = 0;
+        route.steps[0].tag = 4;
+        route.steps.sort();
+        stringObj line = "steps";
+        for (Vec s in route.steps) line += $" {s}";
+        printLine(line);
+        Pull(route.steps[0]);
+        printLine($"at {route.steps.indexOf(Vec{ 5, 2 })} tag {route.steps[1].tag} first {route.steps[0]}/{route.steps[0].tag} v {v}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

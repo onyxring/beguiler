@@ -190,6 +190,16 @@ superposed int _bglHeapEscapeAssign(int cur, int a){
     #i6 { return _bglHeapEscape(a); }
 }
 
+// Whether array `a` is on the heap without instances of its own for elements that are instances (a step's
+// result, an array declared from a value): it holds pointers to another array's.
+superposed bool _bglHeapBorrows(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0 && b-->1 == 0) rtrue;
+        rfalse;
+    }
+}
 // Whether array `a` is on the heap with no owner yet.
 superposed bool _bglHeapIsFresh(int a){
     int b = 0;
@@ -209,6 +219,28 @@ superposed int _bglHeapFresh(int n){
     }
 }
 
+// A new array holding a copy of array `src`, with src's capacity (at least 1), and no owner yet.
+superposed int _bglHeapCopyOf(int src){
+    int a = 0;
+    int n = 1;
+    #i6 {
+        if(src ~= 0 && src-->0 > 0) n = src-->0;
+        a = _bglHeapFresh(n);
+        if(src ~= 0) _bglArrCopyInto(a, src);
+        return a;
+    }
+}
+// A new array holding a copy of the member array `prop` of `obj` (its property's data), with its capacity.
+superposed int _bglHeapCopyOfMember(var obj, var prop){
+    int a = 0;
+    int n = 1;
+    #i6 {
+        if(obj.#prop / WORDSIZE - 1 > 1) n = obj.#prop / WORDSIZE - 1;
+        a = _bglHeapFresh(n);
+        _bglArrFromMember(a, obj, prop);
+        return a;
+    }
+}
 // A routine's local array of capacity `n`, from the heap. The block is recorded in the frame pool, which the
 // routine's exit unwinds with _bglHeapLocalDrop.
 superposed int _bglHeapLocal(int n, int kind = 0){
@@ -245,27 +277,12 @@ superposed int _bglHeapReturn(int a){
         return a;
     }
 }
-// A variable takes array `a`, a step's result that shares its source's elements: when the elements own
-// instances (`assign` is their type's `operator =`), the array gets copies of its own, which `dtor` releases.
-superposed void _bglHeapOwnElements(int a, var assign, var dtor){
-    int b = 0;
-    int i = 0;
-    #i6 {
-        if(assign == 0) return;
-        b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
-        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
-        b-->1 = dtor;
-    }
-}
 // A local declared from array `a` takes it when it has no owner; returns what the local now owns (`a`, or 0).
-// `assign` and `dtor` as for _bglHeapOwnElements.
-superposed int _bglHeapAdopt(int a, var assign = 0, var dtor = 0){
+superposed int _bglHeapAdopt(int a){
     int b = 0;
     #i6 {
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        _bglHeapOwnElements(a, assign, dtor);
         b-->2 = b-->2 & ~8;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
@@ -273,10 +290,10 @@ superposed int _bglHeapAdopt(int a, var assign = 0, var dtor = 0){
 }
 // A local that owned array `own` is given array `a`: it takes `a` as _bglHeapAdopt does, then drops `own`
 // (after, so `a` may have been computed from it). Returns what the local now owns.
-superposed int _bglHeapReown(int own, int a, var assign = 0, var dtor = 0){
+superposed int _bglHeapReown(int own, int a){
     int n = 0;
     #i6 {
-        n = _bglHeapAdopt(a, assign, dtor);
+        n = _bglHeapAdopt(a);
         if(own ~= a) _bglHeapDropOwned(own);
         return n;
     }

@@ -592,7 +592,7 @@ extend class Post {
 struct Path {
     array<Pt> legs[3];
     Path operator = (Path o) {
-        legs.copyFrom(o.legs);
+        legs = o.legs;
         return self;
     }
     void add(Pt p) {

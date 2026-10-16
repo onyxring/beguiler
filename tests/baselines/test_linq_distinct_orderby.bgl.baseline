@@ -284,10 +284,10 @@ object _bglArray
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
     
 ];
-[_bglHeapReown own a assign dtor n;
+[_bglHeapReown own a n;
     n = 0;
     
-        n = _bglHeapAdopt(a, assign, dtor);
+        n = _bglHeapAdopt(a);
         if(own ~= a) _bglHeapDropOwned(own);
         return n;
     
@@ -309,7 +309,7 @@ object _bglArray
      _bglLinqActiveDepth--; 
 ];
 [_bglLinqUsed obj prop;
-     if(prop == -1) _bglHeapFree(obj); 
+     if(prop == -1 && _bglHeapIsFresh(obj)) _bglHeapFree(obj); 
 ];
 [_bglOutOfRange i n w;
     
@@ -327,6 +327,7 @@ object _bglArray
 array _bglsink --> 1;
 [_bglArrLength arr;
     
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     
@@ -344,12 +345,11 @@ array _bglsink --> 1;
         rfalse;
     
 ];
-[_bglHeapAdopt a assign dtor b;
+[_bglHeapAdopt a b;
     b = 0;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        _bglHeapOwnElements(a, assign, dtor);
         b-->2 = b-->2 & ~8;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
@@ -380,15 +380,12 @@ array _bglsink --> 1;
         return a;
     
 ];
-[_bglHeapOwnElements a assign dtor b i;
+[_bglHeapIsFresh a b;
     b = 0;
-    i = 0;
     
-        if(assign == 0) return;
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
-        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
-        b-->1 = dtor;
+        if(b ~= 0 && (b-->2 & 12) == 8) rtrue;
+        rfalse;
     
 ];
 [_bglHeapAlloc n kind need o b nb a i;

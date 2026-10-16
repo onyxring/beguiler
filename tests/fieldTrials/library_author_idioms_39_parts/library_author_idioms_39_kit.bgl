@@ -1,0 +1,153 @@
+/*  Field trial part — included by library_author_idioms_39.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <string>
+#include <linq>
+
+// ---- What the I6 side keeps: one array it was handed. ----
+
+#i6 {
+    Global la39_held = 0;
+    [ La39_HeldSum i s;
+        if (la39_held == 0) return -1;
+        for (i = 1 : i <= la39_held-->(-1) : i++) s = s + la39_held-->i;
+        return s;
+    ];
+}
+
+/// The sum of the array the I6 side holds; -1 when it holds none.
+extern int La39_HeldSum();
+
+// ---- Spans: a range with a copy operator of its own. ----
+
+/// A range of weights; a copy is marked as one.
+struct La39Span {
+    inline int lo;
+    inline int hi;
+    /// Set on a span copied from another.
+    bool copied;
+
+    /// Copies the range and marks the copy.
+    La39Span operator = (La39Span o) {
+        lo = o.lo;
+        hi = o.hi;
+        copied = true;
+        return self;
+    }
+
+    /// A single weight: a span of width zero.
+    La39Span operator = (int v) {
+        lo = v;
+        hi = v;
+        copied = false;
+        return self;
+    }
+
+    /// The smallest span holding both.
+    La39Span operator + (La39Span o) {
+        La39Span r;
+        r.lo = (lo < o.lo) ? lo : o.lo;
+        r.hi = (hi > o.hi) ? hi : o.hi;
+        return r;
+    }
+
+    /// True when both ends match.
+    bool operator == (La39Span o) { return lo == o.lo && hi == o.hi; }
+
+    /// Moves both ends up.
+    void operator += (int k) {
+        lo += k;
+        hi += k;
+    }
+
+    /// The distance between the ends.
+    int width() { return hi - lo; }
+
+    /// Prints "[lo..hi]".
+    void show() { print($"[{lo}..{hi}]"); }
+}
+
+// ---- Marks: a grid place, copied field by field. ----
+
+/// A place on a grid; it has no copy operator of its own.
+struct La39Mark {
+    inline int row;
+    inline int col;
+}
+
+/// A size; nothing uses it.
+superposed struct La39Size {
+    int w;
+    int h;
+    /// Width times height.
+    int area() { return w * h; }
+}
+
+/// Two spans with a gap between them.
+superposed struct La39Pair {
+    La39Span a;
+    La39Span b;
+    /// The distance from the first span's top to the second's bottom.
+    int gap() { return b.lo - a.hi; }
+}
+
+// ---- The kit's namespace. ----
+
+/// The kit's types and its API, reached as la39.
+object la39 {
+    alias span for La39Span;
+    alias mark for La39Mark;
+    alias pair for La39Pair;
+    alias cell for La39Cell;
+    /// Spans made by between().
+    int built = 0;
+
+    /// A span from two weights in either order.
+    span between(int a, int b) {
+        span s;
+        if (a < b) {
+            s.lo = a;
+            s.hi = b;
+        } else {
+            s.lo = b;
+            s.hi = a;
+        }
+        built++;
+        return s;
+    }
+
+    /// Each span's width, in a new array.
+    array<int> widths(array<span> spans) {
+        array<int> w[8];
+        for (span s in spans) w += s.width();
+        return w;
+    }
+
+    /// The marks from one along its row, a step apart.
+    array<mark> walk(mark from, int steps) {
+        array<mark> m[6];
+        mark at = from;
+        for (int i = 0; i < steps; i++) {
+            m += at;
+            at.col++;
+        }
+        return m;
+    }
+
+    /// Hands an array to the I6 side, which keeps it.
+    void hold(array<int> a) {
+        bgl.gc.keep(a);
+        #i6 la39_held = $i6Expr(a);
+    }
+
+    /// A cell's weight plus the width of its reach.
+    int weigh(cell c) { return c.weight + c.reach.width(); }
+}
+
+/// A grid cell: where it is, what it reaches and its weight.
+struct La39Cell {
+    La39Mark at;
+    La39Span reach;
+    int weight;
+}

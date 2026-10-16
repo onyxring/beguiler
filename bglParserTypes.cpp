@@ -2019,9 +2019,9 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
                 rep = "_bglOpRef_" + rep;
             }
         }
-        // An array stored into another array's slot has left the routine that made it.
+        // An array element is assigned as an array is: copied into the slot's array; an empty slot takes the array.
         if(rep.empty() && op == "=" && isWordArrayType(elemType) && elemType != "array<char>")
-            rep = "_bglHeapEscapeAssign";
+            rep = "_bglArrCopyAssign";
         if(rep.empty()){
             // Only a type Beguile actually emits is worth warning about. The bare-word
             // builtins (int, char, object, …) are `extern`, and for them the word IS the
@@ -4725,14 +4725,15 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         // with no address of its own to give (§12.7): reject it here rather than at run time.
         if(isWordArrayType(argType) && (isWordArrayType(paramType) || paramType == "var")){
             string text = args[i]->text();
-            if(text.find('(') == string::npos && text.find('.') != string::npos){
+            size_t lastDot = text.rfind('.');
+            bool endsInMember = lastDot != string::npos && text.find_first_of("()[]", lastDot) == string::npos;
+            if(endsInMember){
                 statementBlock* cb = currentFunc != nullptr ? dynamic_cast<statementBlock*>(currentFunc->body) : nullptr;
                 string recv = text;
                 ArrayReceiver r = arrayReceiver(recv, text, argType, currentFunc, cb);
                 if(r.isMember)
-                    parsingError(format("'{0}' is a member array, which can't be passed as an argument: an array "
-                        "parameter takes a global, local or `ref` array. Pass its owner instead, or declare the "
-                        "member `ref` and bind it to an array with `:=`.", text));
+                    parsingError(format("'{0}' is a member array, its owner's property data, so it can't be passed as an "
+                        "argument. Pass its owner instead, or copy it into an array of your own with `=` first.", text));
             }
         }
         // A verb named as an argument is its action constant (`Take` → ##Take); a verb-typed variable or
@@ -6290,4 +6291,9 @@ void bglParser::endInterpolatedStatement(){
                      "such as a ?: branch or an operand. Pass it straight to print() or an emitter that takes "
                      "interpolatedStringLiteral, or assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
     file.getToken(token::endStatement);
+}
+
+functionDef* bglParser::emitterAssignOperator(classDef* cls, const string& valueType){
+    return findAssignOperator(cls, valueType, [](functionDef* f){
+        return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, true);
 }
