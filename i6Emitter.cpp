@@ -4024,8 +4024,10 @@ void i6Emitter::emitGlobalByteArray(arrayDeclaration* arr){
         out << ";\n";
         return;
     }
-    if(arr->arraySize <= 0 && arr->stringInitializer.empty() && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr)
-        throw runtime_error("i6Emitter: unable to emit byte array.");
+    if(arr->arraySize <= 0 && arr->stringInitializer.empty() && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr){
+        out << format("global {0};\n", arr->i6name.empty() ? arr->dName() : arr->i6name);   // `ref array<char>`: a variable
+        return;
+    }
     out << byteArrayDecl(arr->dName(), arr, arr->arraySize, languageService.bufInUse);   // <buf> makes length assignable
 }
 
@@ -4088,8 +4090,8 @@ if(list != nullptr){
     return;
 }
 
-throw runtime_error("i6Emitter: unable to emit array.");
-return;
+// `ref array<T> name;` at file scope: no storage of its own, a variable that refers to an array once bound.
+out << format("global {0};\n", arrName);
 }
 
 // True when a global of this declared type emits as an I6 `Object` directive rather than a `Global`.

@@ -3471,7 +3471,10 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             if(auto* ga = languageService.findGlobalAs<arrayDeclaration>(a.variableLeft);
                ga != nullptr && (currentFunc == nullptr || (!qualifyFromParams(a.variableLeft, currentFunc)
                                  && !qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())))){
-                ga->isRepointed = true;
+                // One declared `ref`, with no storage, is already a plain variable.
+                if(ga->arraySize > 0 || dynamic_cast<initializerList*>(ga->declaredExpressionValue) != nullptr
+                   || !ga->stringInitializer.empty())
+                    ga->isRepointed = true;
                 lasting = true;
             }
         string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`

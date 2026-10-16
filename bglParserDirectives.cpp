@@ -1440,6 +1440,11 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'worldBufSize' must be at least 1");
             if(cfg.worldBufSize == -1) cfg.worldBufSize = sz;  // -1 = unset sentinel
         }
+        else if(key == "heapsize"){
+            int sz = stoi(strVal);
+            if(sz != 0 && sz < 64) parsingError("beguilerSettings property 'heapSize' must be 0 (sized by target) or at least 64");
+            if(cfg.heapSize == -1) cfg.heapSize = sz;
+        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z5, or Z8).", strVal));
@@ -1512,6 +1517,7 @@ void bglParser::applySchemaDefaults(){
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
         else if(key == "linqscratchsize" && cfg.linqScratchSize == -1) cfg.linqScratchSize = stoi(defVal);
         else if(key == "worldbufsize" && cfg.worldBufSize == -1) cfg.worldBufSize = stoi(defVal);
+        else if(key == "heapsize" && cfg.heapSize == -1) cfg.heapSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){
             string upper = defVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);

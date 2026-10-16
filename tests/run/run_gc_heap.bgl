@@ -1,0 +1,28 @@
+// run_gc_heap — the heap and its collector: an array a global refers to survives a collection, the others are
+// freed; bgl.gc.free releases one at once, and freeing it twice is reported.
+// EXPECT_OUTPUT: size 233 used 0 | used 35 | used 9 keep 5 1 | used 0 | after loop 0 | 
+// EXPECT_OUTPUT: [Beguile run-time error: bgl.gc.free(): the array was already freed]
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+#include <array>
+ref array<int> keep;
+void main(){
+    bglInit();
+    ref array<int> x;
+    ref array<int> y;
+    ref array<int> t;
+    print($"size {bgl.gc.size} used {bgl.gc.used} | ");
+    #i6 { x = _bglHeapAlloc(4); keep = _bglHeapAlloc(3); y = _bglHeapAlloc(10); }
+    x += 7; x += 8; keep += 5;
+    print($"used {bgl.gc.used} | ");
+    x := keep;  y := keep;
+    bgl.gc.collect();
+    print($"used {bgl.gc.used} keep {keep[0]} {keep.length} | ");
+    keep := null;  x := null;  y := null;
+    bgl.gc.collect();
+    print($"used {bgl.gc.used} | ");
+    for (int i = 0; i < 100; i++) { #i6 { t = _bglHeapAlloc(20); } bgl.gc.free(t); }
+    print($"after loop {bgl.gc.used} | ");
+    #i6 { t = _bglHeapAlloc(5); }
+    bgl.gc.free(t);
+    bgl.gc.free(t);
+}

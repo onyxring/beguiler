@@ -704,6 +704,7 @@ class beguilerSettingsDef : public typeDef {
         bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
         int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
+        int heapSize        = -1;      // words in the array heap (-1 = unset; 0 = sized by target)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
         bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
                                        // Set false when another extension (e.g. orLibrary) already replaces main;

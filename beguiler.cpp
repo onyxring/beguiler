@@ -171,6 +171,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
         // entry file's settings block is reached — so, unlike the other sizes (which are consumed
         // at emit time), this one has to be read here or the declaration sees only the default.
         extractInt("worldbufsize", beguilerSettings.worldBufSize);
+        extractInt("heapsize", beguilerSettings.heapSize);           // sizes the BLR's heap, as worldBufSize does
 
         // autoInitialize (default true): record on the settings struct here. The gating symbol is
         // defined AFTER the loop (below) so it's set even for files with no #beguilerSettings block.
@@ -403,6 +404,7 @@ void beguiler::runPostParseChecks() {
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
     if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
     if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
+    if(beguilerSettings.heapSize        == -1) beguilerSettings.heapSize        = 0;
 }
 
 // When blorb packaging is on and no IFID was supplied, derives one deterministically from the

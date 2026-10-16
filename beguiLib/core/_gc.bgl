@@ -1,0 +1,240 @@
+/* -----------------------------------------------------------------------------
+    _gc.bgl - The heap and its collector
+    Provides `bgl.gc`: the heap that arrays are allocated from, and the
+    mark-and-sweep collector that frees the ones nothing refers to.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
+#once
+
+//-- Implementation ------------------------------------------------------------
+// The heap. Its first words hold its bookkeeping; then a bitmap of block starts (one bit per heap word);
+// then blocks back to back. A block is
+//     [ size | kind | state ] [ $9084 | length ] [ capacity | elements … ]
+// and the array is the address of `capacity`, as every array's is. `size` counts the block's words;
+// `kind` is the routine that releases what the block owns (0 for none); `state` is 0 free, 1 in use,
+// 2 marked, 3 marked and traced. The bookkeeping lives in the heap so a program that allocates nothing
+// pays for nothing:
+//     -->0 the first block (0 until the heap is laid out)   -->1 bytes from it to the heap's end
+//     -->2 words in blocks in use                            -->3 words allocated since the last collection
+//     -->4 routines running that hold heap arrays in locals  -->5 the heap's size in words
+superposed rawArray<int> _bglHeap[#beguilerSettings.heapSize];
+
+// The bit that says heap word `b` starts a block: its byte in the bitmap, and its mask there.
+superposed int _bglHeapBitMask(int b){
+    int m = 1;
+    int k = 0;
+    #i6 {
+        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
+        return m;
+    }
+}
+// Whether `b` starts a block.
+superposed bool _bglHeapIsStart(int b){
+    #i6 {
+        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        rfalse;
+    }
+}
+// Record whether `b` starts a block.
+superposed void _bglHeapSetStart(int b, bool on){
+    int i = 0;
+    #i6 {
+        i = 6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
+        if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
+        else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
+    }
+}
+
+// Lay out the heap: the bookkeeping, the bitmap, then one free block holding the rest.
+superposed void _bglHeapInit(){
+    int words = #beguilerSettings.heapSize;
+    int bm = 0;
+    int i = 0;
+    _bglHeap[0] = 0;   // named in Beguile, so the heap is emitted with the routines that use it
+    #i6 {
+        bm = 6 + (words / 8 + WORDSIZE) / WORDSIZE;
+        for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
+        _bglHeap-->5 = words;
+        _bglHeap-->0 = _bglHeap + bm * WORDSIZE;
+        _bglHeap-->1 = (words - bm) * WORDSIZE;
+        (_bglHeap-->0)-->0 = words - bm;
+        (_bglHeap-->0)-->1 = 0;
+        (_bglHeap-->0)-->2 = 0;
+        _bglHeapSetStart(_bglHeap-->0, true);
+    }
+}
+
+// The block of array `a`, or 0 when `a` isn't an array on the heap.
+superposed int _bglHeapBlockOf(int a){
+    int b = 0;
+    int o = 0;
+    #i6 {
+        if((_bglHeap-->0) == 0) return 0;
+        b = a - 5 * WORDSIZE;
+        o = b - (_bglHeap-->0);
+        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
+        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
+        return b;
+    }
+}
+
+// A new array of capacity `n`, length 0, from the heap. `kind` releases what its elements own when it is freed.
+superposed int _bglHeapAlloc(int n, int kind = 0){
+    int need = 0;
+    int o = 0;
+    int b = 0;
+    int nb = 0;
+    int a = 0;
+    int i = 0;
+    #i6 {
+        if((_bglHeap-->0) == 0) _bglHeapInit();
+        need = n + 6;
+        while(o < (_bglHeap-->1)){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 == 0){
+                ! Merge the free blocks that follow into this one.
+                while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
+                    nb = b + (b-->0) * WORDSIZE;
+                    if(nb-->2 ~= 0) break;
+                    _bglHeapSetStart(nb, false);
+                    b-->0 = b-->0 + nb-->0;
+                }
+                if(b-->0 >= need){
+                    if(b-->0 - need >= 6){
+                        nb = b + need * WORDSIZE;
+                        nb-->0 = b-->0 - need;
+                        nb-->1 = 0;
+                        nb-->2 = 0;
+                        _bglHeapSetStart(nb, true);
+                        b-->0 = need;
+                    }
+                    b-->1 = kind;
+                    b-->2 = 1;
+                    a = b + 5 * WORDSIZE;
+                    a-->(-2) = $9084;
+                    a-->(-1) = 0;
+                    a-->0 = n;
+                    for(i = 1 : i <= n : i++) a-->i = 0;
+                    _bglHeap-->2 = _bglHeap-->2 + b-->0;
+                    _bglHeap-->3 = _bglHeap-->3 + b-->0;
+                    return a;
+                }
+            }
+            o = o + (b-->0) * WORDSIZE;
+        }
+        print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
+        quit;
+    }
+}
+
+// Free block `b`: what it owns is released, and a stale reference to its array reads as freed.
+superposed void _bglHeapRelease(int b){
+    int a = 0;
+    #i6 {
+        a = b + 5 * WORDSIZE;
+        if(b-->1) (b-->1)(a);
+        a-->(-2) = $DEAD;
+        b-->2 = 0;
+        _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    }
+}
+
+// Release array `a` now.
+superposed void _bglHeapFree(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0){ _bglHeapRelease(b); return; }
+        if(a ~= 0 && a-->(-2) == $DEAD) print "^[Beguile run-time error: bgl.gc.free(): the array was already freed]^";
+        else print "^[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (a file-scope or member array lives as long as the program)]^";
+    }
+}
+
+// Mark the block of `w` when `w` is the address of an array on the heap.
+superposed void _bglHeapMark(int w){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && b-->2 == 1) b-->2 = 2;
+    }
+}
+
+// Free every heap array that nothing refers to. Every word of memory outside the heap is a possible
+// reference (a word equal to an array's address keeps it), and so is every element of an array kept.
+superposed void _bglHeapCollect(){
+    int p = 0;
+    int last = 0;
+    int o = 0;
+    int b = 0;
+    int a = 0;
+    int i = 0;
+    int more = 0;
+    int heapBytes = 0;
+    #i6 {
+        if((_bglHeap-->0) == 0) return;
+        heapBytes = (_bglHeap-->5) * WORDSIZE;
+        #Ifdef TARGET_ZCODE;
+            p = 0; last = 0-->7;
+        #Ifnot;
+            p = 0-->2; last = 0-->4;
+        #Endif;
+        last = last - WORDSIZE;
+        while(p ~= last){
+            o = p - _bglHeap;
+            if(o < 0 || o >= heapBytes) _bglHeapMark(p-->0);
+            p++;
+        }
+        do {
+            more = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if(b-->2 ~= 2) continue;
+                b-->2 = 3;
+                more = true;
+                a = b + 5 * WORDSIZE;
+                for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
+            }
+        } until(more == false);
+        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 == 1) _bglHeapRelease(b);
+            else if(b-->2 == 3) b-->2 = 1;
+        }
+        _bglHeap-->3 = 0;
+    }
+}
+
+// At a prompt: collect when no routine holding heap arrays is running and enough has been allocated.
+superposed void _bglHeapAtPrompt(){
+    #i6 {
+        if(_bglHeap-->0 == 0 || _bglHeap-->4 ~= 0) return;
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    }
+}
+
+// Words in blocks in use, and words the heap holds for blocks.
+superposed int _bglHeapUsedWords(){
+    #i6 { return _bglHeap-->2; }
+}
+superposed int _bglHeapSizeWords(){
+    #i6 {
+        if((_bglHeap-->0) == 0) _bglHeapInit();
+        return (_bglHeap-->1) / WORDSIZE;
+    }
+}
+
+//-- The collector -------------------------------------------------------------
+/// The heap that arrays are allocated from, and its collector.
+superposed _bglObject _bglGC {
+    /// Release an array now instead of at the next collection; a later use through another reference is an error.
+    void free(var a)  { _bglHeapFree(a); }
+    /// Free every array that nothing refers to; call it where no local array still needed is held only in a local.
+    void collect()    { _bglHeapCollect(); }
+    emitter int used  { _bglHeapUsedWords() }   /// Words of the heap in use.
+    emitter int size  { _bglHeapSizeWords() }   /// Words the heap holds for arrays.
+}
+
+extend bgl {
+    alias gc = _bglGC;   /// The heap that arrays are allocated from, and its collector.
+}
