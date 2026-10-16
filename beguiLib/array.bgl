@@ -269,9 +269,16 @@ superposed object _bglArray {
     // store — which is how a type that owns storage can allocate on first write and copy into
     // its own buffer thereafter, without _bglArray knowing anything about the type.
     void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
-        // An array with no instances of its own (a step's result, an array declared from a value) holds pointers.
-        if(assign == 0 || ownedDtor(obj, prop, 1) == 0){ set(obj, prop, n, v); return; }
-        set(obj, prop, n, assign(get(obj, prop, n), v));
+        if(assign == 0){ set(obj, prop, n, v); return; }
+        var cur = get(obj, prop, n);
+        // An array with no instances of its own (a step's result, an array declared from a value) holds pointers:
+        // a write copies into the instance a slot points at, and only an empty slot takes the pointer.
+        if(ownedDtor(obj, prop, 1) == 0){
+            if(cur == 0) set(obj, prop, n, v);
+            else assign(cur, v);
+            return;
+        }
+        set(obj, prop, n, assign(cur, v));
     }
 
     // Zero every slot up to size; length drops to 0.
@@ -325,7 +332,8 @@ superposed object _bglArray {
     bool append(var obj, var prop, var val, var assign = 0){
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
-        setOwned(obj, prop, len, val, assign);
+        if(assign != 0 && ownedDtor(obj, prop, 1) == 0) set(obj, prop, len, val);
+        else setOwned(obj, prop, len, val, assign);
         setLength(obj, prop, len + 1);
         return true;
     }

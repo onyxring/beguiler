@@ -89,6 +89,7 @@ superposed int _bglArrSize(int arr){
 // How many elements of a global or local array are in use.
 superposed int _bglArrLength(int arr){
     #i6 {
+        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
         if(_bglArrTracked(arr)) return arr-->(-1);
         return arr-->0;
     }
