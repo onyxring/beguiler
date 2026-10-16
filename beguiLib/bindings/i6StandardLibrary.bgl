@@ -961,3 +961,12 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
         ];
     }
 #endif
+//-- Runtime hooks ---------------------------------------------------
+// Runs the Beguile runtime's work at each prompt: the heap's collector, once the heap is in use. A library
+// older than 6.12 has no LibraryExtensions, so a game there calls bgl.gc.collect() itself.
+#emitlast {
+    #Ifdef LibraryExtensions;
+        Object _bglLibraryHooks LibraryExtensions
+          with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
+    #Endif;
+}

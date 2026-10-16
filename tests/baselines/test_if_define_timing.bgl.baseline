@@ -5,6 +5,7 @@ Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglPromptHook = 0;
 global definedWhileOn = 222;
 global normalOn = 444;
 global _bglInitDone = 0;

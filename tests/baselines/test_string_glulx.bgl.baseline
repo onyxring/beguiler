@@ -13,6 +13,7 @@ global _bgl_sw;
 constant _bglWorldBufSize = 128;
 constant _bglFilemodeWrite = 1;
 global _bglWorldBufIdx = -1;
+global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;

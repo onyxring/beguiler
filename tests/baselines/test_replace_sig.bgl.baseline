@@ -6,6 +6,7 @@ Constant beguiler = 5;
 Release 1;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;

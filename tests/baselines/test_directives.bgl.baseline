@@ -13,6 +13,7 @@ constant story = "Directive Test";
 constant author = "Tester";
 constant gameRelease = 42;
 global _bglWorldBufIdx = -1;
+global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;

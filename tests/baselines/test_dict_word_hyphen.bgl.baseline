@@ -13,6 +13,7 @@ Replace banner;
     
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;
@@ -111,6 +112,12 @@ object rock
             _oldmain();
         ];
     
+
+    #Ifdef LibraryExtensions;
+        Object _bglLibraryHooks LibraryExtensions
+          with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
+    #Endif;
+
 class _bglaccessor3
   with
     _opconv_int[;

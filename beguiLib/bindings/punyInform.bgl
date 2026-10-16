@@ -594,3 +594,15 @@ extern var TouchCeiling(var p_actor = 0, var _parent = 0);
         ];
     }
 #endif
+//-- Runtime hooks ---------------------------------------------------
+// Runs the Beguile runtime's work at each prompt (the heap's collector, once the heap is in use), ahead of
+// PunyInform reading the player's input; the library's routine is kept under another name.
+#emitfirst {
+    Replace _ReadPlayerInput _bglPunyReadPlayerInput;
+}
+#emitlast {
+    [ _ReadPlayerInput p_no_prompt p_no_statusline;
+        if (_bglPromptHook) indirect(_bglPromptHook);
+        return _bglPunyReadPlayerInput(p_no_prompt, p_no_statusline);
+    ];
+}

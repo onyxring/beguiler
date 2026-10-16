@@ -19,6 +19,8 @@
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
 //     -->4 routines running that hold heap arrays in locals  -->5 the heap's size in words
 superposed rawArray<int> _bglHeap[#beguilerSettings.heapSize];
+// The routine a library binding runs at each prompt (0 until the heap is first used).
+int _bglPromptHook = 0;
 
 // The bit that says heap word `b` starts a block: its byte in the bitmap, and its mask there.
 superposed int _bglHeapBitMask(int b){
@@ -62,6 +64,7 @@ superposed void _bglHeapInit(){
         (_bglHeap-->0)-->1 = 0;
         (_bglHeap-->0)-->2 = 0;
         _bglHeapSetStart(_bglHeap-->0, true);
+        _bglPromptHook = _bglHeapAtPrompt;
     }
 }
 
