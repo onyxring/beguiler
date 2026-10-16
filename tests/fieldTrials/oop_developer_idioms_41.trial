@@ -1,0 +1,152 @@
+Room A
+Room A.
+
+> mark
+baseline 0
+
+> stash
+latest 99 sum 108
+
+> recall
+latest [99 2 3 4] any [10 11] either [20 21 22]
+bag0 [7] bag1 [] mixed1 [30 31] mixed0 label
+again 4 true grew true
+
+> recall
+latest [99 2 3 4] any [10 11] either [20 21 22]
+bag0 [7] bag1 [] mixed1 [30 31] mixed0 label
+again 4 true grew true
+
+> repo
+snap [-1 6 9 12]
+sorted [15 10 5]
+virtual [15 10 5]
+even [6 12]
+store 3 3
+
+> recall
+latest [6 12] any [10 11] either [20 21 22]
+bag0 [7] bag1 [] mixed1 [30 31] mixed0 label
+again 2 true grew true
+
+> jobs
+jobs 33 63 93 none true
+
+> check
+check 33 63 12 2 grew true
+
+> jobs
+jobs 33 63 93 none true
+
+> check
+check 33 63 12 2 grew true
+
+> retire
+kept 33 3 again 153 b 63
+
+> jobs
+jobs 33 63 93 none true
+
+> batches
+batches 1 6 14 copy -1
+
+> stations
+batches 1 6 14
+station [2 3 4 5] last [2 4] note 14 grew true
+note after 62
+
+> stations
+batches 1 6 14
+station [50 3 4 5] last [2 4] note 62 grew true
+note after 62
+
+> grid
+cells 6 row 201
+
+> cached
+cells 6 row 201 last 202 grew true
+after remove 4 row 201 101 label 603
+
+> cached
+cells 4 row 201 last 202 grew true
+after remove 1 row 201 101 label 603
+
+> history
+history 1 5 used 228
+
+> history
+history 2 12 used 240
+
+> history
+history 3 21 used 252
+
+> history
+history 3 25 used 252
+
+> history
+history 3 27 used 252
+
+> pick
+picked 3 27 history 0
+
+> recall
+latest [6 12] any [10 11] either [20 21 22]
+bag0 [7] bag1 [] mixed1 [30 31] mixed0 label
+again 2 true grew true
+
+> feed
+seen 5 5 5 5
+
+> heard
+heard 342 true grew true
+
+> heard
+heard 342 true grew true
+
+> scratch
+scratch 80 0
+
+> scratch
+scratch 80 0
+
+> release
+released 0
+
+> release
+released 0
+
+#repeat 3
+> stash
+latest 99 sum 108
+
+> recall
+latest [99 2 3 4] any [10 11] either [20 21 22]
+bag0 [7] bag1 [3 6 9 12] mixed1 [30 31] mixed0 label
+again 4 true grew true
+
+> release
+released 0
+
+> stash
+latest 99 sum 108
+
+> jobs
+jobs 33 63 93 none true
+
+> batches
+batches 1 6 14 copy -1
+
+> grid
+cells 6 row 201
+
+> history
+history 1 5 used 214
+
+> feed
+seen 5 5 5 5
+
+> scratch
+scratch 80 0
+
+> release
+released 0

@@ -1,0 +1,822 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a thirty-ninth first-time-programmer program, written after reading the arrays chapter
+// once and trying out every way of copying an array it describes: trays of numbers kept in global
+// arrays of different capacities (5, 3, 10), copied into each other with `=` (a smaller one keeps
+// what fits, a bigger one keeps its room), a `ref array` global aimed at each of them with `:=` and
+// written through (`pointer[0] = n` and `pointer = starter` copying into whatever it points at),
+// self-assignment (`tray = tray`, `pointer = tray` while it points at tray, `tray = pointer`,
+// `box.nums = box.nums`, `rows[0] = rows[0]`), an object with an inline member array and a large
+// member array (40 slots, kept outside the property on Z) copied in and out, a local copy of a
+// member changed without changing the member, a class of bins with a member array copied from a
+// parameter, copied member to member between two bins and handed back through a local copy,
+// functions that build and return a local array, return a global (a local declared from it shares
+// it, a sized local declared from it copies), change the caller's array through a parameter (slot
+// writes and `=`), and copy a parameter into a local that is returned; unsized locals declared from
+// a call, a chain, a name and a member, sized locals declared from a call, a chain and a name;
+// `tray = tray.filter(...)` and orderBy results copied into globals and sized locals; an array of
+// arrays with rows copied into (`rows[i] = tray`, `rows[2] = rows[0]`) and rows stored with `+=`
+// (then written through the local that was stored), removed and stored again; a struct with an
+// array member and a `ref array` member using the automatic copy operator (copies, parameters,
+// returns, a struct member of an object), a struct with a written copy operator that copies its
+// array member and counts copies; `bgl.gc.used` printed after each kind of command and after
+// repeating the same commands, to see the heap come back to the same place.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <linq>
+
+// ===== SIZES =====
+
+// how many numbers the tray holds
+const int TRAY_SIZE = 5;
+// the spare tray is smaller
+const int SPARE_SIZE = 3;
+// the big tray is bigger
+const int BIG_SIZE = 10;
+// the box has a lot of room
+const int LOTS_SIZE = 40;
+
+// ===== THE TRAYS =====
+
+// the main tray
+array<int> tray[TRAY_SIZE];
+// a smaller tray
+array<int> spare[SPARE_SIZE];
+// a bigger tray
+array<int> big[BIG_SIZE];
+// some numbers to start with
+array<int> starter = {7, 8, 9};
+// points at one of the trays (or nothing)
+ref array<int> pointer;
+// rows of numbers (room for four rows)
+array<array<int>> rows[4] = { {1, 2, 3}, {4, 5, 6}, {7, 8} };
+// how many times a Label was copied
+int copiesMade = 0;
+// which tray the pointer is at (0 = none)
+int aimedAt = 0;
+
+// ===== STRUCTS =====
+
+// a pack has a tag, three numbers of its own and a tray it shares
+struct Pack {
+    int tag;
+    array<int> items[3];
+    ref array<int> shared;
+}
+
+// a label copies itself with its own operator and counts the copies
+struct Label {
+    int code;
+    array<int> marks[2];
+    Label operator = (Label o) {
+        code = o.code;
+        marks = o.marks;
+        copiesMade++;
+        return self;
+    }
+}
+
+// ===== HELPER FUNCTIONS =====
+
+// prints a tray: its name, how many numbers and the numbers
+void showRow(string label, array<int> a) {
+    print($"{label} ({a.length}/{a.size}):");
+    for (int n in a) {
+        print($" {n}");
+    }
+    print("^");
+}
+
+// makes a new tray counting up from start
+array<int> makeRow(int start) {
+    array<int> r[TRAY_SIZE];
+    for (int i = 0; i < TRAY_SIZE; i++) {
+        r += start + i;
+    }
+    return r;
+}
+
+// gives back the main tray itself
+array<int> giveTray() {
+    return tray;
+}
+
+// doubles every number in a tray (the caller's tray changes)
+void doubleAll(array<int> a) {
+    for (int i = 0; i < a.length; i++) {
+        a[i] = a[i] * 2;
+    }
+}
+
+// fills the caller's tray with a new row
+void refill(array<int> a, int start) {
+    a = makeRow(start);
+}
+
+// a copy of a tray that the caller can keep
+array<int> copyOf(array<int> a) {
+    array<int> c = a;
+    return c;
+}
+
+// adds up a tray
+int sumOf(array<int> a) {
+    int total = 0;
+    for (int n in a) {
+        total += n;
+    }
+    return total;
+}
+
+// a pack with a tag and its numbers counting from start
+Pack makePack(int tag, int start) {
+    Pack p;
+    p.tag = tag;
+    p.items += start;
+    p.items += start + 1;
+    p.items += start + 2;
+    return p;
+}
+
+// prints a pack
+void showPack(string label, Pack p) {
+    print($"{label}: tag {p.tag}, items");
+    for (int n in p.items) {
+        print($" {n}");
+    }
+    if (p.shared != null) {
+        print($", shares {p.shared.length} numbers starting {p.shared[0]}");
+    }
+    print(".^");
+}
+
+// changes a pack it was given (only its own copy)
+void spoilPack(Pack p) {
+    p.tag = 0;
+    p.items[0] = -1;
+}
+
+// copies one tray into another (they may be the same tray)
+void pourInto(array<int> into, array<int> from) {
+    into = from;
+}
+
+// counts down, keeping a copy of the tray at each level
+int countDown(int n) {
+    if (n == 0) {
+        return 0;
+    }
+    array<int> mine[TRAY_SIZE] = tray;
+    mine[0] = n;
+    int below = countDown(n - 1);
+    return mine[0] + below;
+}
+
+// ===== ROOM AND THINGS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. A table with trays on it.";
+    attributes = {light};
+}
+
+// the box keeps numbers in its own members
+object box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    string description = "A box.";
+    array<int> nums[4];
+    array<int> lots[LOTS_SIZE];
+    ref array<int> held;
+    Pack pack;
+}
+
+// a shelf keeps racks of numbers
+object shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    string description = "A shelf.";
+    array<array<int>> racks[3] = { {1, 2}, {3, 4, 5} };
+}
+
+// a pack kept at file scope
+Pack globalPack;
+// three packs of their own
+array<Pack> packs[3];
+
+// a bin keeps three numbers
+class Bin : object {
+    array<int> stuff[3];
+    array<int> log[36];
+    int fills = 0;
+    string description = "A bin.";
+
+    // copies a tray into the bin
+    void takeFrom(array<int> a) {
+        stuff = a;
+        fills++;
+    }
+
+    // a copy of what is in the bin
+    array<int> giveBack() {
+        array<int> out = stuff;
+        return out;
+    }
+}
+
+Bin binA {
+    "first bin";
+    parent = roomA;
+    name = {.first, .bin};
+}
+
+Bin binB {
+    "second bin";
+    parent = roomA;
+    name = {.second, .bin};
+}
+
+bool Initialise() {
+    location = roomA;
+    tray = starter;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// prints the box's numbers (copied into a local first, a member can't be passed)
+void showBox() {
+    array<int> n = box.nums;
+    showRow("box", n);
+}
+
+// what the box points at
+array<int> heldOf() {
+    return box.held;
+}
+
+// a copy of the global pack
+Pack getGlobal() {
+    return globalPack;
+}
+
+// a copy of the box's pack
+Pack getBoxPack() {
+    return box.pack;
+}
+
+// prints the shelf's racks
+void showRacks() {
+    for (int i = 0; i < shelf.racks.length; i++) {
+        showRow("rack", shelf.racks[i]);
+    }
+}
+
+// prints every row
+void showRows() {
+    int i = 0;
+    for (array<int> row in rows) {
+        print($"row {i} ({row.length}):");
+        for (int n in row) {
+            print($" {n}");
+        }
+        print("^");
+        i++;
+    }
+}
+
+// ===== VERBS =====
+
+// LOAD <number> - the tray gets a new row counting up from the number
+verb LoadTray {
+    grammar = {.load, NUMBER};
+    void handler() {
+        int start = (int)noun;
+        tray = makeRow(start);
+        showRow("tray", tray);
+    }
+}
+
+// TRAYS - prints all the trays
+verb ShowTrays {
+    meta = true;
+    grammar = {.trays};
+    void handler() {
+        showRow("tray", tray);
+        showRow("spare", spare);
+        showRow("big", big);
+        showRow("starter", starter);
+        if (pointer != null) {
+            showRow("pointer", pointer);
+        } else {
+            print("pointer: nothing^");
+        }
+        showBox();
+    }
+}
+
+// SHRINK - copies the tray into the smaller tray and the bigger tray
+verb ShrinkTray {
+    grammar = {.shrink};
+    void handler() {
+        spare = tray;
+        big = tray;
+        spare[0] = 0;
+        showRow("tray", tray);
+        showRow("spare", spare);
+        showRow("big", big);
+    }
+}
+
+// WIDEN - fills the big tray and copies it into the tray (only five fit)
+verb WidenTray {
+    grammar = {.widen};
+    void handler() {
+        big = starter;
+        big += {10, 11, 12, 13, 14, 15};
+        tray = big;
+        showRow("big", big);
+        showRow("tray", tray);
+        if (tray != big) {
+            print("They are different trays.^");
+        }
+    }
+}
+
+// AIM <number> - points at a tray: 1 tray, 2 spare, 3 big, 4 starter
+verb AimPointer {
+    grammar = {.aim, NUMBER};
+    void handler() {
+        int which = (int)noun;
+        switch (which) {
+            case 1: pointer := tray;
+            case 2: pointer := spare;
+            case 3: pointer := big;
+            case 4: pointer := starter;
+            default:
+                print("Aim at 1, 2, 3 or 4.^");
+                return;
+        }
+        aimedAt = which;
+        showRow("pointer", pointer);
+        if (pointer == tray) {
+            print("The pointer is at the tray.^");
+        }
+    }
+}
+
+// POKE <number> - writes the number into the front of whatever the pointer is at
+verb PokePointer {
+    grammar = {.poke, NUMBER};
+    void handler() {
+        if (pointer == null) {
+            print("The pointer is not at anything.^");
+            return;
+        }
+        pointer[0] = (int)noun;
+        showRow("pointer", pointer);
+        showRow("tray", tray);
+        showRow("spare", spare);
+    }
+}
+
+// SPLASH - copies the starter numbers into whatever the pointer is at
+verb SplashPointer {
+    grammar = {.splash};
+    void handler() {
+        if (pointer == null) {
+            print("The pointer is not at anything.^");
+            return;
+        }
+        pointer = starter;
+        showRow("pointer", pointer);
+        showRow("tray", tray);
+        if (pointer != starter) {
+            print("The starter is still its own tray.^");
+        }
+    }
+}
+
+// SAME - copies things into themselves (nothing should change)
+verb SameAgain {
+    grammar = {.same};
+    void handler() {
+        int before = sumOf(tray);
+        tray = tray;
+        pointer := tray;
+        pointer = tray;
+        tray = pointer;
+        box.nums = box.nums;
+        rows[0] = rows[0];
+        int after = sumOf(tray);
+        showRow("tray", tray);
+        print($"Sum before {before}, after {after}.^");
+        showBox();
+        showRows();
+    }
+}
+
+// STASH - copies the tray into the box
+verb StashTray {
+    grammar = {.stash};
+    void handler() {
+        box.nums = tray;
+        tray[0] = 0;
+        array<int> c = box.nums;
+        c[1] = 99;
+        showRow("tray", tray);
+        showRow("copy", c);
+        showBox();
+    }
+}
+
+// UNSTASH - copies the box back into the tray
+verb UnstashTray {
+    grammar = {.unstash};
+    void handler() {
+        tray = box.nums;
+        box.nums[0] = 1;
+        showRow("tray", tray);
+        showBox();
+    }
+}
+
+// LOTS - copies the big tray into the box's big member and back out
+verb LotsOfRoom {
+    grammar = {.lots};
+    void handler() {
+        box.lots = big;
+        for (int i = 0; i < 25; i++) {
+            box.lots += 100 + i;
+        }
+        print($"Box lots: {box.lots.length} of {box.lots.size}, last {box.lots[box.lots.length - 1]}.^");
+        array<int> l = box.lots;
+        print($"Copy: {l.length} of {l.size}, sum {sumOf(l)}.^");
+        array<int> few[4] = box.lots;
+        showRow("few", few);
+        big = box.lots;
+        showRow("big", big);
+        box.lots.clear();
+        print($"Box lots now {box.lots.length}, copy still {l.length}.^");
+    }
+}
+
+// DOUBLE - doubles the tray, the pointer's tray, a local copy and the box
+verb DoubleUp {
+    grammar = {.double};
+    void handler() {
+        doubleAll(tray);
+        showRow("tray", tray);
+        if (pointer != null && pointer != tray) {
+            doubleAll(pointer);
+            showRow("pointer", pointer);
+        }
+        array<int> mine = copyOf(tray);
+        doubleAll(mine);
+        showRow("mine", mine);
+        array<int> b = box.nums;
+        doubleAll(b);
+        box.nums = b;
+        showBox();
+    }
+}
+
+// REFILL <number> - the spare tray is refilled through a parameter
+verb RefillSpare {
+    grammar = {.refill, NUMBER};
+    void handler() {
+        refill(spare, (int)noun);
+        showRow("spare", spare);
+        array<int> local[4];
+        refill(local, (int)noun * 10);
+        showRow("local", local);
+    }
+}
+
+// BORROW - takes the tray from a function, then a copy of it
+verb BorrowTray {
+    grammar = {.borrow};
+    void handler() {
+        array<int> t = giveTray();
+        t[0] = 55;
+        showRow("tray", tray);
+        array<int> s[2] = giveTray();
+        s[0] = 66;
+        showRow("s", s);
+        showRow("tray", tray);
+        array<int> made = makeRow(20);
+        array<int> kept[3] = makeRow(30);
+        showRow("made", made);
+        showRow("kept", kept);
+        array<int> named = starter;
+        named[0] = 70;
+        showRow("named", named);
+        showRow("starter", starter);
+    }
+}
+
+// ROWS - copies the tray into a row and one row into another
+verb CopyRows {
+    grammar = {.rows};
+    void handler() {
+        rows[0] = tray;
+        rows[2] = rows[0];
+        rows[0][0] = 0;
+        showRows();
+        showRow("tray", tray);
+    }
+}
+
+// STACK <number> - puts a new row on the end of the rows
+verb StackRow {
+    grammar = {.stack, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (rows.length == 4) {
+            rows.remove(3);
+        }
+        array<int> t[2];
+        t += n;
+        t += n + 1;
+        rows += t;
+        t[1] = 0;
+        showRows();
+    }
+}
+
+// PACK - copies packs around
+verb PackUp {
+    grammar = {.pack};
+    void handler() {
+        Pack a = makePack(1, 10);
+        a.shared := spare;
+        Pack b = a;
+        b.tag = 2;
+        b.items[0] = 99;
+        b.shared[0] = 42;
+        showPack("a", a);
+        showPack("b", b);
+        spoilPack(a);
+        showPack("a", a);
+        box.pack = b;
+        box.pack.items[1] = 77;
+        showPack("box", box.pack);
+        showPack("b", b);
+        Pack c = box.pack;
+        c.items = tray;
+        showPack("c", c);
+        showPack("box", box.pack);
+        showRow("spare", spare);
+    }
+}
+
+// LABEL - copies labels with their own copy operator
+verb LabelUp {
+    grammar = {.label};
+    void handler() {
+        Label x;
+        x.code = 5;
+        x.marks += 1;
+        x.marks += 2;
+        Label y = x;
+        y.marks[0] = 9;
+        Label z;
+        z = y;
+        z = z;
+        print($"x {x.code}: {x.marks[0]} {x.marks[1]}; y {y.code}: {y.marks[0]} {y.marks[1]}; z {z.code}: {z.marks[0]} {z.marks.length}.^");
+        print($"Copies so far: {copiesMade}.^");
+    }
+}
+
+// SIFT - keeps the even numbers in the tray
+verb SiftTray {
+    grammar = {.sift};
+    void handler() {
+        array<int> odd = tray.filter((int n) => n % 2 == 1);
+        array<int> top[2] = tray.orderBy((int a, int b) => b - a);
+        tray = tray.filter((int n) => n % 2 == 0);
+        showRow("tray", tray);
+        showRow("odd", odd);
+        showRow("top", top);
+        spare = big.filter((int n) => n > 10).orderBy((int a, int b) => b - a);
+        showRow("spare", spare);
+    }
+}
+
+// BINS - copies the tray into a bin and between bins
+verb FillBins {
+    grammar = {.bins};
+    void handler() {
+        binA.takeFrom(tray);
+        binB.stuff = binA.stuff;
+        binB.stuff[0] = 1;
+        array<int> back = binA.giveBack();
+        back[1] = 2;
+        array<int> fromA = binA.stuff;
+        array<int> fromB = binB.stuff;
+        showRow("first bin", fromA);
+        showRow("second bin", fromB);
+        showRow("back", back);
+        print($"Fills: {binA.fills}.^");
+    }
+}
+
+// USED - how much of the heap is in use
+verb HeapUsed {
+    meta = true;
+    grammar = {.used};
+    void handler() {
+        print($"Used: {bgl.gc.used}.^");
+    }
+}
+
+// GATHER - collects now and says how much is in use
+verb GatherUp {
+    meta = true;
+    grammar = {.gather};
+    void handler() {
+        bgl.gc.collect();
+        print($"Gathered. Used: {bgl.gc.used}.^");
+    }
+}
+
+// HOLD - the box points at a tray and copies through it
+verb HoldTray {
+    grammar = {.hold};
+    void handler() {
+        box.held := tray;
+        array<int> h = heldOf();
+        h[1] = 11;
+        showRow("tray", tray);
+        box.held = starter;
+        showRow("tray", tray);
+        array<int> h2[2] = heldOf();
+        h2[0] = 12;
+        showRow("h2", h2);
+        if (heldOf() == tray && copyOf(tray) != tray) {
+            print("Held is the tray; a copy is not.^");
+        }
+        box.nums = box.lots;
+        box.lots = starter;
+        box.nums = box.lots;
+        showBox();
+        box.held := null;
+    }
+}
+
+// LOGS - copies a bin's big log into the other bin
+verb CopyLogs {
+    grammar = {.logs};
+    void handler() {
+        binA.log.clear();
+        for (int i = 1; i <= 30; i++) {
+            binA.log += i;
+        }
+        binB.log = binA.log;
+        binB.log[0] = 500;
+        binA.stuff = binA.log;
+        array<int> a = binA.log;
+        array<int> b = binB.log;
+        print($"First log: {a.length}, starts {a[0]}, sum {sumOf(a)}.^");
+        print($"Second log: {b.length}, starts {b[0]}, sum {sumOf(b)}.^");
+        array<int> s = binA.stuff;
+        showRow("first bin", s);
+        binB.log = binB.log;
+        print($"Second log still {binB.log.length}, starts {binB.log[0]}.^");
+    }
+}
+
+// RACKS - copies trays into the shelf's racks
+verb FillRacks {
+    grammar = {.racks};
+    void handler() {
+        shelf.racks[0] = tray;
+        shelf.racks[1] = shelf.racks[0];
+        shelf.racks[0][0] = 0;
+        array<int> r = shelf.racks[1];
+        r[1] = 99;
+        showRacks();
+        showRow("r", r);
+        array<array<int>> grid = { {1, 2, 3}, {4, 5, 6} };
+        grid[1] = tray;
+        grid[0] = grid[1];
+        grid[1][0] = 9;
+        for (array<int> g in grid) {
+            showRow("grid", g);
+        }
+    }
+}
+
+// PACKS - copies packs into an array of packs
+verb ArrayOfPacks {
+    grammar = {.packs};
+    void handler() {
+        packs.clear();
+        Pack a = makePack(3, 30);
+        packs += a;
+        packs += makePack(4, 40);
+        packs[1] = packs[0];
+        packs[1].items[0] = 1;
+        a.items[1] = 2;
+        packs = packs;
+        for (Pack p in packs) {
+            showPack("slot", p);
+        }
+        array<Pack> mine[3] = packs;
+        mine[0].tag = 8;
+        showPack("mine", mine[0]);
+        showPack("packs", packs[0]);
+        globalPack = packs[1];
+        Pack g = getGlobal();
+        g.items[2] = 0;
+        showPack("global", globalPack);
+        showPack("g", g);
+        Pack bp = getBoxPack();
+        bp.tag = 0;
+        showPack("box", box.pack);
+        array<int> gi = globalPack.items;
+        print($"Global sum {sumOf(gi)}.^");
+    }
+}
+
+// CHAIN - a pointer takes a chain's result, then gets copies poured into it
+verb ChainPointer {
+    grammar = {.chain};
+    void handler() {
+        pointer := makeRow(60);
+        pointer = tray;
+        showRow("pointer", pointer);
+        pointer := big.filter((int n) => n < 10);
+        showRow("pointer", pointer);
+        tray = pointer;
+        pointer = starter;
+        showRow("tray", tray);
+        showRow("pointer", pointer);
+        array<int> small[2];
+        small = big;
+        showRow("small", small);
+        small.copyFrom(starter);
+        showRow("small", small);
+        tray = {1, 2, 3, 4};
+        showRow("tray", tray);
+        pointer := null;
+    }
+}
+
+// MIX - more copies: loop rows, structs in slots, labels in an array, a tray into itself
+verb MixItUp {
+    grammar = {.mix};
+    void handler() {
+        rows[1] = {4, 5, 6};
+        rows[1] = rows[1];
+        for (array<int> row in rows) {
+            row[0] = 3;
+        }
+        showRows();
+        pourInto(tray, tray);
+        pourInto(spare, tray);
+        showRow("tray", tray);
+        showRow("spare", spare);
+        array<int> few[2] = tray;
+        few[0] = 0;
+        showRow("few", few);
+        packs.clear();
+        packs += makePack(5, 50);
+        packs[0].items = tray;
+        packs[0].items[1] = 5;
+        box.pack = makePack(6, 60);
+        box.pack.items = few;
+        showPack("slot", packs[0]);
+        showPack("box", box.pack);
+        showRow("tray", tray);
+        array<Label> labels[2];
+        Label x;
+        x.code = 7;
+        x.marks += 3;
+        int before = copiesMade;
+        labels += x;
+        labels[0].marks[0] = 4;
+        labels += labels[0];
+        print($"Labels: {labels.length}, marks {labels[0].marks[0]} {labels[1].marks[0]}, x {x.marks[0]}, copies {copiesMade - before}.^");
+        print($"Count down: {countDown(4)}.^");
+        array<int> r2 = rows[3];
+        r2[1] = 9;
+        ref array<int> rr := rows[3];
+        rr = few;
+        showRow("r2", r2);
+        showRow("row 3", rows[3]);
+        rr = {6, 0};
+        showRow("row 3", rr);
+    }
+}

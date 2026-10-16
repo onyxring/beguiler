@@ -1,0 +1,450 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: heap arrays over a long play, written in a functional style on Glulx. A sliding window of
+// samples is rebuilt every turn from pure helpers (`window = pushed(window, v)` copies a call's result
+// into a global); each turn's results are kept across prompts in a `ref` global bound to a call result,
+// a `ref` global bound to a chain, a `var` global and a union global holding chain results, a global
+// array of arrays fed by `+=` and pruned with `remove(0)`, a struct global whose `ref` member is bound to
+// a heap array, an owned array of that struct (slots copied in, one per turn, oldest removed), a `ref`
+// member and a member array of arrays on an object, and `ref` members of class instances chained from
+// one another's results. Many turns of the same commands (`#repeat`): a churn verb that rebinds every
+// holder to freshly built results of the same size, a scan verb running `<linq>` chains in loops
+// (filter/orderBy/take/skip/distinct/any/all/count, a chain inside another chain's predicate, chains
+// over chains' results and over an array of structs), folds through `func<>` parameters and returned
+// struct copies, `again` on the churn, `wait` turns where a daemon builds, keeps and drops arrays, and
+// verbs that play several turns' work in one command with `bgl.gc.collect()` between them (one replays
+// the run from its first sample, so repeating it must end in the same heap). `bgl.gc.used` printed
+// after a collection at every checkpoint, and compared across save/restore, undo (also of a command
+// that collected) and restart with live heap arrays, then everything is let go and the heap read back
+// at zero.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 2048;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+const int WIN = 8;
+const int HIST = 4;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- State -----------------------------------------------------------------------------------------
+
+int seed = 7;
+int turnNo = 0;
+array<int> window[WIN];
+ref array<int> trend;
+ref array<int> sortedView;
+var memo;
+array<int> | string tagged;
+array<array<int>> history[HIST];
+
+struct Span {
+    int lo;
+    int hi;
+    ref array<int> src;
+    array<int> marks[3];
+}
+
+extend struct Span {
+    int width() { return hi - lo; }
+    bool covers(int v) { return v >= lo && v <= hi; }
+}
+
+Span lastSpan;
+array<Span> spans[HIST];
+ref array<Span> wideSpans;
+ref array<int> pulse;
+int beats = 0;
+int beatSum = 0;
+var tenths;
+
+object meter {
+    "meter";
+    parent = roomA;
+    name = {.meter};
+    attributes = {scenery};
+    ref array<int> feed;
+    array<int> peaks[WIN];
+    array<array<int>> runs[3];
+
+    // Every turn: a pair of the window's largest values, kept until the next turn; the rest dropped.
+    void daemon() {
+        beats++;
+        if (trend == null) {
+            pulse := null;
+            return;
+        }
+        array<int> top = topN(window, 4);
+        array<int> pair = top.take(2).orderBy();
+        pulse := pair.filter((int x) => x > 0);
+        array<int> spareRow = smooth(scaled(top, 2)).skip(1);
+        if (spareRow.length > 0) beatSum += spareRow[0] % 7;
+    }
+}
+
+class Gauge : object {
+    int scale;
+    ref array<int> feed;
+    array<array<int>> past[2];
+
+    void keepFeed() {
+        if (past.length == past.size) past.remove(0);
+        past += feed;
+    }
+
+    int pastTotal() {
+        int t = 0;
+        for (array<int> p in past) t += sum(p);
+        return t;
+    }
+}
+
+Gauge gaugeA { "gauge A"; parent = roomA; name = {.gauge, .a}; scale = 2; }
+Gauge gaugeB { "gauge B"; parent = roomA; name = {.gauge, .b}; scale = 3; }
+
+//-- Pure helpers ----------------------------------------------------------------------------------
+
+int nextSample() {
+    seed = (seed * 31 + 11) % 97;
+    return seed;
+}
+
+// xs with v added at the end; the oldest drops out when full.
+array<int> pushed(array<int> xs, int v) {
+    array<int> out[WIN];
+    for (int x in xs.skip(xs.length == WIN ? 1 : 0)) out += x;
+    out += v;
+    return out;
+}
+
+array<int> diffs(array<int> xs) {
+    array<int> out[WIN];
+    for (int i = 1; i < xs.length; i++) out += xs[i] - xs[i - 1];
+    return out;
+}
+
+array<int> smooth(array<int> xs) {
+    array<int> out[WIN];
+    for (int i = 1; i < xs.length; i++) out += (xs[i] + xs[i - 1]) / 2;
+    return out;
+}
+
+array<int> scaled(array<int> xs, int k) {
+    array<int> out[WIN];
+    for (int x in xs) out += x * k;
+    return out;
+}
+
+int desc(int a, int b) {
+    if (a > b) return -1;
+    if (a < b) return 1;
+    return 0;
+}
+
+array<int> topN(array<int> xs, int n) {
+    return xs.orderBy(desc).take(n);
+}
+
+array<int> tail(array<int> xs, int n) {
+    return xs.skip(xs.length > n ? xs.length - n : 0);
+}
+
+int fold(array<int> xs, func<int, int, int> f, int acc) {
+    int r = acc;
+    for (int x in xs) r = f(r, x);
+    return r;
+}
+
+int plus(int a, int b) { return a + b; }
+int maxOf(int a, int b) { return a > b ? a : b; }
+int minOf(int a, int b) { return a < b ? a : b; }
+
+int sum(array<int> xs) { return fold(xs, plus, 0); }
+
+bool isOdd(int x) { return x % 2 == 1; }
+
+Span spanOf(array<int> xs) {
+    Span s;
+    s.lo = fold(xs, minOf, 1000);
+    s.hi = fold(xs, maxOf, -1000);
+    s.src := xs;
+    s.marks = xs.orderBy(desc).take(3);
+    return s;
+}
+
+// A Span over a fresh array: the struct is returned, the array is kept by whoever keeps the copy.
+Span spanOfDiffs(array<int> xs) {
+    Span s;
+    array<int> d = diffs(xs);
+    s.lo = fold(d, minOf, 1000);
+    s.hi = fold(d, maxOf, -1000);
+    s.src := d;
+    return s;
+}
+
+void show(string label, array<int> xs) {
+    print(label);
+    print(":");
+    for (int x in xs) print($" {x}");
+    print($" [{xs.length}/{xs.size}]^");
+}
+
+void showVar(string label, var v) {
+    if (typeof(v) == eType.unknown) printLine($"{label}: none");
+    else show(label, (array<int>)v);
+}
+
+void level(string where) {
+    bgl.gc.collect();
+    printLine($"heap {where}: {bgl.gc.used}");
+}
+
+//-- Turn work -------------------------------------------------------------------------------------
+
+// Rebinds every holder to results built from the window. Called by tick (after a new sample) and by
+// churn (with the same window, so every holder is replaced by an array of the same size).
+void rebuild() {
+    trend := diffs(window);
+    sortedView := window.orderBy();
+    memo = window.filter((int x) => x > 40);
+    tagged = smooth(window);
+    meter.feed := topN(window, 3);
+    meter.peaks = window.orderBy(desc).take(4);
+    gaugeA.feed := scaled(window.filter(isOdd), gaugeA.scale);
+    gaugeB.feed := scaled(gaugeA.feed, gaugeB.scale).orderBy();
+    lastSpan = spanOfDiffs(window);
+}
+
+void record() {
+    if (history.length == HIST) history.remove(0);
+    history += tail(window, 3);
+    if (spans.length == HIST) spans.remove(0);
+    spans += spanOf(window);
+    if (meter.runs.length == meter.runs.size) meter.runs.remove(0);
+    meter.runs += trend.filter((int d) => d != 0);
+    wideSpans := spans.filter((Span s) => s.width() > 30);
+    tenths = window.filter((int x) => x > 40).map((int x) => x / 10);
+    gaugeA.keepFeed();
+    gaugeB.keepFeed();
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+int step() {
+    turnNo++;
+    int v = nextSample();
+    window = pushed(window, v);
+    rebuild();
+    record();
+    return v;
+}
+
+verb TickVerb {
+    grammar = {{.tick}};
+    void handler() {
+        int v = step();
+        printLine($"tick {turnNo}: sample {v}, window {window.length}, trend sum {sum(trend)}, span {lastSpan.width()}");
+    }
+}
+
+// Several turns' work in one command, collecting between them as a turn loop of its own would.
+verb AdvanceVerb {
+    grammar = {{.advance}};
+    void handler() {
+        array<int> samples[WIN];
+        for (int i = 0; i < 5; i++) {
+            samples += step();
+            bgl.gc.collect();
+        }
+        show("advanced", samples);
+        printLine($"turn {turnNo}, history {history.length}, spans {spans.length}, runs {meter.runs.length}");
+    }
+}
+
+// Starts the run over from the first sample and plays ten turns: the same command always ends in the
+// same state, so its heap reading must not move.
+verb RewindVerb {
+    grammar = {{.rewind}};
+    void handler() {
+        seed = 7;
+        turnNo = 0;
+        window.clear();
+        int total = 0;
+        for (int i = 0; i < 10; i++) {
+            total += step();
+            bgl.gc.collect();
+        }
+        show("rewound", window);
+        printLine($"total {total}, trend {sum(trend)}, history {history.length}, wide {wideSpans.length}, pasts {gaugeA.pastTotal()}");
+        level("after rewind");
+    }
+}
+
+verb DisplayVerb {
+    grammar = {{.state}};
+    meta = true;
+    void handler() {
+        printLine($"turn {turnNo}, seed {seed}, beats {beats}/{beatSum}");
+        if (pulse == null) printLine("pulse: none");
+        else show("pulse", pulse);
+        show("window", window);
+        if (trend == null) printLine("trend: none");
+        else show("trend", trend);
+        if (sortedView == null) printLine("sorted: none");
+        else show("sorted", sortedView);
+        showVar("memo", memo);
+        if (typeof(tagged) == eType.string) printLine($"tagged: {(string)tagged}");
+        else if (typeof(tagged) == eType.unknown) printLine("tagged: none");
+        else show("tagged", (array<int>)tagged);
+        print($"history {history.length}:");
+        for (array<int> row in history) print($" {sum(row)}/{row.length}");
+        print("^");
+        print($"spans {spans.length}:");
+        for (Span s in spans) print($" {s.lo}-{s.hi}/{s.src.length}");
+        print("^");
+        if (lastSpan.src == null) printLine("last span: none");
+        else printLine($"last span {lastSpan.lo}..{lastSpan.hi} over {lastSpan.src.length}, sum {sum(lastSpan.src)}, marks {lastSpan.marks.length}");
+        if (meter.feed == null) printLine("meter feed: none");
+        else show("meter feed", meter.feed);
+        array<int> pk = meter.peaks;
+        show("meter peaks", pk);
+        print($"meter runs {meter.runs.length}:");
+        for (array<int> r in meter.runs) print($" {sum(r)}/{r.length}");
+        print("^");
+        if (wideSpans == null) printLine("wide spans: none");
+        else {
+            int m = 0;
+            for (Span w in wideSpans) {
+                array<int> mk = w.marks;
+                m += sum(mk);
+            }
+            printLine($"wide spans {wideSpans.length}, marks {m}");
+        }
+        showVar("tenths", tenths);
+        printLine($"gauge pasts {gaugeA.past.length}:{gaugeA.pastTotal()} {gaugeB.past.length}:{gaugeB.pastTotal()}");
+        if (gaugeA.feed == null) printLine("gauges: none");
+        else printLine($"gauges {sum(gaugeA.feed)}/{gaugeA.feed.length} {sum(gaugeB.feed)}/{gaugeB.feed.length}");
+    }
+}
+
+verb LevelVerb {
+    grammar = {{.level}};
+    meta = true;
+    void handler() {
+        level("now");
+    }
+}
+
+verb ChurnVerb {
+    grammar = {{.churn}};
+    void handler() {
+        int check = 0;
+        for (int i = 0; i < 6; i++) {
+            rebuild();
+            check += sum(trend) + sum(sortedView) + sum(meter.feed) + sum(gaugeB.feed) + lastSpan.width();
+            if (history.length > 0) {
+                history[history.length - 1] = tail(window, 3);
+                check += sum(history[history.length - 1]);
+            }
+        }
+        printLine($"churn check {check}");
+        level("after churn");
+    }
+}
+
+verb ScanVerb {
+    grammar = {{.scan}};
+    void handler() {
+        int hits = 0;
+        for (int k = 2; k <= 7; k++) {
+            hits += window.filter((int x) => x % 2 == 0).count();
+            hits += window.skip(1).take(k).distinct().count();
+            if (window.any(isOdd)) hits++;
+            if (window.all((int x) => x > 0)) hits++;
+        }
+        int ranked = 0;
+        for (int pass = 0; pass < 160; pass++) {
+            for (int x in window.orderBy(desc)) ranked = (ranked + x % (pass + 2)) % 10000;
+        }
+        int hot = history.filter((array<int> r) => r.any((int x) => x > 50)).count();
+        int cold = history.filter((array<int> r) => r.all((int x) => x < 50)).count();
+        array<int> deep = window.orderBy().skip(2).filter(isOdd).orderBy(desc);
+        array<int> again = deep.take(2);
+        int wide = spans.filter((Span s) => s.width() > 30).count();
+        int inside = spans.filter((Span s) => s.covers(50)).count();
+        int firstLo = spans.orderBy((Span a, Span b) => a.lo - b.lo).first().lo;
+        int high = spans.filter((Span s) => s.src.any((int x) => x > 90)).count();
+        printLine($"scan hits {hits}, hot {hot}, cold {cold}, deep {sum(deep)}/{deep.length}, again {sum(again)}");
+        printLine($"ranked {ranked}");
+        printLine($"spans wide {wide}, covering 50 {inside}, lowest lo {firstLo}, over 90 {high}");
+    }
+}
+
+verb FoldVerb {
+    grammar = {{.fold}};
+    void handler() {
+        int total = 0;
+        for (int round = 0; round < 5; round++) {
+            total += fold(window, plus, round);
+            total += fold(smooth(window), maxOf, 0);
+            total += fold(diffs(smooth(window)), minOf, 1000);
+            total += fold(topN(window, 2), plus, 0);
+            Span s = spanOf(tail(window, 4));
+            total += s.width() + s.src.length;
+            Span t = s;
+            t.lo = 0;
+            total += s.lo;
+        }
+        printLine($"fold total {total}");
+    }
+}
+
+verb DropVerb {
+    grammar = {{.drop}};
+    void handler() {
+        trend := null;
+        sortedView := null;
+        memo = null;
+        tagged = "dropped";
+        history.clear();
+        spans.clear();
+        lastSpan.src := null;
+        meter.feed := null;
+        meter.peaks.clear();
+        meter.runs.clear();
+        gaugeA.feed := null;
+        gaugeB.feed := null;
+        gaugeA.past.clear();
+        gaugeB.past.clear();
+        wideSpans := null;
+        tenths = null;
+        pulse := null;
+        printLine($"Dropped. Peak within the heap: {bgl.gc.peak <= bgl.gc.size}.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    StartDaemon(meter);
+    rfalse;
+}

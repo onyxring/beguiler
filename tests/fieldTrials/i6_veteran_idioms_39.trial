@@ -1,0 +1,96 @@
+Room A
+Room A. A plain test room.
+You can see a ticker here.
+> figures
+size under 360 true, over 300 true; used 0; ticks 0.
+> held
+A -1, B -1, peg -1, ring -1 -1 -1; used 0.
+> lodge
+lodged; peg had true. A 100, B 26, peg 8, ring -1 -1 -1.
+> held
+A 104, B 32, peg 10, ring -1 -1 -1; used 30.
+> z
+Time passes.
+> held
+A 108, B 38, peg 12, ring -1 -1 -1; used 30.
+> peek
+peek a 4/1108 b 4/34 c 999 4; same true.
+> peek
+peek a 4/2112 b 4/38 c 999 4; same true.
+> typed
+typed 3; any set.
+> roots
+typed sum 303, any 11 13 len 2.
+> z
+Time passes.
+> roots
+typed sum 303, any 11 13 len 2.
+> untype
+untyped; freed true; typed now 0.
+> grid
+grid 37; peg 6.
+> held
+A 2132, B 74, peg 12, ring -1 -1 -1; used 34.
+> callback
+callback 3606; back true.
+> callback
+callback 3606; back true.
+> tick
+Ticking on.
+[tick 11: scratch 36, other 6]
+> z
+Time passes.
+[tick 12: scratch 39, other 6]
+> z
+Time passes.
+[tick 13: scratch 42, other 6]
+> tick
+Ticking off.
+> swap
+swap 1 into 0: A 2156, B 110, peg 48, ring 5 -1 -1; used 46.
+> swap
+swap 2 into 1: A 2160, B 116, peg 54, ring 11 5 -1; used 58.
+> swap
+swap 3 into 2: A 2164, B 122, peg 60, ring 17 11 8; used 70.
+> swap
+swap 4 into 0: A 2168, B 128, peg 66, ring 12 17 14; used 70.
+> cells
+cells 2 of 5: sum 871; held true.
+> cells
+cells 2 of 5: sum 871; held true.
+> twice
+twice: held true; seed 6, spare 0.
+> settle
+used 82.
+> held
+A 2184, B 152, peg 90, ring 36 41 38; used 82.
+> pin
+pinned; used 84.
+> undo
+Room A
+[Previous turn undone.]
+> held
+A 2184, B 152, peg 90, ring 36 41 38; used 82.
+> settle
+used 82.
+> release
+released; freed true; used 0. A -1, B -1, peg -1, ring -1 -1 -1.
+> settle
+used 0.
+> drops
+drops 6; slot 81; rack 6; back true.
+> drops
+drops 6; slot 81; rack 6; back true.
+> settle
+used 0.
+> pile
+filled over 20 true, sums true, near full true, peak true, peak in heap true.
+> settle
+used 0.
+> pile
+filled over 20 true, sums true, near full true, peak true, peak in heap true.
+> settle
+used 0.
+> flood
+Flooding.
+[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is 360 words)]

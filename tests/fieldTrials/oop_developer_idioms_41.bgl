@@ -1,0 +1,477 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, forty-first pass: heap array LIFETIMES.
+// A Repository class whose methods return fresh arrays (a factory) and an overridden virtual `Snapshot()`
+// in a subclass; a pooled `Job[3]` class whose `create()` binds a `ref array` member to a returned array and
+// whose `destroy()` lets it go (new/delete across prompts); a Cache object holding a `ref array<array<int>>`
+// re-pointed at a returned local array of arrays (inner rows reached only through it); a struct member of a
+// class instance whose `ref array` member keeps an array; an `array<Batch>` whose slots' `ref` members name
+// heap arrays bound through a struct method; a `var` global, a union global and a union member holding
+// arrays; an `array<var>` and an `array<array<int> | string>` whose elements hold arrays; a `<linq>` result
+// over an `array<array<int>>` kept in a `ref` global, so its rows outlive the source's `clear()`; a local
+// declared from a call that returns a global's array (must not free it); a ref bound to an inner row kept
+// after the row leaves its outer array; observers (`array<Listener>` of objects whose `ref` members alias
+// one array); a rolling history (remove(0) then +=) across repeated commands; arrays that must NOT outlive
+// their routine (locals, ref locals, chains, nested arrays of arrays); `bgl.gc.collect()` + `bgl.gc.used`
+// at checkpoints, back to a known value after everything is let go.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Helpers -------------------------------------------------------------------------------------------------
+
+int Sum(array<int> a) {
+    int s = 0;
+    for (int v in a) s += v;
+    return s;
+}
+
+void Show(string label, array<int> a) {
+    print(label);
+    print(" [");
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("]");
+}
+
+void ShowLine(string label, array<int> a) {
+    Show(label, a);
+    printLine("");
+}
+
+array<int> Range(int from, int n) {
+    array<int> r[6];
+    for (int i = 0; i < n; i++) r += from + i;
+    return r;
+}
+
+bool IsEven(int x) { return x % 2 == 0; }
+
+int baseline = 0;
+
+int Collected() {
+    bgl.gc.collect();
+    return bgl.gc.used;
+}
+
+//-- A repository with a factory method and a virtual snapshot -----------------------------------------------
+
+class Repository : object {
+    int seed;
+    array<int> store[6];
+
+    void Load(int n) {
+        store.clear();
+        for (int i = 1; i <= n; i++) store += seed * i;
+    }
+
+    array<int> Snapshot() {
+        array<int> copy = store;
+        return copy;
+    }
+
+    array<int> Matching(func<bool, int> pred) {
+        return store.filter(pred);
+    }
+}
+
+class SortedRepository : Repository {
+    array<int> Snapshot() {
+        return store.orderBy((int a, int b) => b - a);
+    }
+}
+
+Repository repoA { seed = 3; }
+SortedRepository repoB { seed = 5; }
+
+//-- Pooled jobs that own an array through a ref member ------------------------------------------------------
+
+class Job[3] : object {
+    int tag;
+    ref array<int> work;
+
+    void create(int t) {
+        tag = t;
+        work := Range(t * 10, 3);
+    }
+
+    void destroy() {
+        work := null;
+    }
+
+    int Load() { return work != null ? Sum(work) : -1; }
+}
+
+ref Job jobA;
+ref Job jobB;
+
+//-- Structs whose ref members name heap arrays --------------------------------------------------------------
+
+struct Batch {
+    int id;
+    ref array<int> data;
+
+    void Attach(array<int> a) { data := a; }
+    void Detach() { data := null; }
+    int Total() { return data != null ? Sum(data) : -1; }
+}
+
+array<Batch> gBatches[3];
+
+class Station : object {
+    Batch current;
+    ref array<int> last;
+    array<int> | string note;
+
+    void Run(int n) {
+        array<int> made = Range(n, 4);
+        current.id = n;
+        current.Attach(made);
+        last := made.filter(IsEven);
+        note = made;
+    }
+
+    int NoteSum() {
+        if (typeof(note) == eType.string) return -1;
+        array<int> | string held = note;
+        return Sum((array<int>)note) - Sum((array<int>)held) + Sum((array<int>)note);
+    }
+}
+
+Station stationA {}
+
+//-- Holders of every typed kind -----------------------------------------------------------------------------
+
+ref array<int> gLatest;
+var gAny;
+array<int> | string gEither;
+array<var> gBag[3];
+array<array<int> | string> gMixed[3];
+array<array<int>> gHistory[3];
+ref array<array<int>> gPicked;
+ref array<int> gRow;
+ref array<int> gKept;
+
+array<int> Latest() { return gLatest; }
+
+//-- A cache that keeps a grid made elsewhere ----------------------------------------------------------------
+
+array<array<int>> MakeGrid(int n) {
+    array<array<int>> g[4];
+    for (int i = 0; i < n; i++) g += Range(i * 100, i + 1);
+    return g;
+}
+
+object cache {
+    ref array<array<int>> grid;
+    int hits;
+    array<int> | string label;
+
+    int Cells() {
+        int c = 0;
+        if (grid == null) return -1;
+        for (array<int> row in grid) c += row.length;
+        return c;
+    }
+}
+
+//-- Observers sharing one array -----------------------------------------------------------------------------
+
+class Listener : object {
+    int id;
+    ref array<int> feed;
+
+    void Subscribe(array<int> f) { feed := f; }
+    int Seen() { return feed != null ? feed.length : -1; }
+}
+
+Listener lisA { id = 1; }
+Listener lisB { id = 2; }
+Listener lisC { id = 3; }
+array<Listener> listeners = { lisA, lisB, lisC };
+
+array<int> Broadcast(int n) {
+    array<int> feed[6];
+    for (int i = 0; i < n; i++) feed += i * i;
+    for (Listener l in listeners) l.Subscribe(feed);
+    return feed;
+}
+
+//-- Work that must NOT outlive its routine ------------------------------------------------------------------
+
+int Transient(int n) {
+    array<int> a = Range(n, 5);
+    array<int> b[6] = a.filter(IsEven);
+    ref array<int> r := a;
+    array<array<int>> nest[3];
+    nest += Range(1, 2);
+    nest += a.skip(2);
+    var v = a.orderBy((int x, int y) => y - x);
+    int total = Sum(a) + Sum(b) + r.length + nest[1].length + ((array<int>)v)[0];
+    return total;
+}
+
+int Recurse(int depth) {
+    array<int> mine = Range(depth, 2);
+    if (depth == 0) return Sum(mine);
+    return Sum(mine) + Recurse(depth - 1);
+}
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Mark {
+    grammar = {.mark};
+    void handler() {
+        baseline = Collected();
+        printLine($"baseline {baseline}");
+    }
+}
+
+verb Stash {
+    grammar = {.stash};
+    void handler() {
+        gLatest := Range(1, 4);
+        gAny = Range(10, 2);
+        gEither = Range(20, 3);
+        gBag.clear();
+        gBag += Range(7, 1);
+        gBag += repoA.Snapshot();
+        gMixed.clear();
+        gMixed += "label";
+        gMixed += Range(30, 2);
+        array<int> local = Latest();
+        local[0] = 99;
+        printLine($"latest {gLatest[0]} sum {Sum(gLatest)}");
+    }
+}
+
+verb Recall {
+    grammar = {.recall};
+    void handler() {
+        int c = Collected();
+        Show("latest", gLatest);
+        Show(" any", (array<int>)gAny);
+        Show(" either", (array<int>)gEither);
+        printLine("");
+        Show("bag0", (array<int>)gBag[0]);
+        Show(" bag1", (array<int>)gBag[1]);
+        Show(" mixed1", (array<int>)gMixed[1]);
+        printLine($" mixed0 {(string)gMixed[0]}");
+        array<int> again = Latest();
+        printLine($"again {again.length} {again == gLatest} grew {c > baseline}");
+    }
+}
+
+verb Repo {
+    grammar = {.repo};
+    void handler() {
+        repoA.Load(4);
+        repoB.Load(3);
+        array<int> a = repoA.Snapshot();
+        array<int> b = repoB.Snapshot();
+        Repository r = repoB;
+        array<int> c = r.Snapshot();
+        a[0] = -1;
+        ShowLine("snap", a);
+        ShowLine("sorted", b);
+        ShowLine("virtual", c);
+        gLatest := repoA.Matching(IsEven);
+        ShowLine("even", gLatest);
+        printLine($"store {repoA.store[0]} {repoB.store.length}");
+    }
+}
+
+verb Jobs {
+    grammar = {.jobs};
+    void handler() {
+        if (jobA != null) delete jobA;
+        if (jobB != null) delete jobB;
+        jobA := new Job(1);
+        jobB := new Job(2);
+        Job extra = new Job(3);
+        Job none = new Job(4);
+        printLine($"jobs {jobA.Load()} {jobB.Load()} {extra.Load()} none {none == null}");
+        delete extra;
+    }
+}
+
+verb Check {
+    grammar = {.check};
+    void handler() {
+        int c = Collected();
+        printLine($"check {jobA.Load()} {jobB.Load()} {jobA.work[2]} {jobB.tag} grew {c > baseline}");
+    }
+}
+
+verb Retire {
+    grammar = {.retire};
+    void handler() {
+        gKept := jobA.work;
+        delete jobA;
+        jobA := null;
+        int c = Collected();
+        Job again = new Job(5);
+        printLine($"kept {Sum(gKept)} {gKept.length} again {again.Load()} b {jobB.Load()}");
+        delete again;
+    }
+}
+
+verb Batches {
+    grammar = {.batches};
+    void handler() {
+        gBatches.clear();
+        for (int i = 0; i < 3; i++) {
+            Batch b;
+            b.id = i;
+            gBatches += b;
+            gBatches[i].Attach(Range(i, i + 2));
+        }
+        Batch copy = gBatches[1];
+        copy.Detach();
+        stationA.Run(2);
+        printLine($"batches {gBatches[0].Total()} {gBatches[1].Total()} {gBatches[2].Total()} copy {copy.Total()}");
+    }
+}
+
+verb Stations {
+    grammar = {.stations};
+    void handler() {
+        int c = Collected();
+        printLine($"batches {gBatches[0].Total()} {gBatches[1].Total()} {gBatches[2].Total()}");
+        Show("station", stationA.current.data);
+        Show(" last", stationA.last);
+        printLine($" note {stationA.NoteSum()} grew {c > baseline}");
+        stationA.current.data[0] = 50;
+        printLine($"note after {stationA.NoteSum()}");
+    }
+}
+
+verb Grid {
+    grammar = {.grid};
+    void handler() {
+        cache.grid := MakeGrid(3);
+        gRow := cache.grid[1];
+        cache.hits++;
+        cache.label = cache.grid[2];
+        printLine($"cells {cache.Cells()} row {Sum(gRow)}");
+    }
+}
+
+verb Cached {
+    grammar = {.cached};
+    void handler() {
+        int c = Collected();
+        array<int> tail = cache.grid[cache.grid.length - 1];
+        printLine($"cells {cache.Cells()} row {Sum(gRow)} last {tail[tail.length - 1]} grew {c > baseline}");
+        cache.grid.remove(1);
+        int d = Collected();
+        printLine($"after remove {cache.Cells()} row {Sum(gRow)} {gRow[1]} label {Sum((array<int>)cache.label)}");
+    }
+}
+
+verb History {
+    grammar = {.history};
+    void handler() {
+        if (gHistory.length == gHistory.size) gHistory.remove(0);
+        gHistory += Range(gHistory.length + 1, 3);
+        gHistory[gHistory.length - 1][0] = 0;
+        int total = 0;
+        for (array<int> h in gHistory) total += Sum(h);
+        printLine($"history {gHistory.length} {total} used {Collected() - baseline}");
+    }
+}
+
+verb Pick {
+    grammar = {.pick};
+    void handler() {
+        gPicked := gHistory.filter((array<int> h) => h[2] > 4);
+        gHistory.clear();
+        int c = Collected();
+        int total = 0;
+        for (array<int> h in gPicked) total += Sum(h);
+        printLine($"picked {gPicked.length} {total} history {gHistory.length}");
+    }
+}
+
+verb Feed {
+    grammar = {.feed};
+    void handler() {
+        array<int> f = Broadcast(4);
+        lisB.feed += 100;
+        printLine($"seen {lisA.Seen()} {lisB.Seen()} {lisC.Seen()} {f.length}");
+    }
+}
+
+verb Heard {
+    grammar = {.heard};
+    void handler() {
+        int c = Collected();
+        int total = 0;
+        for (Listener l in listeners) total += Sum(l.feed);
+        printLine($"heard {total} {lisA.feed == lisC.feed} grew {c > baseline}");
+    }
+}
+
+verb Scratch {
+    grammar = {.scratch};
+    void handler() {
+        int before = Collected();
+        int t = Transient(4) + Recurse(3);
+        printLine($"scratch {t} {Collected() - before}");
+    }
+}
+
+verb Release {
+    grammar = {.release};
+    void handler() {
+        gLatest := null;
+        gAny = 0;
+        gEither = "none";
+        gBag.clear();
+        gMixed.clear();
+        if (jobA != null) delete jobA;
+        if (jobB != null) delete jobB;
+        jobA := null;
+        jobB := null;
+        for (int i = 0; i < gBatches.length; i++) gBatches[i].Detach();
+        gBatches.clear();
+        stationA.current.Detach();
+        stationA.last := null;
+        stationA.note = "none";
+        cache.grid := null;
+        cache.label = "none";
+        gRow := null;
+        gKept := null;
+        gHistory.clear();
+        gPicked := null;
+        for (Listener l in listeners) l.feed := null;
+        printLine($"released {Collected() - baseline}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

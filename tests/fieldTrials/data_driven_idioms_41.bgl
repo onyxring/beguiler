@@ -1,0 +1,552 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: structs driven by tables. A file-scope `array<Spec>` of positional+named struct literals
+// drives everything. A Stat struct with `inline` members, the automatic copy operator, and a `static` factory,
+// operators (`+`, `==`, `<=>`) and methods all added by `extend struct`; a named Stat instance placed in a
+// file-scope array (shared with the array, so slot writes reach it); an object member `array<Stat>` literal.
+// A Row struct whose automatic copy covers every kind of field: a number, a `stringObj`, a nested struct, an
+// owned `array<int>`, a `ref array<int>`, and an `array<Stat>` that `extend struct` adds. A Sheet struct with a
+// written copy operator holding an `array<Row>` (three levels of owned struct instances). A Hist struct with a
+// 40-element member array, in an array of structs and copied.
+// A Ledger class owning an `array<Row>` and a Sheet member, with methods returning struct copies. Structs
+// returned from a global, a member, a member's slot, a local and a slot; a method called on a returned struct;
+// struct parameters (copies, the caller unchanged) beside `ref Row` parameters bound to array slots; a `ref Row`
+// global bound to a slot; a `ref array<Row>` global bound to a `<linq>` result (writes go through to the table)
+// and another bound to a returned local array of structs whose `ref array` members name heap arrays (kept
+// across prompts and collections, then let go); a struct local whose `ref` member holds a call's array across
+// a `bgl.gc.collect()` inside its routine; `<linq>` over struct arrays (filter, orderBy by `<=>` and by a
+// comparator, distinct by `==`, take, skip, any, all, first, last, count, map to keys), chains of chains, a
+// result copied into a sized local (owned copies), a result over the table assigned back into the table;
+// `indexOf`/`contains`/`-=` by `==`, `remove`/`clear` handing instances back, copies between struct arrays
+// of different capacity, self-assignment of a struct, a struct array and a written-operator struct; the
+// shared-array add error caught once; a Cursor struct whose `ref array<Row>` member alone holds a chain result
+// across prompts, copied into a local and into an array of Cursors; `bgl.gc.used` checked where the heap should
+// be back to a known level, including across repeated identical commands.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 1600;
+}
+
+#i6 { Constant bglStringPoolReserve 120; }
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Stat: a small range value ---------------------------------------------------
+
+struct Stat {
+    inline int lo;
+    inline int hi;
+
+    int Width() { return hi - lo; }
+    void print() { print($"{lo}..{hi}"); }
+}
+
+extend struct Stat {
+    static Stat Of(int a, int b) {
+        Stat s;
+        if (a <= b) {
+            s.lo = a;
+            s.hi = b;
+        } else {
+            s.lo = b;
+            s.hi = a;
+        }
+        return s;
+    }
+
+    Stat operator + (Stat o) { return Stat.Of(lo < o.lo ? lo : o.lo, hi > o.hi ? hi : o.hi); }
+    bool operator == (Stat o) { return lo == o.lo && hi == o.hi; }
+    int operator <=> (Stat o) { return Width() - o.Width(); }
+
+    bool Holds(int v) { return v >= lo && v <= hi; }
+}
+
+//-- The driving table -------------------------------------------------------------
+
+struct Spec {
+    inline int key;
+    inline int lo;
+    inline int hi;
+    string tag;
+}
+
+array<Spec> specs = {
+    Spec{ 1, 2, 9; tag = "alpha"; },
+    Spec{ 2, 5, 6; tag = "beta"; },
+    Spec{ 3, 0, 20; tag = "gamma"; },
+    Spec{ 4, 7, 7; tag = "delta"; },
+    Spec{ 5, 1, 4; tag = "eps"; },
+};
+
+Stat wide { lo = -5; hi = 50; }
+array<Stat> presets = { Stat{ 0, 9 }, { 3, 4 }, wide, Stat{ 10, 12 } };
+
+object limits {
+    array<Stat> caps = { Stat{ 1, 5 }, { 2, 8 }, { 0, 3 } };
+}
+
+//-- Row: every kind of field, copied automatically ---------------------------------
+
+array<int> journal = { 7, 8 };
+
+struct Row {
+    int key;
+    stringObj label;
+    Stat range;
+    array<int> vals[4];
+    ref array<int> src;
+
+    void print() { print($"{key}:{label}[{range}]"); }
+}
+
+extend struct Row {
+    array<Stat> parts[3];
+
+    int ValSum() {
+        int s = 0;
+        for (int v in vals) s += v;
+        return s;
+    }
+
+    int SrcSum() {
+        if (!src) return -1;
+        int s = 0;
+        for (int v in src) s += v;
+        return s;
+    }
+
+    int PartWidth() {
+        int s = 0;
+        for (Stat p in parts) s += p.Width();
+        return s;
+    }
+
+    bool operator == (Row o) { return key == o.key; }
+    int operator <=> (Row o) { return range.Width() - o.range.Width(); }
+}
+
+//-- Sheet: a written copy operator over an array of rows ---------------------------
+
+struct Sheet {
+    int id;
+    int copies;
+    array<Row> lines[3];
+
+    Sheet operator = (Sheet o) {
+        id = o.id;
+        lines = o.lines;
+        copies = o.copies + 1;
+        return self;
+    }
+
+    int KeySum() {
+        int s = 0;
+        for (Row r in lines) s += r.key;
+        return s;
+    }
+}
+
+//-- Hist: a member array too big for a Z property -------------------------------
+
+struct Hist {
+    int id;
+    array<int> bins[40];
+
+    int Total() {
+        int s = 0;
+        for (int b in bins) s += b;
+        return s;
+    }
+}
+
+//-- Ledger: a class owning rows and a sheet -------------------------------------
+
+class Ledger : object {
+    array<Row> book[4];
+    Sheet sheet;
+
+    Row Widest() {
+        Row best;
+        bool found = false;
+        for (Row r in book) {
+            if (!found || r.range.Width() > best.range.Width()) {
+                best = r;
+                found = true;
+            }
+        }
+        return best;
+    }
+
+    Row Line(int i) { return sheet.lines[i]; }
+    Sheet Copy() { return sheet; }
+}
+
+Ledger ledgerA { "ledger A"; }
+
+//-- Cursor: a struct whose ref member holds a <linq> result ----------------------
+
+struct Cursor {
+    int at;
+    ref array<Row> rows;
+
+    Row Current() { return rows[at]; }
+    bool Next() {
+        at++;
+        return at < rows.length;
+    }
+}
+
+//-- Globals -------------------------------------------------------------------------
+
+array<Row> table[6];
+Row hold;
+ref Row pick;
+ref array<Row> view;
+ref array<Row> batch;
+Sheet sheetA;
+Sheet sheetB;
+array<Hist> hists[3];
+Hist spareHist;
+array<Stat> pool[8];
+Cursor cur;
+array<Cursor> cursors[2];
+
+//-- Builders --------------------------------------------------------------------
+
+array<int> Window(int key) {
+    array<int> w[6];
+    for (int i = 0; i < 6; i++) w += key * 10 + i;
+    return w;
+}
+
+int Sum(array<int> a) {
+    int s = 0;
+    for (int v in a) s += v;
+    return s;
+}
+
+Row MakeRow(Spec s) {
+    Row r;
+    r.key = s.key;
+    r.label = s.tag;
+    r.range = Stat.Of(s.lo, s.hi);
+    for (int i = 0; i < 3; i++) r.vals += s.lo + i;
+    r.parts += Stat{ s.lo, s.lo + 1 };
+    r.parts += Stat.Of(s.hi, s.hi - 1);
+    r.src := journal;
+    return r;
+}
+
+array<Row> BuildBatch(int from, int n) {
+    array<Row> out[4];
+    for (int i = from; i < from + n && i < specs.length; i++) {
+        out += MakeRow(specs[i]);
+        out[out.length - 1].src := Window(specs[i].key);
+    }
+    return out;
+}
+
+Stat Widen(Stat s, int by) {
+    s.lo -= by;
+    s.hi += by;
+    return s;
+}
+
+int Probe(Row r) {
+    r.vals += 100;
+    r.label += "?";
+    r.range.hi = 999;
+    r.parts.clear();
+    return r.ValSum();
+}
+
+void Stamp(ref Row r, int v) {
+    r.vals[0] = v;
+    r.label += "*";
+}
+
+Row GetHold() { return hold; }
+
+Row SlotCopy(int i) { return table[i]; }
+
+int KeptAcrossCollect(int key) {
+    Row r = MakeRow(specs[key - 1]);
+    r.src := Window(key + 5);
+    bgl.gc.collect();
+    array<int> noise = Window(0);
+    return r.SrcSum() + noise.length;
+}
+
+void Level(string what) {
+    bgl.gc.collect();
+    printLine($"{what}: used {bgl.gc.used}");
+}
+
+void ShowTable(string what, array<Row> rows) {
+    print($"{what} {rows.length}:");
+    for (Row r in rows) print($" {r}");
+    print("^");
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb BuildTest {
+    grammar = {.build};
+    void handler() {
+        table.clear();
+        for (Spec s in specs) table += MakeRow(s);
+        hold = table[0];
+        sheetA.id = 1;
+        sheetA.lines.clear();
+        for (int i = 0; i < 3; i++) sheetA.lines += table[i + 2];
+        hists.clear();
+        for (int i = 0; i < 2; i++) {
+            Hist h;
+            h.id = i + 1;
+            h.bins.clear();
+            for (int b = 0; b < 40; b++) h.bins += (b % 5) * (i + 1);
+            hists += h;
+        }
+        ShowTable("table", table);
+        printLine($"vals {table[0].ValSum()} {table[2].ValSum()} parts {table[0].PartWidth()} {table[3].PartWidth()} src {table[4].SrcSum()}");
+        printLine($"sheetA #{sheetA.id} c{sheetA.copies} keys {sheetA.KeySum()}; hists {hists.length}: {hists[0].Total()} {hists[1].Total()}");
+    }
+}
+
+verb PresetTest {
+    grammar = {.presets};
+    void handler() {
+        presets[2].hi = 60;
+        print($"wide {wide} presets:");
+        for (Stat s in presets) print($" {s}");
+        print("; caps:");
+        for (Stat c in limits.caps) print($" {c}");
+        limits.caps[1] = limits.caps[0] + presets[3];
+        printLine($" -> {limits.caps[1]}");
+        Stat sum = presets[0] + presets[1] + presets[3];
+        Stat w2 = Widen(sum, 2);
+        printLine($"sum {sum} widened {w2} of {Stat.Of(9, 3)}; holds {sum.Holds(11)} {w2.Holds(14)} {(presets[1] == Stat{ 3, 4 })}");
+        presets[2].hi = 50;
+    }
+}
+
+verb CopyTest {
+    grammar = {.copy};
+    void handler() {
+        Row r = table[1];
+        r.label += "-copy";
+        r.vals[0] = 50;
+        r.range.lo = -1;
+        r.parts[0].hi = 77;
+        r.src := Window(3);
+        printLine($"local {r} {r.ValSum()} {r.PartWidth()} {r.SrcSum()} / table {table[1]} {table[1].ValSum()} {table[1].PartWidth()} {table[1].SrcSum()}");
+        hold = table[3];
+        hold.label = "held";
+        printLine($"hold {hold} {GetHold().ValSum()} table {table[3]}; returned {SlotCopy(4)} {SlotCopy(4).PartWidth()}");
+        sheetB = sheetA;
+        sheetB.lines[0].label += "!";
+        sheetB.lines[1].vals += 9;
+        printLine($"sheetB #{sheetB.id} c{sheetB.copies} {sheetB.lines[0]} {sheetB.lines[1].ValSum()} / sheetA c{sheetA.copies} {sheetA.lines[0]} {sheetA.lines[1].ValSum()}");
+        sheetB = sheetB;
+        sheetA = sheetA;
+        printLine($"self c{sheetA.copies} c{sheetB.copies} {sheetB.lines[0]}");
+        ledgerA.book = table;
+        ledgerA.sheet = sheetB;
+        Row w = ledgerA.Widest();
+        Row l = ledgerA.Line(0);
+        Sheet c = ledgerA.Copy();
+        printLine($"ledger {ledgerA.book.length} widest {w} line {l} copy c{c.copies} {c.KeySum()} own c{ledgerA.sheet.copies}");
+        hists[1] = hists[0];
+        hists[0].bins[39] = 100;
+        spareHist = hists[0];
+        printLine($"hists {hists[0].Total()} {hists[1].Total()} spare {spareHist.Total()} {spareHist.bins.length}");
+    }
+}
+
+verb ParamTest {
+    grammar = {.params};
+    void handler() {
+        int p = Probe(table[2]);
+        printLine($"probe {p} table {table[2]} {table[2].ValSum()} {table[2].PartWidth()}");
+        Stamp(table[2], 40);
+        Stamp(hold, 41);
+        printLine($"stamped {table[2]} {table[2].vals[0]} hold {hold} {hold.vals[0]}");
+        pick := table[4];
+        pick.range = pick.range + Stat{ -3, 3 };
+        pick.vals.remove(0);
+        printLine($"pick {pick} table {table[4]} {table[4].vals.length}");
+    }
+}
+
+verb QueryTest {
+    grammar = {.query};
+    void handler() {
+        array<Row> wideRows = table.filter((Row r) => r.range.Width() >= 4);
+        wideRows[0].vals[2] = 5;
+        ShowTable("wide", wideRows);
+        printLine($"through {table[0].vals[2]}; count {table.count()} any {table.any((Row r) => r.range.Holds(20))} all {table.all((Row r) => r.vals.length >= 2)}");
+        Row narrow = table.orderBy().first();
+        Row widest = table.orderBy().last();
+        printLine($"narrow {narrow} widest {widest}");
+        array<Row> top[6] = table.orderBy((Row a, Row b) => b.key - a.key).take(3);
+        top[0].label = "top";
+        top += hold;
+        ShowTable("top", top);
+        ShowTable("table", table);
+        array<var> keys = table.skip(1).filter((Row r) => r.key % 2 == 1).map((Row r) => r.key * 10);
+        print("keys");
+        for (var k in keys) print($" {(int)k}");
+        print("^");
+        pool.clear();
+        for (Row r in table) pool += r.range;
+        pool += Stat{ 2, 9 };
+        pool += Stat{ 7, 7 };
+        array<Stat> uniq = pool.distinct().orderBy();
+        print($"uniq {uniq.length}:");
+        for (Stat s in uniq) print($" {s}");
+        printLine($"; index {pool.indexOf(Stat{ 7, 7 })} has {pool.contains(Stat{ 1, 2 })}");
+    }
+}
+
+verb KeepTest {
+    grammar = {.keep};
+    void handler() {
+        view := table.filter((Row r) => r.key != 2);
+        batch := BuildBatch(1, 3);
+        print($"kept view {view.length} batch {batch.length}:");
+        for (Row r in batch) print($" {r.key}/{r.SrcSum()}");
+        print("^");
+    }
+}
+
+verb PokeTest {
+    grammar = {.poke};
+    void handler() {
+        view[0].vals[1] += 1;
+        batch[0].src[0] += 1;
+        batch[1].label += "+";
+        print($"poke table {table[0].vals[1]} view {view.length}:");
+        for (Row r in view) print($" {r.key}");
+        print($" batch:");
+        for (Row r in batch) print($" {r}/{r.SrcSum()}");
+        print("^");
+    }
+}
+
+verb CursorTest {
+    grammar = {.cursor};
+    void handler() {
+        if (!cur.rows) {
+            cur.rows := table.filter((Row r) => r.range.Width() > 0).orderBy((Row a, Row b) => a.key - b.key);
+            cur.at = 0;
+        } else if (!cur.Next()) cur.at = 0;
+        Cursor peek = cur;
+        peek.Next();
+        cursors.clear();
+        cursors += cur;
+        cursors += peek;
+        cursors[1].rows[0].vals[0] += 1;
+        Row now = cur.Current();
+        print($"cursor {cur.at}/{cur.rows.length} {now} peek {peek.at} vals0 {table[0].vals[0]};");
+        for (Row r in table.filter((Row r) => r.key > cur.at).skip(1)) print($" {r.key}");
+        array<Row> none = table.filter((Row r) => r.key > 99);
+        Row last;
+        if (none.count() > 0) last = none.last();
+        printLine($"; none {none.count()} {last.key}");
+    }
+}
+
+verb UncursorTest {
+    grammar = {.uncursor};
+    void handler() {
+        cur.rows := null;
+        cursors.clear();
+        printLine("uncursored");
+    }
+}
+
+verb LocalTest {
+    grammar = {.local};
+    void handler() {
+        printLine($"local {KeptAcrossCollect(3)} {KeptAcrossCollect(1)}");
+    }
+}
+
+verb ShareAddTest {
+    grammar = {.addshared};
+    void handler() {
+        array<Stat> shared = presets.filter((Stat s) => s.lo >= 3);
+        shared += Stat{ 1, 1 };
+        printLine($"shared {shared.length}");
+    }
+}
+
+verb TrimTest {
+    grammar = {.trim};
+    void handler() {
+        Row gone = table[1];
+        table -= gone;
+        table.remove(0);
+        array<Row> small[2];
+        small = table;
+        small[0].label = "small";
+        print($"trim {table.length} {table.indexOf(hold)} {table.contains(gone)} small {small.length} {small[0]} {small[1]};");
+        table = table;
+        table = table.filter((Row r) => r.key >= 4);
+        printLine($" now {table.length} {table[0]} {table[1]}");
+    }
+}
+
+verb DropTest {
+    grammar = {.drop};
+    void handler() {
+        view := null;
+        batch := null;
+        pick := null;
+        printLine("dropped");
+    }
+}
+
+verb ShowTest {
+    grammar = {.show};
+    void handler() {
+        ShowTable("table", table);
+        printLine($"hold {hold} pick {pick ? "set" : "none"} view {view ? view.length : -1} batch {batch ? batch.length : -1}");
+        if (batch) {
+            print("batch");
+            for (Row r in batch) print($" {r.key}/{r.SrcSum()}");
+            print("^");
+        }
+    }
+}
+
+verb LevelTest {
+    grammar = {.level};
+    void handler() {
+        Level("level");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

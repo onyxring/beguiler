@@ -1,0 +1,332 @@
+Room A
+> used
+Used: 0.
+> trays
+tray (3/5): 7 8 9
+spare (0/3):
+big (0/10):
+starter (3/3): 7 8 9
+pointer: nothing
+box (0/4):
+> load 3
+tray (5/5): 3 4 5 6 7
+> used
+Used: 0.
+> shrink
+tray (5/5): 3 4 5 6 7
+spare (3/3): 0 4 5
+big (5/10): 3 4 5 6 7
+> widen
+big (9/10): 7 8 9 10 11 12 13 14 15
+tray (5/5): 7 8 9 10 11
+They are different trays.
+> trays
+tray (5/5): 7 8 9 10 11
+spare (3/3): 0 4 5
+big (9/10): 7 8 9 10 11 12 13 14 15
+starter (3/3): 7 8 9
+pointer: nothing
+box (0/4):
+> aim 1
+pointer (5/5): 7 8 9 10 11
+The pointer is at the tray.
+> poke 40
+pointer (5/5): 40 8 9 10 11
+tray (5/5): 40 8 9 10 11
+spare (3/3): 0 4 5
+> splash
+pointer (3/5): 7 8 9
+tray (3/5): 7 8 9
+The starter is still its own tray.
+> aim 2
+pointer (3/3): 0 4 5
+> poke 41
+pointer (3/3): 41 4 5
+tray (3/5): 7 8 9
+spare (3/3): 41 4 5
+> splash
+pointer (3/3): 7 8 9
+tray (3/5): 7 8 9
+The starter is still its own tray.
+> aim 9
+Aim at 1, 2, 3 or 4.
+> same
+tray (3/5): 7 8 9
+Sum before 24, after 24.
+box (0/4):
+row 0 (3): 1 2 3
+row 1 (3): 4 5 6
+row 2 (2): 7 8
+> used
+Used: 0.
+> stash
+tray (3/5): 0 8 9
+copy (3/4): 7 99 9
+box (3/4): 7 8 9
+> unstash
+tray (3/5): 7 8 9
+box (3/4): 1 8 9
+> lots
+Box lots: 34 of 40, last 124.
+Copy: 34 of 40, sum 2899.
+few (4/4): 7 8 9 10
+big (10/10): 7 8 9 10 11 12 13 14 15 100
+Box lots now 0, copy still 34.
+> used
+Used: 0.
+> double
+tray (3/5): 14 16 18
+mine (3/5): 28 32 36
+box (3/4): 2 16 18
+> refill 4
+spare (3/3): 4 5 6
+local (4/4): 40 41 42 43
+> used
+Used: 0.
+> borrow
+tray (3/5): 55 16 18
+s (2/2): 66 16
+tray (3/5): 55 16 18
+made (5/5): 20 21 22 23 24
+kept (3/3): 30 31 32
+named (3/3): 70 8 9
+starter (3/3): 7 8 9
+> used
+Used: 0.
+> rows
+row 0 (3): 0 16 18
+row 1 (3): 4 5 6
+row 2 (2): 55 16
+tray (3/5): 55 16 18
+> stack 5
+row 0 (3): 0 16 18
+row 1 (3): 4 5 6
+row 2 (2): 55 16
+row 3 (2): 5 0
+> stack 6
+row 0 (3): 0 16 18
+row 1 (3): 4 5 6
+row 2 (2): 55 16
+row 3 (2): 6 0
+> gather
+Gathered. Used: 8.
+> pack
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+c: tag 2, items 55 16 18, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+spare (3/3): 42 5 6
+> label
+x 5: 1 2; y 5: 9 2; z 5: 9 2.
+Copies so far: 3.
+> label
+x 5: 1 2; y 5: 9 2; z 5: 9 2.
+Copies so far: 6.
+> used
+Used: 8.
+> load 1
+tray (5/5): 1 2 3 4 5
+> sift
+tray (2/5): 2 4
+odd (3/5): 1 3 5
+top (2/2): 5 4
+spare (3/3): 100 15 14
+> used
+Used: 8.
+> bins
+first bin (2/3): 2 4
+second bin (2/3): 1 4
+back (2/3): 2 2
+Fills: 1.
+> used
+Used: 8.
+> gather
+Gathered. Used: 8.
+> load 2
+tray (5/5): 2 3 4 5 6
+> borrow
+tray (5/5): 55 3 4 5 6
+s (2/2): 66 3
+tray (5/5): 55 3 4 5 6
+made (5/5): 20 21 22 23 24
+kept (3/3): 30 31 32
+named (3/3): 70 8 9
+starter (3/3): 7 8 9
+> pack
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+c: tag 2, items 55 3 4, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+spare (3/3): 42 15 14
+> sift
+tray (2/5): 4 6
+odd (3/5): 55 3 5
+top (2/2): 55 6
+spare (3/3): 100 15 14
+> rows
+row 0 (2): 0 6
+row 1 (3): 4 5 6
+row 2 (2): 4 6
+row 3 (2): 6 0
+tray (2/5): 4 6
+> used
+Used: 8.
+> load 2
+tray (5/5): 2 3 4 5 6
+> borrow
+tray (5/5): 55 3 4 5 6
+s (2/2): 66 3
+tray (5/5): 55 3 4 5 6
+made (5/5): 20 21 22 23 24
+kept (3/3): 30 31 32
+named (3/3): 70 8 9
+starter (3/3): 7 8 9
+> pack
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+a: tag 1, items 10 11 12, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+b: tag 2, items 99 11 12, shares 3 numbers starting 42.
+c: tag 2, items 55 3 4, shares 3 numbers starting 42.
+box: tag 2, items 99 77 12, shares 3 numbers starting 42.
+spare (3/3): 42 15 14
+> sift
+tray (2/5): 4 6
+odd (3/5): 55 3 5
+top (2/2): 55 6
+spare (3/3): 100 15 14
+> rows
+row 0 (2): 0 6
+row 1 (3): 4 5 6
+row 2 (2): 4 6
+row 3 (2): 6 0
+tray (2/5): 4 6
+> used
+Used: 8.
+> hold
+tray (2/5): 4 11
+tray (3/5): 7 8 9
+h2 (2/2): 12 8
+Held is the tray; a copy is not.
+box (3/4): 7 8 9
+> used
+Used: 8.
+> logs
+First log: 30, starts 1, sum 465.
+Second log: 30, starts 500, sum 964.
+first bin (3/3): 1 2 3
+Second log still 30, starts 500.
+> racks
+rack (2/2): 0 8
+rack (2/3): 7 8
+r (2/3): 7 99
+grid (3/3): 7 8 9
+grid (3/3): 9 8 9
+> used
+Used: 8.
+> packs
+slot: tag 3, items 30 31 32.
+slot: tag 3, items 1 31 32.
+mine: tag 8, items 30 31 32.
+packs: tag 3, items 30 31 32.
+global: tag 3, items 1 31 32.
+g: tag 3, items 1 31 0.
+box: tag 2, items 99 77 12, shares 3 numbers starting 100.
+Global sum 64.
+> used
+Used: 8.
+> chain
+pointer (3/5): 7 8 9
+pointer (3/10): 7 8 9
+tray (3/5): 7 8 9
+pointer (3/10): 7 8 9
+small (2/2): 7 8
+small (2/2): 7 8
+tray (4/5): 1 2 3 4
+> used
+Used: 35.
+> gather
+Gathered. Used: 8.
+> hold
+tray (4/5): 1 11 3 4
+tray (3/5): 7 8 9
+h2 (2/2): 12 8
+Held is the tray; a copy is not.
+box (3/4): 7 8 9
+> logs
+First log: 30, starts 1, sum 465.
+Second log: 30, starts 500, sum 964.
+first bin (3/3): 1 2 3
+Second log still 30, starts 500.
+> racks
+rack (2/2): 0 8
+rack (2/3): 7 8
+r (2/3): 7 99
+grid (3/3): 7 8 9
+grid (3/3): 9 8 9
+> packs
+slot: tag 3, items 30 31 32.
+slot: tag 3, items 1 31 32.
+mine: tag 8, items 30 31 32.
+packs: tag 3, items 30 31 32.
+global: tag 3, items 1 31 32.
+g: tag 3, items 1 31 0.
+box: tag 2, items 99 77 12, shares 3 numbers starting 100.
+Global sum 64.
+> chain
+pointer (3/5): 7 8 9
+pointer (3/10): 7 8 9
+tray (3/5): 7 8 9
+pointer (3/10): 7 8 9
+small (2/2): 7 8
+small (2/2): 7 8
+tray (4/5): 1 2 3 4
+> used
+Used: 35.
+> mix
+row 0 (2): 3 6
+row 1 (3): 3 5 6
+row 2 (2): 3 6
+row 3 (2): 3 0
+tray (4/5): 1 2 3 4
+spare (3/3): 1 2 3
+few (2/2): 0 2
+slot: tag 5, items 1 5 3.
+box: tag 6, items 0 2.
+tray (4/5): 1 2 3 4
+Labels: 2, marks 4 4, x 3, copies 2.
+Count down: 10.
+r2 (2/2): 3 9
+row 3 (2/2): 0 2
+row 3 (2/2): 6 0
+> used
+Used: 35.
+> gather
+Gathered. Used: 8.
+#repeat 3
+> mix
+row 0 (2): 3 6
+row 1 (3): 3 5 6
+row 2 (2): 3 6
+row 3 (2): 3 0
+tray (4/5): 1 2 3 4
+spare (3/3): 1 2 3
+few (2/2): 0 2
+slot: tag 5, items 1 5 3.
+box: tag 6, items 0 2.
+tray (4/5): 1 2 3 4
+Labels: 2, marks 4 4, x 3, copies 2.
+Count down: 10.
+r2 (2/2): 3 9
+row 3 (2/2): 0 2
+row 3 (2/2): 6 0
+> used
+Used: 8.
+> gather
+Gathered. Used: 8.

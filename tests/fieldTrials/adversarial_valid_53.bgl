@@ -1,0 +1,734 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but awkward code around arrays that own their storage, structs and the heap, on Glulx,
+// in the places adversarial_valid_52 did not go.
+// Arrays handed back in roundabout ways: a routine returning `same(loc)` (its own local through a call),
+// a `ref` local bound to its local, a ternary choosing its local or a global, a row of its local array of
+// arrays, a row of a global array of arrays, a `ref` global and a `ref` member; locals taking those
+// results and writing through them, with filler allocations laid over any block freed too early. A
+// recursion that hands each level's local array down as an argument (through a ternary) until the bottom
+// re-points a global at it; a routine that both keeps its local in a `ref` global and returns it; a chain
+// result passed straight to a routine that keeps it; a local array declared in a loop body appended to a
+// global array of arrays each time round (every row is the one array). Mutual recursion whose levels own
+// local arrays of arrays and pass rows to each other. A class with a member array of arrays filled by a
+// recursion (each level's local stored with `+=`), `rows[i] = rows[j]`, `rows += rows[k]`, a `ref`
+// member and a union member holding a chain over a row; chains over arrays of arrays that share rows;
+// `x = x.orderBy(…)` on a global array of arrays and on a local one. Calls through a
+// `func<array<int>, int>` variable taking and chaining its result. A parameter re-assigned from its own
+// chain (`a = a.filter(…)`, changing the caller's array), `copyFrom` itself, chains down to empty,
+// `ref` parameters re-bound inside. Structs: one with a written copy operator next to `extend struct`
+// operators (`==`, `<=>`) used by contains/indexOf/sort/distinct/orderBy, a struct array sorted into
+// itself in place and through a `ref`, rotated by `skip` + `orderBy`; a struct with an array member and
+// members added by `extend struct` (an array and a `ref array`), in an array whose elements' `ref`
+// members keep heap arrays across prompts; a struct whose written copy operator appends to its own array
+// member, self-assigned and slot-assigned; a struct with an array of another struct as a member, in an
+// array of those, copied, slot-assigned and ordered into itself; a recursion with a local struct array at
+// every level; a recursion passing a struct (with an array member and a `ref array` member) down and
+// returning it. `bgl.gc.used` after an explicit collection, after every command and across repeats.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ---- structs ---------------------------------------------------------------------------------------------
+
+int copies;
+
+struct Cell {
+    inline int id;
+    inline int w;
+    Cell operator = (Cell o) { id = o.id; w = o.w; copies++; return self; }
+}
+
+extend struct Cell {
+    bool operator == (Cell o) { return id == o.id; }
+    bool operator != (Cell o) { return id != o.id; }
+    int operator <=> (Cell o) { return w - o.w; }
+    int weight() { return w * 10 + id; }
+}
+
+struct Acc {
+    int depth;
+    array<int> seen[8];
+    ref array<int> last;
+}
+
+struct Bag {
+    int n;
+    array<int> items[3];
+}
+
+extend struct Bag {
+    array<int> extra[2];
+    ref array<int> view;
+    int total() {
+        int t = 0;
+        for (int x in items) t += x;
+        for (int y in extra) t += y;
+        return t;
+    }
+}
+
+struct Tally {
+    int hits;
+    array<int> log[4];
+    Tally operator = (Tally o) { hits = o.hits + 1000; log = o.log; log += hits; return self; }
+}
+
+struct Pt {
+    inline int x;
+    inline int y;
+}
+
+struct Box {
+    int tag;
+    array<Pt> corners[3];
+    array<int> marks[4];
+}
+
+// ---- classes and objects ---------------------------------------------------------------------------------
+
+class Shelf {
+    array<array<int>> rows[4];
+    ref array<int> pick;
+    int | array<int> slot;
+    array<int> snapshot() {
+        array<int> t = { 1, 2, 3 };
+        return t;
+    }
+    array<int> current() { return pick; }
+}
+
+Shelf shelfA;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- globals ---------------------------------------------------------------------------------------------
+
+array<int> nums = { 5, 3, 8, 1, 9, 2 };
+array<array<int>> grid = { { 1, 2, 3 }, { 4, 5 }, { 6 } };
+array<array<int>> bin[5];
+array<array<int>> spareRows[3];
+ref array<int> keptRef;
+int | array<int> uni;
+var anyHold;
+array<Cell> cells = { Cell{ 1, 40 }, Cell{ 2, 10 }, Cell{ 3, 30 }, Cell{ 4, 20 } };
+array<Cell> spareCells[6];
+Acc gAcc;
+array<Bag> bags[3];
+Bag lone;
+Tally tA;
+Tally tB;
+array<Tally> tallies[3];
+array<Box> boxes[3];
+Box looseBox;
+int baseline;
+
+// ---- helpers ---------------------------------------------------------------------------------------------
+
+void show(array<int> a) {
+    print("[");
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("]");
+}
+
+void showRows(array<array<int>> g) {
+    for (array<int> r in g) show(r);
+}
+
+void showCells(array<Cell> a) {
+    for (Cell c in a) print($"{c.id}:{c.w} ");
+}
+
+void showSeen(Acc a) {
+    print("<");
+    for (int v in a.seen) print($"{v} ");
+    print(">");
+}
+
+void showBag(Bag b) {
+    print($"<{b.n} {b.total()} {b.items.length}/{b.extra.length}");
+    if (b.view) {
+        print(" ");
+        show(b.view);
+    }
+    print(">");
+}
+
+void showBox(Box b) {
+    print($"#{b.tag}");
+    for (Pt p in b.corners) print($"({p.x},{p.y})");
+    for (int m in b.marks) print($" {m}");
+    print(";");
+}
+
+// Takes a block from the heap and fills it, so an array freed too early would show the zeros.
+array<int> filler() {
+    array<int> f = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    return f.filter((int x) => x == 0);
+}
+
+// ---- routines that hand arrays back ----------------------------------------------------------------------
+
+array<int> same(array<int> a) { return a; }
+
+array<int> descend(int n) {
+    array<int> mine[6];
+    mine += n;
+    if (n == 0) return mine;
+    array<int> deeper = descend(n - 1);
+    for (int v in deeper) mine += v;
+    return mine;
+}
+
+array<int> viaSame() {
+    array<int> loc = { 1, 2 };
+    return same(loc);
+}
+
+array<int> viaRef() {
+    array<int> loc = { 3, 4 };
+    ref array<int> r := loc;
+    return r;
+}
+
+array<int> pickOne(int n) {
+    array<int> loc = { 7, 7, 7 };
+    return n > 0 ? loc : nums;
+}
+
+array<int> rowOfLocal() {
+    array<array<int>> m = { { 1, 1 }, { 2, 2, 2 } };
+    return m[1];
+}
+
+array<int> gridRow() { return grid[1]; }
+
+array<int> getKept() { return keptRef; }
+
+// Keeps its local in a global and returns it too.
+array<int> keepAndReturn() {
+    array<int> t = { 1, 2, 3 };
+    keptRef := t;
+    return t;
+}
+
+void adopt(array<int> a) { keptRef := a; }
+
+// Each level passes either its own local or what it was given; the bottom keeps it.
+void handDown(int n, array<int> a) {
+    if (n == 0) {
+        keptRef := a;
+        return;
+    }
+    array<int> mine = { n, n, n };
+    handDown(n - 1, n == 2 ? mine : a);
+}
+
+int | array<int> maybe(int n) {
+    array<int> loc = { n, n + 1 };
+    if (n > 0) return loc;
+    return n;
+}
+
+void stashVar(var v) { anyHold = v; }
+
+void trim(array<int> a) { a = a.filter((int x) => x > 2); }
+
+void rebind(ref array<int> r) {
+    r := nums;
+    r[1] = 33;
+}
+
+void loopFill(int n) {
+    for (int i = 0; i < n; i++) {
+        array<int> t[3];
+        t += i;
+        t += i * 10;
+        bin += t;
+    }
+}
+
+void shelve(Shelf s, int n) {
+    if (n == 0) return;
+    array<int> mine = { n, n + 1 };
+    s.rows += mine;
+    shelve(s, n - 1);
+}
+
+// Mutual recursion: each level owns a local array of arrays and passes one of its rows on.
+int ping(int n, array<int> fromPong) {
+    array<array<int>> mine = { { n }, { 0, 0 } };
+    mine[1] = fromPong;
+    if (n == 0) return mine[1][0] + mine[0][0];
+    mine[1][0] = mine[1][0] + n;
+    return pong(n - 1, mine[1]) + mine[0][0];
+}
+
+int pong(int n, array<int> fromPing) {
+    array<array<int>> mine[2];
+    array<int> own = { n * 100, 0 };
+    mine += own;
+    mine += fromPing;
+    mine[1][1] = mine[1][1] + 1;
+    int got = ping(n, mine[1]);
+    return got + mine[0][0] + fromPing[1];
+}
+
+Acc walk(int n, Acc a) {
+    array<int> lvl = { n + 10, n * 2 };
+    a.depth = a.depth + 1;
+    a.seen += n;
+    a.last := lvl;
+    if (n == 0) return a;
+    Acc deeper = walk(n - 1, a);
+    deeper.seen += lvl[1];
+    return deeper;
+}
+
+Acc getAcc() { return gAcc; }
+
+int spiral(int n) {
+    array<Pt> mine[2];
+    mine += Pt{ n, n * n };
+    mine += Pt{ -n, 0 };
+    if (n == 0) return mine[0].y + mine[1].x;
+    int below = spiral(n - 1);
+    return below + mine[0].y + mine[1].x;
+}
+
+Box makeBox(int t) {
+    Box b;
+    b.tag = t;
+    b.corners += Pt{ t, t };
+    b.corners += Pt{ t, -t };
+    b.marks += t * 100;
+    return b;
+}
+
+void fillBag(int i) {
+    bags[i].view := descend(i + 1);
+    bags[i].n = i;
+    bags[i].items += i;
+    bags[i].extra += 10 * i;
+}
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb BaseCmd {
+    grammar = {.base};
+    void handler() {
+        bgl.gc.collect();
+        baseline = bgl.gc.used;
+        print($"baseline set, zero {bgl.gc.used - baseline}.^");
+    }
+}
+
+verb UsedCmd {
+    grammar = {.used};
+    void handler() {
+        bgl.gc.collect();
+        print($"used {bgl.gc.used - baseline}.^");
+    }
+}
+
+verb ReturnsCmd {
+    grammar = {.returns};
+    void handler() {
+        array<int> a = viaSame();
+        array<int> f1 = filler();
+        array<int> b = viaRef();
+        array<int> f2 = filler();
+        array<int> c = pickOne(1);
+        array<int> f3 = filler();
+        show(a);
+        show(b);
+        show(c);
+        array<int> d = pickOne(0);
+        d[0] = 55;
+        show(nums);
+        nums[0] = 5;
+        array<int> e = rowOfLocal();
+        array<int> f4 = filler();
+        show(e);
+        array<int> g = gridRow();
+        g[0] = 44;
+        show(grid[1]);
+        grid[1][0] = 4;
+        print($" {f1.length + f2.length + f3.length + f4.length}.^");
+    }
+}
+
+verb SelfCmd {
+    grammar = {.self};
+    void handler() {
+        array<int> loc = { 1, 2, 3 };
+        loc = same(loc);
+        nums = same(nums);
+        array<int> b = same(loc);
+        b[0] = 10;
+        show(loc);
+        show(nums);
+        array<int> w = { 7, 1, 9, 2, 5 };
+        trim(w);
+        show(w);
+        w.copyFrom(w);
+        w = w.skip(1);
+        show(w);
+        w = w.take(0);
+        print($" {w.length} {w.first()} {w.filter((int x) => x > 0).count()}");
+        ref array<int> r := w;
+        rebind(r);
+        print($" {r == w} {nums[1]}");
+        nums[1] = 3;
+        w = nums.skip(6);
+        print($" {w.length}.^");
+    }
+}
+
+verb KeepCmd {
+    grammar = {.keep};
+    void handler() {
+        array<int> top = { 0 };
+        handDown(3, top);
+        array<int> f = filler();
+        show(keptRef);
+        print($" {f.length}.^");
+    }
+}
+
+verb KeepTwoCmd {
+    grammar = {.keeptwo};
+    void handler() {
+        array<int> x = keepAndReturn();
+        x[0] = 7;
+        array<int> f = filler();
+        show(keptRef);
+        print($" {keptRef == x} {f.length}.^");
+    }
+}
+
+verb KeepChainCmd {
+    grammar = {.keepchain};
+    void handler() {
+        adopt(nums.filter((int x) => x > 4).orderBy((int p, int q) => q - p));
+        array<int> f = filler();
+        show(keptRef);
+        print($" {f.length}.^");
+    }
+}
+
+verb HeldCmd {
+    grammar = {.held};
+    void handler() {
+        array<int> f = filler();
+        show(keptRef);
+        show(keptRef.filter((int x) => x > 2));
+        print($" {f.length}.^");
+    }
+}
+
+verb DropCmd {
+    grammar = {.drop};
+    void handler() {
+        keptRef := nums;
+        print("dropped.^");
+    }
+}
+
+verb SlotsCmd {
+    grammar = {.slots};
+    void handler() {
+        uni = maybe(4);
+        int | array<int> u2 = maybe(0);
+        array<int> loc = { 4, 6 };
+        stashVar(loc);
+        print($"{(int)u2}.^");
+    }
+}
+
+verb SlotsShowCmd {
+    grammar = {.slotsshow};
+    void handler() {
+        array<int> f = filler();
+        show((array<int>)uni);
+        show((array<int>)anyHold);
+        print($" {f.length}.^");
+    }
+}
+
+verb SlotsDropCmd {
+    grammar = {.slotsdrop};
+    void handler() {
+        uni = 0;
+        anyHold = 0;
+        print("let go.^");
+    }
+}
+
+verb LoopRowsCmd {
+    grammar = {.looprows};
+    void handler() {
+        bin.clear();
+        loopFill(3);
+        showRows(bin);
+        print($" {bin.length} {bin[0] == bin[2]}.^");
+    }
+}
+
+verb UnbinCmd {
+    grammar = {.unbin};
+    void handler() {
+        bin.clear();
+        print($"cleared {bin.length}.^");
+    }
+}
+
+verb ShelfCmd {
+    grammar = {.shelf};
+    void handler() {
+        shelfA.rows.clear();
+        shelve(shelfA, 3);
+        for (array<int> r in shelfA.rows) show(r);
+        print(" / ");
+        shelfA.rows[0] = shelfA.rows[2];
+        shelfA.rows += shelfA.rows[1];
+        shelfA.rows[3][0] = 70;
+        for (array<int> r in shelfA.rows) show(r);
+        shelfA.pick := shelfA.rows[1];
+        shelfA.slot = shelfA.rows[0].filter((int x) => x > 1);
+        print(".^");
+    }
+}
+
+verb ShelfShowCmd {
+    grammar = {.shelfshow};
+    void handler() {
+        array<int> f = filler();
+        show(shelfA.pick);
+        array<int> v = (array<int>)shelfA.slot;
+        show(v);
+        array<int> s = shelfA.snapshot();
+        array<int> c = shelfA.current();
+        show(s);
+        show(c);
+        show(shelfA.snapshot().orderBy((int x, int y) => y - x));
+        print($" {f.length}.^");
+    }
+}
+
+verb ShelfDropCmd {
+    grammar = {.shelfdrop};
+    void handler() {
+        shelfA.rows.clear();
+        shelfA.pick := grid[0];
+        shelfA.slot = 0;
+        print("emptied.^");
+    }
+}
+
+verb GridCmd {
+    grammar = {.grid};
+    void handler() {
+        array<array<int>> wide = grid.filter((array<int> r) => r.length > 1);
+        wide[1][0] = 40;
+        showRows(grid);
+        show(grid.map((var r) => ((array<int>)r).length).filter((var n) => n > 1));
+        grid[1][0] = 4;
+        print(" / ");
+        grid = grid.orderBy((array<int> p, array<int> q) => q[0] - p[0]);
+        showRows(grid);
+        print(" / ");
+        spareRows = grid;
+        grid = grid.orderBy((array<int> p, array<int> q) => p[0] - q[0]);
+        array<array<int>> loc = { { 9 }, { 8, 8 } };
+        loc = loc.orderBy((array<int> p, array<int> q) => p[0] - q[0]);
+        showRows(loc);
+        print(".^");
+    }
+}
+
+verb PingCmd {
+    grammar = {.ping};
+    void handler() {
+        array<int> seed = { 5, 0 };
+        print($"ping {ping(3, seed)} seed {seed[0]} {seed[1]}.^");
+    }
+}
+
+verb FuncCmd {
+    grammar = {.func};
+    void handler() {
+        func<array<int>, int> mk = descend;
+        array<int> e = mk(3);
+        array<int> f = filler();
+        show(e);
+        show(mk(2).filter((int x) => x > 0));
+        show(mk(4).filter((int x) => x % 2 == 0).orderBy().skip(1));
+        show(nums.filter((int x) => mk(2).contains(x)));
+        print($" {f.length}.^");
+    }
+}
+
+verb CellsCmd {
+    grammar = {.cells};
+    void handler() {
+        cells = cells;
+        array<Cell> o = cells.orderBy();
+        showCells(o);
+        showCells(cells);
+        cells = cells.orderBy();
+        showCells(cells);
+        cells = cells.skip(1).orderBy((Cell x, Cell y) => y.id - x.id);
+        showCells(cells);
+        spareCells = cells.filter((Cell c) => c.id != 3);
+        spareCells += cells[0];
+        spareCells[0].w = 99;
+        showCells(spareCells);
+        showCells(cells);
+        print(".^");
+        cells = { Cell{ 1, 40 }, Cell{ 2, 10 }, Cell{ 3, 30 }, Cell{ 4, 20 } };
+    }
+}
+
+verb CellOpsCmd {
+    grammar = {.cellops};
+    void handler() {
+        print($"{cells.contains(Cell{ 2, 0 })} {cells.indexOf(Cell{ 4, 0 })} {cells[2].weight()} ");
+        copies = 0;
+        spareCells = cells;
+        spareCells[0] = cells[3];
+        print($"copies {copies} ");
+        spareCells = cells;
+        spareCells.sort();
+        showCells(spareCells);
+        spareCells += Cell{ 2, 77 };
+        print($"{spareCells.length} {spareCells.distinct().length} ");
+        ref array<Cell> rc := cells;
+        cells = rc.orderBy((Cell x, Cell y) => y.w - x.w);
+        showCells(cells);
+        rc = rc;
+        cells[1] = cells[3];
+        showCells(rc);
+        print(".^");
+        cells = { Cell{ 1, 40 }, Cell{ 2, 10 }, Cell{ 3, 30 }, Cell{ 4, 20 } };
+    }
+}
+
+verb WalkCmd {
+    grammar = {.walk};
+    void handler() {
+        Acc start;
+        Acc r = walk(3, start);
+        print($"depth {r.depth} {start.depth} ");
+        showSeen(r);
+        gAcc = r;
+        Acc g2 = getAcc();
+        g2.seen[0] = 77;
+        showSeen(gAcc);
+        array<int> f = filler();
+        show(gAcc.last);
+        print($" {f.length}.^");
+    }
+}
+
+verb BagsCmd {
+    grammar = {.bags};
+    void handler() {
+        bags.clear();
+        for (int i = 0; i < 3; i++) {
+            bags += lone;
+            fillBag(i);
+        }
+        print("filled.^");
+    }
+}
+
+verb BagsShowCmd {
+    grammar = {.bagsshow};
+    void handler() {
+        array<int> f = filler();
+        for (Bag b in bags) showBag(b);
+        lone = bags[2];
+        lone.extra[0] = 5;
+        showBag(lone);
+        showBag(bags[2]);
+        bags[0] = bags[0];
+        bags[1] = lone;
+        showBag(bags[1]);
+        array<Bag> heavy = bags.filter((Bag b) => b.total() > 10);
+        print($" {heavy.length} {f.length}.^");
+    }
+}
+
+verb BagsDropCmd {
+    grammar = {.bagsdrop};
+    void handler() {
+        for (int i = 0; i < 3; i++) bags[i].view := null;
+        lone.view := null;
+        print("dropped.^");
+    }
+}
+
+verb TallyCmd {
+    grammar = {.tally};
+    void handler() {
+        tA.hits = 1;
+        tA.log.clear();
+        tA.log += 7;
+        tB = tA;
+        tB = tB;
+        tallies.clear();
+        tallies += tB;
+        tallies[0] = tallies[0];
+        print($"{tB.hits} {tallies[0].hits} ");
+        for (int x in tallies[0].log) print($"{x} ");
+        for (Tally t in tallies) print($"{t.log.length}");
+        print(".^");
+    }
+}
+
+verb BoxesCmd {
+    grammar = {.boxes};
+    void handler() {
+        print($"spiral {spiral(3)} ");
+        boxes.clear();
+        boxes += makeBox(1);
+        boxes += makeBox(2);
+        looseBox = boxes[1];
+        looseBox.corners[0].x = 20;
+        boxes[0] = boxes[1];
+        boxes[1].marks += 7;
+        boxes += looseBox;
+        for (Box b in boxes) showBox(b);
+        print(" / ");
+        boxes = boxes.orderBy((Box p, Box q) => q.corners[0].x - p.corners[0].x);
+        for (Box b in boxes) showBox(b);
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

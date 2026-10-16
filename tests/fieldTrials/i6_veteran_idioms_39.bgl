@@ -1,0 +1,567 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: arrays handed to Inform 6 code that walks them by their count word (`a-->0`, `a-->i`), as a
+// veteran would. Two I6 Globals, a three-slot I6 ring table and an I6 property on an I6 object hold
+// pinned arrays (bgl.gc.keep) across prompts while a Beguile daemon has an I6 routine bump every held
+// array each turn; arrays handed over come from a routine's own sized local (stored from inside an #i6
+// block with $i6Expr), from a <linq> result, from an initialized local and from a row of an array of
+// arrays an I6 routine walks; an extern routine returning a held array read back into a local (taken),
+// a ref local and a sized local (copied); an extern array<int> global and an extern var global set by
+// I6; collect() called from a Beguile routine I6 calls back into (while the Beguile caller's local array
+// is live), from a #bgl island inside an I6 routine, inside an each_turn rule and in a loop; a ring
+// slot swapped turn after turn (unpin the old, pin the new) with used steady; a pinned array of a
+// struct (with an extend struct method) held by I6, written through and freed; keep twice then one
+// unpin, keep on file-scope arrays, free on pinned, sized and chain-taken locals inside routines, a
+// ref member re-pointed off a pinned array; undo across a pin; heapSize set small, a pile of pinned
+// arrays filling it near the limit, peak and size; and last, the heap-full message from a recursion
+// through an I6 routine that allocates a local array per level.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 360;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+const int RING = 3;
+const int HEAPWORDS = #beguilerSettings.heapSize;
+
+// ---------------------------------------------------------------- the Inform 6 side
+
+#i6 {
+    Global iv_slotA = 0;
+    Global iv_slotB = 0;
+    Array  iv_ringTab --> 3;
+    Global iv_typed = 0;
+    Global iv_any = 0;
+    Global iv_ticks = 0;
+    Property iv_hold;
+    Object iv_peg "peg" with iv_hold 0;
+
+    ! Sum of every element up to the count word (the capacity).
+    [ IV_Sum a  i s;
+        if (a == 0) return -1;
+        for (i = 1 : i <= a-->0 : i++) s = s + a-->i;
+        return s;
+    ];
+    ! Sum of the first n elements.
+    [ IV_SumN a n  i s;
+        for (i = 1 : i <= n : i++) s = s + a-->i;
+        return s;
+    ];
+    ! Add one to every element up to the count word.
+    [ IV_Bump a  i;
+        if (a == 0) rfalse;
+        for (i = 1 : i <= a-->0 : i++) a-->i = a-->i + 1;
+        rtrue;
+    ];
+    [ IV_SetSlot n a  old;
+        if (n == 0) { old = iv_slotA; iv_slotA = a; }
+        else        { old = iv_slotB; iv_slotB = a; }
+        return old;
+    ];
+    [ IV_Slot n;  if (n == 0) return iv_slotA; return iv_slotB; ];
+    [ IV_Hang a  old;  old = iv_peg.iv_hold; iv_peg.iv_hold = a; return old; ];
+    [ IV_Hung;  return iv_peg.iv_hold; ];
+    [ IV_RingPut i a  old;  old = iv_ringTab-->i; iv_ringTab-->i = a; return old; ];
+    [ IV_Ring i;  return iv_ringTab-->i; ];
+    [ IV_SetTyped a;  iv_typed = a; ];
+    [ IV_SetAny a;  iv_any = a; ];
+    ! Sum of every row of an array of arrays; empty slots read 0.
+    [ IV_Grid g  i j row s;
+        if (g == 0) return -1;
+        for (i = 1 : i <= g-->0 : i++) {
+            row = g-->i;
+            if (row ~= 0) for (j = 1 : j <= row-->0 : j++) s = s + row-->j;
+        }
+        return s;
+    ];
+    ! The daemon's work: bump every array the I6 side holds.
+    [ IV_Tick  i;
+        iv_ticks++;
+        IV_Bump(iv_slotA);
+        IV_Bump(iv_slotB);
+        IV_Bump(iv_peg.iv_hold);
+        for (i = 0 : i < 3 : i++) IV_Bump(iv_ringTab-->i);
+    ];
+}
+
+extern int  IV_Sum(array<int> a);
+extern int  IV_SumN(array<int> a, int n);
+extern bool IV_Bump(array<int> a);
+extern array<int> IV_SetSlot(int n, array<int> a);
+extern array<int> IV_Slot(int n);
+extern array<int> IV_Hang(array<int> a);
+extern array<int> IV_Hung();
+extern array<int> IV_RingPut(int i, array<int> a);
+extern array<int> IV_Ring(int i);
+extern void IV_SetTyped(array<int> a);
+extern void IV_SetAny(array<int> a);
+extern int  IV_Grid(array<array<int>> g);
+extern void IV_Tick();
+extern int  iv_ticks;
+extern array<int> iv_typed;
+extern var  iv_any;
+
+// ---------------------------------------------------------------- Beguile state
+
+array<int> seed = {2, 3, 5, 7, 11, 13};
+array<int> spare[4];
+int baseline = 0;
+int lastCb = 0;
+int swaps = 0;
+bool ticking = false;
+
+// Collect, then the words in use.
+int Settled() {
+    bgl.gc.collect();
+    return bgl.gc.used;
+}
+
+// A run of n values from start, in a local the caller takes.
+array<int> Run(int start, int n) {
+    array<int> r[6];
+    for (int i = 0; i < n; i++) r += start + i;
+    return r;
+}
+
+// Hands slot A an array of its own; the array goes over from inside an #i6 block.
+void LodgeA() {
+    array<int> mine[4];
+    for (int i = 0; i < 4; i++) mine[i] = (i + 1) * 10;
+    mine.length = 4;
+    bgl.gc.keep(mine);
+    #i6 { iv_slotA = $i6Expr(mine); }
+}
+
+// Hands slot B a filtered copy of seed, through the extern routine.
+void LodgeB() {
+    array<int> odd = seed.filter((int x) => x % 2 == 1).take(4);
+    bgl.gc.keep(odd);
+    array<int> old = IV_SetSlot(1, odd);
+    if (old != null) bgl.gc.unpin(old);
+}
+
+// Called from I6 with the outer routine's array still live; collects in the middle.
+int Visit(int k) {
+    array<int> mine[3];
+    mine += {k, k * 2, k * 3};
+    bgl.gc.collect();
+    array<int> junk = Run(k * 100, 6);
+    int s = 0;
+    for (int v in mine) s += v;
+    return s;
+}
+
+#i6 {
+    ! Calls back into Beguile once per element of a; returns the callbacks' total.
+    [ IV_Each a  i t;
+        for (i = 1 : i <= a-->0 : i++) t = t + $i6Name(Visit)(a-->i);
+        return t;
+    ];
+    ! Collects from inside I6, then sums a.
+    [ IV_CollectSum a;
+        #bgl { bgl.gc.collect(); }
+        $i6Name(Run)(90, 6);
+        return IV_Sum(a);
+    ];
+}
+extern int IV_Each(array<int> a);
+extern int IV_CollectSum(array<int> a);
+
+// Sums through I6 the local array this routine owns, after collections run under it.
+int Outer() {
+    array<int> base = {1, 2, 3};
+    int t = IV_Each(base);
+    int s = IV_CollectSum(base);
+    return t * 100 + s;
+}
+
+// One level of the flood: a local per level, then down through I6.
+int Sink(int depth) {
+    array<int> level[20];
+    level += depth;
+    int below = 0;
+    #i6 { below = IV_Down($i6Expr(depth)); }
+    return level[0] + below;
+}
+
+#i6 {
+    [ IV_Down d;  return $i6Name(Sink)(d + 1); ];
+}
+
+// ---------------------------------------------------------------- cells held by I6
+
+struct Cell {
+    int v;
+    int w;
+}
+
+extend struct Cell {
+    int total() { return v * 10 + w; }
+}
+
+#i6 {
+    Global iv_cellArr = 0;
+    [ IV_SetCells a  old;  old = iv_cellArr; iv_cellArr = a; return old; ];
+    [ IV_Cells;  return iv_cellArr; ];
+    [ IV_CellCount a;  if (a == 0) return -1; return a-->0; ];
+}
+extern array<Cell> IV_SetCells(array<Cell> a);
+extern array<Cell> IV_Cells();
+extern int IV_CellCount(array<Cell> a);
+
+// Builds five cells, keeps the even ones, and hands I6 a pinned array of them.
+void LodgeCells(int base) {
+    array<Cell> src[5];
+    for (int i = 1; i <= 5; i++) {
+        Cell c;
+        c.v = base + i;
+        c.w = i;
+        src += c;
+    }
+    // A view of src would share src's instances, which go when src does: copy into a sized array.
+    array<Cell> even[5] = src.filter((Cell c) => c.v % 2 == 0);
+    bgl.gc.keep(even);
+    IV_SetCells(even);
+}
+
+// Walks the cells I6 holds, after something else has used the heap and the struct's instances.
+int CellSum() {
+    array<Cell> other[5];
+    Cell z;
+    z.v = 99;
+    other += z;
+    other += z;
+    bgl.gc.collect();
+    int s = 0;
+    for (Cell c in IV_Cells()) s += c.total();
+    return s;
+}
+
+// ---------------------------------------------------------------- the world
+
+object roomA {
+    short_name = "Room A";
+    description = "Room A. A plain test room.";
+    attributes = {light};
+}
+
+object ticker {
+    short_name = "ticker";
+    name = {.ticker};
+    parent = roomA;
+    description = "A ticker.";
+    void daemon() {
+        IV_Tick();
+    }
+    void each_turn() {
+        if (ticking) {
+            array<int> scratch = Run(iv_ticks, 3);
+            bgl.gc.collect();
+            array<int> other = Run(0, 6);
+            print($"^[tick {iv_ticks}: scratch {scratch[0] + scratch[1] + scratch[2]}, other {other.length}]^");
+        }
+    }
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- verbs
+
+void ShowHeld() {
+    print($"A {IV_Sum(IV_Slot(0))}, B {IV_Sum(IV_Slot(1))}, peg {IV_Sum(IV_Hung())}, ring");
+    for (int i = 0; i < RING; i++) print($" {IV_Sum(IV_Ring(i))}");
+}
+
+verb Figures {
+    grammar = {.figures};
+    meta = true;
+    void handler() {
+        baseline = Settled();
+        print($"size under {HEAPWORDS} {bgl.gc.size < HEAPWORDS}, over 300 {bgl.gc.size > 300}; used {baseline}; ticks {iv_ticks}.^");
+    }
+}
+
+verb Held {
+    grammar = {.held};
+    meta = true;
+    void handler() {
+        ShowHeld();
+        print($"; used {Settled() - baseline}.^");
+    }
+}
+
+verb Lodge {
+    grammar = {.lodge};
+    void handler() {
+        LodgeA();
+        LodgeB();
+        array<int> grid0 = {4, 4};
+        bgl.gc.keep(grid0);
+        array<int> before = IV_Hang(grid0);
+        bgl.gc.collect();
+        print($"lodged; peg had {before == null}. ");
+        ShowHeld();
+        print(".^");
+        StartDaemon(ticker);
+    }
+}
+
+verb Peek {
+    grammar = {.peek};
+    void handler() {
+        int before = Settled();
+        array<int> a = IV_Slot(0);
+        ref array<int> b := IV_Slot(1);
+        array<int> c[6] = IV_Slot(0);
+        c[0] = 999;
+        a[3] = a[3] + 1000;
+        bgl.gc.collect();
+        print($"peek a {a.length}/{IV_Sum(a)} b {b.length}/{IV_SumN(b, b.length)} c {c[0]} {c.length}; ");
+        print($"same {a == IV_Slot(0)}.^");
+        if (Settled() != before) print("(peek moved the heap)^");
+    }
+}
+
+verb Typed {
+    grammar = {.typed};
+    void handler() {
+        iv_typed := Run(100, 3);
+        iv_any = seed.skip(4);
+        print($"typed {iv_typed.length}; any set.^");
+    }
+}
+
+verb Roots {
+    grammar = {.roots};
+    meta = true;
+    void handler() {
+        bgl.gc.collect();
+        int s = 0;
+        for (int v in iv_typed) s += v;
+        array<int> any = (array<int>)iv_any;
+        print($"typed sum {s}, any {any[0]} {any[1]} len {any.length}.^");
+    }
+}
+
+verb Untype {
+    grammar = {.untype};
+    void handler() {
+        int before = Settled();
+        IV_SetTyped(spare);
+        IV_SetAny(null);
+        int after = Settled();
+        print($"untyped; freed {before - after > 0}; typed now {iv_typed.length}.^");
+    }
+}
+
+verb Grid {
+    grammar = {.grid};
+    void handler() {
+        array<array<int>> rows[3];
+        rows += Run(1, 3);
+        rows += seed.filter((int x) => x > 6);
+        bgl.gc.keep(rows);
+        bgl.gc.keep(rows[0]);
+        array<int> old = IV_Hang(rows[0]);
+        bgl.gc.unpin(old);
+        bgl.gc.collect();
+        print($"grid {IV_Grid(rows)}; peg {IV_Sum(IV_Hung())}.^");
+        bgl.gc.unpin(rows);
+    }
+}
+
+verb Callback {
+    grammar = {.callback};
+    void handler() {
+        int before = Settled();
+        lastCb = Outer();
+        print($"callback {lastCb}; back {Settled() == before}.^");
+    }
+}
+
+verb Swap {
+    grammar = {.swap};
+    void handler() {
+        int at = swaps % RING;
+        array<int> fresh = seed.filter((int x) => x > swaps).take(2);
+        bgl.gc.keep(fresh);
+        array<int> old = IV_RingPut(at, fresh);
+        if (old != null) bgl.gc.unpin(old);
+        swaps++;
+        print($"swap {swaps} into {at}: ");
+        ShowHeld();
+        print($"; used {Settled() - baseline}.^");
+    }
+}
+
+verb Tick {
+    grammar = {.tick};
+    void handler() {
+        ticking = !ticking;
+        if (ticking) print("Ticking on.^");
+        else print("Ticking off.^");
+    }
+}
+
+verb Twice {
+    grammar = {.twice};
+    void handler() {
+        int before = Settled();
+        array<int> t = Run(50, 4);
+        bgl.gc.keep(t);
+        bgl.gc.keep(t);
+        bgl.gc.unpin(t);
+        int mid = bgl.gc.used;
+        bgl.gc.collect();
+        bgl.gc.keep(seed);
+        bgl.gc.keep(spare);
+        bgl.gc.unpin(seed);
+        print($"twice: held {mid > before}; seed {seed.length}, spare {spare.length}.^");
+    }
+}
+
+verb Release {
+    grammar = {.release};
+    void handler() {
+        int before = Settled();
+        bgl.gc.unpin(IV_SetSlot(0, null));
+        array<int> b = IV_SetSlot(1, null);
+        bgl.gc.free(b);
+        array<int> p = IV_Hung();
+        bgl.gc.free(p);
+        IV_Hang(null);
+        for (int i = 0; i < RING; i++) {
+            array<int> r = IV_RingPut(i, null);
+            if (r != null) bgl.gc.unpin(r);
+        }
+        bgl.gc.free(IV_SetCells(null));
+        int after = Settled();
+        print($"released; freed {before - after > 0}; used {after - baseline}. ");
+        ShowHeld();
+        print(".^");
+    }
+}
+
+verb Pin {
+    grammar = {.pin};
+    void handler() {
+        array<int> t = Run(7, 5);
+        bgl.gc.keep(t);
+        bgl.gc.unpin(IV_SetSlot(0, t));
+        print($"pinned; used {Settled() - baseline}.^");
+    }
+}
+
+// Pins runs until the heap is close to full; I6 lists them in the ring and slots.
+verb Pile {
+    grammar = {.pile};
+    void handler() {
+        int before = Settled();
+        int made = 0;
+        array<array<int>> pile[30];
+        while (bgl.gc.size - bgl.gc.used > 30 && made < 30) {
+            array<int> r = Run(made, 6);
+            bgl.gc.keep(r);
+            pile += r;
+            made++;
+        }
+        bgl.gc.collect();
+        int full = bgl.gc.used;
+        int s = 0;
+        for (array<int> r in pile) s += IV_Sum(r);
+        for (array<int> r in pile) bgl.gc.unpin(r);
+        int want = 3 * made * (made - 1) + 15 * made;
+        print($"filled over 20 {made > 20}, sums {s == want}, near full {full + 30 >= bgl.gc.size}, peak {bgl.gc.peak >= full}, ");
+        print($"peak in heap {bgl.gc.peak <= bgl.gc.size}.^");
+    }
+}
+
+// Frees, inside routines, a sized local, a pinned local and a chain's result; then a held array.
+int FreeSized() {
+    array<int> t[4];
+    t += 1;
+    bgl.gc.free(t);
+    return 1;
+}
+int FreePinned() {
+    array<int> t[4];
+    bgl.gc.keep(t);
+    bgl.gc.free(t);
+    return 2;
+}
+int FreeChain() {
+    array<int> t = seed.filter((int x) => x > 2);
+    bgl.gc.keep(t);
+    bgl.gc.unpin(t);
+    bgl.gc.free(t);
+    return 3;
+}
+
+object rack {
+    short_name = "rack";
+    ref array<int> cur;
+}
+
+verb Drops {
+    grammar = {.drops};
+    void handler() {
+        int before = Settled();
+        int n = FreeSized() + FreePinned() + FreeChain();
+        rack.cur := Run(40, 2);
+        bgl.gc.keep(rack.cur);
+        IV_SetSlot(0, rack.cur);
+        rack.cur := seed;
+        bgl.gc.collect();
+        int held = IV_Sum(IV_Slot(0));
+        bgl.gc.unpin(IV_SetSlot(0, null));
+        print($"drops {n}; slot {held}; rack {rack.cur.length}; back {Settled() == before}.^");
+    }
+}
+
+verb Cells {
+    grammar = {.cells};
+    void handler() {
+        array<Cell> old = IV_SetCells(null);
+        if (old != null) bgl.gc.free(old);
+        int before = Settled();
+        LodgeCells(swaps * 10);
+        array<Cell> h = IV_Cells();
+        h[0].w += 5;
+        print($"cells {h.length} of {IV_CellCount(h)}: sum {CellSum()}; held {Settled() - before > 0}.^");
+    }
+}
+
+verb Settle {
+    grammar = {.settle};
+    meta = true;
+    void handler() {
+        print($"used {Settled() - baseline}.^");
+    }
+}
+
+verb Flood {
+    grammar = {.flood};
+    void handler() {
+        print("Flooding.^");
+        int n = Sink(1);
+        print($"Not reached {n}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

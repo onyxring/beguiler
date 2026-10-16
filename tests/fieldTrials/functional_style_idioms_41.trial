@@ -1,0 +1,383 @@
+Room A
+Room A.
+
+> level
+heap now: 0
+> state
+turn 0, seed 7, beats 0/0
+pulse: none
+window: [0/8]
+trend: none
+sorted: none
+memo: none
+tagged: none
+history 0:
+spans 0:
+last span: none
+meter feed: none
+meter peaks: [0/8]
+meter runs 0:
+wide spans: none
+tenths: none
+gauge pasts 0:0 0:0
+gauges: none
+> tick
+tick 1: sample 34, window 1, trend sum 0, span -2000
+> tick
+tick 2: sample 95, window 2, trend sum 61, span 0
+> tick
+tick 3: sample 46, window 3, trend sum 12, span 110
+> state
+turn 3, seed 46, beats 3/3
+pulse: 46 95 [2/8]
+window: 34 95 46 [3/8]
+trend: 61 -49 [2/8]
+sorted: 34 46 95 [3/8]
+memo: 95 46 [2/8]
+tagged: 64 70 [2/8]
+history 3: 34/1 129/2 175/3
+spans 3: 34-34/3 34-95/3 34-95/3
+last span -49..61 over 2, sum 12, marks 0
+meter feed: 95 46 34 [3/8]
+meter peaks: 95 46 34 [3/8]
+meter runs 3: 0/0 61/1 12/2
+wide spans 2, marks 304
+tenths: 9 4 [2/8]
+gauge pasts 2:380 2:1140
+gauges 190/1 570/1
+> level
+heap now: 262
+> churn
+churn check 7302
+heap after churn: 290
+> churn
+churn check 7302
+heap after churn: 290
+> scan
+scan hits 36, hot 2, cold 1, deep 95/1, again 95
+ranked 8053
+spans wide 2, covering 50 2, lowest lo 34, over 90 3
+> fold
+fold total 2460
+> level
+heap now: 290
+> tick
+tick 4: sample 79, window 4, trend sum 45, span 110
+> tick
+tick 5: sample 35, window 5, trend sum 1, span 110
+> tick
+tick 6: sample 29, window 6, trend sum -5, span 110
+> level
+heap now: 276
+#repeat 5
+> churn
+churn check 13284
+heap after churn: 304
+#repeat 3
+> scan
+scan hits 48, hot 4, cold 0, deep 209/3, again 174
+ranked 4251
+spans wide 4, covering 50 4, lowest lo 29, over 90 4
+#repeat 3
+> fold
+fold total 3110
+> level
+heap now: 304
+> save
+>> fsi41
+*Ok.
+> level
+heap now: 304
+> state
+turn 6, seed 29, beats 21/99
+pulse: 79 95 [2/8]
+window: 34 95 46 79 35 29 [6/8]
+trend: 61 -49 33 -44 -6 [5/8]
+sorted: 29 34 35 46 79 95 [6/8]
+memo: 95 46 79 [3/8]
+tagged: 64 70 62 57 32 [5/8]
+history 4: 175/3 220/3 160/3 143/3
+spans 4: 34-95/6 34-95/6 34-95/6 29-95/6
+last span -49..61 over 5, sum -5, marks 0
+meter feed: 95 79 46 [3/8]
+meter peaks: 95 79 46 35 [4/8]
+meter runs 3: 45/3 1/4 -5/5
+wide spans 4, marks 835
+tenths: 9 4 7 [3/8]
+gauge pasts 2:894 2:2682
+gauges 476/4 1428/4
+> tick
+tick 7: sample 37, window 7, trend sum 3, span 110
+> advance
+advanced: 91 19 18 84 93 [5/8]
+turn 12, history 4, spans 4, runs 3
+> state
+turn 12, seed 93, beats 23/105
+pulse: 91 93 [2/8]
+window: 35 29 37 91 19 18 84 93 [8/8]
+trend: -6 8 54 -72 -1 66 9 [7/8]
+sorted: 18 19 29 35 37 84 91 93 [8/8]
+memo: 91 84 93 [3/8]
+tagged: 32 33 64 55 18 51 88 [7/8]
+history 4: 147/3 128/3 121/3 195/3
+spans 4: 19-95/8 18-91/8 18-91/8 18-93/8
+last span -72..66 over 7, sum 58, marks 0
+meter feed: 93 91 84 [3/8]
+meter peaks: 93 91 84 37 [4/8]
+meter runs 3: -28/7 5/7 58/7
+wide spans 4, marks 1003
+tenths: 9 8 9 [3/8]
+gauge pasts 2:1188 2:3564
+gauges 608/6 1824/6
+> level
+heap now: 276
+> restore
+>> fsi41
+*Ok.
+> state
+turn 6, seed 29, beats 21/99
+pulse: 79 95 [2/8]
+window: 34 95 46 79 35 29 [6/8]
+trend: 61 -49 33 -44 -6 [5/8]
+sorted: 29 34 35 46 79 95 [6/8]
+memo: 95 46 79 [3/8]
+tagged: 64 70 62 57 32 [5/8]
+history 4: 175/3 220/3 160/3 143/3
+spans 4: 34-95/6 34-95/6 34-95/6 29-95/6
+last span -49..61 over 5, sum -5, marks 0
+meter feed: 95 79 46 [3/8]
+meter peaks: 95 79 46 35 [4/8]
+meter runs 3: 45/3 1/4 -5/5
+wide spans 4, marks 835
+tenths: 9 4 7 [3/8]
+gauge pasts 2:894 2:2682
+gauges 476/4 1428/4
+> level
+heap now: 304
+> tick
+tick 7: sample 37, window 7, trend sum 3, span 110
+> undo
+Room A
+[Previous turn undone.]
+> state
+turn 6, seed 29, beats 21/99
+pulse: 79 95 [2/8]
+window: 34 95 46 79 35 29 [6/8]
+trend: 61 -49 33 -44 -6 [5/8]
+sorted: 29 34 35 46 79 95 [6/8]
+memo: 95 46 79 [3/8]
+tagged: 64 70 62 57 32 [5/8]
+history 4: 175/3 220/3 160/3 143/3
+spans 4: 34-95/6 34-95/6 34-95/6 29-95/6
+last span -49..61 over 5, sum -5, marks 0
+meter feed: 95 79 46 [3/8]
+meter peaks: 95 79 46 35 [4/8]
+meter runs 3: 45/3 1/4 -5/5
+wide spans 4, marks 835
+tenths: 9 4 7 [3/8]
+gauge pasts 2:894 2:2682
+gauges 476/4 1428/4
+> level
+heap now: 304
+> tick
+tick 7: sample 37, window 7, trend sum 3, span 110
+> state
+turn 7, seed 37, beats 22/105
+pulse: 79 95 [2/8]
+window: 34 95 46 79 35 29 37 [7/8]
+trend: 61 -49 33 -44 -6 8 [6/8]
+sorted: 29 34 35 37 46 79 95 [7/8]
+memo: 95 46 79 [3/8]
+tagged: 64 70 62 57 32 33 [6/8]
+history 4: 220/3 160/3 143/3 101/3
+spans 4: 34-95/7 34-95/7 29-95/7 29-95/7
+last span -49..61 over 6, sum 3, marks 0
+meter feed: 95 79 46 [3/8]
+meter peaks: 95 79 46 37 [4/8]
+meter runs 3: 1/4 -5/5 3/6
+wide spans 4, marks 880
+tenths: 9 4 7 [3/8]
+gauge pasts 2:1026 2:3078
+gauges 550/5 1650/5
+> level
+heap now: 276
+> advance
+advanced: 91 19 18 84 93 [5/8]
+turn 12, history 4, spans 4, runs 3
+> undo
+Room A
+[Previous turn undone.]
+> level
+heap now: 276
+> advance
+advanced: 91 19 18 84 93 [5/8]
+turn 12, history 4, spans 4, runs 3
+> advance
+advanced: 81 0 11 61 59 [5/8]
+turn 17, history 4, spans 4, runs 3
+> state
+turn 17, seed 59, beats 24/109
+pulse: 84 93 [2/8]
+window: 18 84 93 81 0 11 61 59 [8/8]
+trend: 66 9 -12 -81 11 50 -2 [7/8]
+sorted: 0 11 18 59 61 81 84 93 [8/8]
+memo: 84 93 81 61 59 [5/8]
+tagged: 51 88 87 40 5 36 60 [7/8]
+history 4: 174/3 92/3 72/3 131/3
+spans 4: 0-93/8 0-93/8 0-93/8 0-93/8
+last span -81..66 over 7, sum 41, marks 0
+meter feed: 93 84 81 [3/8]
+meter peaks: 93 84 81 61 [4/8]
+meter runs 3: -80/7 42/7 41/7
+wide spans 4, marks 1052
+tenths: 8 9 8 6 5 [5/8]
+gauge pasts 2:1140 2:3420
+gauges 610/5 1830/5
+> level
+heap now: 276
+> churn
+churn check 16884
+heap after churn: 304
+#repeat 3
+> again
+churn check 16884
+heap after churn: 304
+> undo
+Room A
+[Previous turn undone.]
+> level
+heap now: 304
+#repeat 4
+> rewind
+rewound: 46 79 35 29 37 91 19 18 [8/8]
+total 483, trend -28, history 4, wide 4, pasts 1350
+heap after rewind: 276
+> tick
+tick 11: sample 84, window 8, trend sum 5, span 138
+> undo
+Room A
+[Previous turn undone.]
+> level
+heap now: 276
+> state
+turn 10, seed 18, beats 31/145
+pulse: 79 91 [2/8]
+window: 46 79 35 29 37 91 19 18 [8/8]
+trend: 33 -44 -6 8 54 -72 -1 [7/8]
+sorted: 18 19 29 35 37 46 79 91 [8/8]
+memo: 46 79 91 [3/8]
+tagged: 62 57 32 33 64 55 18 [7/8]
+history 4: 101/3 157/3 147/3 128/3
+spans 4: 29-95/8 29-95/8 19-95/8 18-91/8
+last span -72..54 over 7, sum -28, marks 0
+meter feed: 91 79 46 [3/8]
+meter peaks: 91 79 46 37 [4/8]
+meter runs 3: 57/7 -76/7 -28/7
+wide spans 4, marks 966
+tenths: 4 7 9 [3/8]
+gauge pasts 2:1350 2:4050
+gauges 580/6 1740/6
+#repeat 5
+> wait
+Time passes.
+> level
+heap now: 276
+> state
+turn 10, seed 18, beats 36/175
+pulse: 79 91 [2/8]
+window: 46 79 35 29 37 91 19 18 [8/8]
+trend: 33 -44 -6 8 54 -72 -1 [7/8]
+sorted: 18 19 29 35 37 46 79 91 [8/8]
+memo: 46 79 91 [3/8]
+tagged: 62 57 32 33 64 55 18 [7/8]
+history 4: 101/3 157/3 147/3 128/3
+spans 4: 29-95/8 29-95/8 19-95/8 18-91/8
+last span -72..54 over 7, sum -28, marks 0
+meter feed: 91 79 46 [3/8]
+meter peaks: 91 79 46 37 [4/8]
+meter runs 3: 57/7 -76/7 -28/7
+wide spans 4, marks 966
+tenths: 4 7 9 [3/8]
+gauge pasts 2:1350 2:4050
+gauges 580/6 1740/6
+> drop
+Dropped. Peak within the heap: true.
+> state
+turn 10, seed 18, beats 37/175
+pulse: none
+window: 46 79 35 29 37 91 19 18 [8/8]
+trend: none
+sorted: none
+memo: none
+tagged: dropped
+history 0:
+spans 0:
+last span: none
+meter feed: none
+meter peaks: [0/8]
+meter runs 0:
+wide spans: none
+tenths: none
+gauge pasts 0:0 0:0
+gauges: none
+> level
+heap now: 0
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+Room A.
+You can see a gauge A and a gauge B here.
+> level
+heap now: 0
+> state
+turn 0, seed 7, beats 0/0
+pulse: none
+window: [0/8]
+trend: none
+sorted: none
+memo: none
+tagged: none
+history 0:
+spans 0:
+last span: none
+meter feed: none
+meter peaks: [0/8]
+meter runs 0:
+wide spans: none
+tenths: none
+gauge pasts 0:0 0:0
+gauges: none
+> restore
+>> fsi41
+*Ok.
+> state
+turn 6, seed 29, beats 21/99
+pulse: 79 95 [2/8]
+window: 34 95 46 79 35 29 [6/8]
+trend: 61 -49 33 -44 -6 [5/8]
+sorted: 29 34 35 46 79 95 [6/8]
+memo: 95 46 79 [3/8]
+tagged: 64 70 62 57 32 [5/8]
+history 4: 175/3 220/3 160/3 143/3
+spans 4: 34-95/6 34-95/6 34-95/6 29-95/6
+last span -49..61 over 5, sum -5, marks 0
+meter feed: 95 79 46 [3/8]
+meter peaks: 95 79 46 35 [4/8]
+meter runs 3: 45/3 1/4 -5/5
+wide spans 4, marks 835
+tenths: 9 4 7 [3/8]
+gauge pasts 2:894 2:2682
+gauges 476/4 1428/4
+> level
+heap now: 304
+> churn
+churn check 13284
+heap after churn: 304
+> drop
+Dropped. Peak within the heap: true.
+> level
+heap now: 0

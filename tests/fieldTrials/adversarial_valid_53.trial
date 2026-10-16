@@ -1,0 +1,173 @@
+Room A
+Room A.
+> base
+baseline set, zero 0.
+> returns
+[1 2][3 4][7 7 7][55 3 8 1 9 2][2 2 2][44 5] 32.
+> used
+used 0.
+> returns
+[1 2][3 4][7 7 7][55 3 8 1 9 2][2 2 2][44 5] 32.
+> used
+used 0.
+> self
+[10 2 3][5 3 8 1 9 2][7 9 5][9 5] 0 0 0 true 33 0.
+> used
+used 0.
+> keep
+[2 2 2] 8.
+> used
+used 9.
+> held
+[2 2 2][] 8.
+> used
+used 9.
+> drop
+dropped.
+> used
+used 0.
+> keeptwo
+[7 2 3] true 8.
+> used
+used 9.
+> held
+[7 2 3][7 3] 8.
+> drop
+dropped.
+> used
+used 0.
+> keepchain
+[9 8 5] 8.
+> used
+used 12.
+> held
+[9 8 5][9 8 5] 8.
+> drop
+dropped.
+> used
+used 0.
+> slots
+0.
+> used
+used 16.
+> slotsshow
+[4 5][4 6] 8.
+> used
+used 16.
+> slotsdrop
+let go.
+> used
+used 0.
+> looprows
+[2 20][2 20][2 20] 3 true.
+> used
+used 9.
+> looprows
+[2 20][2 20][2 20] 3 true.
+> used
+used 9.
+> unbin
+cleared 0.
+> used
+used 0.
+> shelf
+[3 4][2 3][1 2] / [1 2][70 3][1 2][70 3].
+> used
+used 32.
+> shelfshow
+[70 3][2][1 2 3][70 3][3 2 1] 8.
+> used
+used 32.
+> shelfshow
+[70 3][2][1 2 3][70 3][3 2 1] 8.
+> used
+used 32.
+> shelfdrop
+emptied.
+> used
+used 0.
+> grid
+[1 2 3][40 5][6][3 2] / [6][4 5][1 2 3] / [8 8][9].
+> used
+used 0.
+> grid
+[1 2 3][40 5][6][3 2] / [6][4 5][1 2 3] / [8 8][9].
+> used
+used 0.
+> ping
+ping 323 seed 5 0.
+> used
+used 0.
+> func
+[3 2 1 0][2 1][2 4][1 2] 8.
+> used
+used 0.
+> func
+[3 2 1 0][2 1][2 4][1 2] 8.
+> used
+used 0.
+> cells
+2:10 4:20 3:30 1:40 1:40 2:10 3:30 4:20 2:10 4:20 3:30 1:40 4:20 3:30 1:40 4:99 1:40 4:20 4:20 3:30 1:40 .
+> used
+used 0.
+> cellops
+true 3 303 copies 5 2:10 4:20 3:30 1:40 5 4 1:40 3:30 4:20 2:10 1:40 2:10 4:20 2:10 .
+> used
+used 0.
+> cells
+2:10 4:20 3:30 1:40 1:40 2:10 3:30 4:20 2:10 4:20 3:30 1:40 4:20 3:30 1:40 4:99 1:40 4:20 4:20 3:30 1:40 .
+> used
+used 0.
+> walk
+depth 4 0 <3 2 1 0 2 4 6 ><3 2 1 0 2 4 6 >[10 0] 8.
+> used
+used 8.
+> walk
+depth 4 0 <3 2 1 0 2 4 6 ><3 2 1 0 2 4 6 >[10 0] 8.
+> used
+used 8.
+> bags
+filled.
+> used
+used 44.
+> bagsshow
+<0 0 1/1 [1 0]><1 11 1/1 [2 1 0]><2 22 1/1 [3 2 1 0]><2 7 1/1 [3 2 1 0]><2 22 1/1 [3 2 1 0]><2 7 1/1 [3 2 1 0]> 1 8.
+> used
+used 32.
+> bagsdrop
+dropped.
+> used
+used 8.
+> tally
+2001 4001 7 1001 2001 3001 4.
+> used
+used 8.
+> boxes
+spiral 8 #2(2,2)(2,-2) 200;#2(2,2)(2,-2) 200 7;#2(20,2)(2,-2) 200; / #2(20,2)(2,-2) 200;#2(2,2)(2,-2) 200;#2(2,2)(2,-2) 200 7;.
+> used
+used 8.
+> boxes
+spiral 8 #2(2,2)(2,-2) 200;#2(2,2)(2,-2) 200 7;#2(20,2)(2,-2) 200; / #2(20,2)(2,-2) 200;#2(2,2)(2,-2) 200;#2(2,2)(2,-2) 200 7;.
+> used
+used 8.
+#repeat 3
+> ping
+ping 323 seed 5 0.
+> used
+used 8.
+#repeat 3
+> keepchain
+[9 8 5] 8.
+> drop
+dropped.
+> used
+used 8.
+#repeat 2
+> shelf
+[3 4][2 3][1 2] / [1 2][70 3][1 2][70 3].
+> used
+used 40.
+> shelfdrop
+emptied.
+> used
+used 8.
