@@ -595,6 +595,7 @@ class bglParser {
         bool memberArrayPromotes(const arrayDeclaration& arrDecl);
         bool heldByPointer(const arrayDeclaration* ad);
         bool plainSlotOwnsReferenceInstance(classDef* cls);
+        bool hasCopyOperator(classDef* cls);
         bool preScanInheritsValue(classDef* cls);
         void rejectPlainExternMember(const string& typeName, const string& name);
         void rejectMemberBindingMismatch(bool isRef, token sym, const token& typeTok, const token& nameTok);

@@ -1120,7 +1120,7 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
     if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
         classDef* cls = languageService.findClass(varDecl.type.name);
         // A plain local of a reference class with no value owns an object of its own as well.
-        bool ownsReference = plainSlotOwnsReferenceInstance(cls) && !hasValue;
+        bool ownsReference = plainSlotOwnsReferenceInstance(cls) && (!hasValue || hasCopyOperator(cls));
         if(cls && (ownsReference || (!cls->isEmitterClass && !cls->isAlias && !cls->isExternal
                  && classHasStoredFields(cls) && !isReferenceBacked(cls)))){
             // Named like a parameter backing: the class context keeps same-named methods of two
@@ -1323,7 +1323,16 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
         if(varDecl.declaredExpressionValue != nullptr
            && initializerNeedsRuntime(varDecl.declaredExpressionValue->text())){
             string rhs = varDecl.declaredExpressionValue->text();
-            languageService.globalInits.push_back({varDecl.name, globalInitSetUp + varDecl.name + " = " + rhs + ";"});
+            string store = varDecl.name + " = " + rhs + ";";
+            // A value class's global owns its instance: the value is copied into it through its operator =.
+            if(classDef* vc = getDispatchClass(varDecl.type.name); vc != nullptr && isValueClass(vc) && !vc->isEmitterClass && !varDecl.isRefLocal)
+                if(functionDef* op = findAssignOperator(vc, varDecl.declaredExpressionValue->resolvedType,
+                                                        [](functionDef* f){ return !f->isEmitter; }, true)){
+                    mangleOverloadSetForReceiver(vc->name, "=");
+                    if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+                    store = varDecl.name + "." + op->i6name + "(" + rhs + ");";
+                }
+            languageService.globalInits.push_back({varDecl.name, globalInitSetUp + store});
             globalInitSetUp.clear();
             markGlobalsReadEarly(rhs);
             varDecl.declaredExpressionValue = nullptr;
@@ -1342,6 +1351,21 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     if(symbol.is(token::endStatement) && !isRef && !isExternal && !isConst && !isSuperposed && !isAdditive
        && getCurrentCompileContext() == eCompileContext::global && plainSlotOwnsReferenceInstance(getDispatchClass((string)dataType)))
         return processObjectDeclaration(dataType, variableName, false, "", i6alias, false, false);
+    // One whose class has a copy operator, given a value, is its own object, the value copied in at startup.
+    if(symbol.is(token::assignment) && !isRef && !isExternal && !isConst && !isSuperposed && !isAdditive
+       && getCurrentCompileContext() == eCompileContext::global && hasCopyOperator(getDispatchClass((string)dataType))){
+        classDef* cls = getDispatchClass((string)dataType);
+        expression* rhs = parseExpression(file.getToken(), {token::endStatement}, nullptr, nullptr);
+        processObjectDeclaration(dataType, variableName, false, "", i6alias, false, false);
+        functionDef* op = findAssignOperator(cls, rhs->resolvedType, [](functionDef* f){ return !f->isEmitter; }, true);
+        if(op == nullptr)
+            parsingError(format("'{0}' copies through its 'operator =', and none takes a '{1}'.",
+                                typeDisplayName(cls->name), typeDisplayName(rhs->resolvedType)));
+        mangleOverloadSetForReceiver(cls->name, "=");
+        if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+        languageService.globalInits.push_back({(string)variableName, objectI6Name((string)variableName) + "." + op->i6name + "(" + rhs->text() + ");"});
+        return false;
+    }
     variableDeclaration& varDecl = *new variableDeclaration();
     varDecl.src = file.currentLocation();
     varDecl.name=(string) variableName;

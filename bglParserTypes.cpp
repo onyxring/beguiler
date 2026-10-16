@@ -2808,6 +2808,20 @@ bool bglParser::plainSlotOwnsReferenceInstance(classDef* cls){
     return cls != nullptr && !cls->isPrimitive && !cls->isEmitterClass && !cls->isAlias && !isValueClass(cls) && !cls->isUnion();
 }
 
+// Whether a reference class declares a copy operator (`operator =` taking the class or an ancestor), so its `=`
+// copies into the slot's own instance instead of re-pointing. The root's assignment doesn't count.
+bool bglParser::hasCopyOperator(classDef* cls){
+    if(!plainSlotOwnsReferenceInstance(cls)) return false;
+    return findMemberInHierarchy(cls, [&](typeMember* m){
+        auto* fn = dynamic_cast<functionDef*>(m);
+        if(fn == nullptr || fn->name != "=" || fn->isStatic || fn->params.size() != 1) return false;
+        classDef* owner = cls->declaringClass(fn);
+        if(owner == nullptr || owner->isExternal || owner->name == "_bglobject") return false;
+        classDef* pc = getDispatchClass(fn->params[0]->type.name);
+        return pc != nullptr && (pc == cls || cls->hasAncestor(pc));
+    }) != nullptr;
+}
+
 // Whether a member array's property holds a pointer (`ref`, or promoted), including one known so far
 // only by its pre-pass stub, which hasn't been promoted yet.
 bool bglParser::heldByPointer(const arrayDeclaration* ad){

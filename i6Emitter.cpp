@@ -3890,7 +3890,7 @@ classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef
         // are deliberately left at default (references owned elsewhere).
         if(visited.count(fieldCls)) return nullptr;
         // A plain member of a reference class owns an object of its own, unless it is given one to refer to.
-        if(!isValueClass(fieldCls)) return vd->declaredExpressionValue == nullptr ? fieldCls : nullptr;
+        if(!isValueClass(fieldCls)) return vd->declaredExpressionValue == nullptr || fieldCls->copiesOnAssign ? fieldCls : nullptr;
         if(fieldCls->isExternal) return nullptr;
         // Skip if the field's class manages its own allocation via init emitter (e.g. string).
         bool hasInitEmitter = false;
@@ -4316,7 +4316,15 @@ void i6Emitter::emitObjectOwnedMemberInstances(objectDef* obj, map<string, strin
 auto overriddenWithInit = [&](const string& mname) -> bool {
     for(typeMember* m : obj->members)
         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
-            if(vd->name == mname && vd->declaredExpressionValue) return true;
+            if(vd->name == mname && vd->declaredExpressionValue){
+                // A member whose class copies, given an object, owns a copy of it (its starting values).
+                classDef* c = languageService.findClass(vd->type.name);
+                bool copies = c != nullptr && (isValueClass(c) || c->copiesOnAssign);
+                // (An inline `Type{ … }` is already an instance of its own.)
+                string init = vd->declaredExpressionValue->text();
+                if(copies && !vd->isRefLocal && init.rfind("_bglanon", 0) != 0 && languageService.findObjectType(init) != nullptr) return false;
+                return true;
+            }
     return false;
 };
 auto consider = [&](variableDeclaration* vd){
@@ -4332,7 +4340,7 @@ auto consider = [&](variableDeclaration* vd){
     if(!cls || cls->isEmitterClass || cls->isAlias || cls->isPrimitive || cls->isUnion()) return;   // nothing to instantiate
     bool referenceClass = !isValueClass(cls);
     // A plain member of a reference class owns an object of its own, unless it is given one to refer to.
-    if(referenceClass && vd->declaredExpressionValue != nullptr) return;
+    if(referenceClass && vd->declaredExpressionValue != nullptr && !cls->copiesOnAssign) return;
     if(!referenceClass && cls->isExternal) return;
     // Bake a backing instance when the member needs one to be a live object: it has stored
     // state, OR it has a non-emitter method/operator that dispatches ON an instance (e.g. a

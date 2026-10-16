@@ -76,11 +76,10 @@ class*, so it applies only when `v` is one: the shared root doesn't make unrelat
 An `operator =` taking another type is a conversion (a setter's `operator = (int)`). One taking `var`
 would never be chosen, and declaring it is a compile-time error.
 
-An `operator =` taking the class itself (or an ancestor) is a **copy operator**. Only a value class
-(§8.2.7) may declare one — in a reference class `=` already means "refer to", so declaring one there is
-a compile-time error — and a value class never falls back to the root assignment: without a copy
-operator of its own or from a value ancestor, it can't be assigned. A subclass chains to its
-ancestor's copy operator with a cast, `(Base)self = o;`.
+An `operator =` taking the class itself (or an ancestor) is a **copy operator**. A value class (§8.2.7)
+never falls back to the root assignment: without a copy operator of its own or from a value ancestor, it
+can't be assigned. A reference class may declare one too, and then copies on `=` instead of re-pointing
+(§8.2.9). A subclass chains to its ancestor's copy operator with a cast, `(Base)self = o;`.
 
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 

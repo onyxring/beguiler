@@ -163,6 +163,7 @@ of contents.
     - [8.2.6 Pooled Classes](#826-pooled-classes)
     - [8.2.7 Value Classes (`value class`)](#827-value-classes-value-class)
     - [8.2.8 `typesealed` Members](#828-typesealed-members)
+    - [8.2.9 Making a Reference Type Behave Like a Value Type](#829-making-a-reference-type-behave-like-a-value-type)
   - [8.3 Members](#83-members)
     - [8.3.1 Member Variables](#831-member-variables)
     - [8.3.2 `const` Members](#832-const-members)
@@ -1736,7 +1737,8 @@ There are three kinds:
   declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
   parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
   through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
-  declared `ref` (§3.7). A reference class may not declare a copy operator (§9.1).
+  declared `ref` (§3.7). A reference class that declares a copy operator copies on `=` instead
+  (§8.2.9).
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't
@@ -4163,8 +4165,9 @@ with statement bodies, and emitters. Instances are objects with their own storag
 A normal class is a **reference class** (§2.10.3): a global, member or local of the type declared with
 no value has an object of its own; one declared with a value, and every parameter, refers to the
 instance it is given; assignment makes a slot refer to the assigned instance, and a `ref` slot is empty
-until bound (§3.7). A reference class may not declare a copy operator (§9.1). To make the instances
-values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
+until bound (§3.7). A reference class may declare a copy operator, which makes `=` copy (§8.2.9). To make
+the instances values throughout — owned by every variable and parameter and copied — declare the class
+`value` (§8.2.7).
 
 A class that other classes list as a parent can write `selfType` (§2.11) in its members to mean the
 class each one is used on: a parameter, return type or field that is the subclass on a subclass.
@@ -4468,6 +4471,50 @@ place cliffEdge {
     // object parent = southOfRockWall;     // accepted, with a warning; stays parentProp
 }
 ```
+
+### 8.2.9 Making a Reference Type Behave Like a Value Type
+
+**Syntax**
+
+```syntax
+class ⟨name⟩ [ : ⟨parent⟩ … ] { … ⟨name⟩ operator = ( ⟨name⟩ ⟨param⟩ ) { … } … }
+```
+
+**Description**
+
+A reference class (§8.2.1) that declares a copy operator (§9.1) copies on `=`, as a value class does: `=` is
+the type's assignment everywhere (§3.7), and this type's assignment is its copy operator.
+
+- A plain global, member or local owns an instance of its own, whether or not it is given a value. Given one,
+  the value is copied into it: a local's when the declaration runs, a member's from the named object's
+  values, a global's at startup.
+- `=` on a plain slot copies into its instance. `:=` on it is a compile-time error: it owns its instance.
+- A `ref` slot refers to an instance owned elsewhere: it binds with `:=`, which never calls the copy
+  operator, and `=` through it copies into the instance it refers to. A `ref` that is still empty has
+  nothing to copy into.
+- Parameters and loop variables stay references, as for any reference class: passing doesn't copy. This is
+  the difference from a value class, whose parameters are copies.
+
+> **Compared with C++.** A plain slot is like a C++ object with an `operator=`; a `ref` is like a pointer
+> whose `*p = x` copies and whose `p = &x` re-points (`:=`).
+
+**Example**
+
+```bgl
+class Card : object {
+    int n;
+    Card operator = (Card o){ n = o.n; return self; }
+}
+Card a { n = 1; }
+Card b = a;            // its own Card, a copy of a
+void f(Card c){ c.n = 5; }
+f(a);                  // c refers to a: a.n is now 5
+ref Card r := a;       // r refers to a
+r = b;                 // copies b into a
+r := b;                // r now refers to b
+```
+
+**See also** §3.7, §8.2.7, §9.1.
 
 ## 8.3 Members
 
@@ -5113,11 +5160,10 @@ class*, so it applies only when `v` is one: the shared root doesn't make unrelat
 An `operator =` taking another type is a conversion (a setter's `operator = (int)`). One taking `var`
 would never be chosen, and declaring it is a compile-time error.
 
-An `operator =` taking the class itself (or an ancestor) is a **copy operator**. Only a value class
-(§8.2.7) may declare one — in a reference class `=` already means "refer to", so declaring one there is
-a compile-time error — and a value class never falls back to the root assignment: without a copy
-operator of its own or from a value ancestor, it can't be assigned. A subclass chains to its
-ancestor's copy operator with a cast, `(Base)self = o;`.
+An `operator =` taking the class itself (or an ancestor) is a **copy operator**. A value class (§8.2.7)
+never falls back to the root assignment: without a copy operator of its own or from a value ancestor, it
+can't be assigned. A reference class may declare one too, and then copies on `=` instead of re-pointing
+(§8.2.9). A subclass chains to its ancestor's copy operator with a cast, `(Base)self = o;`.
 
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 

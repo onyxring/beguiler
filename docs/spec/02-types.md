@@ -694,7 +694,8 @@ There are three kinds:
   declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
   parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
   through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
-  declared `ref` (§3.7). A reference class may not declare a copy operator (§9.1).
+  declared `ref` (§3.7). A reference class that declares a copy operator copies on `=` instead
+  (§8.2.9).
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't

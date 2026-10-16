@@ -1359,19 +1359,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         }
     }
 
-    // A reference class shares its instances: `=` already means "refer to", so it can't also declare a
-    // copy operator (one taking the class itself or an ancestor). A conversion from another type is fine.
-    if(!newClass.isEmitterClass && !newClass.isAlias && !newClass.isExternal && !newClass.isPrimitive
-       && !isValueClass(&newClass)){
-        for(typeMember* m : newClass.members)
-            if(auto* fn = dynamic_cast<functionDef*>(m))
-                if(fn->name == "=" && !fn->isStatic && !fn->isPrePassStub && fn->params.size() == 1)
-                    if(classDef* pc = getDispatchClass(fn->params[0]->type.name); pc != nullptr && (pc == &newClass || newClass.hasAncestor(pc)))
-                        parsingError(format("class '{0}' is a reference class: '=' already means \"refer to\", so it can't declare a "
-                                            "copy operator ('operator =' taking '{1}'). Declare it 'value class {0}' to copy, or write a "
-                                            "method (such as clone()) to duplicate an instance.", newClass.dName(), typeDisplayName(fn->params[0]->type.name)));
-    }
-
+    newClass.copiesOnAssign = hasCopyOperator(&newClass);
     currentClass = savedClass;
     closeCompileContext(eCompileContext::objectDef);
     return false;

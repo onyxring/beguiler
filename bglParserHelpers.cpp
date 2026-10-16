@@ -249,13 +249,13 @@ std::string refNotApplicable(classDef* cls, const std::string& typeShown){
 }
 
 // True when a slot of `cls` refers to an instance rather than owning one: every class except a value
-// class (and an alias class, which dissolves into its parent).
+// class or a class with a copy operator (and an alias class, which dissolves into its parent).
 //
 // This is DISTINCT from isObjectBackedClass(), which gates inline-OBJECT `{…}` inference.
 bool isReferenceBacked(classDef* cls){
     if(!cls) return false;
     if(cls->isAlias) return true;
-    return !isValueClass(cls);
+    return !isValueClass(cls) && !cls->copiesOnAssign;
 }
 
 // True iff `ancestor` is a STRICT (transitive) base of `descendant`. Walks descendant's base

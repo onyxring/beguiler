@@ -71,6 +71,7 @@ class classDef:public typeDef{
         bool isGlobalEmitterObject = false; // true for 'emitter Foo { }': singleton emitter namespace; accessed as Foo.method(), no instances
         bool isAlias = false;               // true for 'alias Foo : Parent { }': Beguile type that dissolves to parent for emission
         bool isValue = false;               // `value class`: instances are copied; variables own one (inherited)
+        bool copiesOnAssign = false;        // a reference class with a copy operator: a plain slot owns its instance
         bool isPrimitive = false;           // `primitive class`: a variable holds the value itself; no instance
         // `superposed` class: withhold the I6 `Class` directive from the source-order emit and let it
         // materialize only when a backing instance is baked for it (inside its host's create+populate,

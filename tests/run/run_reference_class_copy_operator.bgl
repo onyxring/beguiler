@@ -1,0 +1,40 @@
+// run_reference_class_copy_operator — a reference class may declare a copy operator. A plain slot then owns its
+// own instance, given a value or not, and '=' copies into it; a 'ref' slot refers, and '=' through it copies into
+// what it refers to; ':=' re-points a 'ref' without calling the operator.
+// EXPECT_OUTPUT: 1 1 2 50 60 | 2 7 | 2 9 2 7 | 2 4 | 99 2
+#beguilerSettings { target = z5; informName = "none"; }
+class Card : object { int n; Card operator = (Card o) { n = o.n; return self; } }
+Card gC1 { n = 1; }
+Card gC2 { n = 2; }
+Card gC3 = gC1;                       // its own object, gC1 copied in at startup
+object obj { Card iC1; Card iC2 = gC1; ref Card iC3 := gC1; }
+class Holder : object { Card own; }
+Holder h1;
+void locals() {
+    Card mC1;                         // its own Card
+    Card mC2 = gC1;                   // its own Card, a copy of gC1
+    mC2.n = 50;
+    mC1 = gC2;                        // copies gC2 into mC1
+    mC1.n = 60;
+    print($"{gC1.n} {gC2.n} {mC2.n} {mC1.n} | ");
+    ref Card rmC := gC1;
+    rmC = gC2;                        // copies gC2 into gC1
+    print($"{gC1.n} ");
+    rmC := gC2;                       // re-points; operator = not called
+    rmC.n = 7;
+    print($"{gC2.n} | ");
+}
+void main() {
+    bglInit();
+    print($"{gC3.n} ");               // read before locals() changes gC1
+    locals();
+    obj.iC2.n = 9;
+    print($"{obj.iC3.n} {obj.iC2.n} ");
+    obj.iC1 = gC2;
+    print($"{gC1.n} {obj.iC1.n} | ");
+    h1.own = gC1;
+    gC1.n = 4;
+    print($"{h1.own.n} {gC1.n} | ");
+    gC3.n = 99;
+    print($"{gC3.n} {gC1.n == 4 ? 2 : 0}");
+}

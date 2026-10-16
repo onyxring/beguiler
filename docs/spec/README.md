@@ -151,6 +151,7 @@ appendices are for lookup.
     - [8.2.6 Pooled Classes](08-classes.md#826-pooled-classes)
     - [8.2.7 Value Classes (`value class`)](08-classes.md#827-value-classes-value-class)
     - [8.2.8 `typesealed` Members](08-classes.md#828-typesealed-members)
+    - [8.2.9 Making a Reference Type Behave Like a Value Type](08-classes.md#829-making-a-reference-type-behave-like-a-value-type)
   - [8.3 Members](08-classes.md#83-members)
     - [8.3.1 Member Variables](08-classes.md#831-member-variables)
     - [8.3.2 `const` Members](08-classes.md#832-const-members)

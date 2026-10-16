@@ -2019,7 +2019,8 @@ void bglParser::preScanObject(token& tok, bool isExtern){
     } else {
         // `ClassName Name;` of a reference class is that class's object, as with `{ }`.
         if(classDef* oc = languageService.findClass(classType);
-           peek.is(token::endStatement) && !isExtern && !isVerbType && !preScanIsRef && !preScanIsConst
+           (peek.is(token::endStatement) || (peek.is(token::assignment) && hasCopyOperator(oc)))
+           && !isExtern && !isVerbType && !preScanIsRef && !preScanIsConst
            && plainSlotOwnsReferenceInstance(oc) && !preScanInheritsValue(oc) && !languageService.isObjectType(nameStr)){
             objectDef& obj = languageService.registerObject(nameStr, false);
             obj.isPrePassStub = true;
