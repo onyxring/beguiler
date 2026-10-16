@@ -8,11 +8,11 @@
 #include <array>
 #i6 { Global hiddenByI6; [ HideArray a; hiddenByI6 = a; ]; }
 extern void HideArray(array<int> a);
-array<int> make(){ array<int> t[3]; t += 31; return t; }
+void hide(){ array<int> t[3]; t += 31; bgl.gc.keep(t); HideArray(t); bgl.gc.unpin(t); }
 void main(){
     bglInit();
     #i6 { _bglHeapTraceLevel-->0 = 2; }
-    HideArray(make());
+    hide();
     bgl.gc.collect();
     print($"still {bgl.gc.used}");
 }

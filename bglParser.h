@@ -21,6 +21,7 @@ struct exitFileSignal {};   // thrown by #exit to unwind to the enclosing parseF
 // Member/global receivers often resolve to the bare base while locals/LINQ results
 // keep the template parameter; array $self/$prop lowering must treat both the same.
 inline bool isWordArrayType(const std::string& t){ return t == "array" || t.rfind("array<", 0) == 0; }
+inline std::string lowerText(std::string t){ for(char& c : t) c = (char)tolower((unsigned char)c); return t; }
 
 // True when a type is itself a templated array — the element type of an array-of-arrays.
 inline bool isArrayOfArraysElement(const std::string& t){ return t.rfind("array<", 0) == 0 || t.rfind("rawarray<", 0) == 0; }
@@ -675,6 +676,11 @@ class bglParser {
         bool declLiteral = false;             // the declaration being parsed was qualified `literal`
         classDef* owningValueElementClass(const string& elementType);
         bool memberIsArrayData(const string& text, string& shown);
+        bool slotHoldsArray(const string& type);
+        string claimOwner(const string& slot);
+        bool hasOwner(const string& slot);
+        class arrayDeclaration* localStructArray(const string& name, statementBlock* body);
+        void rejectEscapingView(const expression* e, const string& how);
         void ensureOwnPrintOverload(const string& typeName);
         functionDef* replaceOwner();
         map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey

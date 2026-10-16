@@ -344,7 +344,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `distinct()` | `array<T>` | The first occurrence of each value. |
 | `orderBy()` | `array<T>` | A sorted copy, by signed word value; the source is unchanged. |
 | `orderBy(compare)` | `array<T>` | A sorted copy using `func<int, T, T>`. |
-| `first()` / `last()` | `T` | The first / last element; `0` when empty. |
+| `first()` / `last()` | `T` | The first / last element; `0` when empty, or a run-time error for a struct, which has no `0`. |
 | `count()` | `int` | The same as `length`. |
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |

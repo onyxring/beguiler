@@ -48,10 +48,10 @@ extend extern class array {
     // Terminals — collapse a chain to a scalar, with no new array; receiver
     // type drives element type for first/last (returns T) and any/all (pred
     // signature). count is a plain alias of length() for naming familiarity.
-    /// The first element, or 0 when empty. A terminal — it ends the chain.
-    emitter T    first()                            { _bglArray.first($self, $prop) }
-    /// The last element, or 0 when empty. A terminal.
-    emitter T    last()                             { _bglArray.last($self, $prop) }
+    /// The first element, or 0 when empty (an error for a struct, which is never empty). A terminal — it ends the chain.
+    emitter T    first()                            { _bglArray.first($self, $prop, $opref(deinit)) }
+    /// The last element, or 0 when empty (an error for a struct). A terminal.
+    emitter T    last()                             { _bglArray.last($self, $prop, $opref(deinit)) }
     /// How many elements. A terminal; the same number as `length`.
     emitter int  count()                            { _bglArray.chainCount($self, $prop) }
     /// True when at least one element satisfies `pred`. Stops at the first hit.
@@ -115,17 +115,27 @@ extend _bglArray {
         return n;
     }
 
-    var first(var obj, var prop){
+    var first(var obj, var prop, var owned = 0){
         var r = 0;
         if(length(obj, prop) > 0) r = get(obj, prop, 0);
+        else if(owned != 0) emptyValueError("first");
         _bglLinqUsed(obj, prop);
         return r;
     }
 
-    var last(var obj, var prop){
+    // An element that is a value (a struct) has no 0 to stand for "none".
+    void emptyValueError(string which){
+        print("^[Beguile run-time error: ");
+        print(which);
+        print("() of an empty array of values; check count() first]^");
+        #i6 { quit; }
+    }
+
+    var last(var obj, var prop, var owned = 0){
         var r = 0;
         int len = length(obj, prop);
         if(len > 0) r = get(obj, prop, len - 1);
+        else if(owned != 0) emptyValueError("last");
         _bglLinqUsed(obj, prop);
         return r;
     }

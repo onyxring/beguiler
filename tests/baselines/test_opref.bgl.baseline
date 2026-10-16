@@ -657,6 +657,10 @@ object _bglBuf
                 break;
             }
             if(retval==0) {
+                #Ifdef TARGET_GLULX;
+                    ! At startup no window is open yet to print the error in.
+                    if(glk($0048) == 0) glk($002F, glk($0023, 0, 0, 0, 3, 0));
+                #Endif;
                 print "^[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]^";
                 quit;
             }
@@ -1444,7 +1448,9 @@ Array _bglVal_Point_used -> 4;
   if(_bglv == 0) return _bglcur;
   if(_bglcur == 0){
     for(_bgli = 0: _bgli < 4: _bgli++) if(_bglVal_Point_used->_bgli == 0) break;
-    if(_bgli == 4){ print "^[** Programming error: all 4 array slots for Point values are in use **]^"; return 0; }
+    if(_bgli == 4 && _bglPromptHook){ _bglPromptHook(true);
+      for(_bgli = 0: _bgli < 4: _bgli++) if(_bglVal_Point_used->_bgli == 0) break; }
+    if(_bgli == 4){ print "^[Beguile run-time error: all 4 instances of Point are in use: the program holds more in arrays at once than they declare slots for]^"; quit; }
     _bglVal_Point_used->_bgli = 1; _bglcur = _bglVal_Point_pool-->_bgli; _bglcur.x = 0;
   }
   _bglcur._opeq(_bglv);
@@ -1498,7 +1504,9 @@ Array _bglVal_Tagged_used -> 4;
   if(_bglv == 0) return _bglcur;
   if(_bglcur == 0){
     for(_bgli = 0: _bgli < 4: _bgli++) if(_bglVal_Tagged_used->_bgli == 0) break;
-    if(_bgli == 4){ print "^[** Programming error: all 4 array slots for Tagged values are in use **]^"; return 0; }
+    if(_bgli == 4 && _bglPromptHook){ _bglPromptHook(true);
+      for(_bgli = 0: _bgli < 4: _bgli++) if(_bglVal_Tagged_used->_bgli == 0) break; }
+    if(_bgli == 4){ print "^[Beguile run-time error: all 4 instances of Tagged are in use: the program holds more in arrays at once than they declare slots for]^"; quit; }
     _bglVal_Tagged_used->_bgli = 1; _bglcur = _bglVal_Tagged_pool-->_bgli; _bglcur.v = 0;
   }
   _bglcur._opeq(_bglv);
@@ -2022,6 +2030,7 @@ array _bglsink --> 1;
             }
             o = o + (b-->0) * WORDSIZE;
         }
+        if(_bglHeap-->3 > 0){ _bglHeapCollect(true); return _bglHeapAlloc(n, kind); }
         print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
         quit;
     
@@ -2034,6 +2043,37 @@ array _bglsink --> 1;
         return m;
     
 ];
+[_bglHeapCollect midRoutine o b again roots;
+    o = 0;
+    b = 0;
+    again = 0;
+    roots = 48;
+    
+        if(_bglHeap == 0) return;
+        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too.
+        if(midRoutine) roots = 56;
+        do {
+            _bglGcRoots();
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if(b-->2 & roots) _bglHeapMark(b + 5 * WORDSIZE);
+            }
+            _bglHeapTrace();
+            #Ifdef DEBUG;
+                if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
+            #Endif;
+            ! A freed array of structs gives its instances back, which let go of what their members held: those
+            ! arrays are swept by another pass.
+            again = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) == 1){ if(b-->1) again = true; _bglHeapRelease(b); }
+                else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+            }
+        } until(again == false);
+        _bglHeap-->3 = 0;
+    
+];
 [_bglHeapDropOwned a b;
     b = 0;
     
@@ -2041,7 +2081,7 @@ array _bglsink --> 1;
         if(b == 0) return;
         b-->2 = b-->2 & ~32;
         if((b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
         _bglHeapRelease(b);
     
 ];
@@ -2064,6 +2104,18 @@ array _bglsink --> 1;
         _bglPromptHook = _bglHeapAtPrompt;
     
 ];
+[_bglHeapMark w b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
+];
+[_bglHeapNoteFresh a;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
+    
+];
 [_bglHeapRelease b a i;
     a = 0;
     i = 0;
@@ -2081,42 +2133,6 @@ array _bglsink --> 1;
         i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
         if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
         else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
-    
-];
-array _bglheapstore --> 1536;
-[_bglHeapAtPrompt;
-    
-        if(_bglHeap == 0) return;
-        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
-    
-];
-[_bglHeapCollect o b;
-    o = 0;
-    b = 0;
-    
-        if(_bglHeap == 0) return;
-        _bglGcRoots();
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
-        }
-        _bglHeapTrace();
-        #Ifdef DEBUG;
-            if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
-        #Endif;
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if((b-->2 & 3) == 1) _bglHeapRelease(b);
-            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
-        }
-        _bglHeap-->3 = 0;
-    
-];
-[_bglHeapMark w b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(w);
-        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
     
 ];
 [_bglHeapTrace o b a i more;
@@ -2171,7 +2187,16 @@ array _bglheapstore --> 1536;
         return found;
     
 ];
+array _bglfresh --> 48;
+array _bglheapstore --> 1536;
 array _bglheaptracelevel --> 1;
+[_bglHeapAtPrompt now;
+    
+        if(_bglHeap == 0) return;
+        if(now){ _bglHeapCollect(true); return; }
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    
+];
 
 [ _bglGcRoots o i;
     o = 0; i = 0;

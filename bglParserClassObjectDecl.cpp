@@ -2274,7 +2274,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.i6name = memberI6NameFor(prop.name, i6alias, obj.isExternal);
     prop.src = file.currentLocation();
     prop.type = languageService.getType(typeName);
-    if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
+    if(typeName.rfind("func<", 0) == 0 || isUnionType(typeName)) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
     prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
     if(obj.isExternal && !isRef && !typeName.empty() && !isWordArrayType(typeName)) rejectPlainExternMember(typeName, prop.dName());
     if(objectMemberIsConst){ prop.isConst = true; objectMemberIsConst = false; }
@@ -2357,6 +2357,8 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
 void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace, bool isRef){
     // func<...> member: consume its own <...> so it isn't mistaken for the member name.
     if(typeTok.value == "func") typeTok.value = parseFuncType();
+    else if((typeTok.value == "array" || typeTok.value == "rawarray") && file.peekToken().is("<"))
+        typeTok.value = parseArrayTypeTail(typeTok.value);   // `array<int> | string note`
     typeTok.value = maybeParseUnionTail(typeTok.value);  // A | B | ... union member type
     // A member name may collide with a TYPE name — Beguile is case-insensitive, so a user class
     // `A` makes the bare word `a` lex as a dataType. Accept both, as the class-member path does;
@@ -3550,7 +3552,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         funcDef.body = &rawblock;
         if(!replaceStubMember(newObj.members, funcDef))
             newObj.members.push_back((typeMember*)&funcDef);
-    } else if(tok.value == "array" || tok.value == "rawarray")
+    } else if((tok.value == "array" || tok.value == "rawarray") && !genericTypeIsUnionHead())
         processArrayMember(newObj.members, newObj.dName(), dynamic_cast<verbObjectDef*>(&newObj), &newObj, &q, tok.value == "rawarray", tok.docComment);
     else if(tok.isDataType() && !assignsMember)
         processTypedMember(newObj, tok, memberIsReplace, q.isRef);
@@ -4026,7 +4028,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             }
             if(!replaced) obj->members.push_back((typeMember*)&funcDef);
         }
-    } else if(tok.value == "array" || tok.value == "rawarray")
+    } else if((tok.value == "array" || tok.value == "rawarray") && !genericTypeIsUnionHead())
         processArrayMember(obj->members, obj->dName(), dynamic_cast<verbObjectDef*>(obj), obj, &q, tok.value == "rawarray", tok.docComment);
     else if(tok.isDataType()){
         // Check for += / -= compound assignment on a typed member

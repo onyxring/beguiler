@@ -577,6 +577,10 @@ object _bglBuf
                 break;
             }
             if(retval==0) {
+                #Ifdef TARGET_GLULX;
+                    ! At startup no window is open yet to print the error in.
+                    if(glk($0048) == 0) glk($002F, glk($0023, 0, 0, 0, 3, 0));
+                #Endif;
                 print "^[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]^";
                 quit;
             }

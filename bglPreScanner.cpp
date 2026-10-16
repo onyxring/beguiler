@@ -2251,6 +2251,9 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
         functionDef& stub = *(new functionDef());
         stub.name = nameStr;
         stub.returnType.name = typeName;
+        // A function returning `array<T>` keeps T, so a chain on a call above the declaration knows its elements.
+        if((typeName == "array" || typeName == "rawarray") && genericSuffix.size() > 2)
+            stub.returnType.name = typeName + genericSuffix == "array<char>" ? "bytearray" : typeName + genericSuffix;
         stub.isEmitter = isEmitter;
         stub.isExternal = isExtern;
         stub.isPrePassStub = true;

@@ -252,4 +252,4 @@ Reads 9/9, sums 8/0.
 > usage
 Used 80.
 > bounds
-Peak 261, under half the heap: true. Size 836.
+Peak 250, under half the heap: true. Size 836.

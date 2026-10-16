@@ -818,6 +818,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                 break;
             }
 
+    string forInOwner;   // the hidden owner of a call's or chain's result being walked
     // A member word array reached by a path (`cfg.limits`, `self.limits`): iterated in place.
     ArrayReceiver memberSrc;
     bool viaPointer = false;
@@ -880,6 +881,30 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
     // A member word array through a computed receiver (`((Bay)o).counts`): the receiver is read once, into
     // a local, and its array walked in place.
     string computedOwner;
+    // A member read off an element or another computed receiver (`tallies[0].log`) that the expression didn't
+    // record: the member array of that name, when every class declaring one holds it in the property.
+    if(arrExpr != nullptr && arrExpr->memberArrayDecl == nullptr && !memberSrc.isMember && arrName.empty()
+       && isWordArrayType(arrExpr->resolvedType) && arrExprText.find('(') != string::npos){
+        size_t dot = arrExprText.rfind('.');
+        string prop = dot == string::npos ? "" : arrExprText.substr(dot + 1);
+        if(!prop.empty() && prop.find_first_of("()[]-> ") == string::npos){
+            arrayDeclaration* found = nullptr;
+            bool clash = false;
+            for(typeDef* g : languageService.globals)
+                if(auto* c = dynamic_cast<classDef*>(g))
+                    for(typeMember* m : c->members)
+                        if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && !ad->isStatic
+                           && (ad->name == prop || propertyI6Name(ad->name) == prop || ad->i6name == prop)){
+                            if(heldByPointer(ad) || (found != nullptr && found->elementType != ad->elementType)) clash = true;
+                            found = ad;
+                        }
+            if(found != nullptr && !clash){
+                arrExpr->memberArrayDecl = found;
+                arrExpr->memberArrayOwner = arrExprText.substr(0, dot);
+                arrExpr->memberArrayProp = prop;
+            }
+        }
+    }
     if(!isChildrenSource && !memberSrc.isMember && memberSrc.staticElemType.empty() && arrExpr != nullptr
        && arrExpr->memberArrayDecl != nullptr && arrName.empty() && arrExprText.find('(') != string::npos
        && arrExprText.size() > arrExpr->memberArrayProp.size()
@@ -903,6 +928,12 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         if(body != nullptr) body->statements.push_back(&tmpDecl);
         i6RawNode& assign = *(new i6RawNode());
         assign.text = arrName + " = " + arrExprText + ";";
+        // A call's or a chain's result is the loop's own while it runs (dropped after it, or at the routine's exit).
+        if(currentFunc != nullptr && !arrExprText.empty() && arrExprText.back() == ')'
+           && lowerText(arrExprText).find("_bglworld") == string::npos){   // a world query's result is a static buffer
+            forInOwner = claimOwner(arrName);
+            assign.text = forInOwner + " = _bglHeapReown(" + forInOwner + ", (" + arrName + " = " + arrExprText + "));";
+        }
         assign.cooked = true;   // a local named like the member (`made` beside `bench.made`) is still renamed
         if(body != nullptr) body->statements.push_back(&assign);
         arrElemType = "var";
@@ -988,7 +1019,8 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                op != nullptr && !op->isEmitter){
                 mangleOverloadSetForReceiver(vc->name, op->name);
                 if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
-                string fname = func->name;
+                functionDef* owner = currentFunc != nullptr ? currentFunc : func;   // a nested block parses against its own
+                string fname = owner->name;
                 for(char& ch : fname) if(!isalnum((unsigned char)ch) && ch != '_') ch = '_';   // an operator's routine
                 string name = format("_bglLoopv_{0}_{1}", fname, paramBackingNames.size());
                 while(!paramBackingNames.insert(name).second) name += "_";
@@ -998,7 +1030,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                 backing->src = stmtLoc;
                 backing->isInstanceBacking = true;
                 languageService.registerInstance(*backing);
-                func->ownBackings.push_back({name, vc->name});
+                owner->ownBackings.push_back({name, vc->name});
                 fi.elementConversion = format("({0}.{1}(@@ELEM@@) * 0 + {0})", name, op->i6name);
                 // A slot nothing has filled holds no instance: the loop variable takes the class's defaults.
                 string zero = name + "_zero";
@@ -1090,6 +1122,12 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
     }
     loopDepth--; loopBlockDepths.pop_back(); currentLoopVars.erase(elemVarName);
     if(body != nullptr) body->statements.push_back(&fi);
+    if(!forInOwner.empty() && body != nullptr){
+        auto* drop = new i6RawNode();
+        drop->text = "_bglHeapDropOwned(" + forInOwner + "); " + forInOwner + " = 0;";
+        drop->cooked = true;
+        body->statements.push_back(drop);
+    }
     for(statement* inj : sourceAfter) if(body != nullptr) body->statements.push_back(inj);
     return false;
 }
@@ -2682,10 +2720,12 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // An element that is an array is assigned as an array is: copied into the array the slot holds (an empty
     // slot takes the array itself).
     else if(isWordArrayType(elemType) && elemType != "array<char>"){
-        if(!isMemberWordArray && pointerSlot.empty())
-            valExpr->tokens.assign(1, substituteElemOps("$opref(=)", elemType, "") + "(_bglAt(" + arrPath + ", " + indexExpr->text() + ", 0)-->0, " + valExpr->text() + ")");
-        else
-            valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
+        string rowSlot = !pointerSlot.empty() ? pointerSlot
+                       : isMemberWordArray ? checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), true,
+                                                               memberArrayIsTracked(memOwner, memProp, func, body))
+                       : "_bglAt(" + arrPath + ", " + indexExpr->text() + ", 0)-->0";
+        if(bind) valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
+        else valExpr->tokens.assign(1, substituteElemOps("$opref(=)", elemType, "") + "(" + rowSlot + ", " + valExpr->text() + ")");
     }
     if(!bind && !isMemberWordArray && pointerSlot.empty() && !operatorRef(elemType, "=").empty()){
         functionDef* owned = nullptr;
@@ -3570,13 +3610,37 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     string storeText;   // the copy, which takes the place of the array's `operator =`
     bool slotOfAnyType = t.leftType != nullptr && (t.leftType->name == "var" || isUnionType(t.leftType->name)
         || (getDispatchClass(t.leftType->name) != nullptr && getDispatchClass(t.leftType->name)->isUnion()));
-    if(slotOfAnyType && val != nullptr && !isBindAssign && isWordArrayType(val->resolvedType) && currentFunc != nullptr
+    bool slotIsLocal = currentFunc != nullptr && a.variableLeft.find('.') == string::npos
+        && (qualifyFromParams(a.variableLeft, currentFunc)
+            || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())
+            || qualifyFromAncestorBlocks(a.variableLeft, nullptr));
+    if(slotOfAnyType && val != nullptr && !isBindAssign && slotIsLocal && hasOwner(a.variableLeft) && a.src.file.find("beguiLib") == string::npos
+       && !isWordArrayType(val->resolvedType) && !slotHoldsArray(val->resolvedType)){
+        // The local lets go of the array it owned.
+        string own = claimOwner(a.variableLeft);
+        val->tokens = {"_bglHeapReown(" + own + ", (" + a.variableLeft + " = " + val->text() + "))"};
+        a.variableLeft = own;
+        a.assignedExpression = val;
+        return;
+    }
+    if(slotOfAnyType && val != nullptr && !isBindAssign && (isWordArrayType(val->resolvedType) || slotHoldsArray(val->resolvedType)) && currentFunc != nullptr
        && a.src.file.find("beguiLib") == string::npos){
         // A `var` or union slot holds the array itself; one that outlives the routine keeps it past its owner.
         bool localSlot = a.variableLeft.find('.') == string::npos
             && (qualifyFromParams(a.variableLeft, currentFunc)
-                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
-        if(!localSlot) val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
+                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())
+                || qualifyFromAncestorBlocks(a.variableLeft, nullptr));
+        if(!localSlot){
+            rejectEscapingView(val, "kept in a global or member");
+            val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
+        } else if(isWordArrayType(val->resolvedType)){
+            // A local takes a result nothing owns, as an array local declared from one does.
+            string own = claimOwner(a.variableLeft);
+            val->tokens = {"_bglHeapReown(" + own + ", (" + a.variableLeft + " = " + val->text() + "))"};
+            a.variableLeft = own;
+            a.assignedExpression = val;
+            return;
+        }
     }
     // A union slot holds whichever member's value it is given: a plain store, whatever its first member's `=` does.
     if(slotOfAnyType && t.leftType->name != "var" && val != nullptr && !isBindAssign){
@@ -3594,11 +3658,23 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             && splitQualifiedMember(a.variableLeft, currentFunc, nullptr, lOwner, lProp);
         bool localSlot = !member && !pointerMember && currentFunc != nullptr && a.variableLeft.find('.') == string::npos
             && (qualifyFromParams(a.variableLeft, currentFunc)
-                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
+                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())
+                || qualifyFromAncestorBlocks(a.variableLeft, nullptr));
         if(isBindAssign){
             // A global or member bound to an array keeps it past the routine that made it.
-            if(!localSlot && currentFunc != nullptr && t.leftType->name != "bytearray")
+            if(!localSlot && currentFunc != nullptr && t.leftType->name != "bytearray"){
+                rejectEscapingView(val, "bound to a global or member");
                 val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
+            }
+            // A `ref` local takes a result nothing owns, as an array local declared from one does.
+            else if(localSlot && currentFunc != nullptr && t.leftType->name != "bytearray" && !val->tokens.empty()
+                    && !val->text().empty() && (val->text().back() == ')' || hasOwner(a.variableLeft))){
+                string own = claimOwner(a.variableLeft);
+                val->tokens = {"_bglHeapReown(" + own + ", (" + a.variableLeft + " = " + val->text() + "))"};
+                a.variableLeft = own;
+                a.assignedExpression = val;
+                return;
+            }
         } else if(t.leftType->name == "bytearray"){
             if(!localSlot && currentFunc != nullptr){
                 val->tokens = {"_bglByteArrCopyInto(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)

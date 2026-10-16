@@ -1,0 +1,51 @@
+// run_heap_round2_fixes — results nothing takes are freed after their statement (in loops too, with no prompt);
+// for-in, ref and var locals take results; array<var> and union elements keep theirs; member rows copy; a local
+// array of arrays frees its rows; a struct pool collects before it gives up.
+// EXPECT_OUTPUT: temps 3000 used 0 | forin 300 used 0 | refvar 3 3 used 0 | bag 2 used 10 | member row 2 7 | rows 600 used 0 | pool 5 | row 3
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+#include <array>
+#include <linq>
+array<int> src = {1, 2, 3};
+array<int> make(int n){ array<int> t[4]; t += n; t += n; t += n; return t; }
+array<var> bag[2];
+object shelf { array<array<int>> racks[2]; }
+array<int> tray = {7, 8, 9, 10};
+array<int> lastRow(){ array<array<int>> m = { {1, 1}, {2, 2, 2} }; return m[1]; }
+void rowCheck(){ array<int> e = lastRow(); array<int> z = src.filter((int x) => x > 1); print($"row {e.length}"); }
+int gridSum(){ array<array<int>> g = { {1, 2}, {3} }; return g[0][0] + g[0][1] + g[1][0]; }
+struct Item { int n; }
+ref array<Item> batch;
+array<Item> fill(int n){ array<Item> t[2]; t += Item{ n = n; }; return t; }
+void main(){
+    bglInit();
+    int t = 0;
+    for(int i = 0; i < 1000; i++) t += make(1)[0] + make(1).length - 1 + (src.filter((int x) => x > 0) == src ? 1 : 0);
+    print($"temps {t} used {bgl.gc.used} | ");
+    int f = 0;
+    for(int i = 0; i < 100; i++) for(int x in src.orderBy()) f += 1;
+    print($"forin {f} used {bgl.gc.used} | ");
+    ref array<int> r := make(1);
+    var v = make(2);
+    print($"refvar {r.length} {((array<int>)v).length} ");
+    r := src; v = 0;
+    bgl.gc.collect();
+    print($"used {bgl.gc.used} | ");
+    bag += make(5);
+    int s = 0;
+    for(int x in (array<int>)bag[0]) s += 1;
+    bgl.gc.collect();
+    print($"bag {s - 1} used {bgl.gc.used} | ");
+    shelf.racks += make(1);
+    shelf.racks[0] = tray;
+    shelf.racks[0][0] = 2;
+    print($"member row {shelf.racks[0][0]} {tray[0]} | ");
+    int g = 0;
+    for(int i = 0; i < 100; i++) g += gridSum();
+    bag.clear(); shelf.racks.clear();
+    bgl.gc.collect();
+    print($"rows {g} used {bgl.gc.used} | ");
+    int made = 0;
+    for(int i = 0; i < 5; i++){ batch := fill(i); made++; }
+    print($"pool {made} | ");
+    rowCheck();
+}

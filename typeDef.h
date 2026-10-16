@@ -232,6 +232,9 @@ class expression {
         // text, the property, and the declaration, so a for-in can walk it in place.
         string memberArrayOwner, memberArrayProp;
         class arrayDeclaration* memberArrayDecl = nullptr;
+        // The routine's own array of structs the expression starts from: a chain on it is a view of its instances.
+        class arrayDeclaration* viewSource = nullptr;
+        bool viewIsLocal = false;   // the expression is a local that holds such a view
         // A name cast to one of its ancestors (`(Coin)t`): the text, and the type it was, so an operator
         // applied to it runs the ancestor's own.
         string upcastText, upcastFrom;
@@ -333,6 +336,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // I6 rejects the assignment with "'=' applied to undeclared variable".
         bool needsEarlyGlobalDecl = false;
         expression* declaredExpressionValue = nullptr;
+        bool claimsAfter = false;   // a set-up right after it takes the array it was given (no sweep between)
         string initEmitterBody;  // raw i6 body if operator= is an emitter, else ""
         string initEmitterParam; // parameter name to substitute in the body
         vector<interpolatedSegment> interpSegments; // non-empty when initializer is $"..."
@@ -392,6 +396,8 @@ class functionDef:public typeMember, public typeDef{
         // Counts this routine's running activations, for a routine whose own instances can hold heap arrays:
         // the collector reads those instances only while it runs.
         string runCounter;
+        // Makes arrays with no owner (calls or chains returning arrays): its statements free the unclaimed ones.
+        bool makesFresh = false;
         pair<string,string> returnCopy;      // {instance, copy routine}: a returned value class leaves through its own instance
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
@@ -591,6 +597,7 @@ class arrayDeclaration : public variableDeclaration {
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
         string ownerVar;             // a local declared from a call or a step's result: the hidden local holding what it owns
+        arrayDeclaration* viewOf = nullptr;   // declared from a chain on the routine's own array of structs: that array
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
         string copyHeld;             //   and the local counting the frame words its storage took
         string copyLength;           //   or, from a member array (no address to alias), the member's length

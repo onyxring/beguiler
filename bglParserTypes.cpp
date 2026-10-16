@@ -2019,6 +2019,8 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
                 rep = "_bglOpRef_" + rep;
             }
         }
+        // An element that can hold an array (`var`, a union with an array type) keeps the array it is given.
+        if(rep.empty() && op == "=" && slotHoldsArray(elemType)) rep = "_bglHeapEscapeAssign";
         // An array element is assigned as an array is: copied into the slot's array; an empty slot takes the array.
         if(rep.empty() && op == "=" && isWordArrayType(elemType) && elemType != "array<char>"){
             rep = "_bglArrCopyAssign";
@@ -4351,6 +4353,8 @@ bool bglParser::genericValueFits(const expression* e, const string& targetType, 
     if(e == nullptr || targetType.find('<') == string::npos || targetType.rfind("func<", 0) == 0) return true;
     // A value fits a union when it fits one of its members.
     if(isUnionType(targetType)){
+        string vt = elementAwareType(e, func, body);
+        if(vt == targetType || isUnionType(vt)) return true;   // union to union: the member types are checked as types
         for(const string& m : splitUnionType(targetType))
             if(m.find('<') != string::npos && m.rfind("func<", 0) != 0 && templateArgsFit(elementAwareType(e, func, body), m)) return true;
         return elementAwareType(e, func, body).find('<') == string::npos;
@@ -4577,6 +4581,7 @@ void bglParser::checkReturnValue(expression* e, const string& returnType, const 
                             typeDisplayName(shown), fnName, typeDisplayName(returnType)));
     };
     if(!genericValueFits(e, returnType, currentFunc, nullptr)) fail(elementAwareType(e, currentFunc, nullptr));
+    if(isWordArrayType(returnType)) rejectEscapingView(e, "returned");
     // A member array is property data on its owner, with no address of its own to return (§12.7).
     if(isWordArrayType(returnType) && isWordArrayType(e->resolvedType)){
         string text = e->text();
@@ -6323,4 +6328,16 @@ void bglParser::endInterpolatedStatement(){
 functionDef* bglParser::emitterAssignOperator(classDef* cls, const string& valueType){
     return findAssignOperator(cls, valueType, [](functionDef* f){
         return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, true);
+}
+
+// A `var` or a union with an array type: a slot that holds whatever value it is given, an array included.
+bool bglParser::slotHoldsArray(const string& type){
+    if(type == "var") return true;
+    if(isUnionType(type)){
+        for(const string& m : splitUnionType(type)) if(isWordArrayType(m) && m != "array<char>") return true;
+        return false;
+    }
+    if(classDef* c = languageService.findClass(type); c != nullptr && c->isUnion())
+        for(const string& m : c->unionMembers) if(isWordArrayType(m) && m != "array<char>") return true;
+    return false;
 }

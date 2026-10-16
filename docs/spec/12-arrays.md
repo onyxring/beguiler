@@ -229,10 +229,15 @@ A heap array lives as long as something refers to it, as in C# and TypeScript: a
 array, append it to an array of arrays, or bind a `ref` global or member to it with `:=`, and the reference stays
 good. `<linq>` results (§22.5) are heap arrays too.
 
-Arrays are freed in two ways:
+Arrays are freed in three ways:
 
+- **At the end of the statement.** A call's or a chain's result that nothing takes is freed once the statement
+  that used it is done: `f()[0]`, `f().length`, `a.filter(…) == b`. A result is taken by a local (an array, `ref`,
+  `var` or union local), a parameter, a `for … in` (for the loop), anything that outlives the routine, or a pin.
+  An Inform 6 routine given a result takes nothing: pin the array if the I6 code keeps it.
 - **At the routine's exit.** A local array that no reference has left is freed as its routine returns,
-  and so is an array a local took from a call or a chain.
+  and so is an array a local took from a call or a chain, and the rows of a local array of arrays that nothing
+  else took.
   A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
   arrays to the collector, since the raw code may have kept one.
 - **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
@@ -247,7 +252,10 @@ arrays of such a type, the local arrays and struct variables of routines still r
 only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead. An Inform 6
 global declared to Beguile with an array type (`extern array<int> held;`) is typed, so it is a root.
 
-The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
+The heap's size is the `heapSize` setting (§17.4). When it runs out, the collector runs at once (keeping the
+results still on their way somewhere) and the allocation is tried again; running out after that is a run-time
+error that names the setting. A debug build of a program with a library binding also has a `heap` verb that
+prints the heap's size, the words in use and the most ever in use, for setting `heapSize`.
 
 `bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
 and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of
@@ -509,7 +517,8 @@ slots, handed to a slot the first time it is stored into or one of its members i
 never stored into), starting from the struct's defaults. `a[i] = v` and `a += v` copy `v` into the slot's instance
 through the struct's copy operator. `remove`, `removeValue`, `-=`, `clear` and a local array's exit give instances
 back, so each call of a routine, a recursive one included, has instances of its own; a program that holds more
-filled slots at once than it declared runs out, which is a run-time error.
+filled slots at once than it declared runs out: the collector runs first, giving back the instances of arrays
+nothing refers to any more, and only then is it a run-time error.
 
 An array of a struct with no capacity of its own (a `<linq>` result, a returned array, a local declared from
 another array) holds the instances of the array it came from: changing an element through it changes the source,
@@ -526,6 +535,11 @@ big += spare;                                                     // run-time er
 array<Coin> mine[8] = purse.filter((Coin c) => c.value >= 10);   // eight coins of its own, two copied in
 mine += spare;                                                    // copied into the third
 ```
+
+Such a view of a routine's own array of structs lives no longer than that routine: the instances go back when it
+returns. Returning one, binding a global or member to one with `:=`, or keeping one in a global or member `var`
+is a compile-time error; copy it into an array with a capacity of its own first. A view pinned for Inform 6 code
+(`bgl.gc.keep`) is the program's to keep from outliving its source.
 
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named

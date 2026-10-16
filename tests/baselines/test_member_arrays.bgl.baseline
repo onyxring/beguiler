@@ -311,8 +311,40 @@ array _bglsink --> 1;
             }
             o = o + (b-->0) * WORDSIZE;
         }
+        if(_bglHeap-->3 > 0){ _bglHeapCollect(true); return _bglHeapAlloc(n, kind); }
         print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
         quit;
+    
+];
+[_bglHeapCollect midRoutine o b again roots;
+    o = 0;
+    b = 0;
+    again = 0;
+    roots = 48;
+    
+        if(_bglHeap == 0) return;
+        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too.
+        if(midRoutine) roots = 56;
+        do {
+            _bglGcRoots();
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if(b-->2 & roots) _bglHeapMark(b + 5 * WORDSIZE);
+            }
+            _bglHeapTrace();
+            #Ifdef DEBUG;
+                if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
+            #Endif;
+            ! A freed array of structs gives its instances back, which let go of what their members held: those
+            ! arrays are swept by another pass.
+            again = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) == 1){ if(b-->1) again = true; _bglHeapRelease(b); }
+                else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+            }
+        } until(again == false);
+        _bglHeap-->3 = 0;
     
 ];
 [_bglHeapDropOwned a b;
@@ -322,7 +354,7 @@ array _bglsink --> 1;
         if(b == 0) return;
         b-->2 = b-->2 & ~32;
         if((b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
         _bglHeapRelease(b);
     
 ];
@@ -345,6 +377,18 @@ array _bglsink --> 1;
         _bglPromptHook = _bglHeapAtPrompt;
     
 ];
+[_bglHeapMark w b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
+];
+[_bglHeapNoteFresh a;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
+    
+];
 [_bglHeapRelease b a i;
     a = 0;
     i = 0;
@@ -362,68 +406,6 @@ array _bglsink --> 1;
         i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
         if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
         else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
-    
-];
-array _bglheapstore --> 1536;
-[_bglHeapAtPrompt;
-    
-        if(_bglHeap == 0) return;
-        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
-    
-];
-[_bglHeapBitMask b m k;
-    m = 1;
-    k = 0;
-    
-        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
-        return m;
-    
-];
-[_bglHeapBlockOf a b o;
-    b = 0;
-    o = 0;
-    
-        if(_bglHeap == 0) return 0;
-        b = a - 5 * WORDSIZE;
-        o = b - (_bglHeap-->0);
-        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
-        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
-        return b;
-    
-];
-[_bglHeapCollect o b;
-    o = 0;
-    b = 0;
-    
-        if(_bglHeap == 0) return;
-        _bglGcRoots();
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
-        }
-        _bglHeapTrace();
-        #Ifdef DEBUG;
-            if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
-        #Endif;
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if((b-->2 & 3) == 1) _bglHeapRelease(b);
-            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
-        }
-        _bglHeap-->3 = 0;
-    
-];
-[_bglHeapIsStart b;
-    
-        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
-        rfalse;
-    
-];
-[_bglHeapMark w b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(w);
-        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
     
 ];
 [_bglHeapTrace o b a i more;
@@ -478,7 +460,42 @@ array _bglheapstore --> 1536;
         return found;
     
 ];
+array _bglfresh --> 48;
+array _bglheapstore --> 1536;
 array _bglheaptracelevel --> 1;
+[_bglHeapAtPrompt now;
+    
+        if(_bglHeap == 0) return;
+        if(now){ _bglHeapCollect(true); return; }
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    
+];
+[_bglHeapBitMask b m k;
+    m = 1;
+    k = 0;
+    
+        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
+        return m;
+    
+];
+[_bglHeapBlockOf a b o;
+    b = 0;
+    o = 0;
+    
+        if(_bglHeap == 0) return 0;
+        b = a - 5 * WORDSIZE;
+        o = b - (_bglHeap-->0);
+        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
+        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
+        return b;
+    
+];
+[_bglHeapIsStart b;
+    
+        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        rfalse;
+    
+];
 
 [ _bglGcRoots o i;
     o = 0; i = 0;

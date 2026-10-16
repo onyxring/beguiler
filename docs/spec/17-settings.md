@@ -111,7 +111,7 @@ own `Include` directives against the same set.
 ## 17.4 Runtime Settings
 
 These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
-must be at least 1, and `heapSize` at least 64.
+must be at least 1, and `heapSize` 0 (the target's default) or at least 64.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |

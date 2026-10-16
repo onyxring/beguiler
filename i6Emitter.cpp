@@ -2712,6 +2712,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             if(!fd->entrySetUp.empty())
                 out << "        " << spillWord(fd->entrySetUp) << "\n";
             if(!fd->runCounter.empty()) out << "        " << fd->runCounter << "++;\n";
+            beginSweeps(fd, "        ");
             emitTryParamCopyIns("        ");
             // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
@@ -2722,6 +2723,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             // rawArray<int> buffer handed to glk_select would crash). Frees run on every
             // exit path via currentCleanups, mirroring emitFunction.
             emitLocalArrayAllocs(fd, locals, body, "        ");
+            appendLeaveSweep(fd);
             currentCleanups = fd->cleanups.empty() ? nullptr : &fd->cleanups;
             armCleanups(body);
             if(body != nullptr)
@@ -2731,6 +2733,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 for(auto& [varName, cbody] : inReverse(*currentCleanups))
                     out << "        " << spillWord(cbody) << "\n";
             currentCleanups = nullptr;
+            currentSweep.clear();
             if(currentSpillCount > 0 && !endsInReturn(body))
                 out << format("        _bglFrameFree({0});\n", currentSpillCount);
             out << "    ]" << sep << "\n";
@@ -2864,6 +2867,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(!funcNode->entrySetUp.empty())
         out << "    " << spillWord(funcNode->entrySetUp) << "\n";
     if(!funcNode->runCounter.empty()) out << "    " << funcNode->runCounter << "++;\n";
+    beginSweeps(funcNode, "    ");
     emitTryParamCopyIns("    ");
 
     // Per-call copy-in for params that own an instance (top-level functions). Same shape applies
@@ -2886,6 +2890,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     // in declaration order rather than at function entry.
     emitLocalArrayAllocs(funcNode, locals, body, "    ");
 
+    appendLeaveSweep(funcNode);
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     armCleanups(body);
     if(body != nullptr)
@@ -2898,6 +2903,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     if(currentSpillCount > 0 && !endsInReturn(body))   // a final return freed the frame already
         out << format("    _bglFrameFree({0});\n", currentSpillCount);
     currentCleanups = nullptr;
+    currentSweep.clear();
     clearSpillMap();
     out << "];\n";
 }
@@ -2956,6 +2962,8 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
         if(!arr->isRaw){
             std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
             if(dtor.empty()) dtor = valueElementRoutine(arr->elementType, "_bglValFree_");
+            // Its rows go with it, unless something else kept, pinned or took one.
+            if(dtor.empty() && isWordArrayType(arr->elementType) && arr->elementType != "array<char>") dtor = "_bglHeapDropRow";
             out << format("{0}{1} = _bglHeapLocal({2}{3});\n", indent, name, count, dtor.empty() ? "" : ", " + dtor);
             fn->cleanups.push_back({arr->name, funcHasI6Island(fn) ? "_bglHeapLocalKeep();" : "_bglHeapLocalDrop();"});
             // A nested list's inner arrays are held in the outer array's slots, so they live as long as it does.
@@ -3764,7 +3772,27 @@ void i6Emitter::armCleanups(statementBlock* body){
         for(statement* s : body->statements)
             if(typeid(*s) == typeid(variableDeclaration)) undeclaredTopLocals.insert(((variableDeclaration*)s)->name);
 }
+// A routine that makes arrays with no owner notes where its own begin, and frees those left unclaimed after each statement.
+void i6Emitter::beginSweeps(functionDef* fd, const string& indent){
+    currentSweep = fd->makesFresh ? "_bglHeapSweepFresh();" : "";
+    if(fd->makesFresh) out << indent << "_bglHeapFreshEnter();\n";
+}
+// The routine's last cleanup, so it runs first (they run last-in first-out): before a returned array passes to the caller.
+void i6Emitter::appendLeaveSweep(functionDef* fd){
+    if(!fd->makesFresh) return;
+    for(auto& c : fd->cleanups) if(c.second == "_bglHeapSweepFresh(true);") return;
+    fd->cleanups.push_back({"", "_bglHeapSweepFresh(true);"});
+}
 void i6Emitter::emitStatement(statement* stmt, string indent){
+    emitStatementOnly(stmt, indent);
+    // Not after a set-up a later statement consumes, nor after one that leaves the routine.
+    if(currentSweep.empty() || dynamic_cast<i6RawNode*>(stmt) || dynamic_cast<returnStatement*>(stmt)
+       || dynamic_cast<throwStatement*>(stmt)) return;
+    if(typeid(*stmt) == typeid(variableDeclaration) && (((variableDeclaration*)stmt)->declaredExpressionValue == nullptr
+                                                        || ((variableDeclaration*)stmt)->claimsAfter)) return;
+    out << indent << currentSweep << "\n";
+}
+void i6Emitter::emitStatementOnly(statement* stmt, string indent){
     if(!stmt->src.file.empty())
         pushSourceMap(currentLine(), stmt->src.file, stmt->src.line);
     if(typeid(*stmt) == typeid(variableDeclaration)) undeclaredTopLocals.erase(((variableDeclaration*)stmt)->name);
@@ -4605,6 +4633,7 @@ for(typeMember* m : obj->members){
         if(!fd->entrySetUp.empty())
             out << "    " << spillWord(fd->entrySetUp) << "\n";
         if(!fd->runCounter.empty()) out << "    " << fd->runCounter << "++;\n";
+        beginSweeps(fd, "    ");
         emitTryParamCopyIns("    ");
         emitParamCopyIns(fd, "    ");
         emitOwnedLocalSetup(locals, "    ");
@@ -4612,6 +4641,7 @@ for(typeMember* m : obj->members){
         // routine (e.g. `extend _bglUi { waitForKey() }`) with a local rawArray<int> buffer
         // got a null slot that crashed glk_select. Frees run on every exit via currentCleanups.
         emitLocalArrayAllocs(fd, locals, body, "    ");
+        appendLeaveSweep(fd);
         currentCleanups = fd->cleanups.empty() ? nullptr : &fd->cleanups;
         armCleanups(body);
         if(body)
@@ -4621,6 +4651,7 @@ for(typeMember* m : obj->members){
             for(auto& [varName, cbody] : inReverse(*currentCleanups))
                 out << "    " << spillWord(cbody) << "\n";
         currentCleanups = nullptr;
+        currentSweep.clear();
         if(currentSpillCount > 0 && !endsInReturn(body))
             out << format("    _bglFrameFree({0});\n", currentSpillCount);
         out << "  ]";
@@ -5444,8 +5475,10 @@ void i6Emitter::synthesizeValueElementPools(){
             "  if(_bglv == 0) return _bglcur;\n"
             "  if(_bglcur == 0){\n"
             "    for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_used->_bgli == 0) break;\n"
-            "    if(_bgli == " + n + "){ print \"^[** Programming error: all " + n + " array slots for "
-                 + cls->dName() + " values are in use **]^\"; return 0; }\n"
+            "    if(_bgli == " + n + " && _bglPromptHook){ _bglPromptHook(true);\n"
+            "      for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_used->_bgli == 0) break; }\n"
+            "    if(_bgli == " + n + "){ print \"^[Beguile run-time error: all " + n + " instances of " + cls->dName()
+                 + " are in use: the program holds more in arrays at once than they declare slots for]^\"; quit; }\n"
             "    " + base + "_used->_bgli = 1; _bglcur = " + base + "_pool-->_bgli;" + reset + "\n"
             "  }\n"
             " " + copy + "\n"
@@ -5456,8 +5489,10 @@ void i6Emitter::synthesizeValueElementPools(){
             "  _bglcur = _bgla-->_bgli;\n"
             "  if(_bglcur ~= 0) return _bglcur;\n"
             "  for(_bglk = 0: _bglk < " + n + ": _bglk++) if(" + base + "_used->_bglk == 0) break;\n"
-            "  if(_bglk == " + n + "){ print \"^[** Programming error: all " + n + " array slots for "
-                 + cls->dName() + " values are in use **]^\"; return 0; }\n"
+            "  if(_bglk == " + n + " && _bglPromptHook){ _bglPromptHook(true);\n"
+            "    for(_bglk = 0: _bglk < " + n + ": _bglk++) if(" + base + "_used->_bglk == 0) break; }\n"
+            "  if(_bglk == " + n + "){ print \"^[Beguile run-time error: all " + n + " instances of " + cls->dName()
+                 + " are in use: the program holds more in arrays at once than they declare slots for]^\"; quit; }\n"
             "  " + base + "_used->_bglk = 1; _bglcur = " + base + "_pool-->_bglk;" + reset + "\n"
             "  _bgla-->_bgli = _bglcur;\n"
             "  return _bglcur;\n"
@@ -6204,7 +6239,9 @@ string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& refer
                 if(mv != nullptr && !mv->type.name.empty() && memberHolds(mv)) body += markProp(nm, propName(mv));
             }
         } else if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
-            if(vd->isConst || vd->isExternal || vd->isInstanceBacking || !holdsHeapArray(vd->type.name)) continue;
+            // A library's extern `var` names an Inform 6 global of any use (`sp`); a program's own is its slot.
+            if(vd->isConst || vd->isInstanceBacking || !holdsHeapArray(vd->type.name)
+               || (vd->isExternal && vd->src.file.find("beguiLib") != string::npos)) continue;
             string nm = vd->i6name.empty() ? vd->dName() : vd->i6name;
             if(seen.insert(nm).second && referenced(nm)) body += format("    _bglHeapMark({0});\n", nm);
         }

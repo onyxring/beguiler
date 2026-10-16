@@ -601,6 +601,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                     }
                 } else {
                     arrDecl.declaredExpressionValue = expr;
+                    // Declared from a chain on the routine's own array of structs: it holds a view of those instances.
+                    if(expr->viewSource != nullptr && arrDecl.arraySize == 0) arrDecl.viewOf = expr->viewSource;
                     // A local declared from a call or a step's result owns that array (§12.6); one declared from
                     // another array's name owns a copy of it.
                     if(func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray && elementType != "char"){
@@ -1512,6 +1514,20 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     pendingInjections.clear();
 
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body, !symbol.is(token::endStatement));
+    // A `var` or union local declared from a call's or chain's result takes it, as an array local does.
+    if(func != nullptr && body != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.declaredExpressionValue != nullptr
+       && isWordArrayType(varDecl.declaredExpressionValue->resolvedType) && varDecl.src.file.find("beguiLib") == string::npos){
+        string vt = varDecl.declaredExpressionValue->text();
+        size_t z = vt.find_last_not_of(" \t");
+        if(z != string::npos && vt[z] == ')'){
+            string own = claimOwner(varDecl.name);
+            auto* claim = new i6RawNode();
+            claim->text = own + " = _bglHeapReown(" + own + ", " + varDecl.name + ");";
+            claim->cooked = true;
+            postInjections.push_back(claim);
+            varDecl.claimsAfter = true;
+        }
+    }
 
     registerVariableDeclaration(varDecl, isConst, func, body);
     declInjectionStart = -1;
@@ -2363,4 +2379,29 @@ void bglParser::declareOwner(functionDef* func, arrayDeclaration& ad){
     own->type = languageService.getType("var");
     own->isSynthetic = true;
     top->statements.insert(top->statements.begin(), own);
+}
+
+// A hidden local of the routine that owns what `slot` takes from a call or a chain, freed when it takes another and at
+// the routine's exit (unless kept elsewhere). Returns the owner's name.
+string bglParser::claimOwner(const string& slot){
+    functionDef* fn = currentFunc;
+    string own = "_bglown_" + slot;
+    if(fn == nullptr) return own;
+    for(auto& c : fn->cleanups) if(c.first == own) return own;
+    if(auto* top = dynamic_cast<statementBlock*>(fn->body)){
+        auto* vd = new variableDeclaration();
+        vd->name = vd->displayName = own;
+        vd->type = languageService.getType("var");
+        vd->isSynthetic = true;
+        top->statements.insert(top->statements.begin(), vd);
+    }
+    fn->cleanups.push_back({own, "_bglHeapDropOwned(" + own + ");"});
+    return own;
+}
+
+// Whether `slot` already has a hidden owner in the routine (claimOwner).
+bool bglParser::hasOwner(const string& slot){
+    if(currentFunc == nullptr) return false;
+    for(auto& c : currentFunc->cleanups) if(c.first == "_bglown_" + slot) return true;
+    return false;
 }

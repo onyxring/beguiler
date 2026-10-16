@@ -197,6 +197,20 @@ bool bglParser::memberIsArrayData(const string& text, string& shown){
     if(d == string::npos) return true;
     string owner = text.substr(0, d), prop = text.substr(d + 1);
     string low = owner; transform(low.begin(), low.end(), low.begin(), ::tolower);
+    auto isProp = [&](typeMember* m){
+        auto* vd = dynamic_cast<variableDeclaration*>(m);
+        return vd && (vd->name == prop || propertyI6Name(vd->name) == prop || vd->i6name == prop); };
+    auto arrayData = [](typeMember* m){ auto* ad = dynamic_cast<arrayDeclaration*>(m); return ad != nullptr && !ad->isRefLocal; };
+    // `self.prop` in a method: the member of the class or object being declared.
+    if(low == "self"){
+        shown = prop;
+        typeMember* m = nullptr;
+        if(currentObject != nullptr){
+            for(typeMember* om : currentObject->members) if(isProp(om)){ m = om; break; }
+            if(m == nullptr && currentObject->objectClass != nullptr) m = findMemberInHierarchy(currentObject->objectClass, isProp);
+        } else if(currentClass != nullptr) m = findMemberInHierarchy(currentClass, isProp);
+        return m == nullptr || arrayData(m);
+    }
     for(typeDef* g : languageService.globals){
         auto* od = dynamic_cast<objectDef*>(g);
         if(od == nullptr) continue;
@@ -204,9 +218,6 @@ bool bglParser::memberIsArrayData(const string& text, string& shown){
         transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
         if(i6 != low && od->name != low) continue;
         shown = od->dName() + "." + prop;
-        auto isProp = [&](typeMember* m){
-            auto* vd = dynamic_cast<variableDeclaration*>(m);
-            return vd && (vd->name == prop || propertyI6Name(vd->name) == prop || vd->i6name == prop); };
         typeMember* m = nullptr;
         for(typeMember* om : od->members) if(isProp(om)){ m = om; break; }
         if(m == nullptr && od->objectClass != nullptr) m = findMemberInHierarchy(od->objectClass, isProp);
@@ -6241,6 +6252,10 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
         prevTok = cur;
 
         ExprStep step = ExprStep::Advance;
+        if(expr->tokens.empty() && currentFunc != nullptr && cur.is(eTokenType::identifier)){
+            expr->viewSource = localStructArray(cur.value, body);
+            expr->viewIsLocal = expr->viewSource != nullptr && expr->viewSource->name != cur.value;
+        }
         if(!cur.isString() && cur.isNot(eTokenType::charLiteral) && (cur.value == "~" || cur.value == "~~"))
             parsingError(format("'{0}' is an Inform 6 operator; Beguile's logical not is '!', and it has no bitwise not.",
                                 cur.value));
@@ -6315,6 +6330,12 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
             expr->tokens.push_back(cur.value);
         }
 
+        // A call or chain left an array: one nothing may own, which the routine's statements sweep up.
+        if(currentFunc != nullptr && !currentFunc->makesFresh && isWordArrayType(expr->resolvedType) && expr->resolvedType != "array<char>"
+           && currentFunc->src.file.find("beguiLib") == string::npos && !expr->tokens.empty()
+           && lowerText(expr->tokens.back()).find("_bglworld") == string::npos   // a world query's result is a static buffer
+           && !expr->tokens.back().empty() && expr->tokens.back().back() == ')')
+            currentFunc->makesFresh = true;
         if(step == ExprStep::Break) break;
         if(step == ExprStep::Continue) continue;
         cur = exprNext(st);
@@ -6570,3 +6591,31 @@ string bglParser::stepThroughAccessor(const string& reading, const string& op, b
     return value;
 }
 
+
+// A local array of a struct that owns its instances (declared with a capacity), named `name` where `body` is parsed.
+arrayDeclaration* bglParser::localStructArray(const string& name, statementBlock* body){
+    auto look = [&](statementBlock* b) -> arrayDeclaration* {
+        if(b == nullptr) return nullptr;
+        for(statement* s : b->statements)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(s); ad && ad->name == name && !ad->scopeEnded){
+                if(ad->viewOf != nullptr) return ad->viewOf;
+                return !ad->isRefLocal && ad->arraySize > 0 && owningValueElementClass(ad->elementType) != nullptr ? ad : nullptr;
+            }
+        return nullptr;
+    };
+    if(arrayDeclaration* ad = look(body)) return ad;
+    for(auto it = activeBlockStack.rbegin(); it != activeBlockStack.rend(); ++it) if(arrayDeclaration* ad = look(*it)) return ad;
+    return nullptr;
+}
+
+// A chain on the routine's own array of structs shares that array's instances, which go back when the routine
+// returns: such a view can't be returned or kept anywhere that outlives it.
+void bglParser::rejectEscapingView(const expression* e, const string& how){
+    if(e == nullptr || e->viewSource == nullptr || !isWordArrayType(e->resolvedType)) return;
+    string t = e->text();
+    size_t z = t.find_last_not_of(" \t");
+    if(!e->viewIsLocal && (z == string::npos || t[z] != ')')) return;
+    parsingError(format("A view of '{0}', this routine's own array of {1}, can't be {2}: its {1} values go back when the "
+        "routine returns. Copy it into an array with a capacity of its own first (`array<{1}> c[n] = …;`).",
+        e->viewSource->dName(), typeDisplayName(e->viewSource->elementType), how));
+}

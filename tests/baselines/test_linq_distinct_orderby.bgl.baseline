@@ -76,30 +76,56 @@ array g_alldup table 7 7 7 7;
 Array _bglhdr_g_empty --> $9084 0;
 array g_empty table 8;
 [main;
+    _bglHeapFreshEnter();
     bglinit();
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.distinct(g_dupes, 0, 0), 0);
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 1, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 2, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 3, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 4, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 5, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_dupes, 0, 0)), 6, 0)-->0 ;
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.distinct(g_alldup, 0, 0), 0);
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.distinct(g_alldup, 0, 0)), 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.distinct(g_empty, 0, 0), 0);
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.orderBy(g_unsorted, 0, 0), 0);
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, 0)), 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, 0)), 4, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt(g_unsorted, 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt(g_unsorted, 1, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt(g_unsorted, 2, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.orderBy(g_unsorted, 0, _bglLambda_0)), 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt(g_unsorted, 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.orderBy(g_empty, 0, 0), 0);
+    _bglHeapSweepFresh();
     print _bglArray.length(_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_1), -1, 0), -1, 0), 0);
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_2), -1, 0), -1, 0)), 0, 0)-->0 ;
+    _bglHeapSweepFresh();
     print  _bglAt((_bglArray.orderBy(_bglArray.distinct(_bglArray.filter(g_dupes, 0, _bglLambda_3), -1, 0), -1, 0)), 4, 0)-->0 ;
+    _bglHeapSweepFresh();
+    _bglHeapSweepFresh(true);
 ];
 [_bglLambda_0 a b;
     if (a > b) {
@@ -194,6 +220,25 @@ object _bglArray
     _bglHeapDropOwned(_bglown_dst);
     return _bglret;
   ],
+       first [obj prop owned r;
+    r = 0;
+    if (self.length(obj,prop) > 0) {
+        r = self.get(obj,prop,0);
+    }
+    else {
+        if (owned~=0) {
+            self.emptyvalueerror("first");
+        }
+    }
+    _bgllinqused(obj, prop);
+    return r;
+  ],
+       emptyValueError [which;
+    print (string)"^[Beguile run-time error: ";
+    print (string)which;
+    print (string)"() of an empty array of values; check count() first]^";
+     quit; 
+  ],
        distinct [obj prop op _bglret _bglown_dst dst srcLen outLen i elem seen j kept;
     dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
@@ -265,14 +310,25 @@ object _bglArray
         if(b == 0) return;
         b-->2 = b-->2 & ~32;
         if((b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
         _bglHeapRelease(b);
+    
+];
+[_bglHeapFreshEnter;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = 0; }
+        else _bglFresh-->47 = _bglFresh-->47 + 1;
     
 ];
 [_bglHeapIsStart b;
     
         if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
+    
+];
+[_bglHeapNoteFresh a;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
     
 ];
 [_bglHeapRelease b a i;
@@ -298,6 +354,21 @@ object _bglArray
     
         if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
         return a;
+    
+];
+[_bglHeapSweepFresh leave i a b;
+    i = 0;
+    a = 0;
+    b = 0;
+    
+        if(_bglFresh-->47){ if(leave) _bglFresh-->47 = _bglFresh-->47 - 1; return; }
+        for(i = _bglFresh-->0 : i > 0 && _bglFresh-->i ~= 0 : i--){
+            a = _bglFresh-->i;
+            b = _bglHeapBlockOf(a);
+            if(b ~= 0 && (b-->2 & 60) == 8 && a ~= _bglHeap-->4) _bglHeapRelease(b);
+        }
+        if(leave && i > 0) i--;
+        _bglFresh-->0 = i;
     
 ];
 [_bglLinqEnter n;
@@ -326,6 +397,7 @@ object _bglArray
         return _bglSink;
     
 ];
+array _bglfresh --> 48;
 array _bglsink --> 1;
 [_bglArrLength arr;
     
@@ -379,6 +451,7 @@ array _bglsink --> 1;
     
         a = _bglHeapAlloc(n);
         (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 72;
+        _bglHeapNoteFresh(a);
         return a;
     
 ];
@@ -434,8 +507,40 @@ array _bglsink --> 1;
             }
             o = o + (b-->0) * WORDSIZE;
         }
+        if(_bglHeap-->3 > 0){ _bglHeapCollect(true); return _bglHeapAlloc(n, kind); }
         print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
         quit;
+    
+];
+[_bglHeapCollect midRoutine o b again roots;
+    o = 0;
+    b = 0;
+    again = 0;
+    roots = 48;
+    
+        if(_bglHeap == 0) return;
+        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too.
+        if(midRoutine) roots = 56;
+        do {
+            _bglGcRoots();
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if(b-->2 & roots) _bglHeapMark(b + 5 * WORDSIZE);
+            }
+            _bglHeapTrace();
+            #Ifdef DEBUG;
+                if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
+            #Endif;
+            ! A freed array of structs gives its instances back, which let go of what their members held: those
+            ! arrays are swept by another pass.
+            again = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) == 1){ if(b-->1) again = true; _bglHeapRelease(b); }
+                else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+            }
+        } until(again == false);
+        _bglHeap-->3 = 0;
     
 ];
 [_bglHeapInit words bm i;
@@ -457,48 +562,19 @@ array _bglsink --> 1;
         _bglPromptHook = _bglHeapAtPrompt;
     
 ];
+[_bglHeapMark w b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
+];
 [_bglHeapSetStart b on i;
     i = 0;
     
         i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
         if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
         else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
-    
-];
-array _bglheapstore --> 1536;
-[_bglHeapAtPrompt;
-    
-        if(_bglHeap == 0) return;
-        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
-    
-];
-[_bglHeapCollect o b;
-    o = 0;
-    b = 0;
-    
-        if(_bglHeap == 0) return;
-        _bglGcRoots();
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
-        }
-        _bglHeapTrace();
-        #Ifdef DEBUG;
-            if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
-        #Endif;
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if((b-->2 & 3) == 1) _bglHeapRelease(b);
-            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
-        }
-        _bglHeap-->3 = 0;
-    
-];
-[_bglHeapMark w b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(w);
-        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
     
 ];
 [_bglHeapTrace o b a i more;
@@ -570,7 +646,15 @@ array _bglheapstore --> 1536;
     }
     return -1;
 ];
+array _bglheapstore --> 1536;
 array _bglheaptracelevel --> 1;
+[_bglHeapAtPrompt now;
+    
+        if(_bglHeap == 0) return;
+        if(now){ _bglHeapCollect(true); return; }
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    
+];
 
 [ _bglGcRoots o i;
     o = 0; i = 0;

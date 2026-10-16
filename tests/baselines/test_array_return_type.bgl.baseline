@@ -74,15 +74,23 @@ array g_src table 1 2 3;
     _bglHeapDropOwned(_bglownp_xs);
     return _bglret;
 ];
-[main x _bglfia2 _bglfi3 total;
-    _bglfia2 = getlist();
+[main _bglown__bglfia2 x _bglfia2 _bglfi3 total;
+    _bglHeapFreshEnter();
+    _bglown__bglfia2 = _bglHeapReown(_bglown__bglfia2, (_bglfia2 = getlist()));
        _bglfi3 = 0;
        for (: _bglfi3 < _bglArrLength(_bglfia2) : _bglfi3++) {
           x = _bglfia2-->(_bglfi3+1);
         print x;
+        _bglHeapSweepFresh();
        }
+    _bglHeapSweepFresh();
+    _bglHeapDropOwned(_bglown__bglfia2); _bglown__bglfia2 = 0;
     total=sumlist(g_src);
+    _bglHeapSweepFresh();
     print total;
+    _bglHeapSweepFresh();
+    _bglHeapSweepFresh(true);
+    _bglHeapDropOwned(_bglown__bglfia2);
 ];
 [_bglArrLength arr;
     
@@ -127,14 +135,25 @@ array g_src table 1 2 3;
         if(b == 0) return;
         b-->2 = b-->2 & ~32;
         if((b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
         _bglHeapRelease(b);
+    
+];
+[_bglHeapFreshEnter;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = 0; }
+        else _bglFresh-->47 = _bglFresh-->47 + 1;
     
 ];
 [_bglHeapIsStart b;
     
         if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
+    
+];
+[_bglHeapNoteFresh a;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
     
 ];
 [_bglHeapRelease b a i;
@@ -148,12 +167,36 @@ array g_src table 1 2 3;
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
     
 ];
+[_bglHeapReown own a n;
+    n = 0;
+    
+        n = _bglHeapAdopt(a);
+        if(own ~= a) _bglHeapDropOwned(own);
+        return n;
+    
+];
 [_bglHeapReturn a;
     
         if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
         return a;
     
 ];
+[_bglHeapSweepFresh leave i a b;
+    i = 0;
+    a = 0;
+    b = 0;
+    
+        if(_bglFresh-->47){ if(leave) _bglFresh-->47 = _bglFresh-->47 - 1; return; }
+        for(i = _bglFresh-->0 : i > 0 && _bglFresh-->i ~= 0 : i--){
+            a = _bglFresh-->i;
+            b = _bglHeapBlockOf(a);
+            if(b ~= 0 && (b-->2 & 60) == 8 && a ~= _bglHeap-->4) _bglHeapRelease(b);
+        }
+        if(leave && i > 0) i--;
+        _bglFresh-->0 = i;
+    
+];
+array _bglfresh --> 48;
 [_bglHeapBitMask b m k;
     m = 1;
     k = 0;

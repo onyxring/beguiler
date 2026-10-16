@@ -345,6 +345,10 @@ class i6Emitter{
         void synthesizePooledOwnedMembers();
         void synthesizeValueElementPools();
         void assignRunCounters();
+        void beginSweeps(functionDef* fd, const string& indent);
+        void appendLeaveSweep(functionDef* fd);
+        void emitStatementOnly(statement* stmt, string indent);
+        string currentSweep;   // the statement-end sweep of the routine being emitted, or ""
         map<string,string> runCounterOf;   // an instance a routine owns → that routine's run counter
         bool valuePoolsDone = false;
         map<string, string> ownedCopyRoutines;

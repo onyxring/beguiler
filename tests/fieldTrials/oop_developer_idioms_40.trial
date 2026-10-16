@@ -49,7 +49,7 @@ lightest #13w50 slot2 #13w6 index 2
 batch 3 #101w2 #103w6 light #101w2
 batch 3 #102w4 #109w1
 2 #104w8 false (8,-8)
-used 30
+used 10
 
 > heap
 collected 0
@@ -60,7 +60,7 @@ lightest #13w50 slot2 #13w6 index 2
 batch 3 #101w2 #103w6 light #101w2
 batch 3 #102w4 #109w1
 2 #104w8 false (8,-8)
-used 30
+used 10
 
 > heap
 collected 0

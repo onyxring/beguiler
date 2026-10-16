@@ -1,0 +1,7 @@
+// A chain on a routine's own array of structs shares its instances, which go back when the routine returns.
+// EXPECT_ERROR: A view of 'src', this routine's own array of Cell, can't be returned
+#beguilerSettings { target = z5; informName = "none"; }
+#include <linq>
+struct Cell { int v; }
+array<Cell> view() { array<Cell> src[4]; return src.filter((Cell c) => c.v > 1); }
+void main() { bglInit(); }
