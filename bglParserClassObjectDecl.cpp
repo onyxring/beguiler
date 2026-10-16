@@ -865,7 +865,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     // Keep a parameterized type's full name (getType gives the bare base): func<…> so the member is
     // callable, array<T>/rawArray<T> (an inherited array reassigned here) so reads know T.
     if(((string)returnType).rfind("func<", 0) == 0 || ((string)returnType).rfind("array<", 0) == 0
-       || ((string)returnType).rfind("rawarray<", 0) == 0) varDef.type.name = (string)returnType;
+       || ((string)returnType).rfind("rawarray<", 0) == 0 || isUnionType((string)returnType)) varDef.type.name = (string)returnType;
     if(isMemberConst) varDef.isConst = true;
     varDef.isStatic = isMemberStatic;
     varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
@@ -1096,7 +1096,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     // `rawArray<T>` declares the same storage as `array<T>` but without Beguile's
     // tracking layer — the plain I6 property array an I6 library expects to read as
     // `obj.&prop-->n`. Both route through processArrayMember, which records which.
-    if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<")){
+    if((tok.is("array") || tok.is("rawarray")) && file.peekToken().is("<") && !genericTypeIsUnionHead()){
         processArrayMember(newClass.members, newClass.dName(), nullptr, &newClass, &q, tok.is("rawarray"), tok.docComment);
         tok = file.getToken();
         return;
@@ -1176,6 +1176,8 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         if(tok.is(eTokenType::identifier) && file.peekToken(1).is(eTokenType::identifier)) unknownTypeError(tok);
         returnType=tok.assertDataType();
         if(returnType.value == "func") returnType.value = parseFuncType();  // func<...> member type: consume its own <...>
+        else if((returnType.value == "array" || returnType.value == "rawarray") && file.peekToken().is("<"))
+            returnType.value = parseArrayTypeTail(returnType.value);   // `array<int> | string slot`
         returnType.value = maybeParseUnionTail(returnType.value);  // A | B | ... union member type
         name=file.getToken({eTokenType::identifier, eTokenType::dataType});
     }

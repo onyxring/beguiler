@@ -674,6 +674,7 @@ class bglParser {
         vector<string> pendingLiteralMembers; // union members read with `literal`, for the parameter being parsed
         bool declLiteral = false;             // the declaration being parsed was qualified `literal`
         classDef* owningValueElementClass(const string& elementType);
+        bool memberIsArrayData(const string& text, string& shown);
         void ensureOwnPrintOverload(const string& typeName);
         functionDef* replaceOwner();
         map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey

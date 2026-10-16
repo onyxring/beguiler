@@ -398,8 +398,8 @@ class is extended with `extend class`, and a struct with `extend struct`.
 
 Copying goes through the struct's **copy operator**, `operator =` taking the struct. A struct that declares
 none gets one that copies each field, as an assignment of that field would: a number is copied, a struct
-field through its own copy operator, a `stringObj` field's text, while a class or array field is a
-reference and the copy refers to the same object. It covers fields that `extend struct` adds. A struct
+field through its own copy operator, a `stringObj` field's text and an array field's elements (§12.5), while
+a class field or a `ref` field is a reference and the copy refers to the same object. It covers fields that `extend struct` adds. A struct
 declares its own copy operator to copy differently.
 
 - A struct doesn't inherit: it has no bases, and a class can't derive from it.

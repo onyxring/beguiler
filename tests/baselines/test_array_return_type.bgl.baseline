@@ -103,7 +103,7 @@ array g_src table 1 2 3;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = b-->2 & ~8;
+        b-->2 = (b-->2 & ~8) | 32;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     
@@ -124,7 +124,9 @@ array g_src table 1 2 3;
     b = 0;
     
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(b == 0) return;
+        b-->2 = b-->2 & ~32;
+        if((b-->2 & 12) ~= 0) return;
         if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
         _bglHeapRelease(b);
     

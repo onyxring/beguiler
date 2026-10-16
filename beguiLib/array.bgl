@@ -392,7 +392,7 @@ superposed object _bglArray {
         #i6 {
             if(dtor == 0 || metaclass(obj) == object) return dtor;
             b = _bglHeapBlockOf(obj);
-            if(b ~= 0 && b-->1 == 0) return 0;
+            if(b ~= 0 && (b-->2 & 64)) return 0;
             return dtor;
         }
     }

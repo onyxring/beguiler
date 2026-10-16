@@ -170,7 +170,8 @@ array dst table 8;
         if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
         if(src == 0 || dst == src) return dst;
         if(_bglHeapBorrows(dst)) assign = 0;   ! an array with no instances of its own takes the pointers
-        _bglArrCopyInto(dst, src, assign);
+        if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
+        else _bglArrCopyInto(dst, src, assign);
         if(_bglHeapIsFresh(src)) _bglHeapFree(src);
         return dst;
     
@@ -187,6 +188,36 @@ array dst table 8;
         }
         dst-->(-1) = n;
         return dst;
+    
+];
+[_bglArrCopyShared dst src assign cap n i j k e w;
+    cap = 0;
+    n = 0;
+    i = 0;
+    j = 0;
+    k = 0;
+    e = 0;
+    w = 0;
+    
+        cap = dst-->0;
+        n = _bglArrLength(src);
+        if(n > cap) n = cap;
+        for(i = 1 : i <= n : i++){
+            e = src-->i;
+            for(j = i : j <= cap : j++) if(dst-->j == e) break;
+            if(j > cap){
+                for(j = i : j <= cap : j++){
+                    w = dst-->j;
+                    if(w == 0) break;
+                    for(k = i + 1 : k <= n : k++) if(src-->k == w) break;
+                    if(k > n) break;
+                }
+                if(j > cap) j = i;
+            }
+            w = dst-->i; dst-->i = dst-->j; dst-->j = w;
+            if(dst-->i ~= e) dst-->i = assign(dst-->i, e);
+        }
+        dst-->(-1) = n;
     
 ];
 [_bglArrLength arr;
@@ -276,7 +307,7 @@ object _bglArray
     
             if(dtor == 0 || metaclass(obj) == object) return dtor;
             b = _bglHeapBlockOf(obj);
-            if(b ~= 0 && b-->1 == 0) return 0;
+            if(b ~= 0 && (b-->2 & 64)) return 0;
             return dtor;
         
   ]
@@ -297,7 +328,7 @@ object _bglArray
     b = 0;
     
         b = _bglHeapBlockOf(a);
-        if(b ~= 0 && b-->1 == 0) rtrue;
+        if(b ~= 0 && (b-->2 & 64)) rtrue;
         rfalse;
     
 ];
@@ -315,7 +346,9 @@ object _bglArray
     b = 0;
     
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(b == 0) return;
+        b-->2 = b-->2 & ~32;
+        if((b-->2 & 12) ~= 0) return;
         if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
         _bglHeapRelease(b);
     
@@ -333,7 +366,7 @@ object _bglArray
     a = 0;
     
         a = _bglHeapAlloc(n);
-        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 8;
+        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 72;
         return a;
     
 ];
@@ -414,7 +447,7 @@ array _bglsink --> 1;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = b-->2 & ~8;
+        b-->2 = (b-->2 & ~8) | 32;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     
@@ -517,7 +550,7 @@ array _bglheapstore --> 1536;
         _bglGcRoots();
         for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
             b = (_bglHeap-->0) + o;
-            if(b-->2 & 16) _bglHeapMark(b + 5 * WORDSIZE);
+            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
         }
         _bglHeapTrace();
         #Ifdef DEBUG;

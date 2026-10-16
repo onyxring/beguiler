@@ -213,7 +213,7 @@ object _bglArray
     
             if(dtor == 0 || metaclass(obj) == object) return dtor;
             b = _bglHeapBlockOf(obj);
-            if(b ~= 0 && b-->1 == 0) return 0;
+            if(b ~= 0 && (b-->2 & 64)) return 0;
             return dtor;
         
   ],
@@ -287,7 +287,9 @@ object _bglArray
     b = 0;
     
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(b == 0) return;
+        b-->2 = b-->2 & ~32;
+        if((b-->2 & 12) ~= 0) return;
         if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
         _bglHeapRelease(b);
     
@@ -375,7 +377,7 @@ array _bglsink --> 1;
     
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = b-->2 & ~8;
+        b-->2 = (b-->2 & ~8) | 32;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     
@@ -401,7 +403,7 @@ array _bglsink --> 1;
     a = 0;
     
         a = _bglHeapAlloc(n);
-        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 8;
+        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 72;
         return a;
     
 ];
@@ -503,7 +505,7 @@ array _bglheapstore --> 1536;
         _bglGcRoots();
         for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
             b = (_bglHeap-->0) + o;
-            if(b-->2 & 16) _bglHeapMark(b + 5 * WORDSIZE);
+            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
         }
         _bglHeapTrace();
         #Ifdef DEBUG;

@@ -189,6 +189,34 @@ bglParser::ArrayReceiver bglParser::arrayReceiver(string& objName, const string&
     return r;
 }
 
+// `owner.prop` as emitted (`_box.row`): whether the member is array data on its owner, and the path as the
+// program wrote it. A member of another type (a `var` read through a cast) is no member array.
+bool bglParser::memberIsArrayData(const string& text, string& shown){
+    shown = text;
+    size_t d = text.rfind('.');
+    if(d == string::npos) return true;
+    string owner = text.substr(0, d), prop = text.substr(d + 1);
+    string low = owner; transform(low.begin(), low.end(), low.begin(), ::tolower);
+    for(typeDef* g : languageService.globals){
+        auto* od = dynamic_cast<objectDef*>(g);
+        if(od == nullptr) continue;
+        string i6 = od->i6name.empty() ? od->name : od->i6name;
+        transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
+        if(i6 != low && od->name != low) continue;
+        shown = od->dName() + "." + prop;
+        auto isProp = [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd && (vd->name == prop || propertyI6Name(vd->name) == prop || vd->i6name == prop); };
+        typeMember* m = nullptr;
+        for(typeMember* om : od->members) if(isProp(om)){ m = om; break; }
+        if(m == nullptr && od->objectClass != nullptr) m = findMemberInHierarchy(od->objectClass, isProp);
+        if(m == nullptr) return true;
+        auto* ad = dynamic_cast<arrayDeclaration*>(m);
+        return ad != nullptr && !ad->isRefLocal;
+    }
+    return true;
+}
+
 // A tracked member spends its LAST word on the length: capacity is one less than the property
 // holds, and the length is read from that slot. A rawArray or dictionaryWord array keeps the bare
 // layout, where length == size. Must agree with the emitter's member-array layout.
@@ -2640,6 +2668,11 @@ bglParser::ExprStep bglParser::parseExprInlineObject(ExprParseState& st){
     nameTok.tokenType = eTokenType::identifier;
     file.getToken(token::braceOpen);              // consume '{'
     bakeInlineObjectAggregate(cls, cur.value, nameTok.value, func, body);
+    // `Pt{ 1, 2 }.sum()`: a member of the value is read off the baked object, as off any named one.
+    if(file.peekToken().is(token::period)){
+        cur = nameTok;
+        return parseExprIdentifier(st);
+    }
     expr->tokens.push_back(nameTok.value);        // the expression is a reference to the baked object
     if(expr->resolvedType.empty()) expr->resolvedType = cur.value;
     return ExprStep::Advance;

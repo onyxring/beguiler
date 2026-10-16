@@ -2020,8 +2020,16 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
             }
         }
         // An array element is assigned as an array is: copied into the slot's array; an empty slot takes the array.
-        if(rep.empty() && op == "=" && isWordArrayType(elemType) && elemType != "array<char>")
+        if(rep.empty() && op == "=" && isWordArrayType(elemType) && elemType != "array<char>"){
             rep = "_bglArrCopyAssign";
+            // A row of structs copies each element into the row's own instance.
+            string inner = elemType.size() > 7 && elemType.rfind("array<", 0) == 0 ? elemType.substr(6, elemType.size() - 7) : "";
+            if(classDef* ic = inner.empty() ? nullptr : owningValueElementClass(inner)){
+                languageService.valueElementArrays[ic];
+                languageService.rowCopyClasses.insert(ic);
+                rep += "_" + ic->dName();
+            }
+        }
         if(rep.empty()){
             // Only a type Beguile actually emits is worth warning about. The bare-word
             // builtins (int, char, object, …) are `extern`, and for them the word IS the
@@ -4341,6 +4349,12 @@ string bglParser::elementAwareType(const expression* e, functionDef* func, state
 // A generic target (`array<string>`) rejects a value whose type arguments don't fit it.
 bool bglParser::genericValueFits(const expression* e, const string& targetType, functionDef* func, statementBlock* body){
     if(e == nullptr || targetType.find('<') == string::npos || targetType.rfind("func<", 0) == 0) return true;
+    // A value fits a union when it fits one of its members.
+    if(isUnionType(targetType)){
+        for(const string& m : splitUnionType(targetType))
+            if(m.find('<') != string::npos && m.rfind("func<", 0) != 0 && templateArgsFit(elementAwareType(e, func, body), m)) return true;
+        return elementAwareType(e, func, body).find('<') == string::npos;
+    }
     return templateArgsFit(elementAwareType(e, func, body), targetType);
 }
 
@@ -4563,6 +4577,18 @@ void bglParser::checkReturnValue(expression* e, const string& returnType, const 
                             typeDisplayName(shown), fnName, typeDisplayName(returnType)));
     };
     if(!genericValueFits(e, returnType, currentFunc, nullptr)) fail(elementAwareType(e, currentFunc, nullptr));
+    // A member array is property data on its owner, with no address of its own to return (§12.7).
+    if(isWordArrayType(returnType) && isWordArrayType(e->resolvedType)){
+        string text = e->text();
+        size_t lastDot = text.rfind('.');
+        if(lastDot != string::npos && text.find_first_of("()[]", lastDot) == string::npos){
+            statementBlock* cb = currentFunc != nullptr ? dynamic_cast<statementBlock*>(currentFunc->body) : nullptr;
+            string recv = text, shown;
+            if(arrayReceiver(recv, text, e->resolvedType, currentFunc, cb).isMember && memberIsArrayData(text, shown))
+                parsingError(format("'{0}' is a member array, its owner's property data, so it can't be returned. "
+                    "Copy it into a local first (`array<…> c = {0};`) and return that.", shown));
+        }
+    }
     if(e->resolvedType == returnType) return;
     if(!isTypeCompatible(e->resolvedType, returnType)) fail(e->resolvedType);
     // Compatible through the value's own implicit conversion operator: apply it, as an assignment does.
@@ -4731,9 +4757,10 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
                 statementBlock* cb = currentFunc != nullptr ? dynamic_cast<statementBlock*>(currentFunc->body) : nullptr;
                 string recv = text;
                 ArrayReceiver r = arrayReceiver(recv, text, argType, currentFunc, cb);
-                if(r.isMember)
+                string shown;
+                if(r.isMember && memberIsArrayData(text, shown))
                     parsingError(format("'{0}' is a member array, its owner's property data, so it can't be passed as an "
-                        "argument. Pass its owner instead, or copy it into an array of your own with `=` first.", text));
+                        "argument. Pass its owner instead, or copy it into an array of your own with `=` first.", shown));
             }
         }
         // A verb named as an argument is its action constant (`Take` → ##Take); a verb-typed variable or

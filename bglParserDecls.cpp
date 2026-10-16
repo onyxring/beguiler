@@ -604,7 +604,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                     // A local declared from a call or a step's result owns that array (§12.6); one declared from
                     // another array's name owns a copy of it.
                     if(func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray && elementType != "char"){
-                        bool plainName = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
+                        // Only a call's or chain's result is taken; a name, element or cast is copied.
+                        size_t last = srcText.find_last_not_of(" \t");
+                        bool plainName = last == string::npos || srcText[last] != ')';
                         string mOwner, mProp;
                         if(!arrDecl.isRefLocal && !declaringRefArray && memberArraySource(expr, mOwner, mProp)){
                             // A member array is its property's data: the local gets a copy of it.
@@ -905,7 +907,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
     // reaches operator= dispatch — this is the primary array copy-on-assign capture form.
     if(!isRef) applyImplicitConversion(rhs, (string)dataType);
     if(!isRef && (string)dataType == "verb") applyActionConstant(rhs);
-    classDef* classType=getDispatchClass((string)dataType);
+    // A union holds whichever member's value it is given, so no member's `operator =` applies.
+    classDef* classType = isUnionType((string)dataType) ? nullptr : getDispatchClass((string)dataType);
     if((classType == nullptr || ((string)dataType).find('<') != string::npos) && rhs != nullptr && !isRef)
         checkClasslessAssignable(rhs, (string)dataType, "variable");
     if(classType != nullptr && rhs != nullptr && !isRef) rejectUnionInto(rhs, classType);

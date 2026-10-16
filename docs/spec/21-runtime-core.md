@@ -1056,7 +1056,7 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 | `bgl.gc.keep(a)` | `void` | Pins array `a`, for I6 code that holds on to it (§15.4.1): it lives until `unpin` or `free`, whatever refers to it. |
 | `bgl.gc.unpin(a)` | `void` | Hands a pinned array back to the collector, which frees it once nothing refers to it. |
 | `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
-| `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
+| `bgl.gc.used` | `int` | Words of the heap in blocks in use. A block may take a few spare words that were too few to split off, so the same arrays can read slightly differently as the heap fragments. |
 | `bgl.gc.size` | `int` | Words the heap holds for blocks. |
 | `bgl.gc.peak` | `int` | The most words ever in blocks in use: what `heapSize` must hold. |
 

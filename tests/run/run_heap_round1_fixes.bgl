@@ -1,0 +1,50 @@
+// run_heap_round1_fixes — arrays a running routine took over survive collect(); a local array of arrays keeps its
+// rows when one is copied or passed; var and union slots hold arrays; a struct array reorders into itself; a list
+// fills a row; a row of structs copies its structs; an element declared from a row copies it.
+// EXPECT_OUTPUT: taken 1 2 3 | rows 2 3 sum 9 | var 7 union 3 | order 3 2 1 | list 8 2 | structrow 2 | elem 99 6
+#beguilerSettings { target = z5; informName = "none"; heapSize = 1024; }
+#include <array>
+#include <linq>
+struct Coin { int value; }
+array<Coin> purse = { Coin{ value = 1; }, Coin{ value = 2; }, Coin{ value = 3; } };
+var held;
+array<int> | string either;
+array<array<int>> grid = { {4, 5}, {6} };
+array<int> make(int n){ array<int> t[4]; t += n; t += n + 1; t += n + 2; return t; }
+int sum(array<int> a){ int s = 0; for(int x in a) s += x; return s; }
+void keepInVar(){ array<int> b[3]; b += 7; held = b; }
+void main(){
+    bglInit();
+    array<int> r = make(1);
+    bgl.gc.collect();
+    array<int> o = make(9);
+    print($"taken {r[0]} {r[1]} {r[2]} | ");
+    array<array<int>> rows[3];
+    rows += make(1);
+    rows += make(2);
+    rows[0] = rows[1];
+    int s = sum(rows[1]);
+    print($"rows {rows[0][0]} {rows[1].length} sum {s} | ");
+    keepInVar();
+    bgl.gc.collect();
+    array<int> other = make(50);
+    either = make(1);
+    print($"var {((array<int>)held)[0]} union {((array<int>)either).length} | ");
+    purse = purse.orderBy((Coin a, Coin b) => b.value - a.value);
+    print($"order {purse[0].value} {purse[1].value} {purse[2].value} | ");
+    grid[0] = {7, 8};
+    print($"list {grid[0][1]} {grid[0].length} | ");
+    array<array<Coin>> crows[2];
+    array<Coin> a1[2];
+    array<Coin> a2[2];
+    a1 += Coin{ value = 1; };
+    a2 += Coin{ value = 2; };
+    crows += a1;
+    crows += a2;
+    crows[0] = crows[1];
+    crows[1][0].value = 9;
+    print($"structrow {crows[0][0].value} | ");
+    array<int> c = grid[1];
+    c[0] = 99;
+    print($"elem {c[0]} {grid[1][0]}");
+}

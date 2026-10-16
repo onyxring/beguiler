@@ -45,6 +45,8 @@ class bglLanguageService{
     // sizes each pool from the arrays recorded here; the copy operator is the one each slot store calls.
     struct valueElementArray { class arrayDeclaration* decl; class classDef* hostClass; bool isLocal; };
     map<class classDef*, vector<valueElementArray>> valueElementArrays;
+    // Structs whose arrays are elements of another array: each gets a routine that copies one such row.
+    set<class classDef*> rowCopyClasses;
     set<string> instanceOpRefs;   // instance operators $opref names: each gets a `_bglOpRef_<prop>(a, b)` routine
     map<class classDef*, string> valueElementCopyOps;   // class → its copy operator's I6 property name
     set<classDef*> valueSlotClasses;   // classes whose array slots a member access reaches (_bglValSlot_<C>)

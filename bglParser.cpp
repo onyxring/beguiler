@@ -596,6 +596,24 @@ void bglParser::validateGlobalNameClashes(){
             "in one namespace, ignoring case, so rename one of them or give one an `asI6` name.",
             src.file, src.line, kind, g->dName(), it->second.kind, it->second.def->dName(), at(it->second.src)));
     }
+    // A program's own extern declarations name Inform 6 symbols, one namespace too: a variable and a routine
+    // can't both be that name.
+    map<string, typeDef*> externs;
+    for(typeDef* g : languageService.globals){
+        auto* fd = dynamic_cast<functionDef*>(g);
+        auto* vd = dynamic_cast<variableDeclaration*>(g);
+        bool isExternFn = fd && fd->isExternal && !fd->isEmitter && !fd->isPrePassStub;
+        bool isExternVar = vd && vd->isExternal && !vd->isPrePassStub && vd->type.name != "property" && vd->type.name != "attribute";
+        if(!isExternFn && !isExternVar) continue;
+        const sourceLocation& src = isExternFn ? fd->src : vd->src;
+        if(src.file.empty() || src.file.find("beguiLib") != string::npos) continue;
+        string name = lower(g->i6name.empty() ? g->dName() : g->i6name);
+        auto [it, fresh] = externs.emplace(name, g);
+        if(fresh || it->second == g || (dynamic_cast<functionDef*>(it->second) != nullptr) == isExternFn) continue;
+        parsingError(format("{0}:{1}:1: extern {2} '{3}' has the same name as extern {4} '{5}'; Inform 6 keeps these in "
+            "one namespace, ignoring case, so one name can't be both.", src.file, src.line,
+            isExternFn ? "function" : "variable", g->dName(), isExternFn ? "variable" : "function", it->second->dName()));
+    }
     // A name the library binding declares (a global, an attribute, an object) is taken in Inform 6 too.
     // A library routine is left out: a program defines the library's entry points under their names.
     map<string, typeDef*> library;

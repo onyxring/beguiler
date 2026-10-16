@@ -1,0 +1,7 @@
+// A member array is its owner's property data, with no address of its own to return.
+// EXPECT_ERROR: 'box.row' is a member array, its owner's property data, so it can't be returned
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object box { array<int> row[6] = {10, 20, 30}; }
+array<int> boxRow() { return box.row; }
+void main() { bglInit(); array<int> e = boxRow(); }

@@ -2420,9 +2420,10 @@ void bglParser::rejectMemberArrayBind(expression* rhs, functionDef* func, statem
     string text = rhs->text();
     if(text.find('(') != string::npos || text.find('.') == string::npos) return;
     string recv = text;
-    if(arrayReceiver(recv, text, rhs->resolvedType, func, body).isMember)
+    string shown;
+    if(arrayReceiver(recv, text, rhs->resolvedType, func, body).isMember && memberIsArrayData(text, shown))
         parsingError(format("'{0}' is a member array, which a `ref` can't be bound to: bind a global, local or "
-            "`ref` array, or declare the member `ref` too.", text));
+            "`ref` array, or declare the member `ref` too.", shown));
 }
 
 // `a[i] = v;` — a single-subscript element write.
@@ -2435,7 +2436,37 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     token op = file.getToken();
     bool bind = op.is(token::bindAssignment);
     if(!bind) op.assert(token::assignment);
-    expression* valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
+    expression* valExpr = nullptr;
+    // `grid[i] = { 5, 6 };`: the list is a hidden local array, copied into the row as an array value would be.
+    string rowType = arrPath.find('.') == string::npos ? resolveArrayElementType(arrPath, func, body) : "";
+    if(!bind && file.peekToken().is(token::braceOpen) && isWordArrayType(rowType) && rowType != "array<char>"){
+        file.getToken();   // '{'
+        vector<expression*> elements;
+        token et = file.getToken();
+        while(!et.is(token::braceClose) && !et.is(eTokenType::eof)){
+            expression* elem = parseExpression(et, {",", token::braceClose}, func, body);
+            elements.push_back(elem);
+            if(elem->terminator == token::braceClose) break;
+            et = file.getToken();
+        }
+        file.getToken(token::endStatement);
+        auto& listDecl = *(new arrayDeclaration());
+        listDecl.name = format("_bglrow{0}", forInCounter++);
+        listDecl.src = stmtLoc;
+        listDecl.type = languageService.getType("array");
+        listDecl.elementType = arrayInnerType(rowType);
+        listDecl.inLoop = loopDepth > 0;
+        listDecl.isSynthetic = true;
+        auto* listInit = new initializerList();
+        listInit->elements = elements;
+        listDecl.declaredExpressionValue = listInit;
+        noteValueElementArray(listDecl, nullptr, true);   // a list of structs takes instances of its own
+        if(body != nullptr) body->statements.push_back(&listDecl);
+        valExpr = new expression();
+        valExpr->tokens.push_back(listDecl.name);
+        valExpr->resolvedType = rowType;
+    } else
+        valExpr = parseExpression(file.getToken(), {token::endStatement}, func, body);
     if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(arrPath, func, body)))
         if(arr->literalElements) checkLiteralElements(*arr, {valExpr});
     if(arrPath.find('.') != string::npos || languageService.findGlobalAs<arrayDeclaration>(arrPath) != nullptr)
@@ -2652,7 +2683,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // slot takes the array itself).
     else if(isWordArrayType(elemType) && elemType != "array<char>"){
         if(!isMemberWordArray && pointerSlot.empty())
-            valExpr->tokens.assign(1, "_bglArrCopyAssign(_bglAt(" + arrPath + ", " + indexExpr->text() + ", 0)-->0, " + valExpr->text() + ")");
+            valExpr->tokens.assign(1, substituteElemOps("$opref(=)", elemType, "") + "(_bglAt(" + arrPath + ", " + indexExpr->text() + ", 0)-->0, " + valExpr->text() + ")");
         else
             valExpr->tokens.assign(1, "_bglHeapEscape(" + valExpr->text() + ")");
     }
@@ -3537,7 +3568,25 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     // A whole array as the target. `=` copies into the array the slot owns (an inline member's property data, or the
     // array a global, local, `ref` slot or promoted member holds); `:=` binds a `ref` slot to the array itself.
     string storeText;   // the copy, which takes the place of the array's `operator =`
-    if(t.leftType != nullptr && val != nullptr && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
+    bool slotOfAnyType = t.leftType != nullptr && (t.leftType->name == "var" || isUnionType(t.leftType->name)
+        || (getDispatchClass(t.leftType->name) != nullptr && getDispatchClass(t.leftType->name)->isUnion()));
+    if(slotOfAnyType && val != nullptr && !isBindAssign && isWordArrayType(val->resolvedType) && currentFunc != nullptr
+       && a.src.file.find("beguiLib") == string::npos){
+        // A `var` or union slot holds the array itself; one that outlives the routine keeps it past its owner.
+        bool localSlot = a.variableLeft.find('.') == string::npos
+            && (qualifyFromParams(a.variableLeft, currentFunc)
+                || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
+        if(!localSlot) val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
+    }
+    // A union slot holds whichever member's value it is given: a plain store, whatever its first member's `=` does.
+    if(slotOfAnyType && t.leftType->name != "var" && val != nullptr && !isBindAssign){
+        checkClasslessAssignable(val, t.leftType->name, "variable");
+        a.emitterSelf = t.emitterSelf;
+        a.emitterProp = t.emitterProp;
+        a.assignedExpression = val;
+        return;
+    }
+    if(t.leftType != nullptr && val != nullptr && !slotOfAnyType && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
        && a.src.file.find("beguiLib") == string::npos){
         bool member = !t.emitterProp.empty() && t.emitterProp != "0";
         string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`

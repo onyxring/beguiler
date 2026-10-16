@@ -1375,6 +1375,14 @@ bool fileLexer::tryLexDictionaryWordToken(token& retval){
                           || (prevTokenType == eTokenType::symbol && (prevTokenValue == ")" || prevTokenValue == "]")));
     // A keyword that a value follows (`return .lamp;`, `case .take:`, `inject .nails;`) is not a receiver.
     if(prevIsExprEnd && (prevTokenValue == "return" || prevTokenValue == "case" || prevTokenValue == "inject")) prevIsExprEnd = false;
+    // `Pt{ 1, 2 }.sum()`: a '.' written straight after an inline value's '}' reaches its member.
+    if(!prevIsExprEnd && prevTokenType == eTokenType::symbol && prevTokenValue == "}" && retval.is(".")){
+        auto here = currentStream()->tellg();
+        currentStream()->seekg((streamoff)here - 2);
+        if(currentStream()->peek() == '}') prevIsExprEnd = true;
+        currentStream()->clear();
+        currentStream()->seekg(here);
+    }
     // `.lamp.addr()` sends to the word; `.card .a` (spaced) is a second word.
     if(prevIsExprEnd && prevTokenType == eTokenType::dictionaryWord && retval.is(".")){
         auto here = currentStream()->tellg();

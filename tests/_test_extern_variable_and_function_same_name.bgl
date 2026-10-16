@@ -1,0 +1,7 @@
+// Inform 6 keeps variables and routines in one namespace: one extern name can't be both.
+// EXPECT_ERROR: extern function 'holdA' has the same name as extern variable 'holdA'
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Global holdA = 0; }
+extern int holdA;
+extern void holdA(int a);
+void main() { bglInit(); }

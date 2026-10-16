@@ -244,7 +244,8 @@ The collector finds references from declared types. Its roots are the globals an
 hold an array (an array type, `var`, or a union with one of them), the elements of file-scope and member
 arrays of such a type, the local arrays of routines still running, and the arrays pinned with
 `bgl.gc.keep` (§21.15). It follows them through the arrays they reach. A reference it can't see, one held
-only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead.
+only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead. An Inform 6
+global declared to Beguile with an array type (`extern array<int> held;`) is typed, so it is a root.
 
 The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
 
@@ -295,7 +296,7 @@ its own, with the declared capacity and initializer.
 
 `holder.rows = src;` copies into the member, and `d = holder.rows;` copies out of it (§12.5); `array<int> c =
 holder.rows;` gives a local a copy of its own. A member array is its owner's data, with no address of its own, so
-it can't be passed as an argument: pass its owner, or copy it into an array first.
+it can't be passed as an argument or returned: pass its owner, or copy it into an array first.
 
 A member array is declared with a capacity or at least one element. In a class body, a member every
 object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,

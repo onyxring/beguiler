@@ -125,6 +125,39 @@ superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
         return dst;
     }
 }
+// _bglArrCopyInto for a source that points at instances, some of which may be dst's own (`a = a.orderBy(…)`):
+// dst's instances are swapped into the source's order, so none is overwritten before it is read, and an element
+// from elsewhere is copied into an instance of dst's that no later element needs.
+superposed void _bglArrCopyShared(int dst, int src, var assign){
+    int cap = 0;
+    int n = 0;
+    int i = 0;
+    int j = 0;
+    int k = 0;
+    int e = 0;
+    int w = 0;
+    #i6 {
+        cap = dst-->0;
+        n = _bglArrLength(src);
+        if(n > cap) n = cap;
+        for(i = 1 : i <= n : i++){
+            e = src-->i;
+            for(j = i : j <= cap : j++) if(dst-->j == e) break;
+            if(j > cap){
+                for(j = i : j <= cap : j++){
+                    w = dst-->j;
+                    if(w == 0) break;
+                    for(k = i + 1 : k <= n : k++) if(src-->k == w) break;
+                    if(k > n) break;
+                }
+                if(j > cap) j = i;
+            }
+            w = dst-->i; dst-->i = dst-->j; dst-->j = w;
+            if(dst-->i ~= e) dst-->i = assign(dst-->i, e);
+        }
+        dst-->(-1) = n;
+    }
+}
 // `dst = src` on arrays: src's elements and length, up to dst's capacity, copied into dst's own storage. A source
 // nothing owns (a step's result, a call's returned array) is freed once copied. Returns dst.
 superposed int _bglArrCopyFrom(int dst, int src, var assign = 0){
@@ -133,7 +166,8 @@ superposed int _bglArrCopyFrom(int dst, int src, var assign = 0){
         if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
         if(src == 0 || dst == src) return dst;
         if(_bglHeapBorrows(dst)) assign = 0;   ! an array with no instances of its own takes the pointers
-        _bglArrCopyInto(dst, src, assign);
+        if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
+        else _bglArrCopyInto(dst, src, assign);
         if(_bglHeapIsFresh(src)) _bglHeapFree(src);
         return dst;
     }

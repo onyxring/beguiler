@@ -5342,9 +5342,12 @@ void i6Emitter::synthesizeValueElementPools(){
             raw->text = "[ _bglValSlot_" + cls->dName() + " _bgla _bgli; return _bgla-->_bgli; ];\n";
             languageService.globals.push_back(raw);
         }
-    for(auto& [cls, arrays] : languageService.valueElementArrays){
+    // Each struct's instance count, worked out before any instance exists: a struct whose member array holds
+    // another struct's values gives each of its own instances such an array (`Bag { array<Coin> coins[2]; }`).
+    map<classDef*, int> poolSize;
+    auto countFor = [&](classDef* cls){
         int N = 0;
-        for(auto& rec : arrays){
+        for(auto& rec : languageService.valueElementArrays[cls]){
             int cap = rec.decl->arraySize;
             if(auto* list = dynamic_cast<initializerList*>(rec.decl->declaredExpressionValue))
                 cap = max(cap, (int)list->elements.size());
@@ -5359,10 +5362,20 @@ void i6Emitter::synthesizeValueElementPools(){
                        && dynamic_cast<arrayDeclaration*>(vd) == nullptr && derivesFrom(languageService.findClass(vd->type.name), rec.hostClass))
                         copies++;
                 }
+                for(auto& [hc, hn] : poolSize) if(derivesFrom(hc, rec.hostClass)) copies += hn;
             }
             N += cap * copies;
         }
-        if(N < 1) N = 1;
+        return N < 1 ? 1 : N;
+    };
+    for(auto& kv : languageService.valueElementArrays) poolSize[kv.first] = 0;
+    for(int pass = 0; pass < 8; pass++){
+        bool changed = false;
+        for(auto& kv : poolSize){ int n = countFor(kv.first); if(n != kv.second){ kv.second = n; changed = true; } }
+        if(!changed) break;
+    }
+    for(auto& [cls, arrays] : languageService.valueElementArrays){
+        int N = poolSize[cls];
         string base = "_bglVal_" + cls->dName();
         auto& g = languageService.globals;
         size_t at = g.size();
@@ -5406,9 +5419,22 @@ void i6Emitter::synthesizeValueElementPools(){
         string copy;
         if(auto it = languageService.valueElementCopyOps.find(cls); it != languageService.valueElementCopyOps.end())
             copy = format(" _bglcur.{0}(_bglv);", it->second);
+        // A freed instance lets go of the arrays its `ref` and `var` members held, so the collector can free them.
+        string drop;
+        cls->forEachMember([&](typeMember* m){
+            auto* fvd = dynamic_cast<variableDeclaration*>(m);
+            if(!fvd || fvd->isExternal || fvd->isStatic || isHeaderMember(fvd->name)) return;
+            auto* fad = dynamic_cast<arrayDeclaration*>(fvd);
+            bool holds = fad ? (fad->isRefLocal && !fad->isByteArray && !fad->isRaw) : (fvd->isRefLocal ? holdsHeapArray(fvd->type.name) : holdsHeapArray(fvd->type.name));
+            if(holds) drop += format(" _bglv.{0} = 0;", fvd->i6name.empty() ? fvd->dName() : fvd->i6name);
+        });
         i6RawNode* raw = new i6RawNode();
         string n = to_string(N), cn = cls->dName();
-        raw->text =
+        if(languageService.rowCopyClasses.count(cls))
+            raw->text = "[ _bglArrCopyAssign_" + cn + " _bglcur _bglsrc;\n"
+                        "  if(_bglcur == 0) return _bglHeapEscape(_bglsrc);\n"
+                        "  return _bglArrCopyFrom(_bglcur, _bglsrc, _bglValAssign_" + cn + ");\n];\n";
+        raw->text +=
             "Array " + base + "_pool -->" + elems + (N == 1 ? " 0" : "") + ";\n"
             "Array " + base + "_used -> " + n + ";\n"
             "[ _bglValAssign_" + cn + " _bglcur _bglv _bgli;\n"
@@ -5434,7 +5460,7 @@ void i6Emitter::synthesizeValueElementPools(){
             "  return _bglcur;\n"
             "];\n" : string()) +
             "[ _bglValFree_" + cn + " _bglv _bgli;\n"
-            "  for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_pool-->_bgli == _bglv){ " + base + "_used->_bgli = 0; return; }\n"
+            "  for(_bgli = 0: _bgli < " + n + ": _bgli++) if(" + base + "_pool-->_bgli == _bglv){ " + base + "_used->_bgli = 0;" + drop + " return; }\n"
             "];\n";
         g.insert(g.begin() + at, raw);
     }

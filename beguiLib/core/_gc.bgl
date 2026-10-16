@@ -16,7 +16,9 @@
 // `state` is 0 free, 1 in use, 2 marked, 3 marked and traced; plus 4 once a reference to it is kept anywhere
 // but its owner (it is then left to the collector), plus 16 while it is pinned (a root of its own), and plus 8
 // while it has no owner and the next local declared from it may take it (a step's result, or an array its owner
-// returned). Only allocating names the
+// returned); plus 64 when it was made as a result (a step's, or a copy declared from a value), which holds
+// pointers to another array's instances rather than instances of its own; plus 32 while a running routine's local
+// owns it (the collector can't see locals). Only allocating names the
 // storage, so a program that allocates nothing has no heap. Its bookkeeping words:
 //     -->0 the first block                                  -->1 bytes from it to the heap's end
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
@@ -210,7 +212,7 @@ superposed bool _bglHeapBorrows(int a){
     int b = 0;
     #i6 {
         b = _bglHeapBlockOf(a);
-        if(b ~= 0 && b-->1 == 0) rtrue;
+        if(b ~= 0 && (b-->2 & 64)) rtrue;
         rfalse;
     }
 }
@@ -228,7 +230,7 @@ superposed int _bglHeapFresh(int n){
     int a = 0;
     #i6 {
         a = _bglHeapAlloc(n);
-        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 8;
+        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 72;
         return a;
     }
 }
@@ -271,7 +273,9 @@ superposed void _bglHeapDropOwned(int a){
     int b = 0;
     #i6 {
         b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(b == 0) return;
+        b-->2 = b-->2 & ~32;
+        if((b-->2 & 12) ~= 0) return;
         if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
         _bglHeapRelease(b);
     }
@@ -297,7 +301,7 @@ superposed int _bglHeapAdopt(int a){
     #i6 {
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = b-->2 & ~8;
+        b-->2 = (b-->2 & ~8) | 32;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     }
@@ -350,7 +354,7 @@ superposed void _bglHeapCollect(){
         _bglGcRoots();
         for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
             b = (_bglHeap-->0) + o;
-            if(b-->2 & 16) _bglHeapMark(b + 5 * WORDSIZE);
+            if(b-->2 & 48) _bglHeapMark(b + 5 * WORDSIZE);
         }
         _bglHeapTrace();
         #Ifdef DEBUG;
