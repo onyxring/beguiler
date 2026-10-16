@@ -275,7 +275,7 @@ object _bglArray
 ];
 [_bglHeapIsStart b;
     
-        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
     
 ];
@@ -435,6 +435,7 @@ array _bglsink --> 1;
                     for(i = 1 : i <= n : i++) a-->i = 0;
                     _bglHeap-->2 = _bglHeap-->2 + b-->0;
                     _bglHeap-->3 = _bglHeap-->3 + b-->0;
+                    if(_bglHeap-->2 > _bglHeap-->6) _bglHeap-->6 = _bglHeap-->2;
                     return a;
                 }
             }
@@ -451,7 +452,7 @@ array _bglsink --> 1;
     _bglheapstore-->0 = 0;
     
         _bglHeap = _bglHeapStore;
-        bm = 6 + (words / 8 + WORDSIZE) / WORDSIZE;
+        bm = 7 + (words / 8 + WORDSIZE) / WORDSIZE;
         for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
         _bglHeap-->5 = words;
         _bglHeap-->0 = _bglHeap + bm * WORDSIZE;
@@ -466,7 +467,7 @@ array _bglsink --> 1;
 [_bglHeapSetStart b on i;
     i = 0;
     
-        i = 6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
+        i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
         if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
         else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
     
@@ -496,10 +497,24 @@ array _bglheapstore --> 1536;
             p = 0-->2; _l_last = 0-->4;
         #Endif;
         _l_last = _l_last - WORDSIZE;
-        while(p ~= _l_last){
-            o = p - _bglHeap;
-            if(o < 0 || o >= heapBytes) _bglHeapMark(p-->0);
+        ! Every word outside the heap, in two runs: before it and after it. Only a word that points into
+        ! the heap's blocks needs the full test.
+        a = (_bglHeap-->0) + 5 * WORDSIZE;
+        i = _bglHeap-->1;
+        b = _bglHeap;
+        while(p ~= b){
+            o = (p-->0) - a;
+            if(o >= 0 && o < i) _bglHeapMark(p-->0);
             p++;
+        }
+        p = _bglHeap + heapBytes;
+        if(_bglUnsignedCompare(p, _l_last) <= 0){
+            _l_last++;
+            while(p ~= _l_last){
+                o = (p-->0) - a;
+                if(o >= 0 && o < i) _bglHeapMark(p-->0);
+                p++;
+            }
         }
         do {
             more = false;
@@ -526,4 +541,21 @@ array _bglheapstore --> 1536;
         b = _bglHeapBlockOf(w);
         if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
     
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];

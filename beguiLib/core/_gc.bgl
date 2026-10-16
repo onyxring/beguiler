@@ -20,6 +20,7 @@
 //     -->0 the first block                                  -->1 bytes from it to the heap's end
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
 //     -->4 the array a routine is returning              -->5 the heap's size in words
+//     -->6 the most words ever in blocks in use
 superposed rawArray<int> _bglHeapStore[#beguilerSettings.heapSize];
 // The heap: 0 until it is laid out.
 int _bglHeap = 0;
@@ -38,7 +39,7 @@ superposed int _bglHeapBitMask(int b){
 // Whether `b` starts a block.
 superposed bool _bglHeapIsStart(int b){
     #i6 {
-        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
     }
 }
@@ -46,7 +47,7 @@ superposed bool _bglHeapIsStart(int b){
 superposed void _bglHeapSetStart(int b, bool on){
     int i = 0;
     #i6 {
-        i = 6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
+        i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
         if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
         else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
     }
@@ -60,7 +61,7 @@ superposed void _bglHeapInit(){
     _bglHeapStore[0] = 0;   // named in Beguile, so the storage is emitted with the routine that lays it out
     #i6 {
         _bglHeap = _bglHeapStore;
-        bm = 6 + (words / 8 + WORDSIZE) / WORDSIZE;
+        bm = 7 + (words / 8 + WORDSIZE) / WORDSIZE;
         for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
         _bglHeap-->5 = words;
         _bglHeap-->0 = _bglHeap + bm * WORDSIZE;
@@ -126,6 +127,7 @@ superposed int _bglHeapAlloc(int n, int kind = 0){
                     for(i = 1 : i <= n : i++) a-->i = 0;
                     _bglHeap-->2 = _bglHeap-->2 + b-->0;
                     _bglHeap-->3 = _bglHeap-->3 + b-->0;
+                    if(_bglHeap-->2 > _bglHeap-->6) _bglHeap-->6 = _bglHeap-->2;
                     return a;
                 }
             }
@@ -327,10 +329,24 @@ superposed void _bglHeapCollect(){
             p = 0-->2; last = 0-->4;
         #Endif;
         last = last - WORDSIZE;
-        while(p ~= last){
-            o = p - _bglHeap;
-            if(o < 0 || o >= heapBytes) _bglHeapMark(p-->0);
+        ! Every word outside the heap, in two runs: before it and after it. Only a word that points into
+        ! the heap's blocks needs the full test.
+        a = (_bglHeap-->0) + 5 * WORDSIZE;
+        i = _bglHeap-->1;
+        b = _bglHeap;
+        while(p ~= b){
+            o = (p-->0) - a;
+            if(o >= 0 && o < i) _bglHeapMark(p-->0);
             p++;
+        }
+        p = _bglHeap + heapBytes;
+        if(_bglUnsignedCompare(p, last) <= 0){
+            last++;
+            while(p ~= last){
+                o = (p-->0) - a;
+                if(o >= 0 && o < i) _bglHeapMark(p-->0);
+                p++;
+            }
         }
         do {
             more = false;
@@ -360,11 +376,17 @@ superposed void _bglHeapAtPrompt(){
     }
 }
 
-// Words in blocks in use, and words the heap holds for blocks.
+// Words in blocks in use, the most ever in use, and words the heap holds for blocks.
 superposed int _bglHeapUsedWords(){
     #i6 {
         if(_bglHeap == 0) return 0;
         return _bglHeap-->2;
+    }
+}
+superposed int _bglHeapPeakWords(){
+    #i6 {
+        if(_bglHeap == 0) return 0;
+        return _bglHeap-->6;
     }
 }
 superposed int _bglHeapSizeWords(){
@@ -379,10 +401,13 @@ superposed int _bglHeapSizeWords(){
 superposed _bglObject _bglGC {
     /// Release an array now instead of at the next collection; a later use through another reference is an error.
     void free(var a)  { _bglHeapFree(a); }
+    /// Keep a local array past its routine's exit, for Inform 6 code that holds on to it; the collector frees it once nothing refers to it.
+    void keep(var a)  { _bglHeapEscape(a); }
     /// Free every array that nothing refers to; call it where no local array still needed is held only in a local.
     void collect()    { _bglHeapCollect(); }
     emitter int used  { _bglHeapUsedWords() }   /// Words of the heap in use.
     emitter int size  { _bglHeapSizeWords() }   /// Words the heap holds for arrays.
+    emitter int peak  { _bglHeapPeakWords() }   /// The most words of the heap ever in use: what `heapSize` must hold.
 }
 
 extend bgl {

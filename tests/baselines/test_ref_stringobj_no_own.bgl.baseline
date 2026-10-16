@@ -1555,7 +1555,7 @@ object _bglArray
 ];
 [_bglHeapIsStart b;
     
-        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
         rfalse;
     
 ];

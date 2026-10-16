@@ -218,6 +218,15 @@ verb 'study'
           with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
     #Endif;
 
+
+    #Ifdef DEBUG;
+    [ _bglHeapVerbSub;
+        if (_bglHeap == 0) "Heap: nothing allocated yet.";
+        print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+    ];
+    Verb meta 'heap' * -> _bglHeapVerb;
+    #Endif;
+
 [__glkHook _vararg_count api args retval;
     @copy sp api;
     args=_vararg_count - 1;

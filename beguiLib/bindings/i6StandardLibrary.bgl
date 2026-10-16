@@ -970,3 +970,15 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
           with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
     #Endif;
 }
+
+// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize. Its
+// grammar follows the library's own.
+#emitlast {
+    #Ifdef DEBUG;
+    [ _bglHeapVerbSub;
+        if (_bglHeap == 0) "Heap: nothing allocated yet.";
+        print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+    ];
+    Verb meta 'heap' * -> _bglHeapVerb;
+    #Endif;
+}

@@ -324,7 +324,12 @@ extern default void Epilogue();          // library stub
 void Epilogue() { print("The End.^"); }  // overrides it; no replace needed
 ```
 
-**See also** §6.1, §6.5.
+> **Arrays given to I6.** A local array is freed as its routine returns unless Beguile code stored it
+> somewhere lasting (§12.6). I6 code that keeps an array it was given, in a global of its own or an
+> `#i6` block's variable, needs one that lives on: mark it with `bgl.gc.keep(a)` first (§21.15), or pass a
+> file-scope array.
+
+**See also** §6.1, §6.5, §12.6.
 
 ### 15.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums
 

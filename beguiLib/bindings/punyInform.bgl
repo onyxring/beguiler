@@ -607,3 +607,15 @@ extern var TouchCeiling(var p_actor = 0, var _parent = 0);
         return _bglPunyReadPlayerInput(p_no_prompt, p_no_statusline);
     ];
 }
+
+// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize. Its
+// grammar follows the library's own.
+#emitlast {
+    #Ifdef DEBUG;
+    [ _bglHeapVerbSub;
+        if (_bglHeap == 0) "Heap: nothing allocated yet.";
+        print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+    ];
+    Verb meta 'heap' * -> _bglHeapVerb;
+    #Endif;
+}

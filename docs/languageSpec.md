@@ -8981,7 +8981,12 @@ extern default void Epilogue();          // library stub
 void Epilogue() { print("The End.^"); }  // overrides it; no replace needed
 ```
 
-**See also** §6.1, §6.5.
+> **Arrays given to I6.** A local array is freed as its routine returns unless Beguile code stored it
+> somewhere lasting (§12.6). I6 code that keeps an array it was given, in a global of its own or an
+> `#i6` block's variable, needs one that lives on: mark it with `bgl.gc.keep(a)` first (§21.15), or pass a
+> file-scope array.
+
+**See also** §6.1, §6.5, §12.6.
 
 ### 15.4.2 Extern Variables, Constants, Attributes, Properties, Verbs and Enums
 
@@ -11141,6 +11146,7 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 | Member | Returns | Description |
 |---|---|---|
 | `bgl.gc.free(a)` | `void` | Frees array `a` now instead of at the next collection. A later use of it through another reference reads freed memory. |
+| `bgl.gc.keep(a)` | `void` | Keeps local array `a` past its routine's exit, for I6 code that holds on to it (§15.4.1). The collector still frees it once nothing refers to it. |
 | `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
 | `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
 | `bgl.gc.size` | `int` | Words the heap holds for blocks. |
