@@ -241,6 +241,7 @@ superposed int _bglHeapAdopt(int a){
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
         b-->2 = b-->2 & ~8;
+        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
     }
 }
