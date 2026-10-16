@@ -389,6 +389,9 @@ class functionDef:public typeMember, public typeDef{
         bool callsItself = false;
         vector<pair<string,string>> ownBackings;
         string entrySetUp;
+        // Counts this routine's running activations, for a routine whose own instances can hold heap arrays:
+        // the collector reads those instances only while it runs.
+        string runCounter;
         pair<string,string> returnCopy;      // {instance, copy routine}: a returned value class leaves through its own instance
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).

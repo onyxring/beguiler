@@ -1,0 +1,38 @@
+// run_gc_struct_local_roots — a struct local's, parameter's or loop variable's `ref` member keeps its array only while
+// its routine runs: inside the routine collect() keeps it, and once the routine returns the array is freed.
+// EXPECT_OUTPUT: inside 9 | after local 0 | param 9 after param 0 | loop 0 | nested 0
+#beguilerSettings { target = z5; informName = "none"; heapSize = 512; }
+#include <array>
+struct Tag { int id; ref array<int> data; }
+array<Tag> tags[2];
+array<int> three() { array<int> r[3]; r += 1; r += 2; r += 3; return r; }
+void local() {
+    Tag t;
+    t.data := three();
+    bgl.gc.collect();
+    print($"inside {bgl.gc.used} | ");
+}
+int param(Tag p) { bgl.gc.collect(); return bgl.gc.used; }
+void loop() { for (Tag t in tags) { int n = t.id; } }
+void nested() { for (int i = 0; i < 2; i++) { Tag t; t.data := three(); } }
+void main(){
+    bglInit();
+    local();
+    bgl.gc.collect();
+    print($"after local {bgl.gc.used} | ");
+    Tag g;
+    g.data := three();
+    int during = param(g);
+    g.data := null;
+    bgl.gc.collect();
+    print($"param {during} after param {bgl.gc.used} | ");
+    tags += g;
+    tags[0].data := three();
+    loop();
+    tags[0].data := null;
+    bgl.gc.collect();
+    print($"loop {bgl.gc.used} | ");
+    nested();
+    bgl.gc.collect();
+    print($"nested {bgl.gc.used}");
+}

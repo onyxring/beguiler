@@ -1163,7 +1163,8 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
             backing->isInstanceBacking = true;
             languageService.registerInstance(*backing);
             varDecl.backingName = backingName;   // the local itself stays a variable, set to this at entry
-            func->ownBackings.push_back({backingName, varDecl.type.name});
+            // On the routine itself: a nested block parses against a functionDef of its own.
+            (currentFunc != nullptr ? currentFunc : func)->ownBackings.push_back({backingName, varDecl.type.name});
             varDecl.isClassLocalWithBacking = true;
         }
     }

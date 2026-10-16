@@ -331,7 +331,6 @@ verb ShareTest {
         local.tag = 50;
         archive.memo = Shifted(0, 100);
         printLine($"shared: B {Sum(probeB.trace)} A {Sum(probeA.trace)} spare #{spare.tag} {spare.total()} current {current.total()} local #{local.tag} {local.total()}");
-        local.data := null;     // WORKAROUND(heap1-5): a local struct's ref member keeps its array alive after the routine returns.
     }
 }
 

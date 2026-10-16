@@ -2711,6 +2711,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 out << format("        _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
             if(!fd->entrySetUp.empty())
                 out << "        " << spillWord(fd->entrySetUp) << "\n";
+            if(!fd->runCounter.empty()) out << "        " << fd->runCounter << "++;\n";
             emitTryParamCopyIns("        ");
             // Per-call copy-in for params that own an instance, on class/object member methods (same
             // shape as top-level functions, just with a deeper indent).
@@ -2862,6 +2863,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
     if(!funcNode->entrySetUp.empty())
         out << "    " << spillWord(funcNode->entrySetUp) << "\n";
+    if(!funcNode->runCounter.empty()) out << "    " << funcNode->runCounter << "++;\n";
     emitTryParamCopyIns("    ");
 
     // Per-call copy-in for params that own an instance (top-level functions). Same shape applies
@@ -4602,6 +4604,7 @@ for(typeMember* m : obj->members){
             out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
         if(!fd->entrySetUp.empty())
             out << "    " << spillWord(fd->entrySetUp) << "\n";
+        if(!fd->runCounter.empty()) out << "    " << fd->runCounter << "++;\n";
         emitTryParamCopyIns("    ");
         emitParamCopyIns(fd, "    ");
         emitOwnedLocalSetup(locals, "    ");
@@ -6182,7 +6185,16 @@ string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& refer
             for(typeMember* m : cd->members){
                 auto* mv = dynamic_cast<variableDeclaration*>(m);
                 if(!memberHolds(mv)) continue;
-                body += format("    objectloop(o ofclass {0})\n", cd->i6Name()) + "    " + markProp("o", propName(mv));
+                // A routine's own instances are read only while it runs (assignRunCounters).
+                string skip;
+                for(auto& [b, rc] : runCounterOf)
+                    if(classDef* bc = languageService.findClass(languageService.findGlobalAs<variableDeclaration>(b) ? languageService.findGlobalAs<variableDeclaration>(b)->type.name : string());
+                       bc != nullptr && (bc == cd || bc->hasAncestor(cd))){
+                        skip += (skip.empty() ? "" : " or ") + b;
+                        body += format("    if({0}) ", rc) + markProp(b, propName(mv)).substr(4);
+                    }
+                body += format("    objectloop(o ofclass {0}){1}\n", cd->i6Name(), skip.empty() ? "" : format(" if(o ~= {0})", skip))
+                     + "    " + markProp("o", propName(mv));
             }
         } else if(auto* od = dynamic_cast<objectDef*>(node)){
             string nm = od->i6name.empty() ? od->dName() : od->i6name;
@@ -6200,4 +6212,41 @@ string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& refer
     if(referenced("_bglFramePool"))
         body += "    for(i = 0 : i < _bglFrameTop : i++) _bglHeapMark(_bglFramePool-->i);\n";
     return "\n[ _bglGcRoots o i;\n    o = 0; i = 0;\n" + body + "];\n";
+}
+
+// A routine whose own instances (its struct locals', parameters' and loop variables') can hold heap arrays counts its
+// running activations: those instances outlive the call, and the collector reads them only while it runs.
+void i6Emitter::assignRunCounters(){
+    auto holds = [&](classDef* cls){
+        bool any = false;
+        if(cls == nullptr) return false;
+        cls->forEachMember([&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->isStatic || isHeaderMember(vd->name)) return;
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(vd))
+                any = any || (!ad->isByteArray && !ad->isRaw && (holdsHeapArray(ad->elementType) || ad->arraySize == 0));
+            else any = any || holdsHeapArray(vd->type.name);
+        });
+        return any;
+    };
+    int n = 0;
+    auto visit = [&](functionDef* fd){
+        if(fd == nullptr || fd->isEmitter || fd->isExternal || !fd->runCounter.empty()) return;
+        vector<string> mine;
+        for(auto& [backing, typeName] : fd->ownBackings)
+            if(holds(languageService.findClass(typeName))) mine.push_back(backing);
+        if(mine.empty()) return;
+        fd->runCounter = format("_bglRun_{0}", n++);
+        fd->cleanups.push_back({"", fd->runCounter + "--;"});
+        for(const string& b : mine) runCounterOf[b] = fd->runCounter;
+        auto* raw = new i6RawNode();
+        raw->text = "Global " + fd->runCounter + ";\n";
+        languageService.globals.insert(languageService.globals.begin(), raw);
+    };
+    vector<typeDef*> all = languageService.globals;
+    for(typeDef* g : all){
+        if(auto* fd = dynamic_cast<functionDef*>(g)) visit(fd);
+        else if(auto* cd = dynamic_cast<classDef*>(g)){ for(typeMember* m : cd->members) visit(dynamic_cast<functionDef*>(m)); }
+        else if(auto* od = dynamic_cast<objectDef*>(g)){ for(typeMember* m : od->members) visit(dynamic_cast<functionDef*>(m)); }
+    }
 }

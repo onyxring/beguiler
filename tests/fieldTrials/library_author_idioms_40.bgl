@@ -257,8 +257,6 @@ verb Board {
             t.id = i + 1;
             t.data := la40.run(i * 10, 3);
             board += t;
-            // WORKAROUND(heap1-2): a struct local's ref member keeps its array alive after the routine.
-            t.data := none;
         }
         bgl.gc.keep(board);
         La40_SetBoard(board);
@@ -275,8 +273,6 @@ verb Read {
         for (La40Tag t in b) {
             bgl.gc.collect();
             s += t.id * 100 + t.total();
-            // WORKAROUND(heap1-2): the loop variable's ref member keeps its array alive after the routine.
-            t.data := none;
         }
         b[0].id += 10;
         print($"read {b.length}: {s}; first {La40_Board()[0].id}; steady {bgl.gc.used == before}.^");

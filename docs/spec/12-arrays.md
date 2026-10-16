@@ -242,7 +242,7 @@ Arrays are freed in two ways:
 
 The collector finds references from declared types. Its roots are the globals and properties whose type can
 hold an array (an array type, `var`, or a union with one of them), the elements of file-scope and member
-arrays of such a type, the local arrays of routines still running, and the arrays pinned with
+arrays of such a type, the local arrays and struct variables of routines still running, and the arrays pinned with
 `bgl.gc.keep` (§21.15). It follows them through the arrays they reach. A reference it can't see, one held
 only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead. An Inform 6
 global declared to Beguile with an array type (`extern array<int> held;`) is typed, so it is a root.

@@ -283,8 +283,6 @@ verb State {
         Span w = lastWin;
         if (w.data == null) printLine("window: none");
         else printLine($"window {w.from}: {total(w.data)}/{w.data.length}");
-        // WORKAROUND(heap1-3): a local struct's `ref array` member keeps its array alive after the routine returns.
-        w.data := nothingYet;
         printLine($"Reads {lowGauge.reads}/{highGauge.reads}, sums {lowGauge.sum()}/{highGauge.sum()}.");
     }
 }

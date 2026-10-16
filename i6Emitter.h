@@ -344,6 +344,8 @@ class i6Emitter{
         // reset-to-defaults backing. The static analogue is create+populate in emitObject.
         void synthesizePooledOwnedMembers();
         void synthesizeValueElementPools();
+        void assignRunCounters();
+        map<string,string> runCounterOf;   // an instance a routine owns → that routine's run counter
         bool valuePoolsDone = false;
         map<string, string> ownedCopyRoutines;
         map<string, string> currentCallEscapes;   // routines this function calls that a local of the name hides
