@@ -138,8 +138,8 @@ void nudgeHere(ref Vec2 v) { v.x++; }
 
 extend extern class object {
     string description;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
 }
 
 object roomA {

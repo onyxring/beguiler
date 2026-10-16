@@ -4581,8 +4581,9 @@ A class-typed member declared without `ref` is an **owned member** when its type
 member is a live instance of its own — every instance of the enclosing class has an independent
 backing — rather than a bare reference slot, so methods and operators may be called on it. A member of
 a reference class given a value refers to that instance; a `ref` member is empty until bound (§3.7). A
-member whose type is its own class would own another of itself without end, so it must be `ref`. The
-members of an `extern` class are the library's own properties and own nothing.
+member whose type is its own class would own another of itself without end, so it must be `ref`. A
+class-typed member of an `extern` class or object is the library's own property, which refers to an
+instance or is empty, so it is declared `ref` (`ref object n_to;`).
 
 An inline-object initializer gives the owned member its starting value
 (`Coins price = Coins{ cents = 3; };`); every instance starts with that value, including a pooled

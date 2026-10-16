@@ -52,11 +52,11 @@ extern void PrintGrams(int n);
 
 extend extern class object {
     stringOrRoutine description;
-    object n_to;
-    object s_to;
-    object e_to;
-    object w_to;
-    object with_key;
+    ref object n_to;
+    ref object s_to;
+    ref object e_to;
+    ref object w_to;
+    ref object with_key;
 }
 
 enum eLamp { dry, unlit, burning }

@@ -268,7 +268,7 @@ Meter meterA {
 
 extern class Crate : object {
     int heft;
-    object next;
+    ref object next;
 
     emitter void operator += (int v) { $self.heft = $self.heft + $v; }
 

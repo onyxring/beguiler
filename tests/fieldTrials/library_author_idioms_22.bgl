@@ -36,8 +36,8 @@
 
 extend extern class object {
     string description;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
 }
 
 // ==== The kit: locks that read the cut of a key. ====

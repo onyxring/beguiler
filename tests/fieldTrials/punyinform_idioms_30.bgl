@@ -38,8 +38,8 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 extend extern class object {
     string description;
-    object u_to;
-    object d_to;
+    ref object u_to;
+    ref object d_to;
 }
 
 extern bool scope_modified;

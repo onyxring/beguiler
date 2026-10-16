@@ -33,8 +33,8 @@ const int RING = 4;
 
 extend extern class object {
     stringOrRoutine description;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
 }
 
 enum eTilt { level = 0, leftDown, rightDown }

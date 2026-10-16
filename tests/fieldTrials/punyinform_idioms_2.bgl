@@ -53,8 +53,8 @@ bool LibraryMessages(int msg, var arg1, var arg2) {
 
 extend extern class object {
     string description;
-    object ne_to;
-    object sw_to;
+    ref object ne_to;
+    ref object sw_to;
 }
 
 object me {

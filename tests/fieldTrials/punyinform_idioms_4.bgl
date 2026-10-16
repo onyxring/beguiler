@@ -74,10 +74,10 @@ const int F_FILLED = 4;
 
 extend extern class object {
     string description;
-    object e_to;
-    object w_to;
-    object n_to;
-    object s_to;
+    ref object e_to;
+    ref object w_to;
+    ref object n_to;
+    ref object s_to;
     rawArray<var> cheap_scenery;
 }
 

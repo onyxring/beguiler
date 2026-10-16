@@ -35,8 +35,8 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 extend extern class object {
     string description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 // --- shared types -----------------------------------------------------------------------------------

@@ -236,7 +236,7 @@ Meter meterA {
 
 extern class Crate : object {
     int heft;
-    object next;
+    ref object next;
 
     emitter int operator () { ($self.heft) }
     emitter int operator [] (int i) { $i6Name(Crate.nth)($self, $i) }

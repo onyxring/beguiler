@@ -36,8 +36,8 @@ const int RING = 4;
 
 extend extern class object {
     stringOrRoutine description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 array<int> pumpLog[RING];       // lower tank level after each stroke of the pump

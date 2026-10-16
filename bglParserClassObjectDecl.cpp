@@ -875,6 +875,8 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
        && (isValueClass(&newClass) || (plainSlotOwnsReferenceInstance(&newClass) && !tok.is(token::assignment))))
         parsingError(format("class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
                             newClass.dName(), varDef.dName()));
+    if(newClass.isExternal && !q.isRef && !isMemberStatic && !isWordArrayType(varDef.type.name))
+        rejectPlainExternMember(varDef.type.name, varDef.dName());
     if(q.isTypeSealed) varDef.isTypeSealed = true;
     varDef.isLiteral = q.isLiteral;
     varDef.isRefLocal = q.isRef;   // `ref` member: assignments are pointer-copy (opt out of operator=)
@@ -2255,6 +2257,7 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
     prop.type = languageService.getType(typeName);
     if(typeName.rfind("func<", 0) == 0) prop.type.name = typeName;  // getType returns base "func"; keep the parameterized name
     prop.isRefLocal = isRef;  // `ref` member: assignments are pointer-copy (opt out of operator= dispatch)
+    if(obj.isExternal && !isRef && !typeName.empty() && !isWordArrayType(typeName)) rejectPlainExternMember(typeName, prop.dName());
     if(objectMemberIsConst){ prop.isConst = true; objectMemberIsConst = false; }
     if(isRef){
         string why = refNotApplicable(getDispatchClass(typeName), typeDisplayName(typeName));
@@ -2473,6 +2476,14 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
     }
 }
 
+
+// A member of an extern class or object is a property the library declared: one of a class type refers to
+// an instance and may be empty, so it is declared `ref`.
+void bglParser::rejectPlainExternMember(const string& typeName, const string& name){
+    if(!plainSlotOwnsReferenceInstance(getDispatchClass(typeName))) return;
+    parsingError(format("'{1}' is the library's property, which refers to an instance or is empty: declare it `ref {0} {1}`.",
+                        typeDisplayName(typeName), name));
+}
 
 // A `ref` member's declaration binds with `:=`; any other member's value is given with `=` (§3.7).
 void bglParser::rejectMemberBindingMismatch(bool isRef, token sym, const token& typeTok, const token& nameTok){

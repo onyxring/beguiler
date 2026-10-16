@@ -33,8 +33,8 @@
 extend extern class object {
     string description;
     int    grams;
-    object e_to;
-    object w_to;
+    ref object e_to;
+    ref object w_to;
 }
 
 enum eStatusLayout { full, compact }

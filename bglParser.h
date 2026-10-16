@@ -596,6 +596,7 @@ class bglParser {
         bool heldByPointer(const arrayDeclaration* ad);
         bool plainSlotOwnsReferenceInstance(classDef* cls);
         bool preScanInheritsValue(classDef* cls);
+        void rejectPlainExternMember(const string& typeName, const string& name);
         void rejectMemberBindingMismatch(bool isRef, token sym, const token& typeTok, const token& nameTok);
         void addInlineOrder(classDef& cls, const string& name);
         bool notePositional(classDef& cls, const string& name);

@@ -13,8 +13,8 @@
 
 extend extern class object {
     stringOrRoutine description;
-    object n_to;
-    object s_to;
+    ref object n_to;
+    ref object s_to;
 }
 
 class Item : object {

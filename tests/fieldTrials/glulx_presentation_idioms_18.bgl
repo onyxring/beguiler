@@ -406,7 +406,7 @@ extern int MarkSum(Gauge g);
 
 extern class Gauge : Dial, Tinted {
     float gauge_scale;
-    Gauge gauge_next;
+    ref Gauge gauge_next;
     emitter int operator ()                  { ($val.dial_val) }
     emitter int operator [] (int i)          { (($val.&gauge_marks)-->$i) }
     emitter void operator []= (int i, int v) { ($val.&gauge_marks)-->$i = $v; }

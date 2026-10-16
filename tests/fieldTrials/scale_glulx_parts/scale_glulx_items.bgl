@@ -12,7 +12,7 @@
 #using bgl.printRules;
 
 extend extern class object {
-    object with_key;
+    ref object with_key;
     int capacity;
 }
 
