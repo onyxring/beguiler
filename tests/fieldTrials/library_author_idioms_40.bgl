@@ -1,0 +1,395 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: arrays held by Inform 6 code. A kit part keeps four I6 slots of arrays, an I6 nest of rows
+// and an I6 global naming the last array looked at; its API pins with bgl.gc.keep before handing an
+// array over, unpins when taking it back and frees with bgl.gc.free when evicting it. Pinned arrays come
+// from a routine's own local, from a local that took a call's result, and from a <linq> result; a local
+// declared from an extern routine's returned array; an extern global of an array type read and iterated
+// from Beguile; a pinned array of arrays whose rows were appended; a struct global whose ref array member
+// keeps an unpinned array alive; a pinned array of structs whose ref members name heap arrays, held only
+// by an untyped I6 global, written through and read back with collect() inside the loop; a slot released
+// and re-lodged turn after turn; bgl.gc.collect() called inside routines (in a loop, at the bottom of a
+// recursion with a local array per level, in a routine with an #i6 block); bgl.gc.used/size/peak at
+// checkpoints across repeated commands; a heapSize set near what the program needs, a pile of pinned
+// arrays filling it to near its limit and then let go; and last, the heap-full message.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 400;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_40_parts/library_author_idioms_40_kit"
+
+extend extern class object {
+    string description;
+}
+
+const int heapWords = #beguilerSettings.heapSize;
+
+// ---- The pile: pinned arrays the I6 side lists, to fill the heap. ----
+
+#i6 {
+    Array la40_heap_pile --> 48;
+    Global la40_piled = 0;
+    [ La40_AddPile a;
+        if (la40_piled >= 48) rfalse;
+        la40_heap_pile-->la40_piled = a;
+        la40_piled++;
+        rtrue;
+    ];
+    [ La40_PileAt i; return la40_heap_pile-->i; ];
+    [ La40_PileDrop; la40_piled = 0; ];
+}
+
+/// Adds an array to the pile; false when the pile is full.
+extern bool La40_AddPile(array<int> a);
+/// The pile's array at i.
+extern array<int> La40_PileAt(int i);
+/// Forgets the pile.
+extern void La40_PileDrop();
+/// How many arrays the pile lists.
+extern int la40_piled;
+
+// ---- Program state. ----
+
+array<int> none[1];
+array<array<int>> noRows[1];
+array<int> seed = {3, 4, 5, 6, 7, 8};
+La40Tag tagA;
+int baseline = 0;
+int depthSum = 0;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+/// Prints a slot as "n:sum/len".
+void showSlot(int n) {
+    print($" {n}:{La40_Sum(n)}/{La40_Len(n)}");
+}
+
+/// Prints every slot.
+void showSlots() {
+    print("slots");
+    for (int n = 0; n < 4; n++) showSlot(n);
+}
+
+/// A run with every value doubled, through a chain.
+array<int> doubled(int start, int n) {
+    array<int> r = la40.run(start, n);
+    return r.filter((int x) => x > 0).take(8);
+}
+
+/// Sums a level's array and the levels below it, collecting at the bottom.
+int descend(int level) {
+    array<int> mine[4];
+    for (int i = 0; i < 4; i++) mine += level * 10 + i;
+    int below = 0;
+    if (level > 1) below = descend(level - 1);
+    else bgl.gc.collect();
+    int s = 0;
+    for (int v in mine) s += v;
+    return s + below;
+}
+
+/// Builds two local arrays inside a routine that also holds raw Inform 6.
+int rawWork() {
+    array<int> a[6];
+    array<int> b = la40.run(20, 5);
+    a = b;
+    a += 99;
+    int n = 0;
+    #i6 { @add n 1 -> n; }
+    return a.length + b.length + n;
+}
+
+/// Thirty doubled runs, collecting every tenth while the latest is still in use.
+int churnRound() {
+    int total = 0;
+    for (int i = 0; i < 30; i++) {
+        array<int> d = doubled(i, 3);
+        if (i % 10 == 9) bgl.gc.collect();
+        total += d.first() + d.last();
+    }
+    return total;
+}
+
+/// Pins runs onto the pile until the heap is nearly full; returns how many.
+int buildPile() {
+    int made = 0;
+    while (bgl.gc.size - bgl.gc.used > 40) {
+        array<int> r = la40.run(made, 8);
+        bgl.gc.keep(r);
+        if (!La40_AddPile(r)) break;
+        made++;
+    }
+    return made;
+}
+
+verb Figures {
+    grammar = {.figures};
+    void handler() {
+        baseline = la40.settled();
+        print($"size {bgl.gc.size} of {heapWords}; used {baseline}; peak {bgl.gc.peak}; lodged {la40.lodged}.^");
+    }
+}
+
+verb Lodge {
+    grammar = {.lodge};
+    void handler() {
+        bool a = la40.lodgeRun(0, 1, 4);
+        array<int> base[8];
+        base = seed;
+        array<int> odd = base.filter((int x) => x % 2 == 1);
+        bool b = la40.lodge(1, odd);
+        array<int> mine[3];
+        mine += {7, 7, 7};
+        bool c = la40.lodge(2, mine);
+        bool d = la40.lodge(2, base);
+        bool e = la40.lodge(3, seed.filter((int x) => x > 5).take(2));
+        array<int> spare = la40.run(40, 2);
+        bgl.gc.collect();
+        print($"lodged {a} {b} {c} {d} {e}; spare {spare[0] + spare[1]}, base {base.length}, odd {odd[2]}; ");
+        showSlots();
+        print($"; puts {la40_puts}.^");
+    }
+}
+
+verb Sums {
+    grammar = {.sums};
+    void handler() {
+        showSlots();
+        print($"; used {la40.settled()}; lodged {la40.lodged}.^");
+    }
+}
+
+verb Peek {
+    grammar = {.peek};
+    void handler() {
+        array<int> h = La40_Get(0);
+        h[0] = h[0] + 100;
+        int s = 0;
+        for (int v in la40_last) s += v;
+        array<int> big = La40_Get(0).filter((int x) => x > 100);
+        print($"peek {h.length} first {h[0]}; last sum {s} same {h == la40_last}; over 100 {big.length}.^");
+    }
+}
+
+verb Tag {
+    grammar = {.tag};
+    void handler() {
+        tagA.id = 1;
+        tagA.data := La40_Get(2);
+        array<La40Tag> tags[2];
+        tags += tagA;
+        tags[0].id = 2;
+        la40.release(2);
+        bgl.gc.collect();
+        print($"tag {tagA.id} {tagA.total()}, copy {tags[0].id} {tags[0].total()};");
+        showSlot(2);
+        print($"; lodged {la40.lodged}.^");
+    }
+}
+
+verb Untag {
+    grammar = {.untag};
+    void handler() {
+        int before = la40.settled();
+        tagA.data := none;
+        int after = la40.settled();
+        print($"untagged {tagA.total()}; freed {before - after > 0}.^");
+    }
+}
+
+verb Nest {
+    grammar = {.nest};
+    void handler() {
+        array<array<int>> rows[3];
+        rows += la40.run(1, 2);
+        rows += la40.run(5, 3);
+        rows += doubled(9, 2);
+        bgl.gc.keep(rows);
+        La40_SetNest(rows);
+        bgl.gc.collect();
+        print($"nest {rows.length} rows.^");
+    }
+}
+
+verb NestSum {
+    grammar = {.nestsum};
+    void handler() {
+        bgl.gc.collect();
+        int s = 0;
+        int n = 0;
+        for (array<int> row in la40_nest) {
+            n += row.length;
+            for (int v in row) s += v;
+        }
+        print($"nest sum {s} over {n}; used {bgl.gc.used}.^");
+    }
+}
+
+verb Unnest {
+    grammar = {.unnest};
+    void handler() {
+        int before = la40.settled();
+        bgl.gc.unpin(la40_nest);
+        La40_SetNest(noRows);
+        int after = la40.settled();
+        print($"unnested; freed {before - after > 0}; used {after}.^");
+    }
+}
+
+verb Board {
+    grammar = {.board};
+    void handler() {
+        array<La40Tag> board[3];
+        for (int i = 0; i < 3; i++) {
+            La40Tag t;
+            t.id = i + 1;
+            t.data := la40.run(i * 10, 3);
+            board += t;
+            // WORKAROUND(heap1-2): a struct local's ref member keeps its array alive after the routine.
+            t.data := none;
+        }
+        bgl.gc.keep(board);
+        La40_SetBoard(board);
+        print($"board {board.length}.^");
+    }
+}
+
+verb Read {
+    grammar = {.read};
+    void handler() {
+        int before = la40.settled();
+        array<La40Tag> b = La40_Board();
+        int s = 0;
+        for (La40Tag t in b) {
+            bgl.gc.collect();
+            s += t.id * 100 + t.total();
+            // WORKAROUND(heap1-2): the loop variable's ref member keeps its array alive after the routine.
+            t.data := none;
+        }
+        b[0].id += 10;
+        print($"read {b.length}: {s}; first {La40_Board()[0].id}; steady {bgl.gc.used == before}.^");
+    }
+}
+
+verb Unboard {
+    grammar = {.unboard};
+    void handler() {
+        int before = la40.settled();
+        bgl.gc.unpin(La40_Board());
+        La40_SetBoard(0);
+        print($"unboarded; freed {la40.settled() < before}.^");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        la40.release(3);
+        bool ok = la40.lodge(3, seed.filter((int x) => x % 2 == 0).take(3));
+        int s = 0;
+        for (int v in La40_Get(3)) {
+            bgl.gc.collect();
+            s += v;
+        }
+        print($"cycled {ok} {s}; used {la40.settled()}; puts {la40_puts}.^");
+    }
+}
+
+verb Deep {
+    grammar = {.deep};
+    void handler() {
+        int before = la40.settled();
+        depthSum = descend(4);
+        print($"deep {depthSum}; back {la40.settled() == before}.^");
+    }
+}
+
+verb Raw {
+    grammar = {.raw};
+    void handler() {
+        int before = la40.settled();
+        int n = rawWork();
+        int left = bgl.gc.used;
+        bgl.gc.collect();
+        print($"raw {n}; left over {left > before}; back {bgl.gc.used == before}.^");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        int before = la40.settled();
+        int total = churnRound();
+        print($"churn {total}; back {la40.settled() == before}.^");
+    }
+}
+
+verb Evict {
+    grammar = {.evict};
+    void handler() {
+        int before = bgl.gc.used;
+        la40.evict(1);
+        print($"evicted; dropped now {bgl.gc.used < before};");
+        showSlot(1);
+        print($"; lodged {la40.lodged}.^");
+    }
+}
+
+verb PinFree {
+    grammar = {.pinfree};
+    void handler() {
+        int before = bgl.gc.used;
+        array<int> t = la40.run(4, 4);
+        bgl.gc.keep(t);
+        bool grew = bgl.gc.used > before;
+        bgl.gc.free(t);
+        print($"pin then free: grew {grew}, back {bgl.gc.used == before}.^");
+    }
+}
+
+verb FillHeap {
+    grammar = {.fillheap};
+    void handler() {
+        int before = la40.settled();
+        int made = buildPile();
+        bgl.gc.collect();
+        int s = 0;
+        for (int i = 0; i < la40_piled; i++) s += La40_PileAt(i)[7];
+        int full = bgl.gc.used;
+        for (int i = 0; i < la40_piled; i++) bgl.gc.unpin(La40_PileAt(i));
+        La40_PileDrop();
+        print($"filled {made}, sum {s}, near full {full + 40 >= bgl.gc.size}; ");
+        print($"peak {bgl.gc.peak >= full}; back {la40.settled() == before}.^");
+    }
+}
+
+verb Flood {
+    grammar = {.flood};
+    void handler() {
+        print("Flooding.^");
+        for (int i = 0; i < 200; i++) {
+            array<int> r = la40.run(i, 8);
+            bgl.gc.keep(r);
+        }
+        print("Not reached.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

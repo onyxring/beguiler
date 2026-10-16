@@ -1,0 +1,63 @@
+Room A
+Room A.
+> figures
+size 367 of 400; used 0; peak 0; lodged 0.
+> lodge
+lodged true true true false true; spare 81, base 6, odd 7; slots 0:10/4 1:15/3 2:21/3 3:13/2; puts 4.
+> sums
+slots 0:10/4 1:15/3 2:21/3 3:13/2; used 49; lodged 4.
+> peek
+peek 4 first 101; last sum 110 same true; over 100 1.
+> sums
+slots 0:110/4 1:15/3 2:21/3 3:13/2; used 49; lodged 4.
+> tag
+tag 1 21, copy 2 21; 2:-1/-1; lodged 3.
+> sums
+slots 0:110/4 1:15/3 2:-1/-1 3:13/2; used 49; lodged 3.
+> untag
+untagged 0; freed true.
+> nest
+nest 3 rows.
+#repeat 2
+> nestsum
+nest sum 40 over 7; used 91.
+> unnest
+unnested; freed true; used 40.
+> board
+board 3.
+> read
+read 3: 699; first 11; steady true.
+> read
+read 3: 1699; first 21; steady true.
+> unboard
+unboarded; freed true.
+> cycle
+cycled true 18; used 40; puts 5.
+> cycle
+cycled true 18; used 40; puts 6.
+> cycle
+cycled true 18; used 40; puts 7.
+#repeat 2
+> deep
+deep 424; back true.
+#repeat 2
+> raw
+raw 12; left over true; back true.
+#repeat 2
+> churn
+churn 931; back true.
+> evict
+evicted; dropped now true; 1:-1/-1; lodged 2.
+> pinfree
+pin then free: grew true, back true.
+> sums
+slots 0:110/4 1:-1/-1 2:-1/-1 3:18/3; used 26; lodged 2.
+> fillheap
+filled 22, sum 385, near full true; peak true; back true.
+> sums
+slots 0:110/4 1:-1/-1 2:-1/-1 3:18/3; used 26; lodged 2.
+> figures
+size 367 of 400; used 26; peak 334; lodged 2.
+> flood
+Flooding.
+[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is 400 words)]

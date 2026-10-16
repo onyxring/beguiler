@@ -1,0 +1,564 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: array copy semantics (`=` copies into storage, `:=` re-points a `ref`), written in a
+// functional style on z5. Globals of different capacity copied both ways (truncation, length carried);
+// an object's inline member array and a 40-slot member kept in its own table on Z, copied in, out and
+// onto itself; class instances with a member array and a `ref` member bound with `:=` and written with
+// `=` (copies into the referent); `ref` globals re-pointed and copied through; locals declared unsized
+// from calls, chains, names and members, and sized from calls, chains, names and members (copy into the
+// declared capacity); pure helpers returning locals, globals, parameters and members; parameters that
+// change the caller's array by element and by `=`; self-assignment of globals, members, rows, refs
+// bound to the same array and parameters; `x = x.filter(…)` on globals, locals and members; arrays of
+// arrays whose rows are copied into (`rows[i] = t`, `rows[i] = rows[j]`) and appended (`rows += t`
+// stores the array itself, so a later `rows[i] = …` writes through to it); a local array of arrays
+// returned and kept; arrays of a struct copied whole, slot by slot and onto themselves; `copyFrom`
+// next to `=`. `bgl.gc.used` printed after collections at checkpoints across repeated commands.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int CAPS = 3;
+const int CAPM = 6;
+const int CAPB = 12;
+const int CAPW = 40;
+
+//-- Data ------------------------------------------------------------------------------------------
+
+array<int> base = {4, 9, 2, 7, 5, 1};
+array<int> small[CAPS];
+array<int> mid[CAPM];
+array<int> big[CAPB];
+array<int> spare[CAPM];
+ref array<int> cur;
+ref array<int> other;
+
+array<array<int>> grid = { {1, 2, 3}, {4, 5}, {6, 7, 8, 9} };
+array<array<int>> shelf[4];
+
+object roomA { "Room A"; description = "Room A."; attributes = {light}; }
+
+object box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    attributes = {scenery};
+    array<int> row[CAPM] = {10, 20, 30};
+    array<int> wide[CAPW];
+}
+
+class Bin : object {
+    array<int> items[4];
+    ref array<int> view;
+}
+
+class Ledger : object {
+    array<int> log[36];
+}
+
+Ledger ledger1 { "ledger"; parent = roomA; name = {.ledger}; }
+
+Bin binA { "bin A"; parent = roomA; name = {.bin, .a}; }
+Bin binB { "bin B"; parent = roomA; name = {.bin, .b}; }
+
+struct Cell {
+    int k;
+    int v;
+}
+
+array<Cell> cells = { Cell{ k = 1; v = 10; }, Cell{ k = 2; v = 20; }, Cell{ k = 3; v = 30; } };
+array<Cell> cellCopy[5];
+
+//-- Pure helpers ----------------------------------------------------------------------------------
+
+array<int> range(int lo, int n) {
+    array<int> out[CAPB];
+    for (int i = 0; i < n; i++) out += lo + i;
+    return out;
+}
+
+array<int> doubled(array<int> xs) {
+    array<int> out[CAPB];
+    for (int x in xs) out += x * 2;
+    return out;
+}
+
+// A copy of its own, with the argument's capacity.
+array<int> clone(array<int> xs) {
+    array<int> c = xs;
+    return c;
+}
+
+// At most CAPS elements, in a capacity of CAPS.
+array<int> clip(array<int> xs) {
+    array<int> c[CAPS] = xs;
+    return c;
+}
+
+// Returns the argument itself.
+array<int> same(array<int> xs) { return xs; }
+
+array<int> theBase() { return base; }
+
+// A member array can't be returned: return a copy of it.
+array<int> boxRow() {
+    array<int> c = box.row;
+    return c;
+}
+
+array<int> evensOf(array<int> xs) { return xs.filter((int x) => x % 2 == 0); }
+
+array<int> wideRange(int lo, int n) {
+    array<int> out[CAPW];
+    for (int i = 0; i < n; i++) out += lo + i;
+    return out;
+}
+
+int sum(array<int> xs) {
+    int s = 0;
+    for (int x in xs) s += x;
+    return s;
+}
+
+// Changes the caller's array, element by element.
+void bump(array<int> xs, int by) {
+    for (int i = 0; i < xs.length; i++) xs[i] = xs[i] + by;
+}
+
+// Changes the caller's array by assignment: the parameter shares it.
+void overwrite(array<int> xs, array<int> from) {
+    xs = from;
+}
+
+// Assigning a parameter to itself leaves it as it was.
+void selfCopy(array<int> xs) {
+    xs = xs;
+}
+
+void show(string label, array<int> xs) {
+    print(label);
+    print(":");
+    for (int x in xs) print($" {x}");
+    print($" [{xs.length}/{xs.size}]^");
+}
+
+void showCells(string label, array<Cell> cs) {
+    print(label);
+    print(":");
+    for (Cell c in cs) print($" {c.k}={c.v}");
+    print("^");
+}
+
+void heap(string where) {
+    bgl.gc.collect();
+    print($"heap {where}: {bgl.gc.used}^");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+verb GlobalsVerb {
+    grammar = {{.globals}};
+    void handler() {
+        small = base;
+        mid = base;
+        big = base;
+        show("small = base", small);
+        show("mid = base", mid);
+        show("big = base", big);
+        big[0] = 99;
+        show("base after big[0] = 99", base);
+        small = range(100, 5);
+        show("small = range", small);
+        big = small;
+        show("big = small", big);
+        mid = doubled(base).filter((int x) => x > 8).orderBy();
+        show("mid = chain", mid);
+        spare = mid;
+        mid = spare.take(2);
+        show("spare", spare);
+        show("mid = spare.take", mid);
+        mid = mid;
+        base = base;
+        show("mid = mid", mid);
+        show("base = base", base);
+        big = theBase();
+        show("big = theBase()", big);
+        mid.copyFrom(big);
+        show("mid.copyFrom(big)", mid);
+        small.clear();
+        show("small cleared", small);
+        show("base still", base);
+    }
+}
+
+verb RefsVerb {
+    grammar = {{.refs}};
+    void handler() {
+        cur := base;
+        other := spare;
+        show("cur", cur);
+        cur = spare;
+        show("base after cur = spare", base);
+        cur := mid;
+        cur = range(1, 4);
+        show("mid after cur = range", mid);
+        other = cur;
+        show("spare after other = cur", spare);
+        other := cur;
+        other = other;
+        cur = other;
+        show("mid after self copies", mid);
+        other[0] = 77;
+        print($"cur and mid share: {cur[0]} {mid[0]}, same array {cur == mid}^");
+        bump(cur, 1);
+        show("mid after bump(cur)", mid);
+        cur := big;
+        print($"cur re-pointed, same as mid {cur == mid}, same as big {cur == big}^");
+        base = {4, 9, 2, 7, 5, 1};
+        spare = base;
+        show("base restored", base);
+    }
+}
+
+verb LocalsVerb {
+    grammar = {{.locals}};
+    void handler() {
+        array<int> a = range(5, 4);
+        array<int> b = base;
+        array<int> c = box.row;
+        array<int> d = base.filter((int x) => x > 4);
+        array<int> e[CAPS] = base;
+        array<int> f[CAPM] = range(50, 9);
+        array<int> g[CAPB] = box.row;
+        array<int> h[4] = base.orderBy();
+        show("a from call", a);
+        show("b from name", b);
+        show("c from member", c);
+        show("d from chain", d);
+        show("e[3] from name", e);
+        show("f[6] from call", f);
+        show("g[12] from member", g);
+        show("h[4] from chain", h);
+        b[0] = -1;
+        c[0] = -2;
+        e[0] = -3;
+        g[0] = -4;
+        show("base untouched", base);
+        array<int> rowNow = box.row;
+        show("box.row untouched", rowNow);
+        a = b;
+        show("a = b", a);
+        b = a.filter((int x) => x > 0);
+        show("b = a.filter", b);
+        d = d.filter((int x) => x != 9);
+        show("d = d.filter", d);
+        e = f;
+        show("e = f", e);
+        f = e;
+        show("f = e", f);
+        h = h;
+        show("h = h", h);
+        print($"sums {sum(a)} {sum(b)} {sum(c)} {sum(d)} {sum(e)} {sum(f)} {sum(g)} {sum(h)}^");
+    }
+}
+
+verb ReturnsVerb {
+    grammar = {{.returns}};
+    void handler() {
+        array<int> a = clone(base);
+        a[0] = 0;
+        show("clone(base) changed", a);
+        show("base", base);
+        array<int> b = clip(base);
+        show("clip(base)", b);
+        array<int> c = theBase();
+        print($"theBase() is base: {c == base}^");
+        array<int> d[CAPM] = theBase();
+        d[1] = 0;
+        show("copy of theBase()", d);
+        show("base", base);
+        array<int> e = boxRow();
+        show("boxRow()", e);
+        array<int> f = same(spare);
+        print($"same(spare) is spare: {f == spare}^");
+        array<int> g = evensOf(base);
+        show("evensOf(base)", g);
+        print($"sums of calls {sum(clone(base))} {sum(clip(range(1, 9)))} {sum(theBase())} {sum(boxRow())} {sum(evensOf(range(1, 6)))}^");
+        big = clip(range(7, 7));
+        show("big = clip", big);
+        small = same(base);
+        show("small = same(base)", small);
+        mid = boxRow();
+        show("mid = boxRow()", mid);
+        show("base still", base);
+    }
+}
+
+verb ParamsVerb {
+    grammar = {{.params}};
+    void handler() {
+        array<int> loc[CAPM] = {1, 1, 1};
+        bump(loc, 2);
+        show("bump(loc)", loc);
+        bump(spare, 10);
+        show("bump(spare)", spare);
+        overwrite(loc, base);
+        show("overwrite(loc, base)", loc);
+        overwrite(small, range(40, 5));
+        show("overwrite(small, range)", small);
+        binA.view := loc;
+        bump(binA.view, 100);
+        show("bump(binA.view) reaches loc", loc);
+        overwrite(binA.view, small);
+        show("overwrite(binA.view) reaches loc", loc);
+        selfCopy(loc);
+        show("selfCopy(loc)", loc);
+        overwrite(loc, loc);
+        show("overwrite(loc, loc)", loc);
+        ref array<int> r := spare;
+        overwrite(r, base);
+        show("overwrite(r) reaches spare", spare);
+        binA.view := spare;
+        print($"binA.view re-pointed to spare: {binA.view == spare}^");
+    }
+}
+
+verb MembersVerb {
+    grammar = {{.members}};
+    void handler() {
+        box.row = base;
+        array<int> r = box.row;
+        show("box.row = base", r);
+        box.row = range(1, 9);
+        r = box.row;
+        show("box.row = range(1, 9)", r);
+        box.row = box.row;
+        r = box.row;
+        show("box.row = box.row", r);
+        box.row = box.row.filter((int x) => x % 3 != 0);
+        r = box.row;
+        show("box.row = box.row.filter", r);
+        box.wide = range(1, 30);
+        box.wide = box.wide.filter((int x) => x % 2 == 1);
+        array<int> w = box.wide;
+        print($"box.wide {w.length}/{w.size} sum {sum(w)} last {w[w.length - 1]}^");
+        box.wide = box.wide;
+        big = box.wide;
+        show("big = box.wide", big);
+        box.row = box.wide;
+        r = box.row;
+        show("box.row = box.wide", r);
+        binA.items = base;
+        binB.items = binA.items;
+        binB.items[0] = 0;
+        array<int> ia = binA.items;
+        array<int> ib = binB.items;
+        show("binA.items", ia);
+        show("binB.items", ib);
+        binB.view := big;
+        binB.view = binA.items;
+        show("big after binB.view = binA.items", big);
+        binB.view = binB.view.orderBy();
+        show("big after binB.view = binB.view.orderBy()", big);
+        binA.view := binB.view;
+        print($"binA.view and binB.view share: {binA.view == binB.view}, are big: {binA.view == big}^");
+        binA.items = binA.view;
+        ia = binA.items;
+        show("binA.items = binA.view", ia);
+        box.row = {10, 20, 30};
+    }
+}
+
+verb GridVerb {
+    grammar = {{.grid}};
+    void handler() {
+        grid[1] = base;
+        show("grid[1] = base", grid[1]);
+        grid[0] = grid[2];
+        show("grid[0] = grid[2]", grid[0]);
+        grid[2][0] = 60;
+        show("grid[2] changed", grid[2]);
+        show("grid[0] unchanged", grid[0]);
+        grid[1] = grid[1];
+        grid[0] = range(1, 9).filter((int x) => x > 5);
+        show("grid[0] = chain", grid[0]);
+        array<int> top = grid[0];
+        top[0] = -1;
+        show("top copied from grid[0]", top);
+        show("grid[0] still", grid[0]);
+        int total = 0;
+        for (array<int> row in grid) total += sum(row);
+        print($"grid total {total}^");
+        grid[0] = {1, 2, 3};
+        grid[1] = {4, 5};
+        grid[2] = {6, 7, 8, 9};
+    }
+}
+
+array<array<int>> stack(int n) {
+    array<array<int>> rows[4];
+    for (int i = 0; i < n; i++) rows += range(i * 10, i + 1);
+    rows[0] = rows[n - 1];
+    return rows;
+}
+
+verb ShelfVerb {
+    grammar = {{.shelf}};
+    void handler() {
+        shelf.clear();
+        shelf += spare;
+        shelf += range(1, 3);
+        shelf += clone(base);
+        print($"shelf[0] is spare: {shelf[0] == spare}^");
+        shelf[0] = range(80, 2);
+        show("spare after shelf[0] = range", spare);
+        shelf[1] = shelf[2];
+        show("shelf[1] = shelf[2]", shelf[1]);
+        shelf[2][0] = 0;
+        show("shelf[1] kept its copy", shelf[1]);
+        array<array<int>> s = stack(3);
+        print("stack:");
+        for (array<int> row in s) print($" {sum(row)}/{row.length}");
+        print("^");
+        shelf += s[1];
+        shelf[2] = shelf[2];
+        show("shelf[3] = stack row", shelf[3]);
+        spare = base;
+    }
+}
+
+verb CellsVerb {
+    grammar = {{.cells}};
+    void handler() {
+        cellCopy = cells;
+        cellCopy[0].v = 11;
+        showCells("cellCopy", cellCopy);
+        showCells("cells", cells);
+        cellCopy[1] = cellCopy[2];
+        cellCopy[2].v = 33;
+        showCells("cellCopy[1] = cellCopy[2]", cellCopy);
+        cells = cells;
+        cellCopy = cellCopy;
+        showCells("self copies", cellCopy);
+        array<Cell> loc[4] = cells.filter((Cell c) => c.v > 10);
+        loc[0].v = 0;
+        showCells("loc", loc);
+        showCells("cells", cells);
+        Cell one = cells[2];
+        one.v = 3;
+        cellCopy += one;
+        showCells("cellCopy += one", cellCopy);
+        array<Cell> few[2];
+        few = cellCopy;
+        few[1].k = 9;
+        showCells("few = cellCopy", few);
+        showCells("cellCopy", cellCopy);
+        cells = few;
+        showCells("cells = few", cells);
+        cellCopy.clear();
+        cells[0].k = 1;
+        cells[0].v = 10;
+        cells[1].k = 2;
+        cells[1].v = 20;
+        cells += Cell{ k = 3; v = 30; };
+    }
+}
+
+verb WideVerb {
+    grammar = {{.wide}};
+    void handler() {
+        box.wide = wideRange(1, 38);
+        array<int> w = box.wide;
+        print($"box.wide {w.length}/{w.size} sum {sum(w)} last {w[w.length - 1]}^");
+        ledger1.log = box.wide;
+        array<int> l = ledger1.log;
+        print($"ledger1.log {l.length}/{l.size} sum {sum(l)} last {l[l.length - 1]}^");
+        box.wide = box.wide.filter((int x) => x % 5 == 0);
+        w = box.wide;
+        show("box.wide filtered", w);
+        l = ledger1.log;
+        print($"ledger1.log kept {l.length}^");
+        ledger1.log = ledger1.log.skip(30);
+        l = ledger1.log;
+        show("ledger1.log = ledger1.log.skip(30)", l);
+        box.wide = ledger1.log;
+        box.wide = box.wide;
+        w = box.wide;
+        show("box.wide = ledger1.log", w);
+        array<int> grown[CAPW] = ledger1.log;
+        grown += box.row[0];
+        show("grown", grown);
+        mid = ledger1.log;
+        show("mid = ledger1.log", mid);
+        binA.view := big;
+        binA.view = ledger1.log;
+        show("big through binA.view", big);
+        spare = spare.filter((int x) => x > 2);
+        show("spare = spare.filter", spare);
+    }
+}
+
+verb ChurnVerb {
+    grammar = {{.churn}};
+    void handler() {
+        int check = 0;
+        for (int i = 0; i < 10; i++) {
+            mid = doubled(base).filter((int x) => x > i);
+            big = clip(range(i, 5));
+            array<int> loc[4] = mid.orderBy();
+            array<int> un = mid;
+            un = un.filter((int x) => x % 4 == 0);
+            shelf[1] = range(i, 4);
+            grid[2] = evensOf(range(i, 8));
+            box.row = mid.take(3);
+            cur := loc;
+            cur = un;
+            bump(un, 1);
+            cellCopy = cells;
+            cellCopy[0].v = i;
+            check += sum(mid) + sum(big) + sum(loc) + sum(un) + sum(shelf[1]) + sum(grid[2]) + cellCopy[0].v;
+            array<int> rowNow = box.row;
+            check += sum(rowNow);
+        }
+        show("mid", mid);
+        show("big", big);
+        show("shelf[1]", shelf[1]);
+        show("grid[2]", grid[2]);
+        print($"churn check {check}^");
+        heap("after churn");
+    }
+}
+
+verb ShelvesVerb {
+    grammar = {{.shelves}};
+    void handler() {
+        for (array<int> row in shelf) show("row", row);
+    }
+}
+
+verb HeapVerb {
+    grammar = {{.heap}};
+    void handler() {
+        heap("now");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

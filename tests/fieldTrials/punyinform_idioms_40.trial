@@ -1,0 +1,255 @@
+Room A
+> state
+Ticks 0, seed 7, churns 0.
+samples: none
+latest: none
+rows: none
+low: 0
+high: 0
+stash: none
+evens: none
+recent: none
+window: none
+Reads 0/0, sums 0/0.
+> usage
+Used 0.
+> bounds
+Peak 0, under half the heap: true. Size 836.
+#repeat 8
+> tick
+Tick.
+> state
+Ticks 8, seed 5, churns 0.
+samples: 3/19 4/4 5/26 6/2 7/0 8/5
+latest: 5 6 7 8 9
+rows: [50..54] [60..64] [70..74] [80..84]
+low: 0 2 4 5 19 26
+high: 19 26
+stash: 0 2 4
+evens: 4 26 2 0
+recent: 8/2 4/2 21/3
+window 8: 249/3
+Reads 8/8, sums 56/45.
+> usage
+Used 136.
+> tally
+Tally 152, shared 11, highs 2.
+> rank
+ranked: 5/26 3/19 8/5 4/4 6/2 7/0
+own top: 5/0 3/19 8/5
+Highest 5/26, weight 526, found at 2.
+samples: 3/19 4/4 5/26 6/2 7/0 8/5
+> bump
+Bumped 2.
+> state
+Ticks 8, seed 5, churns 0.
+samples: 3/20 4/4 5/27 6/2 7/0 8/5
+latest: 5 6 7 8 9
+rows: [50..54] [60..64] [70..74] [80..84]
+low: 0 2 4 5 19 26
+high: 19 26
+stash: 0 2 4
+evens: 4 26 2 0
+recent: 8/2 4/2 21/3
+window 8: 249/3
+Reads 8/8, sums 56/45.
+> grid
+Grid 837, first 0, last 7.
+> pare
+evens: 2 4 26
+> pare
+evens: 2 4 26
+> mark
+Marked.
+> watch
+Watching.
+#repeat 30
+> tick
+Tick.
+> near
+Near the mark: true.
+> spread
+Spread 1, low 147, high 148.
+> usage
+Used 137.
+#repeat 30
+> churn
+Churned 4.
+> near
+Near the mark: true.
+> spread
+Spread 1, low 147, high 148.
+#repeat 60
+> tick
+Tick.
+> near
+Near the mark: true.
+> spread
+Spread 1, low 147, high 148.
+#repeat 10
+> tally
+Tally 152, shared 11, highs 2.
+#repeat 10
+> rank
+ranked: 125/26 123/19 128/5 124/4 126/2 127/0
+own top: 125/0 123/19 128/5
+Highest 125/26, weight 12526, found at 2.
+samples: 123/19 124/4 125/26 126/2 127/0 128/5
+#repeat 10
+> grid
+Grid 837, first 0, last 7.
+> near
+Near the mark: true.
+> usage
+Used 136.
+> mark
+Marked.
+> save
+>> hp1
+Please enter a file name (without an extension): Ok.
+#repeat 5
+> tick
+Tick.
+> state
+Ticks 133, seed 14, churns 30.
+samples: 128/5 129/8 130/16 131/27 132/15 133/14
+latest: 14 15 16 17 18
+rows: [1300..1304] [1310..1314] [1320..1324] [1330..1334]
+low: 5 8 14 15 16 27
+high: 15 16 27
+stash: 5 8 14
+evens: 8 16 14
+recent: 87/3 51/3 32/2
+window 133: 3999/3
+Reads 133/133, sums 85/58.
+> near
+Near the mark: true.
+> restore
+>> hp1
+Please enter a file name (without an extension): Ok.
+> state
+Ticks 128, seed 5, churns 30.
+samples: 123/19 124/4 125/26 126/2 127/0 128/5
+latest: 5 6 7 8 9
+rows: [1250..1254] [1260..1264] [1270..1274] [1280..1284]
+low: 0 2 4 5 19 26
+high: 19 26
+stash: 0 2 4
+evens: 4 26 2 0
+recent: 8/2 4/2 21/3
+window 128: 3849/3
+Reads 128/128, sums 56/45.
+> same
+Same as mark: true.
+> tick
+Tick.
+> undo
+Previous turn undone.
+> state
+Ticks 128, seed 5, churns 30.
+samples: 123/19 124/4 125/26 126/2 127/0 128/5
+latest: 5 6 7 8 9
+rows: [1250..1254] [1260..1264] [1270..1274] [1280..1284]
+low: 0 2 4 5 19 26
+high: 19 26
+stash: 0 2 4
+evens: 4 26 2 0
+recent: 8/2 4/2 21/3
+window 128: 3849/3
+Reads 128/128, sums 56/45.
+> same
+Same as mark: true.
+> churn
+Churned 4.
+> undo
+Previous turn undone.
+> same
+Same as mark: true.
+> tick
+Tick.
+> state
+Ticks 129, seed 8, churns 30.
+samples: 124/4 125/26 126/2 127/0 128/5 129/8
+latest: 8 9 10 11 12
+rows: [1260..1264] [1270..1274] [1280..1284] [1290..1294]
+low: 0 2 4 5 8 26
+high: 26
+stash: 0 2 4
+evens: 4 26 2 0 8
+recent: 4/2 21/3 20/2
+window 129: 3879/3
+Reads 129/129, sums 45/26.
+> near
+Near the mark: true.
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Room A
+Room A. Room B is east.
+You can see a low gauge, a high gauge and a ticker here.
+> state
+Ticks 0, seed 7, churns 0.
+samples: none
+latest: none
+rows: none
+low: 0
+high: 0
+stash: none
+evens: none
+recent: none
+window: none
+Reads 0/0, sums 0/0.
+> usage
+Used 0.
+#repeat 8
+> tick
+Tick.
+> state
+Ticks 8, seed 5, churns 0.
+samples: 3/19 4/4 5/26 6/2 7/0 8/5
+latest: 5 6 7 8 9
+rows: [50..54] [60..64] [70..74] [80..84]
+low: 0 2 4 5 19 26
+high: 19 26
+stash: 0 2 4
+evens: 4 26 2 0
+recent: 8/2 4/2 21/3
+window 8: 249/3
+Reads 8/8, sums 56/45.
+> usage
+Used 136.
+> unhold
+Let go.
+> state
+Ticks 8, seed 5, churns 0.
+samples: none
+latest: 0
+rows: none
+low: 0
+high: 0
+stash: none
+evens: none
+recent: none
+window 8: 0/1
+Reads 8/8, sums 0/0.
+> usage
+Used 0.
+> tick
+Tick.
+> state
+Ticks 9, seed 8, churns 0.
+samples: 9/8
+latest: 8 9 10 11 12
+rows: [90..94]
+low: 8
+high: none
+stash: 8
+evens: 8
+recent: 20/2
+window 9: 279/3
+Reads 9/9, sums 8/0.
+> usage
+Used 80.
+> bounds
+Peak 261, under half the heap: true. Size 836.

@@ -1,0 +1,448 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fortieth PunyInform program, about the heap over a long run: one room and a daemon that
+// builds and drops arrays every turn. Each tick appends a `Sample` struct (with `extend struct` methods and
+// an `==` operator) to a rolling global `array<Sample>`, re-points a `ref array<int>` global at a freshly
+// returned row, appends returned rows to a rolling global `array<array<int>>` (`+=` stores, `remove(0)`
+// drops) and `<linq>` results to a rolling member `array<array<int>>`, binds the `ref array<int>` members
+// of two `Gauge` class instances and of a global `Span` struct to chain results, keeps a chain result in a
+// `var` global and copies another into a sized global, while local arrays and chains (in loops, over
+// rows) are dropped each turn and `bgl.gc.collect` runs inside the daemon to track low and high water.
+// Meta verbs run `<linq>` chains in loops with captured loop variables (results declared in the loop
+// body, sized locals copied from chains), rank and bump structs through results that share the source's
+// instances and a sized local that owns copies, return structs from arrays, copy a struct holding a
+// `ref array` into a local, build arrays of arrays per command and filter a global into itself. `bgl.gc.used`
+// is printed and compared against a mark across many repeated commands (`#repeat`), through
+// save/restore, undo and restart with live heap arrays, and after letting every array go; `bgl.gc.peak`
+// and `bgl.gc.size` bound the run.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    heapSize = 900;
+}
+
+#defineI6 OPTIONAL_PROVIDE_UNDO
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#includeI6 "puny"
+
+extend extern class object {
+    string description;
+    ref object e_to;
+    ref object w_to;
+}
+
+// --- samples ----------------------------------------------------------------------------------------
+
+struct Sample {
+    int turn;
+    int value;
+}
+
+extend struct Sample {
+    int weight() { return turn * 100 + value; }
+    bool isHigh() { return value >= 15; }
+    bool operator == (Sample o) { return turn == o.turn && value == o.value; }
+    bool operator != (Sample o) { return turn != o.turn || value != o.value; }
+}
+
+struct Span {
+    int from;
+    ref array<int> data;
+}
+
+const int WINDOW = 6;
+const int ROWCAP = 5;
+const int KEEPROWS = 4;
+
+array<Sample>     samples[WINDOW];
+array<array<int>> rows[KEEPROWS];
+array<int>        evens[WINDOW];
+ref array<int>    latest;
+var               stash;
+array<int>        nothingYet = {0};
+int               ticks = 0;
+int               seed = 7;
+int               mark = -1;
+int               churns = 0;
+Span              lastWin;
+bool              watching = false;
+int               lowWater = 0;
+int               highWater = 0;
+
+int nextValue() {
+    seed = (seed * 13 + 5) % 31;
+    return seed;
+}
+
+array<int> buildRow(int n) {
+    array<int> r[ROWCAP];
+    for (int i = 0; i < ROWCAP; i++) r += n + i;
+    return r;
+}
+
+array<int> values(array<Sample> ss) {
+    array<int> out[WINDOW];
+    for (Sample s in ss) out += s.value;
+    return out;
+}
+
+int total(array<int> xs) {
+    int t = 0;
+    for (int x in xs) t += x;
+    return t;
+}
+
+int byValue(Sample a, Sample b) {
+    if (a.value != b.value) return b.value - a.value;
+    return a.turn - b.turn;
+}
+
+Sample highest(array<Sample> ss) {
+    Sample best = ss[0];
+    for (Sample s in ss) {
+        if (s.value > best.value) best = s;
+    }
+    return best;
+}
+
+void showInts(string label, array<int> xs) {
+    print(label);
+    print(":");
+    if (xs.length == 0) print(" none");
+    for (int x in xs) print($" {x}");
+    printLine("");
+}
+
+void showSamples(string label, array<Sample> ss) {
+    print(label);
+    print(":");
+    if (ss.length == 0) print(" none");
+    for (Sample s in ss) print($" {s.turn}/{s.value}");
+    printLine("");
+}
+
+int heapNow() {
+    bgl.gc.collect();
+    return bgl.gc.used;
+}
+
+// --- gauges -----------------------------------------------------------------------------------------
+
+class Gauge : object {
+    ref array<int> window;
+    int reads = 0;
+    int limit = 0;
+
+    void refresh(array<Sample> ss) {
+        window := values(ss).filter((int x) => x >= limit).orderBy();
+        reads++;
+    }
+
+    int sum() {
+        if (window == null) return 0;
+        return total(window);
+    }
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    attributes = {proper, light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {proper, light};
+}
+
+Gauge lowGauge {
+    "low gauge";
+    parent = roomA;
+    name = {.low, .gauge};
+    description = "A low gauge.";
+    limit = 0;
+    attributes = {static};
+}
+
+Gauge highGauge {
+    "high gauge";
+    parent = roomA;
+    name = {.high, .gauge};
+    description = "A high gauge.";
+    limit = 15;
+    attributes = {static};
+}
+
+object ticker {
+    "ticker";
+    parent = roomA;
+    name = {.ticker};
+    description = "A ticker.";
+    attributes = {static};
+    array<array<int>> recent[3];
+
+    void daemon() {
+        ticks++;
+        int v = nextValue();
+
+        if (samples.length == samples.size) samples.remove(0);
+        Sample s;
+        s.turn = ticks;
+        s.value = v;
+        samples += s;
+
+        latest := buildRow(v);
+
+        if (rows.length == rows.size) rows.remove(0);
+        rows += buildRow(ticks * 10);
+
+        lowGauge.refresh(samples);
+        highGauge.refresh(samples);
+
+        stash = values(samples).orderBy().take(3);
+
+        evens = values(samples).filter((int x) => x % 2 == 0);
+
+        if (recent.length == recent.size) recent.remove(0);
+        recent += latest.filter((int x) => x % 2 == 1);
+
+        lastWin.from = ticks;
+        lastWin.data := rows[rows.length - 1].skip(2);
+
+        // Built and dropped every turn.
+        array<int> scratch[ROWCAP];
+        for (int x in latest.skip(1)) scratch += x * 2;
+        int dropped = total(scratch.filter((int x) => x > 10).orderBy().take(2));
+        for (array<int> r in rows) dropped += r.filter((int x) => x % 3 == 0).orderBy().count();
+        if (dropped < 0) printLine("Impossible.");
+
+        if (watching) {
+            int u = heapNow();
+            if (u < lowWater) lowWater = u;
+            if (u > highWater) highWater = u;
+        }
+    }
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Tick {
+    grammar = {.tick};
+    void handler() {
+        printLine("Tick.");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        churns++;
+        array<int> cur = buildRow(churns);
+        int steps = 0;
+        while (cur.length > 1) {
+            cur = cur.skip(1);
+            steps++;
+        }
+        printLine($"Churned {steps}.");
+    }
+}
+
+verb State {
+    meta = true;
+    grammar = {.state};
+    void handler() {
+        printLine($"Ticks {ticks}, seed {seed}, churns {churns}.");
+        showSamples("samples", samples);
+        if (latest == null) printLine("latest: none");
+        else showInts("latest", latest);
+        print("rows:");
+        if (rows.length == 0) print(" none");
+        for (array<int> r in rows) print($" [{r[0]}..{r[r.length - 1]}]");
+        printLine("");
+        showInts("low", lowGauge.window == null ? nothingYet : lowGauge.window);
+        showInts("high", highGauge.window == null ? nothingYet : highGauge.window);
+        if (stash == 0) printLine("stash: none");
+        else showInts("stash", stash);
+        showInts("evens", evens);
+        print("recent:");
+        if (ticker.recent.length == 0) print(" none");
+        for (array<int> r in ticker.recent) print($" {total(r)}/{r.length}");
+        printLine("");
+        Span w = lastWin;
+        if (w.data == null) printLine("window: none");
+        else printLine($"window {w.from}: {total(w.data)}/{w.data.length}");
+        // WORKAROUND(heap1-3): a local struct's `ref array` member keeps its array alive after the routine returns.
+        w.data := nothingYet;
+        printLine($"Reads {lowGauge.reads}/{highGauge.reads}, sums {lowGauge.sum()}/{highGauge.sum()}.");
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        int points = 0;
+        int shared = 0;
+        for (int k = 0; k < 4; k++) {
+            array<int> picked = values(samples).filter((int x) => x > k * 5).orderBy();
+            points += total(picked.take(2));
+            array<Sample> heavy = samples.filter((Sample s) => s.value > k * 5);
+            shared += heavy.count();
+            array<int> doubled[WINDOW] = picked.map((var x) => x * 2);
+            points += doubled.length;
+        }
+        int highs = samples.filter((Sample s) => s.isHigh()).count();
+        printLine($"Tally {points}, shared {shared}, highs {highs}.");
+    }
+}
+
+verb Rank {
+    meta = true;
+    grammar = {.rank};
+    void handler() {
+        if (samples.length == 0) {
+            printLine("Nothing to rank.");
+            return;
+        }
+        array<Sample> sorted = samples.orderBy(byValue);
+        showSamples("ranked", sorted);
+        array<Sample> mine[WINDOW] = samples.orderBy(byValue).take(3);
+        mine[0].value = 0;
+        showSamples("own top", mine);
+        Sample top = highest(samples);
+        top.value = -1;
+        Sample again = highest(samples);
+        printLine($"Highest {again.turn}/{again.value}, weight {again.weight()}, found at {samples.indexOf(again)}.");
+        showSamples("samples", samples);
+    }
+}
+
+verb Bump {
+    meta = true;
+    grammar = {.bump};
+    void handler() {
+        array<Sample> high = samples.filter((Sample s) => s.isHigh());
+        for (int i = 0; i < high.length; i++) high[i].value = high[i].value + 1;
+        printLine($"Bumped {high.length}.");
+    }
+}
+
+verb Grid {
+    meta = true;
+    grammar = {.grid};
+    void handler() {
+        array<array<int>> local[3];
+        for (int i = 0; i < 3; i++) local += buildRow(i * 100);
+        local[1] = local[0];
+        local[2][0] = 7;
+        int t = 0;
+        for (array<int> r in local) t += total(r);
+        printLine($"Grid {t}, first {local[0][0]}, last {local[2][0]}.");
+    }
+}
+
+verb Usage {
+    meta = true;
+    grammar = {.usage};
+    void handler() {
+        printLine($"Used {heapNow()}.");
+    }
+}
+
+verb MarkHeap {
+    meta = true;
+    grammar = {.mark};
+    void handler() {
+        mark = heapNow();
+        printLine("Marked.");
+    }
+}
+
+verb Same {
+    meta = true;
+    grammar = {.same};
+    void handler() {
+        int now = heapNow();
+        printLine($"Same as mark: {now == mark}.");
+    }
+}
+
+verb Near {
+    meta = true;
+    grammar = {.near};
+    void handler() {
+        int now = heapNow();
+        printLine($"Near the mark: {now >= mark - 10 && now <= mark + 10}.");
+    }
+}
+
+verb Pare {
+    meta = true;
+    grammar = {.pare};
+    void handler() {
+        evens = evens.filter((int x) => x != 0);
+        evens = evens.orderBy();
+        showInts("evens", evens);
+    }
+}
+
+verb Watch {
+    meta = true;
+    grammar = {.watch};
+    void handler() {
+        watching = true;
+        lowWater = 30000;
+        highWater = 0;
+        printLine("Watching.");
+    }
+}
+
+verb Spread {
+    meta = true;
+    grammar = {.spread};
+    void handler() {
+        printLine($"Spread {highWater - lowWater}, low {lowWater}, high {highWater}.");
+    }
+}
+
+verb Bounds {
+    meta = true;
+    grammar = {.bounds};
+    void handler() {
+        printLine($"Peak {bgl.gc.peak}, under half the heap: {bgl.gc.peak * 2 < bgl.gc.size}. Size {bgl.gc.size}.");
+    }
+}
+
+verb Unhold {
+    meta = true;
+    grammar = {.unhold};
+    void handler() {
+        samples.clear();
+        rows.clear();
+        evens.clear();
+        latest := nothingYet;
+        lowGauge.window := nothingYet;
+        highGauge.window := nothingYet;
+        stash = 0;
+        ticker.recent.clear();
+        lastWin.data := nothingYet;
+        printLine("Let go.");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(ticker);
+    rfalse;
+}

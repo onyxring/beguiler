@@ -1,0 +1,600 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, fortieth pass: structs that own arrays and
+// arrays that own structs. A Coord struct with the automatic copy operator and operators (`+`, `==`, `<=>`)
+// plus more from `extend struct` (`-`, a method); a Part struct holding a Coord, an owned `array<int>` member
+// and a `ref array<int>` member (the copy owns its marks, shares its log); a Crate struct with a written copy
+// operator next to the automatic ones, holding an `array<Coord>` member; a Warehouse class owning an
+// `array<Part>` member and a Part member, with methods returning the member struct, a copy of a slot, a
+// shared `<linq>` view and an owned copy of one; a class holding a `ref array<Part>` re-bound between a global
+// and a `<linq>` result; file-scope `array<Coord>` and `array<array<Coord>>` literals with rows copied; global
+// `array<Part>` filled with `+=`, slot stores, slot-to-slot copies, nested slot writes (`a[i].at.x = …`),
+// `ref Part` bound to a slot; struct parameters
+// (copies) beside `ref Part` parameters and array parameters (shared elements); structs returned from a
+// global, a member, a local and an array slot; a method called on a returned struct; a local array of
+// structs returned from a function (instances travel with it) and dropped; `<linq>` over struct arrays:
+// filter/orderBy/take/skip/takeWhile/distinct/any/all/first/last/count/map, results written through to the
+// source, a result assigned back into its own source (`stock = stock.orderBy(…)`), a result copied into a
+// sized local, the shared-array add error caught once; loop variables that copy; `remove`/`clear`/`-=`
+// handing instances back across repeated commands; `pop`/`push`/`insert`/`prepend`/`swap`/`reverse`/`popEnd`/
+// `dequeue`/`enqueue`/`copyFrom` on an owned struct array; an `array<Crate>` whose elements copy through the
+// written operator (and hold their own `array<Coord>`), ordered, filtered, searched and sorted by `extend struct`
+// operators; fields and an array member that `extend struct` adds, covered by the automatic copy; `bgl.gc.used`
+// printed where the heap should be empty, and after a `bgl.gc.collect()` between commands.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+int Abs(int n) { return n < 0 ? -n : n; }
+
+//-- Coord: automatic copy, operators in the body and in extend struct ----------------------------------------
+
+struct Coord {
+    inline int x;
+    inline int y;
+
+    Coord operator + (Coord o) { return Coord{ x + o.x, y + o.y }; }
+    bool operator == (Coord o) { return x == o.x && y == o.y; }
+    int operator <=> (Coord o) { return Distance() - o.Distance(); }
+
+    int Distance() { return Abs(x) + Abs(y); }
+    void print() { print($"({x},{y})"); }
+}
+
+extend struct Coord {
+    Coord operator - (Coord o) { return Coord{ x - o.x, y - o.y }; }
+
+    Coord Scaled(int k) {
+        Coord r = self;
+        r.x *= k;
+        r.y *= k;
+        return r;
+    }
+
+    bool IsOrigin() { return x == 0 && y == 0; }
+}
+
+//-- Part: a struct owning an array and sharing another -------------------------------------------------------
+
+array<int> journal[12];
+
+struct Part {
+    int id;
+    int weight;
+    Coord at;
+    array<int> marks[3];
+    ref array<int> log;
+
+    void Mark(int m) {
+        if (!marks.append(m)) {
+            marks.remove(0);
+            marks += m;
+        }
+    }
+
+    int MarkSum() {
+        int s = 0;
+        for (int m in marks) s += m;
+        return s;
+    }
+
+    void print() { print($"#{id}w{weight}"); }
+}
+
+extend struct Part {
+    int grade;
+    array<int> tags[2];
+
+    bool operator == (Part o) { return id == o.id; }
+    int operator <=> (Part o) { return weight - o.weight; }
+
+    void Note(int n) {
+        if (log != null) log += n;
+    }
+
+    bool IsHeavy() { return weight >= 10; }
+}
+
+Part NewPart(int id, int weight) {
+    Part p;
+    p.id = id;
+    p.weight = weight;
+    p.at = Coord{ id, -id };
+    p.Mark(id * 10);
+    p.log := journal;
+    return p;
+}
+
+//-- Crate: a written copy operator ---------------------------------------------------------------------------
+
+struct Crate {
+    int serial;
+    int scratch;
+    array<Coord> path[3];
+
+    Crate operator = (Crate o) {
+        serial = o.serial;
+        path = o.path;
+        scratch = 0;
+        return self;
+    }
+
+    int PathLength() {
+        int total = 0;
+        for (int i = 1; i < path.length; i++) total += (path[i] - path[i - 1]).Distance();
+        return total;
+    }
+}
+
+Crate gCrate;
+array<Crate> shelf[4];
+
+extend struct Crate {
+    array<int> stamps[2];
+    bool operator == (Crate o) { return serial == o.serial; }
+    int operator <=> (Crate o) { return serial - o.serial; }
+}
+
+int StampCount(Crate c) {
+    c.stamps += 1;
+    return c.stamps.length;
+}
+
+Crate CrateWith(int serial) {
+    Crate c;
+    c.serial = serial;
+    c.scratch = 99;
+    c.path += Coord{ 0, 0 };
+    c.path += Coord{ serial, 0 };
+    c.path += Coord{ serial, serial };
+    return c;
+}
+
+//-- Warehouse: a class owning an array of structs and a struct ----------------------------------------------
+
+class Warehouse : object {
+    array<Part> bins[6];
+    Part featured;
+
+    bool Store(Part p) { return bins.append(p); }
+
+    Part GetFeatured() { return featured; }
+
+    Part Bin(int i) { return bins[i]; }
+
+    int TotalWeight() {
+        int t = 0;
+        for (Part p in bins) t += p.weight;
+        return t;
+    }
+
+    void Restock() {
+        bins.clear();
+        Store(NewPart(1, 4));
+        Store(NewPart(2, 12));
+        Store(NewPart(3, 7));
+        Store(NewPart(4, 15));
+    }
+
+    void Describe() {
+        print(self);
+        print(":");
+        for (Part p in bins) print($" {p}");
+        printLine($" total {TotalWeight()}");
+    }
+}
+
+Warehouse depot {
+    "depot";
+    featured = Part{ id = 50; weight = 5; at = Coord{ 5, 5 }; };
+}
+
+class Inspector : object {
+    ref array<Part> watching;
+    Part last;
+
+    int Count(int minWeight) {
+        int n = 0;
+        for (Part p in watching) {
+            if (p.weight >= minWeight) {
+                n++;
+                last = p;
+            }
+        }
+        return n;
+    }
+
+    void Zero(int i) { watching[i].weight = 0; }
+}
+
+Inspector checker {
+    "inspector";
+}
+
+array<Coord> waypoints = { Coord{ 1, 2 }, { 3, 4 }, Coord{ -5, 0 } };
+array<array<Coord>> legs = { { Coord{ 0, 0 }, Coord{ 1, 1 } }, { Coord{ 2, 2 } } };
+
+//-- Globals and helpers -------------------------------------------------------------------------------------
+
+array<Part> stock[6];
+Part gSpare;
+
+void Fill() {
+    stock.clear();
+    stock += NewPart(11, 3);
+    stock += NewPart(12, 9);
+    stock += NewPart(13, 1);
+    stock += NewPart(14, 20);
+}
+
+void ShowStock(string label) {
+    print(label);
+    for (Part p in stock) print($" {p}");
+    print("^");
+}
+
+void HeavierCopy(Part p) {
+    p.weight += 100;
+    p.at.x = 77;
+    p.Mark(5);
+}
+
+void HeavierRef(ref Part p) {
+    p.weight += 100;
+    p.at.x = 77;
+}
+
+void BumpAll(array<Part> parts, int by) {
+    for (int i = 0; i < parts.length; i++) parts[i].weight += by;
+}
+
+Part SpareCopy() { return gSpare; }
+
+Part SlotCopy(int i) { return stock[i]; }
+
+Part Lightest(array<Part> parts) {
+    Part best = parts[0];
+    for (Part p in parts) {
+        if (p < best) best = p;
+    }
+    return best;
+}
+
+array<Part> Batch(int n) {
+    array<Part> made[4];
+    for (int i = 1; i <= n; i++) made += NewPart(100 + i, i * 2);
+    return made;
+}
+
+array<Part> HeavyOnes(array<Part> parts) { return parts.filter((Part p) => p.IsHeavy()); }
+
+Part Pick(bool first, Part a, Part b) { return first ? a : b; }
+
+int ByWeightDesc(Part a, Part b) { return b.weight - a.weight; }
+
+bool IsLight(Part p) { return p.weight < 10; }
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Coords {
+    grammar = {.coords};
+    void handler() {
+        Coord a = Coord{ 3, -4 };
+        Coord b = a;
+        b.x = 1;
+        Coord c = a + b - Coord{ 1, 1 };
+        Coord d = c.Scaled(2);
+        printLine($"{a} {b} {c} {d} {a.Distance()} {(a - a).IsOrigin()} {a == b} {a > b}");
+        printLine($"{Coord{ 2, 2 }.Scaled(3)} {(a + b).Distance()}");
+    }
+}
+
+verb Parts {
+    grammar = {.parts};
+    void handler() {
+        journal.clear();
+        Part a = NewPart(1, 5);
+        a.Mark(11);
+        a.grade = 3;
+        a.tags += 6;
+        Part b = a;
+        b.tags[0] = 1;
+        b.tags += 2;
+        b.Mark(12);
+        b.Mark(13);
+        b.weight = 6;
+        b.at.y = 40;
+        a.Note(7);
+        b.Note(8);
+        printLine($"a {a} {a.at} marks {a.marks.length}/{a.MarkSum()} b {b} {b.at} marks {b.marks.length}/{b.MarkSum()}");
+        printLine($"grade {b.grade} tags a {a.tags.length}/{a.tags[0]} b {b.tags.length}/{b.tags[0]}{b.tags[1]}");
+        printLine($"log {journal.length} {journal[0]} {journal[1]} same {a.log == b.log} eq {a == b} heavy {b.IsHeavy()}");
+        HeavierCopy(a);
+        printLine($"copy {a} {a.at} {a.marks.length}");
+        HeavierRef(a);
+        printLine($"ref {a} {a.at} {a.marks.length}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Crates {
+    grammar = {.crates};
+    void handler() {
+        gCrate = CrateWith(4);
+        Crate local = gCrate;
+        local.path[1].x = 9;
+        local.scratch = 5;
+        Crate second = CrateWith(2);
+        printLine($"g {gCrate.serial}/{gCrate.scratch} len {gCrate.PathLength()} {gCrate.path[1]}");
+        printLine($"local {local.serial}/{local.scratch} len {local.PathLength()} {local.path[1]}");
+        printLine($"second {second.serial}/{second.scratch} {second.path.length}");
+        second = local;
+        printLine($"second {second.serial}/{second.scratch} {second.path[1]}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Slots {
+    grammar = {.slots};
+    void handler() {
+        journal.clear();
+        Fill();
+        ShowStock("filled");
+        stock[1] = stock[3];
+        stock[1].id = 15;
+        stock[0].at.x = 3;
+        stock[0].marks += 1;
+        printLine($"slot0 {stock[0]} {stock[0].at} {stock[0].marks.length} slot3 {stock[3]} {stock[3].at}");
+        ref Part r := stock[2];
+        r.weight = 8;
+        r = stock[0];
+        printLine($"slot2 {stock[2]} {stock[2].at} slot0 {stock[0]}");
+        gSpare = stock[3];
+        gSpare.weight = 1;
+        Part s = SpareCopy();
+        s.weight = 2;
+        Part t = SlotCopy(3);
+        t.weight = 4;
+        printLine($"spare {gSpare} s {s} t {t} slot3 {stock[3]}");
+        for (Part p in stock) p.weight = 0;
+        ShowStock("loop");
+        HeavierCopy(stock[0]);
+        HeavierRef(stock[0]);
+        printLine($"after {stock[0]} {stock[0].at} {stock[0].marks.length}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Params {
+    grammar = {.params};
+    void handler() {
+        Fill();
+        BumpAll(stock, 5);
+        ShowStock("bumped");
+        Part low = Lightest(stock);
+        low.weight = 50;
+        printLine($"lightest {low} slot2 {stock[2]} index {stock.indexOf(low)}");
+        array<Part> fresh = Batch(3);
+        printLine($"batch {fresh.length} {fresh[0]} {fresh[2]} light {Lightest(fresh)}");
+        fresh.remove(0);
+        fresh += NewPart(109, 1);
+        printLine($"batch {fresh.length} {fresh[0]} {fresh[2]}");
+        printLine($"{Batch(2).length} {Batch(4)[3]} {NewPart(7, 7).IsHeavy()} {NewPart(8, 80).at}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb DepotTest {
+    grammar = {.depot};
+    void handler() {
+        printLine($"start {depot.featured} {depot.featured.at} {depot.featured.marks.length}");
+        depot.Restock();
+        depot.Describe();
+        depot.featured = depot.bins[1];
+        depot.featured.weight = 30;
+        Part f = depot.GetFeatured();
+        f.weight = 31;
+        Part b = depot.Bin(3);
+        b.weight = 0;
+        printLine($"featured {depot.featured} f {f} bin1 {depot.bins[1]} b {b} bin3 {depot.bins[3]}");
+        depot.bins[0] = depot.featured;
+        depot.bins -= depot.bins[2];
+        depot.Describe();
+        gSpare = depot.featured;
+        depot.featured = NewPart(9, 9);
+        printLine($"spare {gSpare} featured {depot.featured} {depot.featured.at}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Queries {
+    grammar = {.queries};
+    void handler() {
+        Fill();
+        array<Part> light = stock.filter(IsLight);
+        light[0].weight = 2;
+        printLine($"light {light.length} {light[0]} {light[1]} {light[2]} slot0 {stock[0]}");
+        array<Part> heavy = stock.filter((Part p) => p.IsHeavy());
+        printLine($"heavy {heavy.count()} {heavy.first()} {heavy.last()}");
+        array<Part> sorted = stock.orderBy(ByWeightDesc);
+        sorted[3].at.y = 66;
+        printLine($"sorted {sorted[0]} {sorted[1]} {sorted[2]} {sorted[3]} slot2 {stock[2]} {stock[2].at}");
+        printLine($"{stock.any((Part p) => p.weight > 15)} {stock.all((Part p) => p.weight > 1)} {stock.skip(1).take(2).last()}");
+        printLine($"{stock.takeWhile((Part p) => p.weight < 10).count()} {stock.orderBy().first()} {stock.orderBy().skip(1).first().at}");
+        array<var> ids = stock.map((Part p) => p.id * 2);
+        printLine($"ids {ids.length} {ids[0]} {ids[3]}");
+        Part top = stock.orderBy(ByWeightDesc).first();
+        top.weight = 0;
+        printLine($"top {top} slot3 {stock[3]}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Owned {
+    grammar = {.owned};
+    void handler() {
+        Fill();
+        array<Part> mine[4] = stock.filter(IsLight);
+        mine[0].weight = 70;
+        mine += NewPart(21, 21);
+        printLine($"mine {mine.length} {mine[0]} {mine[3]} slot0 {stock[0]}");
+        stock[3] = stock[1];
+        stock += stock[0];
+        stock.length = 5;
+        printLine($"dups {stock.distinct().count()} {stock.indexOf(stock[1])}");
+        stock = stock.orderBy(ByWeightDesc);
+        ShowStock("desc");
+        stock = stock.filter((Part p) => p.id != 12);
+        ShowStock("kept");
+        stock.sort();
+        ShowStock("sorted");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Shuffle {
+    grammar = {.shuffle};
+    void handler() {
+        Fill();
+        Part popped = stock.pop();
+        popped.weight = 99;
+        stock.push(NewPart(40, 4));
+        stock.insert(2, gSpare);
+        stock.prepend(Part{ id = 41; weight = 41; });
+        ShowStock("front");
+        stock.swap(0, 4);
+        stock.reverse();
+        Part tail = stock.popEnd();
+        Part head = stock.dequeue();
+        stock.enqueue(tail);
+        ShowStock("turned");
+        printLine($"popped {popped} tail {tail} head {head} peek {stock.peek()} end {stock.peekEnd()}");
+        array<Part> backup[6];
+        backup.copyFrom(stock);
+        backup[0].weight = 1;
+        stock[1] = Pick(false, stock[0], backup[0]);
+        printLine($"backup {backup.length} {backup[0]} slot0 {stock[0]} slot1 {stock[1]}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Watch {
+    grammar = {.watch};
+    void handler() {
+        Fill();
+        checker.watching := stock;
+        printLine($"{checker.Count(5)} last {checker.last}");
+        checker.Zero(0);
+        printLine($"slot0 {stock[0]} last {checker.last} {checker.Count(1)}");
+        array<Part> heavy = HeavyOnes(stock);
+        printLine($"heavy {heavy.length} {heavy[0]}");
+        heavy[0].weight = 18;
+        checker.watching := heavy;
+        printLine($"{checker.Count(10)} last {checker.last} slot1 {stock[1]}");
+        checker.watching := stock;
+        HeavierCopy(depot.GetFeatured());
+        waypoints[2] = Coord{ -5, 0 };
+        Coord sum = Coord{ 0, 0 };
+        for (Coord c in waypoints) sum += c;
+        waypoints[2] = sum;
+        legs[1][0] = waypoints[0];
+        legs[0][1].y = 7;
+        legs[0] = legs[1];
+        printLine($"sum {sum} wp {waypoints[2]} legs {legs[0].length} {legs[0][0]} {legs[0][1]} {legs[1][0]}");
+        legs[1][0].x = 8;
+        printLine($"legs {legs[0][0]} {legs[1][0]} wp {waypoints[0]}");
+        legs[0] = { Coord{ 0, 0 }, Coord{ 1, 1 } };
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Shelves {
+    grammar = {.shelves};
+    void handler() {
+        shelf.clear();
+        Crate c = CrateWith(3);
+        c.scratch = 7;
+        c.stamps += 5;
+        shelf += c;
+        shelf += CrateWith(1);
+        shelf.append(gCrate);
+        shelf[2].scratch = 4;
+        shelf[0].path[2].y += 10;
+        shelf[1].path[1] += Coord{ 1, 1 };
+        printLine($"scratch {shelf[0].scratch} {shelf[1].scratch} {shelf[2].scratch} c {c.scratch} stamps {shelf[0].stamps.length} {StampCount(shelf[0])} {shelf[0].stamps.length}");
+        printLine($"paths {shelf[0].PathLength()} {c.PathLength()} {shelf[1].path[1]} {shelf[1].PathLength()}");
+        array<Crate> bySerial[4] = shelf.orderBy();
+        printLine($"ordered {bySerial[0].serial} {bySerial[1].serial} {bySerial[2].serial} scratch {bySerial[2].scratch} {bySerial[0].path[1]}");
+        array<Crate> big = shelf.filter((Crate k) => k.serial > 2);
+        big[0].scratch = 6;
+        Crate found = shelf[shelf.indexOf(CrateWith(4))];
+        printLine($"big {big.length} {shelf[0].scratch} found {found.serial}/{found.scratch} contains {shelf.contains(c)} {shelf.contains(CrateWith(9))}");
+        shelf.sort();
+        printLine($"sorted {shelf[0].serial} {shelf[1].serial} {shelf[2].serial} {shelf.first().serial} {shelf.last().scratch}");
+        printLine($"used {bgl.gc.used}");
+    }
+}
+
+verb Shared {
+    grammar = {.shared};
+    void handler() {
+        Fill();
+        array<Part> view = stock.skip(2);
+        view[0].weight = 33;
+        printLine($"view {view.length} {view[0]} slot2 {stock[2]}");
+        view += gSpare;
+        printLine($"view {view.length}");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        Fill();
+        stock.remove(1);
+        stock -= stock[0];
+        stock += NewPart(31, 31);
+        stock += NewPart(32, 32);
+        stock.removeValue(NewPart(13, 0));
+        array<Part> batch = Batch(4);
+        batch.clear();
+        batch = Batch(1);
+        int carried = stock.length + batch.length;
+        depot.Restock();
+        ShowStock("churned");
+        printLine($"{carried} {depot.TotalWeight()} used {bgl.gc.used}");
+    }
+}
+
+verb HeapTest {
+    grammar = {.heap};
+    void handler() {
+        bgl.gc.collect();
+        printLine($"collected {bgl.gc.used}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

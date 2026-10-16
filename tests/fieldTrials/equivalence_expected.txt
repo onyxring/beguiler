@@ -43,6 +43,7 @@ score_and_status [-G]                 Z opcode set_cursor
 beginner_style_idioms_8 [-G]          #startup prints before the Glulx window opens
 beginner_style_idioms_2 [-G]          D1350: I6 library RunRoutines runs player.capacity as a routine on Glulx
 adversarial_valid_13 [-z5]            toUpper only under #if TARGET_GLULX
+library_author_idioms_40 [-G]         raw Z-machine assembly (@add … -> n) in an #i6 block
 
 # A debug build differs on purpose.
 glulx_presentation_idioms_3 [--debug] glulxWindow's debug-only size diagnostic

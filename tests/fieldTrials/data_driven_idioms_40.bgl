@@ -1,0 +1,399 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: heap-array lifetimes driven by site tables. Arrays that must outlive the routine that made
+// them: a returned local array bound to a `ref array` global with `:=`, to a `ref array` member of an
+// object and of class instances, to a `ref array` member of a struct global and of struct elements of an
+// array of structs, stored in `var` globals and a `var` member, appended (`+=`) to a global array of
+// arrays, a member array of arrays and a class instance's member array of arrays (pruned with `remove`),
+// an array of arrays returned and bound to a `ref` global whose rows are reached only through it, a
+// routine's own declared local array escaping through `:=` and `+=` (no return), an array passed up two
+// levels through locals taking a call's result and a `ref` local, a member row returned by a method and
+// re-bound after its array of arrays is cleared, a `ref` member re-pointed at another's array, a struct
+// copied (automatic copy operator) so its `ref array` member keeps an array after the source re-points,
+// and an array kept alive by a struct after being removed from its array of arrays. Each is read across
+// many prompts and collections, then let go (rebinding, `null`, `clear()`, `remove`, overwriting a var)
+// and `bgl.gc.used` checked back at its known level, including across repeated identical commands.
+// Arrays that must NOT outlive their routine: local arrays, a `ref` local bound to a local, local arrays
+// of arrays with appended rows, `<linq>` results taken by locals, used in chains and in loops, a returned
+// array taken and dropped, and `bgl.gc.free` on a taken array.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 4096;
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <array>
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Tables ----------------------------------------------------------------------
+
+array<string> siteName = { "north", "east", "south", "west" };
+array<int> siteBase = { 10, 20, 30, 40 };
+array<int> siteStep = { 1, 2, 3, 4 };
+array<int> siteCount = { 3, 4, 5, 2 };
+
+//-- Holders that keep arrays alive ----------------------------------------------
+
+ref array<int> latest;
+ref array<array<int>> deep;
+var stash;
+array<int> | string tagged;
+array<array<int>> shelf[4];
+
+object archive {
+    ref array<int> lastRun;
+    array<array<int>> runs[3];
+    var memo;
+}
+
+class Probe : object {
+    int site;
+    ref array<int> trace;
+    array<array<int>> past[2];
+
+    void record(array<int> w) {
+        if (past.length == past.size) past.remove(0);
+        past += w;
+    }
+
+    array<int> newest() {
+        return past[past.length - 1];
+    }
+
+    int pastTotal() {
+        int s = 0;
+        for (array<int> row in past) {
+            for (int v in row) s += v;
+        }
+        return s;
+    }
+}
+
+Probe probeA { site = 0; }
+Probe probeB { site = 2; }
+
+struct Batch {
+    int tag;
+    ref array<int> data;
+    int total() {
+        if (!data) return -1;
+        int s = 0;
+        for (int v in data) s += v;
+        return s;
+    }
+}
+
+Batch current;
+Batch spare;
+array<Batch> batches[3];
+
+int fills = 0;
+
+//-- Builders --------------------------------------------------------------------
+
+array<int> Window(int site) {
+    array<int> w[8];
+    for (int i = 0; i < siteCount[site]; i++) w += siteBase[site] + i * siteStep[site];
+    return w;
+}
+
+array<int> Shifted(int site, int by) {
+    array<int> base = Window(site);
+    array<int> out = base.map((int v) => v + by);
+    return out;
+}
+
+array<array<int>> Grid(int first, int n) {
+    array<array<int>> g[4];
+    for (int s = first; s < first + n; s++) g += Window(s % 4);
+    return g;
+}
+
+int Sum(array<int> a) {
+    int s = 0;
+    for (int v in a) s += v;
+    return s;
+}
+
+stringObj Show(array<int> a) {
+    stringObj line = "[";
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) line += " ";
+        line += $"{a[i]}";
+    }
+    line += "]";
+    return line;
+}
+
+void Level(string what) {
+    bgl.gc.collect();
+    printLine($"{what}: used {bgl.gc.used}");
+}
+
+// A routine whose own local array escapes in several ways without being returned.
+void Publish(int site) {
+    array<int> mine[8];
+    for (int i = 0; i < siteCount[site]; i++) mine += siteBase[site] * 10 + i;
+    archive.lastRun := mine;
+}
+
+void Spread(int site) {
+    array<int> a[8];
+    array<int> b[8];
+    array<int> c[8];
+    for (int i = 0; i < siteCount[site]; i++) {
+        a += i;
+        b += i * 2;
+        c += i * 3;
+    }
+    shelf += a;
+    stash = b;
+    tagged = c;
+}
+
+// A local taking a call's array and returning it, through two levels.
+array<int> Pass(int site) {
+    array<int> w = Window(site);
+    w += 1;
+    return w;
+}
+
+array<int> PassTwice(int site) {
+    array<int> got = Pass(site);
+    got += 2;
+    ref array<int> tail := got;
+    tail += 3;
+    return tail;
+}
+
+// Locals that must all be gone when this returns.
+int Scratch(int site) {
+    array<int> w = Window(site);
+    array<int> big[20];
+    ref array<int> r := big;
+    for (int v in w) r += v * 2;
+    array<array<int>> rows[3];
+    rows += Window((site + 1) % 4);
+    rows += w.filter((int v) => v % 2 == 0);
+    int n = 0;
+    for (array<int> row in rows) n += row.length;
+    array<int> hi = big.filter((int v) => v > 40).orderBy();
+    return Sum(big) + n + hi.length;
+}
+
+//-- Verbs -----------------------------------------------------------------------
+
+verb FillTest {
+    grammar = {.fill};
+    void handler() {
+        fills++;
+        latest := Window(fills % 4);
+        probeA.trace := Window(probeA.site);
+        probeB.trace := Shifted(probeB.site, fills);
+        current.tag = fills;
+        current.data := Window(3);
+        for (int i = 0; i < batches.length; i++) batches[i].data := Window(i);
+        if (batches.length == 0) {
+            for (int i = 0; i < 3; i++) {
+                Batch b;
+                b.tag = i + 1;
+                batches += b;
+                batches[i].data := Window(i + 1);
+            }
+        }
+        stash = Window(0);
+        tagged = Window(1);
+        printLine($"fill {fills}: latest {Show(latest)} probes {Sum(probeA.trace)} {Sum(probeB.trace)}");
+    }
+}
+
+verb ShowTest {
+    grammar = {.show};
+    void handler() {
+        printLine($"latest {latest ? Sum(latest) : -1} A {probeA.trace ? Sum(probeA.trace) : -1} B {probeB.trace ? Sum(probeB.trace) : -1}");
+        printLine($"current #{current.tag} {current.total()}; batches {batches.length}:{batches.length > 0 ? batches[0].total() : -1}/{batches.length > 2 ? batches[2].total() : -1}");
+        if (typeof(stash) == eType.unknown) printLine("stash empty");
+        else printLine($"stash {Sum((array<int>)stash)}");
+        if (typeof(tagged) == eType.string) printLine($"tagged {(string)tagged}");
+        else if (typeof(tagged) == eType.unknown) printLine("tagged empty");
+        else printLine($"tagged {Sum((array<int>)tagged)}");
+        stringObj line = $"shelf {shelf.length}:";
+        for (array<int> row in shelf) line += $" {Sum(row)}";
+        printLine(line);
+        line = $"runs {archive.runs.length}:";
+        for (array<int> row in archive.runs) line += $" {Show(row)}";
+        printLine(line);
+        printLine($"lastRun {archive.lastRun ? Show(archive.lastRun) : "none"}");
+        if (deep) {
+            line = $"deep {deep.length}:";
+            for (array<int> row in deep) line += $" {row.length}/{Sum(row)}";
+            printLine(line);
+        } else printLine("deep none");
+    }
+}
+
+verb PublishTest {
+    grammar = {.publish};
+    void handler() {
+        Publish(fills % 4);
+        Spread(1);
+        if (archive.runs.length == archive.runs.size) archive.runs.remove(0);
+        archive.runs += Window(2);
+        printLine($"published {Show(archive.lastRun)}; shelf {shelf.length} stash {Show((array<int>)stash)} tagged {Sum((array<int>)tagged)}");
+    }
+}
+
+verb DeepTest {
+    grammar = {.deep};
+    void handler() {
+        deep := Grid(fills % 4, 3);
+        deep[0][0] = 99;
+        deep[1] = Window(3);
+        printLine($"deep {deep.length} rows: {Show(deep[0])} {Show(deep[1])} {Show(deep[2])}");
+    }
+}
+
+verb ScratchTest {
+    grammar = {.scratch};
+    void handler() {
+        int total = 0;
+        for (int s = 0; s < siteName.length; s++) total += Scratch(s);
+        int odd = 0;
+        for (int s = 0; s < 4; s++) {
+            for (int v in Window(s).filter((int x) => x % 2 == 1)) odd += v;
+        }
+        array<int> loose = Window(2);
+        int before = bgl.gc.used;
+        bgl.gc.free(loose);
+        int after = bgl.gc.used;
+        printLine($"scratch {total} odd {odd} freed {before - after}");
+        array<int> big = siteBase.filter((int v) => v > 15).map((int v) => v * siteStep[0]);
+        printLine($"chain {Show(big)} first {siteBase.filter((int v) => v > 25).first()}");
+    }
+}
+
+verb DropTest {
+    grammar = {.drop};
+    void handler() {
+        latest := null;
+        probeA.trace := null;
+        probeB.trace := null;
+        current.data := null;
+        for (int i = 0; i < batches.length; i++) batches[i].data := null;
+        stash = null;
+        tagged = "none";
+        shelf.clear();
+        archive.runs.clear();
+        archive.lastRun := null;
+        deep := null;
+        spare.data := null;
+        archive.memo = null;
+        probeA.past.clear();
+        probeB.past.clear();
+        printLine("dropped");
+    }
+}
+
+verb TrimTest {
+    grammar = {.trim};
+    void handler() {
+        if (shelf.length > 0) shelf.remove(0);
+        if (archive.runs.length > 0) archive.runs.remove(archive.runs.length - 1);
+        latest := siteBase;
+        printLine($"trimmed: shelf {shelf.length} runs {archive.runs.length} latest {Show(latest)}");
+    }
+}
+
+verb ShareTest {
+    grammar = {.share};
+    void handler() {
+        probeB.trace := probeA.trace;
+        probeA.trace := Window(3);
+        spare = current;
+        current.data := Window(0);
+        Batch local = spare;
+        local.tag = 50;
+        archive.memo = Shifted(0, 100);
+        printLine($"shared: B {Sum(probeB.trace)} A {Sum(probeA.trace)} spare #{spare.tag} {spare.total()} current {current.total()} local #{local.tag} {local.total()}");
+        local.data := null;     // WORKAROUND(heap1-5): a local struct's ref member keeps its array alive after the routine returns.
+    }
+}
+
+verb RotateTest {
+    grammar = {.rotate};
+    void handler() {
+        latest := Window(2);
+        probeA.trace := Shifted(1, 0);
+        for (int i = 0; i < batches.length; i++) batches[i].data := latest;
+        if (deep) deep := Grid(0, 2);
+        archive.runs.clear();
+        archive.runs += Window(3);
+        archive.runs += Shifted(3, 1);
+        current.data := archive.runs[1];
+        print($"rotate {Sum(latest)} {Sum(probeA.trace)} {current.total()}; ");
+        Level("after");
+    }
+}
+
+verb PromoteTest {
+    grammar = {.promote};
+    void handler() {
+        archive.lastRun := PassTwice(3);
+        if (probeA.past.length > 0) {
+            probeA.trace := probeA.newest();
+            probeA.past.clear();
+        }
+        printLine($"promoted: lastRun {Show(archive.lastRun)} A {probeA.trace ? Show(probeA.trace) : "none"} past {probeA.past.length}");
+    }
+}
+
+verb HistoryTest {
+    grammar = {.history};
+    void handler() {
+        fills++;
+        probeA.record(Window(fills % 4));
+        probeB.record(Shifted(fills % 4, 1));
+        printLine($"history: A {probeA.past.length}/{probeA.pastTotal()} B {probeB.past.length}/{probeB.pastTotal()}");
+    }
+}
+
+verb MemoTest {
+    grammar = {.memo};
+    void handler() {
+        if (typeof(archive.memo) == eType.unknown) printLine("memo none");
+        else {
+            ref array<int> m := (array<int>)archive.memo;
+            printLine($"memo {m.length} {m[0]}");
+        }
+    }
+}
+
+verb LevelTest {
+    grammar = {.level};
+    void handler() {
+        Level("level");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

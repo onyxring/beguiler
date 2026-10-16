@@ -1,0 +1,533 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but awkward code around arrays that own their storage, structs and the heap.
+// Recursion with a local array at every level, each level taking the deeper level's returned array
+// and adding to its own; arrays returned through several levels of calls, and through a recursion,
+// untouched; a recursion that calls bgl.gc.collect() at the bottom while every level's local arrays
+// are still live (sized ones, and ones taken from a call); a recursion that appends each level's
+// local array to a global array of arrays, which keeps them all across prompts until it is cleared;
+// aliasing through `ref` globals and `ref` locals (`r = r`, `r := r`, writing through two aliases of
+// one array); `a = a` on globals, locals and a struct array; `x = x.filter(…)` on a global, a local
+// and a struct array (the result shares the instances it is copied into); `rows[i] = rows[j]` and
+// `rows[i] = rows[i]` on a global array of arrays and on one whose rows are heap arrays; a routine
+// that re-points a `ref` global at the array it was passed (a local of a verb that has returned,
+// kept alive across prompts and then let go); the same through a `var` global and a struct's `ref
+// array` member; chains whose inputs are chains, a call's result, a recursion's result, a `ref` and
+// a routine that hands its parameter back; a struct with an array member and a `ref array` member
+// copied into itself and into another; copies between arrays of different capacity in both
+// directions; `bgl.gc.used` after an explicit collection, checked after every command and across
+// repeated ones.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ---- structs ---------------------------------------------------------------------------------------------
+
+struct Pt {
+    inline int x;
+    inline int y;
+}
+
+struct Bag {
+    int n;
+    array<int> items[3];
+    ref array<int> view;
+}
+
+// ---- globals ---------------------------------------------------------------------------------------------
+
+array<int> nums = { 5, 3, 8, 1, 9, 2 };
+array<int> small[2];
+array<int> big[10];
+array<int> evensG[6];
+ref array<int> keptRef;
+ref array<int> other;
+array<array<int>> grid = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
+array<array<int>> bin[4];
+array<Pt> pts = { Pt{ 1, 2 }, Pt{ 3, 4 }, Pt{ 5, 6 } };
+array<Pt> ptsCopy[5];
+Bag bagA;
+Bag bagB;
+var anyHold;
+int baseline;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- routines --------------------------------------------------------------------------------------------
+
+void show(array<int> a) {
+    print("[");
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("]");
+}
+
+void showPts(array<Pt> a) {
+    for (Pt p in a) print($"({p.x},{p.y})");
+}
+
+// Each level owns a local array, takes the deeper level's array and copies its elements in.
+array<int> descend(int n) {
+    array<int> mine[6];
+    mine += n;
+    if (n == 0) return mine;
+    array<int> deeper = descend(n - 1);
+    for (int v in deeper) mine += v;
+    return mine;
+}
+
+// Three levels, each handing on the array the next one returned.
+array<int> outerLevel() { return middleLevel(); }
+array<int> middleLevel() { return innerLevel(); }
+array<int> innerLevel() {
+    array<int> t = { 7, 8, 9 };
+    return t;
+}
+
+// A recursion that hands the bottom level's array all the way back up.
+array<int> relay(int n) {
+    if (n == 0) return descend(2);
+    return relay(n - 1);
+}
+
+// The collector runs at the bottom of the recursion; every level's local array must survive it.
+int collectDeep(int n) {
+    array<int> level[3];
+    level += n * 10;
+    level += n * 10 + 1;
+    if (n == 0) {
+        bgl.gc.collect();
+        return level[0] + level[1];
+    }
+    int below = collectDeep(n - 1);
+    return below + level[0] + level[1];
+}
+
+// The same, with each level's array taken from a call.
+int collectTaken(int n) {
+    array<int> got = descend(n);
+    if (n == 0) {
+        bgl.gc.collect();
+        array<int> filler = { 99, 99, 99, 99 };
+        return got.length + filler.length;
+    }
+    int below = collectTaken(n - 1);
+    return below * 10 + total(got);
+}
+
+// Each level has a local array of arrays; a row of one level is copied into the next level's row.
+int nest(int n, array<int> fromAbove) {
+    array<array<int>> mine = { { n, n }, { 0, 0, 0 } };
+    mine[1] = fromAbove;
+    mine[0] = mine[0];
+    if (n == 0) return mine[1][0] * 100 + mine[0][0];
+    mine[1][0] = mine[1][0] + 1;
+    array<int> pass = mine[1];
+    return nest(n - 1, pass) + mine[1][0];
+}
+
+// Each level's local array is stored in the global array of arrays, which keeps it.
+void stash(int n) {
+    array<int> mine[3];
+    mine += n;
+    mine += n * n;
+    bin += mine;
+    if (n > 1) stash(n - 1);
+    mine[0] = mine[0] + 10;
+}
+
+// Re-points a global at whatever array the caller passed.
+void adopt(array<int> a) {
+    keptRef := a;
+}
+
+// Changes the caller's array through the parameter.
+void bump(array<int> a) {
+    for (int i = 0; i < a.length; i++) a[i] = a[i] + 100;
+}
+
+array<int> evens(array<int> a) {
+    return a.filter((int x) => x % 2 == 0);
+}
+
+int total(array<int> a) {
+    int t = 0;
+    for (int x in a) t += x;
+    return t;
+}
+
+// Returns its parameter: the caller's own array comes back.
+array<int> same(array<int> a) {
+    return a;
+}
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb BaseCmd {
+    grammar = {.base};
+    void handler() {
+        bgl.gc.collect();
+        baseline = bgl.gc.used;
+        print($"baseline set, zero {bgl.gc.used - baseline}.^");
+    }
+}
+
+verb UsedCmd {
+    grammar = {.used};
+    void handler() {
+        bgl.gc.collect();
+        print($"used {bgl.gc.used - baseline}.^");
+    }
+}
+
+verb RecurCmd {
+    grammar = {.recur};
+    void handler() {
+        array<int> r = descend(4);
+        show(r);
+        show(descend(0));
+        show(relay(3));
+        print($" total {total(descend(3))} {total(relay(2))}.^");
+    }
+}
+
+verb LevelsCmd {
+    grammar = {.levels};
+    void handler() {
+        array<int> a = outerLevel();
+        a[0] = 70;
+        array<int> b = outerLevel();
+        show(a);
+        show(b);
+        show(outerLevel().filter((int x) => x > 7));
+        print($" same {a == b} {a == a}.^");
+    }
+}
+
+verb DeepCmd {
+    grammar = {.deep};
+    void handler() {
+        print($"deep {collectDeep(3)} taken {collectTaken(3)}.^");
+    }
+}
+
+verb AliasCmd {
+    grammar = {.alias};
+    void handler() {
+        keptRef := nums;
+        other := keptRef;
+        ref array<int> r := other;
+        r := r;
+        r = r;
+        keptRef = keptRef;
+        r[0] = 50;
+        other[1] = 30;
+        show(nums);
+        print($" {keptRef == nums} {r == other}");
+        r = small;
+        print($" {nums.length} {nums[2]}");
+        nums = { 5, 3, 8, 1, 9, 2 };
+        keptRef := small;
+        other := small;
+        print(".^");
+    }
+}
+
+verb SelfCopyCmd {
+    grammar = {.selfcopy};
+    void handler() {
+        nums = nums;
+        array<int> loc = { 4, 6, 1 };
+        loc = loc;
+        pts = pts;
+        pts[0] = pts[0];
+        show(nums);
+        show(loc);
+        showPts(pts);
+        print(".^");
+    }
+}
+
+verb FilterSelfCmd {
+    grammar = {.filterself};
+    void handler() {
+        array<int> work[6] = nums;
+        work = work.filter((int x) => x > 2);
+        work = work.filter((int x) => x < 9).orderBy();
+        show(work);
+        print($" size {work.size}");
+        evensG = nums;
+        evensG = evensG.filter((int x) => x % 2 == 0);
+        show(evensG);
+        evensG = evensG.filter((int x) => x > 100);
+        print($" {evensG.length}");
+        array<int> d = descend(4);
+        d = d.filter((int x) => x != 2).orderBy();
+        array<int> c = nums;
+        c = c.orderBy().skip(3);
+        c[0] = c[0] * 10;
+        show(d);
+        show(c);
+        print($" {nums[3]} {c.size}.^");
+    }
+}
+
+verb RowsCmd {
+    grammar = {.rows};
+    void handler() {
+        grid[0] = grid[2];
+        grid[1] = grid[1];
+        grid[2][0] = 70;
+        for (array<int> row in grid) show(row);
+        print($" {grid[0] == grid[2]}");
+        grid[0][0] = 1;
+        grid[0][1] = 2;
+        grid[0][2] = 3;
+        grid[2][0] = 7;
+        print(".^");
+    }
+}
+
+verb StashCmd {
+    grammar = {.stash};
+    void handler() {
+        bin.clear();
+        stash(3);
+        for (array<int> row in bin) show(row);
+        print(".^");
+    }
+}
+
+verb BinCmd {
+    grammar = {.bin};
+    void handler() {
+        bin[0] = bin[2];
+        bin[1] = bin[1];
+        bin[2][1] = 77;
+        bin += bin[0];
+        bin[0] = bin[1];
+        bin[3][1] = 66;
+        for (array<int> row in bin) show(row);
+        print($" {bin.length} {bin[0] == bin[2]} {bin[3] == bin[0]}.^");
+    }
+}
+
+verb NestCmd {
+    grammar = {.nest};
+    void handler() {
+        array<int> seed = { 5, 6 };
+        print($"nest {nest(3, seed)} seed {seed[0]}.^");
+    }
+}
+
+verb ReverseCmd {
+    grammar = {.reverse};
+    void handler() {
+        pts = pts.orderBy((Pt a, Pt b) => b.x - a.x);
+        showPts(pts);
+        pts = pts.skip(1);
+        showPts(pts);
+        pts = { Pt{ 1, 2 }, Pt{ 3, 4 }, Pt{ 5, 6 } };
+        showPts(pts);
+        print(".^");
+    }
+}
+
+verb UnbinCmd {
+    grammar = {.unbin};
+    void handler() {
+        bin.clear();
+        print($"cleared {bin.length}.^");
+    }
+}
+
+verb AdoptCmd {
+    grammar = {.adopt};
+    void handler() {
+        array<int> loc = { 11, 12, 13 };
+        adopt(loc);
+        loc[0] = 10;
+        show(keptRef);
+        print(".^");
+    }
+}
+
+verb HeldCmd {
+    grammar = {.held};
+    void handler() {
+        show(keptRef);
+        show(keptRef.filter((int x) => x > 10).orderBy((int a, int b) => b - a));
+        print($" {keptRef.length}.^");
+    }
+}
+
+verb DropCmd {
+    grammar = {.drop};
+    void handler() {
+        keptRef := small;
+        print("dropped.^");
+    }
+}
+
+verb VarHoldCmd {
+    grammar = {.varhold};
+    void handler() {
+        anyHold = descend(2);
+        bagA.view := evens(nums);
+        print("held.^");
+    }
+}
+
+verb VarShowCmd {
+    grammar = {.varshow};
+    void handler() {
+        array<int> v = (array<int>)anyHold;
+        ref array<int> w := bagA.view;
+        show(v);
+        show(w);
+        print($" {v.length + w.length}.^");
+    }
+}
+
+verb VarDropCmd {
+    grammar = {.vardrop};
+    void handler() {
+        anyHold = 0;
+        bagA.view := small;
+        print("let go.^");
+    }
+}
+
+verb ChainsCmd {
+    grammar = {.chains};
+    void handler() {
+        show(nums.filter((int x) => x > 1).orderBy().skip(1).take(3));
+        show(evens(nums).filter((int x) => x > 2));
+        show(evens(evens(nums).orderBy()));
+        show(descend(5).filter((int x) => x % 2 == 1).orderBy().distinct());
+        show(same(nums.filter((int x) => x < 9)).orderBy().takeWhile((int x) => x < 6));
+        show(same(same(nums)).skip(4));
+        keptRef := nums;
+        print($" {total(keptRef.filter((int x) => x > 4).take(2))} {nums.filter((int x) => x > 0).filter((int x) => x > 2).filter((int x) => x > 4).count()}");
+        print($" {relay(1).filter((int x) => x > 0).map((var x) => x * 3).first()}");
+        keptRef := small;
+        print(".^");
+    }
+}
+
+verb BumpCmd {
+    grammar = {.bump};
+    void handler() {
+        array<int> loc = { 1, 2 };
+        bump(loc);
+        bump(same(loc));
+        show(loc);
+        ref array<int> r := loc;
+        bump(r);
+        show(loc);
+        array<int> other2 = descend(1);
+        show(loc);
+        show(other2);
+        print(".^");
+    }
+}
+
+verb CapacityCmd {
+    grammar = {.capacity};
+    void handler() {
+        small = nums;
+        big = nums;
+        show(small);
+        show(big);
+        print($" {small.size} {big.size}");
+        array<int> tiny[1] = big;
+        array<int> wide[12] = small;
+        show(tiny);
+        show(wide);
+        print($" {wide.size}");
+        big = tiny;
+        show(big);
+        small = descend(3);
+        show(small);
+        small.clear();
+        big.clear();
+        print(".^");
+    }
+}
+
+verb StructsCmd {
+    grammar = {.structs};
+    void handler() {
+        ptsCopy = pts;
+        ptsCopy[0] = ptsCopy[2];
+        ptsCopy[1].x = 40;
+        showPts(ptsCopy);
+        print(" / ");
+        showPts(pts);
+        print(" / ");
+        ptsCopy = ptsCopy.filter((Pt p) => p.x > 3);
+        showPts(ptsCopy);
+        print(" / ");
+        array<Pt> shared = pts.filter((Pt p) => p.y > 2);
+        shared[0].x = 33;
+        showPts(pts);
+        print(" / ");
+        ptsCopy = pts.filter((Pt p) => p.x > 1).filter((Pt p) => p.y < 6);
+        ptsCopy[0].y = 44;
+        showPts(ptsCopy);
+        showPts(pts);
+        pts[1].x = 3;
+        print(".^");
+    }
+}
+
+verb BagsCmd {
+    grammar = {.bags};
+    void handler() {
+        bagA.n = 1;
+        bagA.items.clear();
+        bagA.items += 4;
+        bagA.items += 5;
+        bagA.view := nums;
+        bagA = bagA;
+        bagB = bagA;
+        bagB.items[0] = 40;
+        bagB.view[2] = 80;
+        array<int> ia = bagA.items;
+        array<int> ib = bagB.items;
+        print($"A {bagA.n} ");
+        show(ia);
+        print(" B ");
+        show(ib);
+        print($" view {nums[2]} {bagA.view == bagB.view}");
+        nums[2] = 8;
+        bagA.view := small;
+        bagB.view := small;
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

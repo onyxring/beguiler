@@ -1,0 +1,151 @@
+/*  Field trial part — included by library_author_idioms_40.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <linq>
+
+// ---- The I6 side: four slots that hold arrays, a nest and the last array looked at. ----
+
+#i6 {
+    Array la40_slots --> 4;
+    Global la40_last = 0;
+    Global la40_nest = 0;
+    Global la40_puts = 0;
+
+    [ La40_Put n a;
+        if (n < 0 || n > 3) rfalse;
+        la40_slots-->n = a;
+        la40_puts++;
+        rtrue;
+    ];
+
+    [ La40_Get n;
+        if (n < 0 || n > 3) return 0;
+        la40_last = la40_slots-->n;
+        return la40_last;
+    ];
+
+    [ La40_Clear n;
+        if (la40_last == la40_slots-->n) la40_last = 0;
+        la40_slots-->n = 0;
+    ];
+
+    [ La40_Has n; return la40_slots-->n ~= 0; ];
+
+    [ La40_Sum n a i s;
+        a = la40_slots-->n;
+        if (a == 0) return -1;
+        for (i = 1 : i <= a-->(-1) : i++) s = s + a-->i;
+        return s;
+    ];
+
+    [ La40_Len n a;
+        a = la40_slots-->n;
+        if (a == 0) return -1;
+        return a-->(-1);
+    ];
+
+    [ La40_SetNest a; la40_nest = a; ];
+
+    Global la40_tagboard = 0;
+    [ La40_SetBoard a; la40_tagboard = a; ];
+    [ La40_Board; return la40_tagboard; ];
+}
+
+/// Stores an array in a slot; false when the slot is out of range.
+extern bool La40_Put(int n, array<int> a);
+/// The array in a slot, also remembered as the last one looked at.
+extern array<int> La40_Get(int n);
+/// Empties a slot.
+extern void La40_Clear(int n);
+/// True when a slot holds an array.
+extern bool La40_Has(int n);
+/// The sum of a slot's array; -1 when the slot is empty.
+extern int La40_Sum(int n);
+/// The length of a slot's array; -1 when the slot is empty.
+extern int La40_Len(int n);
+/// Hands the I6 side a nest of rows.
+extern void La40_SetNest(array<array<int>> a);
+/// The last array looked at with La40_Get.
+extern array<int> la40_last;
+/// The nest the I6 side holds.
+extern array<array<int>> la40_nest;
+/// Hands the I6 side a board of tags; 0 takes it back.
+extern void La40_SetBoard(var a);
+/// How many times a slot was filled.
+extern int la40_puts;
+
+// ---- A tag: a struct naming an array held elsewhere. ----
+
+/// A label and the array it stands for.
+struct La40Tag {
+    int id;
+    ref array<int> data;
+
+    /// The sum of the tagged array; 0 when nothing is tagged.
+    int total() {
+        if (!data) return 0;
+        int s = 0;
+        for (int v in data) s += v;
+        return s;
+    }
+}
+
+/// The board of tags the I6 side holds.
+extern array<La40Tag> La40_Board();
+
+// ---- The kit's API: lodging arrays with the I6 side. ----
+
+/// Lodges arrays with the I6 side and takes them back, reached as la40.
+object la40 {
+    alias tag for La40Tag;
+    /// Arrays lodged and not yet taken back.
+    int lodged = 0;
+
+    /// Pins an array and stores it in a slot.
+    bool lodge(int n, array<int> a) {
+        if (La40_Has(n)) return false;
+        bgl.gc.keep(a);
+        if (!La40_Put(n, a)) {
+            bgl.gc.unpin(a);
+            return false;
+        }
+        lodged++;
+        return true;
+    }
+
+    /// Takes a slot's array back and hands it to the collector.
+    void release(int n) {
+        if (!La40_Has(n)) return;
+        bgl.gc.unpin(La40_Get(n));
+        La40_Clear(n);
+        lodged--;
+    }
+
+    /// Takes a slot's array back and frees it now.
+    void evict(int n) {
+        if (!La40_Has(n)) return;
+        bgl.gc.free(La40_Get(n));
+        La40_Clear(n);
+        lodged--;
+    }
+
+    /// A fresh array of n values counting up from start.
+    array<int> run(int start, int n) {
+        array<int> r[8];
+        for (int i = 0; i < n; i++) r += start + i;
+        return r;
+    }
+
+    /// Lodges a run in a slot; the run lives on only through the pin.
+    bool lodgeRun(int n, int start, int count) {
+        array<int> r = run(start, count);
+        return lodge(n, r);
+    }
+
+    /// The heap words in use after a collection.
+    int settled() {
+        bgl.gc.collect();
+        return bgl.gc.used;
+    }
+}

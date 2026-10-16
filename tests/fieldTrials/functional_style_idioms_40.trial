@@ -1,0 +1,154 @@
+Room A
+Room A.
+
+> heap
+heap now: 0
+> globals
+small = base: 4 9 2 [3/3]
+mid = base: 4 9 2 7 5 1 [6/6]
+big = base: 4 9 2 7 5 1 [6/12]
+base after big[0] = 99: 4 9 2 7 5 1 [6/6]
+small = range: 100 101 102 [3/3]
+big = small: 100 101 102 [3/12]
+mid = chain: 10 14 18 [3/6]
+spare: 10 14 18 [3/6]
+mid = spare.take: 10 14 [2/6]
+mid = mid: 10 14 [2/6]
+base = base: 4 9 2 7 5 1 [6/6]
+big = theBase(): 4 9 2 7 5 1 [6/12]
+mid.copyFrom(big): 4 9 2 7 5 1 [6/6]
+small cleared: [0/3]
+base still: 4 9 2 7 5 1 [6/6]
+> heap
+heap now: 0
+> refs
+cur: 4 9 2 7 5 1 [6/6]
+base after cur = spare: 10 14 18 [3/6]
+mid after cur = range: 1 2 3 4 [4/6]
+spare after other = cur: 1 2 3 4 [4/6]
+mid after self copies: 1 2 3 4 [4/6]
+cur and mid share: 77 77, same array true
+mid after bump(cur): 78 3 4 5 [4/6]
+cur re-pointed, same as mid false, same as big true
+base restored: 4 9 2 7 5 1 [6/6]
+> locals
+a from call: 5 6 7 8 [4/12]
+b from name: 4 9 2 7 5 1 [6/6]
+c from member: 10 20 30 [3/6]
+d from chain: 9 7 5 [3/6]
+e[3] from name: 4 9 2 [3/3]
+f[6] from call: 50 51 52 53 54 55 [6/6]
+g[12] from member: 10 20 30 [3/12]
+h[4] from chain: 1 2 4 5 [4/4]
+base untouched: 4 9 2 7 5 1 [6/6]
+box.row untouched: 10 20 30 [3/6]
+a = b: -1 9 2 7 5 1 [6/12]
+b = a.filter: 9 2 7 5 1 [5/6]
+d = d.filter: 7 5 [2/6]
+e = f: 50 51 52 [3/3]
+f = e: 50 51 52 [3/6]
+h = h: 1 2 4 5 [4/4]
+sums 23 24 48 12 153 153 46 12
+> heap
+heap now: 0
+> returns
+clone(base) changed: 0 9 2 7 5 1 [6/6]
+base: 4 9 2 7 5 1 [6/6]
+clip(base): 4 9 2 [3/3]
+theBase() is base: true
+copy of theBase(): 4 0 2 7 5 1 [6/6]
+base: 4 9 2 7 5 1 [6/6]
+boxRow(): 10 20 30 [3/6]
+same(spare) is spare: true
+evensOf(base): 4 2 [2/6]
+sums of calls 28 6 28 60 12
+big = clip: 7 8 9 [3/12]
+small = same(base): 4 9 2 [3/3]
+mid = boxRow(): 10 20 30 [3/6]
+base still: 4 9 2 7 5 1 [6/6]
+> params
+bump(loc): 3 3 3 [3/6]
+bump(spare): 14 19 12 17 15 11 [6/6]
+overwrite(loc, base): 4 9 2 7 5 1 [6/6]
+overwrite(small, range): 40 41 42 [3/3]
+bump(binA.view) reaches loc: 104 109 102 107 105 101 [6/6]
+overwrite(binA.view) reaches loc: 40 41 42 [3/6]
+selfCopy(loc): 40 41 42 [3/6]
+overwrite(loc, loc): 40 41 42 [3/6]
+overwrite(r) reaches spare: 4 9 2 7 5 1 [6/6]
+binA.view re-pointed to spare: true
+> heap
+heap now: 0
+> members
+box.row = base: 4 9 2 7 5 1 [6/6]
+box.row = range(1, 9): 1 2 3 4 5 6 [6/6]
+box.row = box.row: 1 2 3 4 5 6 [6/6]
+box.row = box.row.filter: 1 2 4 5 [4/6]
+box.wide 6/40 sum 36 last 11
+big = box.wide: 1 3 5 7 9 11 [6/12]
+box.row = box.wide: 1 3 5 7 9 11 [6/6]
+binA.items: 4 9 2 7 [4/4]
+binB.items: 0 9 2 7 [4/4]
+big after binB.view = binA.items: 4 9 2 7 [4/12]
+big after binB.view = binB.view.orderBy(): 2 4 7 9 [4/12]
+binA.view and binB.view share: true, are big: true
+binA.items = binA.view: 2 4 7 9 [4/4]
+> grid
+grid[1] = base: 4 9 [2/2]
+grid[0] = grid[2]: 6 7 8 [3/3]
+grid[2] changed: 60 7 8 9 [4/4]
+grid[0] unchanged: 6 7 8 [3/3]
+grid[0] = chain: 6 7 8 [3/3]
+top copied from grid[0]: -1 7 8 [3/3]
+grid[0] still: 6 7 8 [3/3]
+grid total 118
+> shelf
+shelf[0] is spare: true
+spare after shelf[0] = range: 80 81 [2/6]
+shelf[1] = shelf[2]: 4 9 2 7 5 1 [6/12]
+shelf[1] kept its copy: 4 9 2 7 5 1 [6/12]
+stack: 63/3 21/2 63/3
+shelf[3] = stack row: 10 11 [2/12]
+> heap
+heap now: 48
+> cells
+cellCopy: 1=11 2=20 3=30
+cells: 1=10 2=20 3=30
+cellCopy[1] = cellCopy[2]: 1=11 3=30 3=33
+self copies: 1=11 3=30 3=33
+loc: 2=0 3=30
+cells: 1=10 2=20 3=30
+cellCopy += one: 1=11 3=30 3=33 3=3
+few = cellCopy: 1=11 9=30
+cellCopy: 1=11 3=30 3=33 3=3
+cells = few: 1=11 9=30
+> heap
+heap now: 48
+> wide
+box.wide 38/40 sum 741 last 38
+ledger1.log 36/36 sum 666 last 36
+box.wide filtered: 5 10 15 20 25 30 35 [7/40]
+ledger1.log kept 36
+ledger1.log = ledger1.log.skip(30): 31 32 33 34 35 36 [6/36]
+box.wide = ledger1.log: 31 32 33 34 35 36 [6/40]
+grown: 31 32 33 34 35 36 10 [7/40]
+mid = ledger1.log: 31 32 33 34 35 36 [6/6]
+big through binA.view: 31 32 33 34 35 36 [6/12]
+spare = spare.filter: 4 9 7 5 [4/6]
+> heap
+heap now: 48
+#repeat 3
+> churn
+mid: 18 14 10 [3/6]
+big: 9 10 11 [3/12]
+shelf[1]: 9 10 11 12 [4/12]
+grid[2]: 10 12 14 16 [4/4]
+churn check 1810
+heap after churn: 82
+> shelves
+row: 4 9 7 5 [4/6]
+row: 9 10 11 12 [4/12]
+row: 0 9 2 7 5 1 [6/6]
+row: 10 11 [2/12]
+> heap
+heap now: 58
