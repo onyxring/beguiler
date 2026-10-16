@@ -3922,6 +3922,9 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
             string selfHost = isMemberArr ? mOwner
                              : (isInheritedObjectMember(rawObjName, func, body) ? string("self") : objName);
             if(isMemberArr) exprPropValue = mProp;
+            // The receiver is the array a <linq> step returned, held by nothing: the next step frees it once read.
+            if(!isMemberArr && isWordArrayType(objType) && selfHost.rfind("_bglArray.", 0) == 0 && languageService.linqInUse)
+                exprPropValue = "-1";
             emitterBindings mb; mb.self = selfHost; mb.val = selfHost;
             // $host — the object a PROXY member is accessed on: the receiver with its
             // trailing `.member` stripped. For `container.children.length()` the method
@@ -5763,6 +5766,9 @@ bglParser::ExprStep bglParser::parseExprDotChainCall(ExprParseState& st, token& 
         if(chainElem.empty())
             chainElem = resolveArrayElementTypeDotted(chainSelf, chainProp, func, body);
     }
+    // The receiver is the array a <linq> step returned, held by nothing: the next step frees it once read.
+    if(!chainIsMember && isWordArrayType(chainTypeName) && chainSelf.rfind("_bglArray.", 0) == 0 && languageService.linqInUse)
+        chainProp = "-1";
     // A member array stored apart from its owner (too big for a property) is addressed as a global
     // array, but its element type is still its declaration's.
     if(chainElem.empty() && isWordArrayType(chainTypeName) && lastDot != string::npos

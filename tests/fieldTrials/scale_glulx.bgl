@@ -23,7 +23,6 @@
 #beguilerSettings {
     target = Glulx;
     includePaths = "../../../inform6/stdlib";
-    linqScratchSize = 200;
 }
 
 #defineI6 MAX_TIMERS 48

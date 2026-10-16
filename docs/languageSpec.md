@@ -78,6 +78,7 @@ of contents.
     - [2.10.1 Type Compatibility](#2101-type-compatibility)
     - [2.10.2 Conversion](#2102-conversion)
     - [2.10.3 Primitive, Reference and Value Types](#2103-primitive-reference-and-value-types)
+  - [2.11 `selfType`](#211-selftype)
 - [3 Declarations, Variables and Scope](#3-declarations-variables-and-scope)
   - [3.1 Program Structure](#31-program-structure)
   - [3.2 Declaration Qualifiers](#32-declaration-qualifiers)
@@ -231,7 +232,7 @@ of contents.
   - [12.3 Subscripts, Size and Length](#123-subscripts-size-and-length)
   - [12.4 Byte Arrays — `array<char>`](#124-byte-arrays-arraychar)
   - [12.5 Assignment and Copy Semantics](#125-assignment-and-copy-semantics)
-  - [12.6 Local Arrays and Lifetime](#126-local-arrays-and-lifetime)
+  - [12.6 Local Arrays, the Heap and Collection](#126-local-arrays-the-heap-and-collection)
   - [12.7 Member Arrays](#127-member-arrays)
   - [12.8 `rawArray<T>`](#128-rawarrayt)
     - [12.8.1 Raw Views](#1281-raw-views)
@@ -350,6 +351,7 @@ of contents.
   - [18.9 Pay-Only-If-Used Emission](#189-pay-only-if-used-emission)
   - [18.10 The Frame Pool](#1810-the-frame-pool)
   - [18.11 Dead Code and Economy](#1811-dead-code-and-economy)
+  - [18.12 Z-machine Capacity](#1812-z-machine-capacity)
 - [19 Diagnostics](#19-diagnostics)
   - [19.1 Message Format](#191-message-format)
     - [19.1.1 Inform 6 Diagnostics](#1911-inform-6-diagnostics)
@@ -395,6 +397,7 @@ of contents.
     - [21.13.2 Glk Calls](#21132-glk-calls)
     - [21.13.3 Z-machine Opcodes](#21133-z-machine-opcodes)
   - [21.14 `bgl.header`](#2114-bglheader)
+  - [21.15 `bgl.gc`](#2115-bglgc)
 - [22 Language Extensions](#22-language-extensions)
   - [22.1 Overview](#221-overview)
   - [22.2 `<buf>`](#222-buf)
@@ -430,6 +433,8 @@ of contents.
     - [23.3.8 Status Bar and Main Window](#2338-status-bar-and-main-window)
     - [23.3.9 Banner Texts](#2339-banner-texts)
     - [23.3.10 Library Options and Debug Builds](#23310-library-options-and-debug-builds)
+    - [23.3.11 Standard Library Properties](#23311-standard-library-properties)
+    - [23.3.12 Collection at the Prompt](#23312-collection-at-the-prompt)
   - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
   - [23.5 Writing a Binding](#235-writing-a-binding)
 
@@ -3278,7 +3283,7 @@ bool Initialise() { location = foyer; rtrue; }
 |---|---|
 | `void` | No value. `return;` is permitted; `return expr;` is an error unless `expr` is `void` (§5.14). |
 | Any other type | Every path must end in `return expr;` with `expr` compatible with the type (§5.14). |
-| `array<T>` | Returns a typed array. A returned *local* array is ephemeral (§12.6). |
+| `array<T>` | Returns a typed array. A returned local array passes to the caller (§12.6). |
 
 `rtrue`, `rfalse` and the return-path rules are specified in §5.14.
 
@@ -6838,10 +6843,10 @@ capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or 
 `array<char>` (§22.2). Copying into an element of an owning element type goes through that type's
 `static operator =` (§12.10).
 
-Two sources are copied rather than referred to, as `copyFrom` would: a function's returned local
-array and a `<linq>` chain's result, whose storage is reused (§12.6). The copy goes into the
-destination's own storage. A global or member array given an array declared in a function body takes a
-copy into its own storage the same way, since that array's storage is freed when its routine returns.
+A function's returned local array and a `<linq>` chain's result are arrays like any other: the
+destination refers to them (§12.6). Giving a parameter another array re-points the parameter only, as
+in C#; the caller's array is unchanged. To fill an array the caller passes in, copy into it with
+`copyFrom`, or return the new array.
 
 **Example**
 
@@ -6857,25 +6862,35 @@ spare.copyFrom(src);            // spare has its own copy
 spare[0] = 5;                   // src[0] is still 99
 ```
 
-## 12.6 Local Arrays and Lifetime
+## 12.6 Local Arrays, the Heap and Collection
 
 **Description**
 
-A local array (declared inside a function body, sized or initialized) is allocated per call at
-function entry and freed at function exit, so each call, including a recursive one, has its own
-storage (§18.10). A local array declared in a loop body starts each pass empty, as a block-scoped
-local does in C# and C++: its declaration empties it every time it runs. File-scope arrays live in
-permanent storage and may be returned freely.
+A local array (declared inside a function body, sized or initialized) is allocated from the **heap**
+each time its declaration runs, so each call, including a recursive one, has its own array. A local
+array declared in a loop body starts each pass empty, as a block-scoped local does in C# and C++. File-scope
+and member arrays live in permanent storage and are never freed.
 
-Because a local array's storage is reclaimed on return, a returned local array is an *ephemeral*
-reference, not an owned value, exactly like an ephemeral string (§22.3): the storage it names has been
-freed by the time the caller sees it. To keep the result, assign it to a typed local, which copies it
-into the local's own storage (§12.5). If the reference is consumed in an expression, or passed straight into another call, without
-first being assigned, the behavior is undefined. The same applies to results of `<array>` methods and
-chains on a local array (§22.4, §22.5).
+An array lives as long as something refers to it, as in C# and TypeScript. A function may return its
+local array, store it in a global, a member or another array, or pass it to a function that keeps it;
+the reference stays good. `<linq>` results (§22.5) are heap arrays too.
 
-A local array of a value class can't be returned: the instances its slots own are released as the
-function leaves, so there would be nothing to copy. Fill an array the caller passes in instead.
+Arrays are freed in two ways:
+
+- **At the routine's exit.** A local array that no reference has left is freed as its routine returns.
+  So is an array a local was declared from (`array<int> e = evens(nums);`) when nothing else took it.
+  A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
+  arrays to the collector, since the raw code may have kept one.
+- **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
+  It runs at the prompt, through the library binding (§23), and acts only once a quarter of the heap
+  has been allocated since it last ran. Lifetime is reachability, not turns: an array kept in a global,
+  a property or another live array survives any number of prompts.
+
+The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
+
+`bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
+and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of
+its own, calls `bgl.gc.collect()` at a point where no array it still needs is held only in a local.
 
 **Example**
 
@@ -6883,12 +6898,19 @@ function leaves, so there would be nothing to copy. Fill an array the caller pas
 array<int> build() {
     array<int> tmp[3];
     tmp[0] = 1; tmp[1] = 2; tmp[2] = 3;
-    return tmp;                 // ephemeral
+    return tmp;                 // the caller gets this array
 }
 
-array<int> keep = build();      // copies into storage of its own, sized from the result
-int n = keep[0];                // safe
+array<int> keep = build();      // keep refers to build's array
+int n = keep[0];                // → 1
 ```
+
+> **Conservative collection.** The collector treats every word of memory outside the heap as a
+> possible reference. An integer that happens to equal an array's address keeps that array until the
+> next collection; a live array is never freed.
+
+> **Element instances.** An array of a value class owns its slots' instances (§12.10), and freeing the
+> array releases them. A function can return such an array; the instances go with it.
 
 ## 12.7 Member Arrays
 
@@ -7131,8 +7153,7 @@ once; a local array's slots count once, so a recursive routine whose calls all h
 can run out, which is a run-time error. An element store into such an array is a compile-time error
 when the class has no copy operator.
 
-- A local array of a value class needs a capacity (`[n]`) or a list initializer; one sized from
-  another array at run time is a compile-time error.
+- A local array of a value class needs a capacity (`[n]`), a list initializer or a value to refer to.
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
   instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
@@ -9360,6 +9381,7 @@ by a textual scan of its `#beguilerSettings` blocks:
 - `blorbAssetPath`
 - `autoInitialize`
 - `worldBufSize`
+- `heapSize`
 
 The asset scan, the compile-time target symbols used by `#if` during the pre-scan, and the include
 search path used to resolve forward references all come from this early read. These properties must
@@ -9413,13 +9435,13 @@ own `Include` directives against the same set.
 
 ## 17.4 Runtime Settings
 
-These properties size runtime structures in the generated code. Each of the three sizes must be at
-least 1.
+These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
+must be at least 1, and `heapSize` at least 64.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `framePoolSize` | int | sized from the program, at least `64` | Word slots in the frame pool, which backs local arrays on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
-| `linqScratchSize` | int | `32` | Elements per scratch buffer for `<linq>` query chains (§22.5). Emitted only when `<linq>` is included. |
+| `framePoolSize` | int | sized from the program, at least `64` | Word slots in the frame pool, which backs local `array<char>` buffers on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
+| `heapSize` | int | `1536` on the Z-machine, `16384` on Glulx | Words in the heap that local arrays and `<linq>` results are allocated from (§12.6). Emitted only when the program allocates. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `worldBufSize` | int | `128` | Objects per scratch buffer for `bgl.world` queries (§21.9); a walk that would exceed it stops there. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `rewritePaths` | bool | `true` | Rewrite `/` and `\` in every path (settings paths, `#include`, `#includeI6`) to the platform separator (§18.5). |
 | `autoInitialize` | bool | `true` | When `true`, the library binding wraps the program's entry point so that `bglInit()` runs first (§21.2, §23.3.1). Set `false` when another library already replaces `Main`; the program then calls `bglInit()` itself. A program built on no binding at all always calls it itself, whatever this is set to — there is nothing to do the wrapping. |
@@ -9551,7 +9573,7 @@ that is not a declared property is a compile-time error.
 | Result | Properties |
 | --- | --- |
 | string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `informPath`, `beguiLibPath`, `errorFormat`, `serial`, `includePaths` |
-| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize` |
+| int | `release`, `seriesNumber`, `framePoolSize`, `heapSize`, `worldBufSize` |
 | bool | `generateBlorb`, `autoInitialize`, `economy`, `filterVerbSplitWarnings`, `omitUnusedRoutines`, `rewritePaths` |
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
@@ -9772,8 +9794,8 @@ construct.
 
 The Z-machine gives a routine 15 local slots for parameters and locals together; one slot is
 reserved for the frame pointer, so a routine needing more than 14 has its excess locals spilled into
-a global **frame pool**. The mechanism is recursion-safe and invisible to the author. The pool is also the backing store for local arrays
-(§12.6) on both targets, and it holds the saved fields of a routine's value-class locals and parameters
+a global **frame pool**. The mechanism is recursion-safe and invisible to the author. The pool is also the backing store for local `array<char>`
+buffers on both targets, and records each routine's heap arrays (§12.6); it holds the saved fields of a routine's value-class locals and parameters
 while that routine is called again before it returns, so each call of a recursive routine takes words
 from it. It is emitted only when some routine needs it. Its size in words is
 `framePoolSize` (§17.4) when the program sets it; otherwise the compiler sizes it from the program,
@@ -10003,8 +10025,9 @@ message and halts the story with `quit`, except where stated.
 | Condition | Message | Recovery |
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
-| `<linq>` query step exceeds its buffer (§22.5) | `[Beguile runtime error: filter() output exceeds linqScratchSize. Increase via #beguilerSettings.linqScratchSize.]` (the method name varies) | Raise `linqScratchSize`. |
-| `<linq>` query chains nested more than two deep (§22.5) | `[Beguile runtime error: LINQ chain nesting exceeds _BGL_LINQ_MAXDEPTH. …]` | Capture the inner result in a local first. |
+| The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
+| `bgl.gc.free` given an array already freed (§21.15) | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
+| `bgl.gc.free` given a file-scope or member array (§21.15) | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
 | An array `length` assigned beyond the word range (§12.3) | `[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
 | `<string>` pool full (§22.3) — the program stops | `[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]` | Raise `bglStringPoolReserve`. |
 | `<buf>` registry full (§22.2) | `[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]` | Raise `bglTrackedBufferReserve`. |
@@ -11108,6 +11131,47 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 > **[Z-machine/Glulx difference]** The header layout differs per target; `bgl.header` reads the right
 > fields on each.
 
+## 21.15 `bgl.gc`
+
+**Description**
+
+`bgl.gc` is the heap that local arrays and `<linq>` results are allocated from, and its collector
+(§12.6). It needs no library.
+
+| Member | Returns | Description |
+|---|---|---|
+| `bgl.gc.free(a)` | `void` | Frees array `a` now instead of at the next collection. A later use of it through another reference reads freed memory. |
+| `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
+| `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
+| `bgl.gc.size` | `int` | Words the heap holds for blocks. |
+
+The library bindings collect at the prompt (§23). `collect()` is for a program or library that runs
+without one: call it where no array still needed is held only in a local variable, since the collector
+can't see a running routine's locals.
+
+**Example**
+
+```bgl
+#include <array>
+array<int> row(int n) {
+    array<int> r[4];
+    for (int i = 0; i < 4; i++) r += n * i;
+    return r;
+}
+
+void Main() {
+    bglInit();
+    for (int n = 1; n <= 20; n++) {
+        array<int> r = row(n);
+        print(r[3]); print(" ");
+        bgl.gc.free(r);         // released now, not at the next prompt
+    }
+}
+```
+
+> **Freeing twice.** `bgl.gc.free` on an array already freed, or on a file-scope or member array
+> (which isn't on the heap), is a run-time error (§19.4).
+
 ---
 
 # 22 Language Extensions
@@ -11438,9 +11502,11 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
-**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§22.4). A `for` loop over a chain result is not the same statement as its body: a chain the body runs, directly or in a function it calls, can overwrite the elements the loop is reading, so capture the result first when the body uses a chain. Do not return a chain result from a function whose source is a local array (§12.6).
+**Chain results.** Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given, so a result assigned back (`held = held.filter(…)`) has the room `held` had. A step's input that was itself a step's result is freed as soon as the step has read it, so only the chain's final result remains; it is freed like any other array once nothing refers to it.
 
-**Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to a depth of two (a chain inside a chain). Deeper nesting is a runtime error that ends the program.
+**Element sharing.** A result holds the same elements as its source. For an array of a value class, its slots refer to the source's instances: changing `result[0].x` changes the source's element too, and removing an element from the result doesn't release it. Copy elements into an array of your own when you need them independent.
+
+**Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to any depth.
 
 **Example**
 
@@ -11457,11 +11523,11 @@ void Main() {
 
 **Settings**
 
-`linqScratchSize` (§17.4, default `32`) is the capacity of each scratch buffer. A chain step whose result would exceed it is a runtime error that ends the program.
+Results come from the heap, sized by `heapSize` (§17.4).
 
 **Notes**
 
-Requires `bglInit()`, which prepares the scratch buffers. `orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
+`orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
 
 **See also** §4.14, §12.6, §17.4, §22.4.
 
@@ -12166,6 +12232,17 @@ object guide {
 bool Initialise(){ location = hall; rfalse; }
 ```
 
+### 23.3.12 Collection at the Prompt
+
+The core keeps one routine for the library to run before it reads the player's command, the global
+`_bglPromptHook` (0 until the program first allocates from the heap). Each binding runs it there, which
+is where heap arrays are collected (§12.6):
+
+| Binding | Where |
+|---|---|
+| `i6StandardLibrary` | A `LibraryExtensions` object's `ext_afterprompt` (6.11 and later), so a program's own `AfterPrompt` still runs. |
+| `punyInform` | A replacement of `_ReadPlayerInput` that runs the hook, then the library's routine; a read with no prompt (`YesOrNo()`, menus) skips it. |
+
 ## 23.4 Differences Between the Bindings
 
 | | `i6StandardLibrary` | `punyInform` |
@@ -12192,6 +12269,7 @@ A binding for another library follows these rules:
 8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8), so that the core, the `<ui>` extension and `<glulxWindow>` operate on the library's windows.
 9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§15.4.1).
 10. **Declare optional parts under the symbol that enables them**: `#if DEBUG` for what exists only in a debug build, and `#if ⟨OPTION⟩` / `#if !⟨OPTION⟩` for what a library option constant adds or removes (§23.3.10).
+11. **Run `_bglPromptHook` when the turn's prompt is shown** (§23.3.12), when it is not 0, at a point where no Beguile routine is running.
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.
 
@@ -12592,12 +12670,12 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `generateBlorb` | bool | `false` | first | — | yes | §17.6 |
 | `genre` | string | `""` | first | — | yes | §17.5 |
 | `headline` | string | `""` | first | — | yes | §17.5 |
+| `heapSize` | int | `1536` (Z-machine), `16384` (Glulx) | first | — | yes | §17.4 |
 | `ifid` | string | `""` (generated) | first | — | yes | §17.5 |
 | `includePaths` | string | none | additive | `-includepaths=<dirs>` | yes | §17.2 |
 | `informName` | string | `"inform"` | first | `-inform=<name>` | yes | §17.2 |
 | `informPath` | string | none | first | `-inform=<path>` | yes | §17.2 |
 | `language` | string | `""` | first | — | yes | §17.5 |
-| `linqScratchSize` | int | `32` | first | — | yes | §17.4 |
 | `omitUnusedRoutines` | bool | `true` | first | — | yes | §17.3 |
 | `outputPath` | string | `"output"` | first | `-o <dir>` | yes | §17.3 |
 | `release` | int | `0` | first (0 = unset) | — | yes | §17.3 |
@@ -12731,7 +12809,7 @@ section with the full treatment.
 - **emitter class** — A class whose instances have no Inform 6 object backing; it serves as a type label and a host for emitter members. See §8.2.3.
 - **emitter namespace** — A group of emitters declared under one name without `class` (`emitter name { … }`) and called as `name.member(…)`; the name is not a type. See §7.7.
 - **emitter value** — An emitter declared without a parameter list: a typed inline expansion used by bare name, without `()`. See §7.6.
-- **ephemeral** — A returned local array or a string produced by a string operation, whose backing storage is reclaimed before the caller can hold it; it must be captured, by assigning it to a typed local, to persist. See §12.6, §22.3.
+- **ephemeral** — A string produced by a string operation, whose backing storage is reclaimed before the caller can hold it; it must be captured, by assigning it to a typed local, to persist. See §22.3.
 - **eType** — The enum returned by `typeof(v)`: the machine category of a value (`unknown`, `int`, `string`, `routine`, `object`, `class`). See §2.8.1, §21.5.9.
 - **evict** — To remove a dictionary word from an `extern` verb entirely, with the word-level form `extend V { grammar -= { {.w} }; }`; a native verb that also declares the word reclaims it, otherwise the word is disabled. See §13.5.2.
 - **expression** — Operands joined by operators, resolving to a value with a static type. See §4.1.
@@ -12740,6 +12818,7 @@ section with the full treatment.
 - **function** — A Beguile-declared callable, which compiles to an I6 routine. Contrast **routine**. See §6.1.
 - **grammar line** — One pattern the player may type, declared on a verb or in a grammar object: a trigger word followed by pattern tokens. See §13.4.
 - **grammar object** — A standalone `grammar` declaration holding `grammarRule` entries that name their verbs explicitly, as opposed to grammar declared on the verb itself. See §13.4.5.
+- **heap** — The block of memory that local arrays and `<linq>` results are allocated from; an array on it is freed when its routine returns, unless a reference to it has left, or by the collector once nothing refers to it. Sized by `heapSize`. See §12.6, §21.15.
 - **`.i6b` template** — A built-in Inform 6 template, shipped with the runtime core, from which the compiler emits constructs that have no fixed I6 form until it knows how they are used (the frame pool, `for`-in loops, the literal-list scratch buffer). It is not `#include`d. See §18.9.
 - **`instanceName`** — An object's name: a `const string` member of `_bglObject`, fixed at compile time, that becomes the I6 header name `print(obj)` prints. Given in an object body by name or, as every class's last positional member, by position. See §11.5.4.
 - **island** — A region of one language embedded in a file written in the other: an `#i6` island is raw Inform 6 inside a Beguile file; a `#bgl` island is Beguile inside an Inform 6 file. See §15.2, §15.3.
@@ -13095,8 +13174,7 @@ is specified in the section named in the last column; this table does not add li
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
-| Elements per `<linq>` scratch buffer (`linqScratchSize`) | 32 by default; at least 1 | both | §17.4, §22.5 |
-| `<linq>` chain nesting depth (a chain inside a chain's predicate or mapper) | 2 | both | §22.5 |
+| Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default; at least 64 | both | §12.6, §17.4 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |
 | String objects in the `<string>` pool (`bglStringPoolReserve`); running out stops the program | 10 by default | both | §22.3 |
 | Tracked `<buf>` buffers beyond the `<string>` pool's (`bglTrackedBufferReserve`) | 116 by default | both | §22.2 |

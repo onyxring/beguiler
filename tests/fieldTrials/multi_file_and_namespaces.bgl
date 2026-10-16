@@ -4,7 +4,7 @@
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/stdlib";
-    linqScratchSize = 16;
+    heapSize = 1024;
 }
 
 #include <bindings/i6StandardLibrary>
@@ -20,7 +20,7 @@
 
 const int    maxCrates   = SHELF_LIMIT;
 const string targetName  = #beguilerSettings.target;
-const int    scratchSize = #beguilerSettings.linqScratchSize;
+const int    heapWords   = #beguilerSettings.heapSize;
 
 #if TARGET_ZCODE
     const string machineName = "Z-machine";
@@ -40,7 +40,7 @@ verb About {
     grammar = {.about};
     void handler() {
         print($"Target: {targetName}. Machine: {machineName}. Version: {machineVersion}. ");
-        print($"Scratch: {scratchSize}. Shelf limit: {maxCrates}.^");
+        print($"Heap: {heapWords}. Shelf limit: {maxCrates}.^");
     }
 }
 

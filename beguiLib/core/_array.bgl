@@ -109,27 +109,20 @@ superposed bool _bglArrEphemeral(int arr){
         rfalse;
     }
 }
-// `dst = src` on arrays: dst refers to src's array, unless src is ephemeral, when its elements and length
-// are copied into dst's own storage (up to its capacity). `assign` is the element type's static
+// `dst = src` on arrays: dst refers to src's array, which another reference now keeps (so its owner's exit
+// won't free it), unless src is ephemeral, when its elements and length are copied into dst's own storage
+// (up to its capacity). `assign` is the element type's static
 // `operator =` when its elements own instances: each is copied into dst's own slot rather than shared.
 superposed int _bglArrAssign(int dst, int src, var assign = 0){
     #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return src;
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return _bglHeapEscape(src);
         return _bglArrCopyInto(dst, src, assign);
     }
 }
-// `dst = src` where dst is a global or member array: as _bglArrAssign, but any array in the frame pool is
-// copied, since a routine's local array doesn't outlive its call.
+// `dst = src` where dst is a global or member array: as _bglArrAssign; a heap array stored there has left the
+// routine that made it, so that routine's exit doesn't free it.
 superposed int _bglArrStore(int dst, int src, var assign = 0){
-    #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrTracked(dst)) return src;
-        #Ifdef _bglFramePoolWords;
-            if(_bglUnsignedCompare(src, _bglFramePool) >= 0
-               && _bglUnsignedCompare(src, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0)
-                return _bglArrCopyInto(dst, src, assign);
-        #Endif;
-        return _bglArrAssign(dst, src, assign);
-    }
+    #i6 { return _bglArrAssign(dst, _bglHeapEscape(src), assign); }
 }
 // src's elements and length, up to dst's capacity, copied into dst; returns dst.
 superposed int _bglArrCopyInto(int dst, int src, var assign = 0){

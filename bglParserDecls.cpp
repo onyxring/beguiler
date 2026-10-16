@@ -374,7 +374,7 @@ void bglParser::noteValueElementArray(arrayDeclaration& arr, classDef* hostClass
     classDef* cls = owningValueElementClass(arr.elementType);
     if(cls == nullptr) return;
     if(arr.src.file.find("beguiLib") != string::npos) return;
-    if(isLocal && arr.arraySize <= 0 && !dynamic_cast<initializerList*>(arr.declaredExpressionValue))
+    if(isLocal && arr.arraySize <= 0 && arr.declaredExpressionValue == nullptr)
         parsingError(format("Array '{0}' holds '{1}' values, each in an instance of its own, so it needs a "
             "capacity: `array<{1}> {0}[n]`.", arr.dName(), typeDisplayName(arr.elementType)));
     // A class's member array is created with every instance, so an initial element would be shared by all of them.
@@ -576,13 +576,14 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 if(!elementType.empty() && !genericValueFits(expr, target, func, body))
                     parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'",
                         typeDisplayName(elementAwareType(expr, func, body)), typeDisplayName(target)));
-                // Another array named plainly is referred to (arrays are references); a call's result, which
-                // may be its routine's local, or a member array, whose elements live in its object, is copied.
+                // Arrays are references, so the declaration refers to the value's array, a call's result
+                // included. A `bgl.world` query's result lives in a buffer the next query reuses, so that one
+                // is copied.
                 string srcText = expr->text();
-                bool plainArray = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
+                bool sharedBuffer = srcText.find("_bglWorld") != string::npos;
                 bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
                                 || arrDecl.name.rfind("_bgl", 0) == 0
-                                || arrDecl.isRaw || plainArray;
+                                || arrDecl.isRaw || !sharedBuffer;
                 if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
                     // Without a capacity, the storage is sized from the value when the declaration runs.
@@ -598,8 +599,16 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                         arrDecl.copySource = "_bglsrc_" + arrDecl.name;
                         arrDecl.copyHeld = "_bglheld_" + arrDecl.name;
                     }
-                } else
+                } else {
                     arrDecl.declaredExpressionValue = expr;
+                    // A local declared from a call or a step's result may own that array (§12.6); one declared
+                    // from another array's name refers to it, which keeps that array from being freed early.
+                    if(func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray && elementType != "char"){
+                        bool plainName = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
+                        if(plainName) expr->tokens.assign(1, "_bglHeapEscape(" + srcText + ")");
+                        else arrDecl.ownerVar = "_bglown_" + arrDecl.name;
+                    }
+                }
             }
         }
     }
@@ -652,6 +661,19 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
             for(expression* e : list->elements) if(e != nullptr) applyActionConstant(e);
 
+    if(body != nullptr && !arrDecl.ownerVar.empty())
+        if(auto* top = dynamic_cast<statementBlock*>(func->body)){
+            bool present = false;
+            for(statement* s : top->statements)
+                if(auto* vd = dynamic_cast<variableDeclaration*>(s); vd && vd->name == arrDecl.ownerVar) present = true;
+            if(!present){
+                auto* own = new variableDeclaration();
+                own->name = own->displayName = arrDecl.ownerVar;
+                own->type = languageService.getType("var");
+                own->isSynthetic = true;
+                top->statements.insert(top->statements.begin(), own);
+            }
+        }
     if(body != nullptr){
         // Set-up an element needs (a `?.` test, a temp) runs before the elements are stored.
         for(statement* inj : pendingInjections) body->statements.push_back(inj);

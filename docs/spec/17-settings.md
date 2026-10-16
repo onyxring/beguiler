@@ -56,6 +56,7 @@ by a textual scan of its `#beguilerSettings` blocks:
 - `blorbAssetPath`
 - `autoInitialize`
 - `worldBufSize`
+- `heapSize`
 
 The asset scan, the compile-time target symbols used by `#if` during the pre-scan, and the include
 search path used to resolve forward references all come from this early read. These properties must
@@ -109,13 +110,13 @@ own `Include` directives against the same set.
 
 ## 17.4 Runtime Settings
 
-These properties size runtime structures in the generated code. Each of the three sizes must be at
-least 1.
+These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
+must be at least 1, and `heapSize` at least 64.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
-| `framePoolSize` | int | sized from the program, at least `64` | Word slots in the frame pool, which backs local arrays on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
-| `linqScratchSize` | int | `32` | Elements per scratch buffer for `<linq>` query chains (§22.5). Emitted only when `<linq>` is included. |
+| `framePoolSize` | int | sized from the program, at least `64` | Word slots in the frame pool, which backs local `array<char>` buffers on both targets and, on the Z-machine, local-variable overflow (§18.10). Emitted only when some routine needs it. |
+| `heapSize` | int | `1536` on the Z-machine, `16384` on Glulx | Words in the heap that local arrays and `<linq>` results are allocated from (§12.6). Emitted only when the program allocates. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `worldBufSize` | int | `128` | Objects per scratch buffer for `bgl.world` queries (§21.9); a walk that would exceed it stops there. Sizes a runtime-library declaration, so it must be set in the entry file (§17.1). |
 | `rewritePaths` | bool | `true` | Rewrite `/` and `\` in every path (settings paths, `#include`, `#includeI6`) to the platform separator (§18.5). |
 | `autoInitialize` | bool | `true` | When `true`, the library binding wraps the program's entry point so that `bglInit()` runs first (§21.2, §23.3.1). Set `false` when another library already replaces `Main`; the program then calls `bglInit()` itself. A program built on no binding at all always calls it itself, whatever this is set to — there is nothing to do the wrapping. |
@@ -247,7 +248,7 @@ that is not a declared property is a compile-time error.
 | Result | Properties |
 | --- | --- |
 | string | `title`, `author`, `headline`, `genre`, `description`, `language`, `series`, `firstPublished`, `forgiveness`, `ifid`, `target`, `outputPath`, `blorbAssetPath`, `informName`, `informPath`, `beguiLibPath`, `errorFormat`, `serial`, `includePaths` |
-| int | `release`, `seriesNumber`, `framePoolSize`, `linqScratchSize`, `worldBufSize` |
+| int | `release`, `seriesNumber`, `framePoolSize`, `heapSize`, `worldBufSize` |
 | bool | `generateBlorb`, `autoInitialize`, `economy`, `filterVerbSplitWarnings`, `omitUnusedRoutines`, `rewritePaths` |
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.

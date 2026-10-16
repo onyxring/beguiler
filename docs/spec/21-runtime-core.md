@@ -31,6 +31,7 @@
   - [21.13.2 Glk Calls](#21132-glk-calls)
   - [21.13.3 Z-machine Opcodes](#21133-z-machine-opcodes)
 - [21.14 `bgl.header`](#2114-bglheader)
+- [21.15 `bgl.gc`](#2115-bglgc)
 <!-- /toc -->
 
 ## 21.1 Overview
@@ -1042,3 +1043,43 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 > **[Z-machine/Glulx difference]** The header layout differs per target; `bgl.header` reads the right
 > fields on each.
 
+## 21.15 `bgl.gc`
+
+**Description**
+
+`bgl.gc` is the heap that local arrays and `<linq>` results are allocated from, and its collector
+(§12.6). It needs no library.
+
+| Member | Returns | Description |
+|---|---|---|
+| `bgl.gc.free(a)` | `void` | Frees array `a` now instead of at the next collection. A later use of it through another reference reads freed memory. |
+| `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
+| `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
+| `bgl.gc.size` | `int` | Words the heap holds for blocks. |
+
+The library bindings collect at the prompt (§23). `collect()` is for a program or library that runs
+without one: call it where no array still needed is held only in a local variable, since the collector
+can't see a running routine's locals.
+
+**Example**
+
+```bgl
+#include <array>
+array<int> row(int n) {
+    array<int> r[4];
+    for (int i = 0; i < 4; i++) r += n * i;
+    return r;
+}
+
+void Main() {
+    bglInit();
+    for (int n = 1; n <= 20; n++) {
+        array<int> r = row(n);
+        print(r[3]); print(" ");
+        bgl.gc.free(r);         // released now, not at the next prompt
+    }
+}
+```
+
+> **Freeing twice.** `bgl.gc.free` on an array already freed, or on a file-scope or member array
+> (which isn't on the heap), is a run-time error (§19.4).

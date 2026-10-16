@@ -1,0 +1,18 @@
+// run_gc_frame_order — a recursive routine with a local instance of its own and a local array frees both on
+// every exit, the early return included: its local arrays are back on the heap when the recursion is done.
+// EXPECT_OUTPUT: visited 6 | used 0
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+class Pt { int x; }
+int visited = 0;
+void walk(int n) {
+    Pt here;
+    here.x = n;
+    if (n == 0) return;
+    visited++;
+    for (int d in {1, 2, 3}) if (d == 1) walk(here.x - 1);
+}
+void main(){
+    bglInit();
+    walk(6);
+    print($"visited {visited} | used {bgl.gc.used}");
+}

@@ -10,6 +10,7 @@ constant TITLE = "Test";
 constant RAW_MSG = "raw @@92n stays literal and @@92t too";
 constant RAW_WITH_QUOTE = "has a ~quoted~ word";
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;

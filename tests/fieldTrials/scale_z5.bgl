@@ -22,7 +22,6 @@
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/stdlib";
-    linqScratchSize = 160;
 }
 
 #includeI6 "parser"

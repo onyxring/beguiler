@@ -188,7 +188,9 @@ class i6Emitter{
         // entry and free at every return path (managed via cleanups). Used to drive
         // the framePool emission on both Z and Glulx targets.
         int estimateFrameWords(functionDef* fd);
-        bool funcHasLocalArrays(functionDef* fd);
+        bool funcHasLocalArrays(functionDef* fd, bool countOwners = true);
+        bool funcHasI6Island(functionDef* fd);
+        bool currentReturnsArray = false;   // the routine being emitted returns a word array
         // Recursively collect variableDeclarations from a function body, walking into the
         // sub-blocks of control-flow statements (if/for/while/do/switch/try-catch). Deduped by name
         // so the first occurrence wins — matches I6's single-declaration-per-header requirement.

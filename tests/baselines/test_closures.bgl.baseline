@@ -9,6 +9,7 @@ global _bglCap1;
 global _bglCap0;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
@@ -106,8 +107,8 @@ object bgl
     _bglcl3 = _bglCap3;
     _bglcl2 = _bglCap2;
     _bglret = x * _bglcl2 + _bglcl3;
-    _bglCap2 = _bglcl2;
     _bglCap3 = _bglcl3;
+    _bglCap2 = _bglcl2;
     return _bglret;
 ];
 [_bglLambda_3 x;

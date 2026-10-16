@@ -281,6 +281,7 @@ superposed object _bglArray {
         // because that is a logical question; releasing storage is not. Empty slots hold 0
         // and destroyValue ignores them, so the wider sweep costs nothing.
         int sz = size(obj, prop);
+        dtor = ownedDtor(obj, prop, dtor);
         for(int t = 0; t < sz; t++) destroyValue(dtor, get(obj, prop, t));
         for(int t = 0; t < sz; t++) set(obj, prop, t, 0);
         setLength(obj, prop, 0);
@@ -364,6 +365,16 @@ superposed object _bglArray {
     // compiler via $opref(deinit). 0 means the element type published none — it does not
     // own storage — so nothing is freed and plain element types pay nothing. A slot may
     // hold 0 (never written); the type's own deinit guards the rest.
+    // `dtor`, or 0 when the array doesn't own its elements: a step's result shares its source's.
+    var ownedDtor(var obj, var prop, var dtor){
+        int b = 0;
+        #i6 {
+            if(dtor == 0 || metaclass(obj) == object) return dtor;
+            b = _bglHeapBlockOf(obj);
+            if(b ~= 0 && b-->1 == 0) return 0;
+            return dtor;
+        }
+    }
     void destroyValue(var dtor, var v){
         #i6 { if(dtor ~= 0 && v ~= 0) dtor(v); }
     }
@@ -371,7 +382,7 @@ superposed object _bglArray {
     void remove(var obj, var prop, int pos, var dtor = 0){
         int len = length(obj, prop);
         if(pos < 0 || pos >= len) return;
-        destroyValue(dtor, get(obj, prop, pos));   // before the shift overwrites the slot
+        destroyValue(ownedDtor(obj, prop, dtor), get(obj, prop, pos));   // before the shift overwrites the slot
         // shift left from pos+1 to end
         for(int i = pos; i < len - 1; i++) set(obj, prop, i, get(obj, prop, i+1));
         // clear the now-unused tail slot so leftover data doesn't surface

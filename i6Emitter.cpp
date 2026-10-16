@@ -13,6 +13,10 @@
 #include "bglLanguageService.h"
 #include "bglParserHelpers.h"
 
+// A routine's cleanups run last-in first-out: the frame pool is a stack.
+template<class C> struct reverseView { C& c; auto begin(){ return c.rbegin(); } auto end(){ return c.rend(); } };
+template<class C> reverseView<C> inReverse(C& c){ return {c}; }
+
 using namespace std;
 
 //The emitter writes to a standard output stream.  We can reassign this if we want...
@@ -972,6 +976,7 @@ int i6Emitter::estimateFrameWords(functionDef* fd){
     for(variableDeclaration* vd : locals)
         if(auto* arr = dynamic_cast<arrayDeclaration*>(vd)){
             if(arr->isByteArray) words += 2 + (max(arr->arraySize, 0) + ws - 1) / ws;
+            else if(!arr->isRaw && arr->copySource.empty() && arr->copyLength.empty()) words += 1;   // on the heap; the pool records its block
             else if(auto* l = dynamic_cast<initializerList*>(arr->declaredExpressionValue)) words += max(listWords(l), arr->arraySize + 3);
             else if(arr->arraySize > 0) words += arr->arraySize + 3;
             else if(!arr->copySource.empty() || !arr->copyLength.empty()) words += 8;
@@ -980,7 +985,27 @@ int i6Emitter::estimateFrameWords(functionDef* fd){
     return words;
 }
 
-bool i6Emitter::funcHasLocalArrays(functionDef* fd){
+// Whether a routine's body holds raw Inform 6 the author wrote (an `#i6` island), at any depth.
+bool i6Emitter::funcHasI6Island(functionDef* fd){
+    std::function<bool(statementBlock*)> scan = [&](statementBlock* b) -> bool {
+        if(b == nullptr) return false;
+        for(statement* s : b->statements){
+            if(auto* raw = dynamic_cast<i6RawNode*>(s); raw != nullptr && raw->isI6Island) return true;
+            if(auto* ifs = dynamic_cast<ifStatement*>(s)){ if(scan(ifs->thenBlock) || scan(ifs->elseBlock)) return true; }
+            else if(auto* sw = dynamic_cast<switchStatement*>(s)){ for(switchCase* sc : sw->cases) if(scan(sc->body)) return true; }
+            else if(auto* ds = dynamic_cast<doStatement*>(s)){ if(scan(ds->body)) return true; }
+            else if(auto* ws = dynamic_cast<whileStatement*>(s)){ if(scan(ws->body)) return true; }
+            else if(auto* fs = dynamic_cast<forStatement*>(s)){ if(scan(fs->body)) return true; }
+            else if(auto* fis = dynamic_cast<forInStatement*>(s)){ if(scan(fis->body)) return true; }
+            else if(auto* tc = dynamic_cast<tryCatchStatement*>(s)){ if(scan(tc->tryBody) || scan(tc->catchBody)) return true; }
+            else if(auto* blk = dynamic_cast<statementBlock*>(s)){ if(scan(blk)) return true; }
+        }
+        return false;
+    };
+    return scan(dynamic_cast<statementBlock*>(fd->body));
+}
+
+bool i6Emitter::funcHasLocalArrays(functionDef* fd, bool countOwners){
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
     if(body == nullptr) return false;
     vector<variableDeclaration*> locals;
@@ -992,7 +1017,9 @@ bool i6Emitter::funcHasLocalArrays(functionDef* fd){
         // Any local array that draws framePool backing forces pool emission:
         //   • sized word/byte array (arraySize > 0)
         //   • list-initialized word array (arraySize == 0 with an initializer list)
-        if(arr->arraySize > 0 || !arr->localInitSource.empty() || !arr->copySource.empty() || !arr->copyLength.empty()) return true;
+        // A local that owns an array it was given takes no pool space, but its return value is held the same way.
+        if(arr->arraySize > 0 || !arr->localInitSource.empty() || !arr->copySource.empty() || !arr->copyLength.empty()
+           || (countOwners && !arr->ownerVar.empty())) return true;
         if(!arr->isByteArray && dynamic_cast<initializerList*>(arr->declaredExpressionValue)) return true;
     }
     return false;
@@ -1022,6 +1049,10 @@ void i6Emitter::buildSpillMap(functionDef* fd){
     // the value in a local of its own first: the return expression may read what the cleanups free.
     currentReturnSlot.clear();
     currentReturnCopy = fd->returnCopy;
+    {
+        const string& rt = fd->returnType.name;
+        currentReturnsArray = (rt == "array" || rt.rfind("array<", 0) == 0) && rt != "array<char>";
+    }
     if(auto* rb = dynamic_cast<statementBlock*>(fd->body);
        rb != nullptr && fd->returnType.name != "void" && !fd->returnType.name.empty()
        && (funcHasLocalArrays(fd) || !fd->cleanups.empty())){
@@ -1734,7 +1765,7 @@ void i6Emitter::emitPhaseRuntimeNeedsScan(vector<typeDef*>& nodeList){
     vector<pair<functionDef*, int>> recursive;
     auto scanFd = [&](functionDef* fd){
         if(fd->isEmitter || fd->isExternal) return;
-        if(funcNeedsSpill(fd) || funcHasLocalArrays(fd) || (fd->callsItself && !fd->ownBackings.empty())) needsPool = true;
+        if(funcNeedsSpill(fd) || funcHasLocalArrays(fd, false) || (fd->callsItself && !fd->ownBackings.empty())) needsPool = true;
         maxXP = max(maxXP, max(0, (int)fd->params.size() - 5));
         int words = estimateFrameWords(fd);
         maxFrame = max(maxFrame, words);
@@ -2332,12 +2363,6 @@ void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     if(cfg->release > 0)
         out << "Release " << cfg->release << ";\n";
 
-    // LINQ scratch buffer capacity — referenced from array.bgl's #emitfirst{} block.
-    // Only emitted when `#include <array>` was resolved; the #emitfirst directives
-    // that consume this constant are also gated on that include.
-    if(languageService.linqInUse)
-        out << "Constant _BGL_LINQ_SCRATCH_SIZE = " << (cfg->linqScratchSize > 0 ? cfg->linqScratchSize : 32) << ";\n";
-
     // Treaty of Babel IFID: embed as a string so babel tools can find it in the story file
     if(!cfg->ifid.empty()){
         out << "Array UUID_ARRAY string \"UUID://" << cfg->ifid << "//\";\n";
@@ -2698,7 +2723,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
                 for(statement* s : body->statements)
                     emitStatement(s, "        ");
             if(currentCleanups != nullptr && !endsInReturn(body))
-                for(auto& [varName, cbody] : *currentCleanups)
+                for(auto& [varName, cbody] : inReverse(*currentCleanups))
                     out << "        " << spillWord(cbody) << "\n";
             currentCleanups = nullptr;
             if(currentSpillCount > 0 && !endsInReturn(body))
@@ -2862,7 +2887,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
             emitStatement(stmt, "    ");
     // emit deinit cleanups at implicit end of function (fall-through path)
     if(currentCleanups != nullptr && !endsInReturn(body))
-        for(auto& [varName, body] : *currentCleanups)
+        for(auto& [varName, body] : inReverse(*currentCleanups))
             out << "    " << spillWord(body) << "\n";   // a spilled local is freed through its frame slot
     if(currentSpillCount > 0 && !endsInReturn(body))   // a final return freed the frame already
         out << format("    _bglFrameFree({0});\n", currentSpillCount);
@@ -2886,6 +2911,8 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
         if(arr == nullptr) continue;
+        if(!arr->ownerVar.empty())   // what a local declared from a call or a step's result owns
+            fn->cleanups.push_back({arr->name, format("_bglHeapDropOwned({0});", spillName(arr->ownerVar))});
         if(!arr->copySource.empty() || !arr->copyLength.empty()){   // allocated where it's declared, sized from its value
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->copyHeld)});
             continue;
@@ -2914,6 +2941,25 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
                   : (list ? (int)list->elements.size() : 0);
         if(count <= 0) continue;   // pointer-alias decl (e.g. `= _bglLinqWrite()`) — emitStatement owns it
         string name = spillName(arr->name);
+        // A word array comes from the heap; the routine's exit frees it unless a reference to it escaped. Raw
+        // Inform 6 in the routine may keep one, so there the array is left to the collector.
+        if(!arr->isRaw){
+            std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
+            if(dtor.empty()) dtor = valueElementRoutine(arr->elementType, "_bglValFree_");
+            out << format("{0}{1} = _bglHeapLocal({2}{3});\n", indent, name, count, dtor.empty() ? "" : ", " + dtor);
+            fn->cleanups.push_back({arr->name, funcHasI6Island(fn) ? "_bglHeapLocalKeep();" : "_bglHeapLocalDrop();"});
+            // A nested list's inner arrays are held in the outer array's slots, so they live as long as it does.
+            std::function<void(const string&, initializerList*)> heapInner = [&](const string& ptr, initializerList* outer){
+                if(outer == nullptr) return;
+                for(size_t i = 0; i < outer->elements.size(); i++)
+                    if(auto* inner = dynamic_cast<initializerList*>(outer->elements[i])){
+                        out << format("{0}{1}-->{2} = _bglHeapAlloc({3});\n", indent, ptr, i + 1, max(1, (int)inner->elements.size()));
+                        heapInner(format("({0}-->{1})", ptr, i + 1), inner);
+                    }
+            };
+            heapInner(name, list);
+            continue;
+        }
         // A nested list's inner arrays are per call too, held in the outer array's slots.
         std::function<void(const string&, initializerList*)> allocInner = [&](const string& ptr, initializerList* outer){
             if(outer == nullptr || arr->isRaw) return;
@@ -2969,6 +3015,13 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
        && arrLoc->declaredExpressionValue != nullptr
        && dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue) == nullptr
        && arrLoc->stringInitializer.empty()){
+        if(!arrLoc->ownerVar.empty()){
+            // The array this declaration owned last time it ran goes first; the new one is owned when it has no owner.
+            string own = spillName(arrLoc->ownerVar), name = spillName(arrLoc->name);
+            out << format("{0}_bglHeapDropOwned({1}); {2} = {3}; {1} = _bglHeapAdopt({2});\n", indent, own, name,
+                          exprText(arrLoc->declaredExpressionValue));
+            return;
+        }
         out << format("{0}{1} = {2};\n", indent, spillName(arrLoc->name),
                       exprText(arrLoc->declaredExpressionValue));
         return;
@@ -3095,6 +3148,15 @@ void i6Emitter::emitAssignment(assignmentStatement* assign, const string& indent
 }
 // A `return`: deinit cleanups and frame-free first, then the matching I6 return form.
 void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
+    // A returned array passes to the caller: the exit of the routine that owns it hands it over.
+    if(currentReturnsArray && !ret->returnExpression.empty() && ret->returnExpression != "rtrue"
+       && ret->returnExpression != "rfalse" && ret->returnExpression.rfind("_bglHeapReturn(", 0) != 0
+       && ret->returnExpression != "_bgl_tryret"){
+        returnStatement escaped = *ret;
+        escaped.returnExpression = "_bglHeapReturn(" + ret->returnExpression + ")";
+        emitReturn(&escaped, indent);
+        return;
+    }
     // Inside a lifted try body the function's return is the caller's to make: hand the value back
     // with code 1. Cleanups and the frame free run there.
     if(inLiftedTry){
@@ -3139,7 +3201,7 @@ void i6Emitter::emitReturn(returnStatement* ret, const string& indent){
     if(parked) out << indent << (glulx ? "@copy _bglRetHold sp;\n" : "@push _bglRetHold;\n");
     // emit deinit cleanups before every return
     if(currentCleanups != nullptr)
-        for(auto& [varName, body] : *currentCleanups)
+        for(auto& [varName, body] : inReverse(*currentCleanups))
             if(!undeclaredTopLocals.count(varName)) out << indent << spillWord(body) << "\n";
     if(currentSpillCount > 0)
         out << format("{0}_bglFrameFree({1});\n", indent, currentSpillCount);
@@ -3623,7 +3685,7 @@ void i6Emitter::emitThrow(throwStatement* th, const string& indent){
     auto names = [&](const string& text){ return !thrown.empty() && rawTextHasWord(text, thrown); };
     for(const string& r : th->releases) if(!names(r)) out << indent << spillWord(r) << "\n";
     if(th->leavesRoutine && currentCleanups != nullptr)
-        for(auto& [name, text] : *currentCleanups)   // not a local the routine hasn't reached yet
+        for(auto& [name, text] : inReverse(*currentCleanups))   // not a local the routine hasn't reached yet
             if(name != thrown && !names(text) && !undeclaredTopLocals.count(name)) out << indent << spillWord(text) << "\n";
     if(isZTarget(currentTarget)) out << indent << "_bgl_thrown = 1;\n";
     out << indent << "@throw _bgl_throwv _bgl_catch_cookie;\n";
@@ -4545,7 +4607,7 @@ for(typeMember* m : obj->members){
             for(statement* s : body->statements)
                 emitStatement(s, "    ");
         if(currentCleanups != nullptr && !endsInReturn(body))
-            for(auto& [varName, cbody] : *currentCleanups)
+            for(auto& [varName, cbody] : inReverse(*currentCleanups))
                 out << "    " << spillWord(cbody) << "\n";
         currentCleanups = nullptr;
         if(currentSpillCount > 0 && !endsInReturn(body))

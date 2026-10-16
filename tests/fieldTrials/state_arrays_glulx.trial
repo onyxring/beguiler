@@ -100,7 +100,7 @@ tokens free 5
 > query
 all [6/16] 3 7 1 2 5 9
 even 1, over 3 true, positive true
-top [3/3] 9 7 5
+top [3/16] 9 7 5
 first doubled 6, last 9
 in both 0
 > undo
@@ -154,7 +154,7 @@ pts [2/5] (2,2) (6,1)
 > make 1
 kept [1] 1
 > locals
-squares [4/4] 1 4 9 16
+squares [4/6] 1 4 9 16
 depth 45
 points 142
 pass 1: 2

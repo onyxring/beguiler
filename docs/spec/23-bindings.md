@@ -14,6 +14,8 @@
   - [23.3.8 Status Bar and Main Window](#2338-status-bar-and-main-window)
   - [23.3.9 Banner Texts](#2339-banner-texts)
   - [23.3.10 Library Options and Debug Builds](#23310-library-options-and-debug-builds)
+  - [23.3.11 Standard Library Properties](#23311-standard-library-properties)
+  - [23.3.12 Collection at the Prompt](#23312-collection-at-the-prompt)
 - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
 - [23.5 Writing a Binding](#235-writing-a-binding)
 <!-- /toc -->
@@ -292,6 +294,17 @@ object guide {
 bool Initialise(){ location = hall; rfalse; }
 ```
 
+### 23.3.12 Collection at the Prompt
+
+The core keeps one routine for the library to run before it reads the player's command, the global
+`_bglPromptHook` (0 until the program first allocates from the heap). Each binding runs it there, which
+is where heap arrays are collected (§12.6):
+
+| Binding | Where |
+|---|---|
+| `i6StandardLibrary` | A `LibraryExtensions` object's `ext_afterprompt` (6.11 and later), so a program's own `AfterPrompt` still runs. |
+| `punyInform` | A replacement of `_ReadPlayerInput` that runs the hook, then the library's routine; a read with no prompt (`YesOrNo()`, menus) skips it. |
+
 ## 23.4 Differences Between the Bindings
 
 | | `i6StandardLibrary` | `punyInform` |
@@ -318,5 +331,6 @@ A binding for another library follows these rules:
 8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8), so that the core, the `<ui>` extension and `<glulxWindow>` operate on the library's windows.
 9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§15.4.1).
 10. **Declare optional parts under the symbol that enables them**: `#if DEBUG` for what exists only in a debug build, and `#if ⟨OPTION⟩` / `#if !⟨OPTION⟩` for what a library option constant adds or removes (§23.3.10).
+11. **Run `_bglPromptHook` when the turn's prompt is shown** (§23.3.12), when it is not 0, at a point where no Beguile routine is running.
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.

@@ -577,8 +577,7 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
                 languageService.arrayInUse = true;
             }
             else if(ciInclude == "linq"){
-                // <linq> #include <array> internally (sets arrayInUse); this flag gates
-                // the LINQ-only bits (e.g. the _BGL_LINQ_SCRATCH_SIZE constant).
+                // <linq> #include <array> internally (sets arrayInUse); this flag gates the LINQ-only bits.
                 languageService.linqInUse = true;
             }
             else if(ciInclude == "buf"){
@@ -1430,11 +1429,6 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
             if(cfg.framePoolSize == -1){ cfg.framePoolSize = sz; cfg.framePoolSizeSet = true; }  // -1 = unset sentinel
         }
-        else if(key == "linqscratchsize"){
-            int sz = stoi(strVal);
-            if(sz < 1) parsingError("beguilerSettings property 'linqScratchSize' must be at least 1");
-            if(cfg.linqScratchSize == -1) cfg.linqScratchSize = sz;  // -1 = unset sentinel
-        }
         else if(key == "worldbufsize"){
             int sz = stoi(strVal);
             if(sz < 1) parsingError("beguilerSettings property 'worldBufSize' must be at least 1");
@@ -1515,7 +1509,6 @@ void bglParser::applySchemaDefaults(){
 
         if(key == "target"        && cfg.target.empty())       cfg.target = defVal;
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
-        else if(key == "linqscratchsize" && cfg.linqScratchSize == -1) cfg.linqScratchSize = stoi(defVal);
         else if(key == "worldbufsize" && cfg.worldBufSize == -1) cfg.worldBufSize = stoi(defVal);
         else if(key == "heapsize" && cfg.heapSize == -1) cfg.heapSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){

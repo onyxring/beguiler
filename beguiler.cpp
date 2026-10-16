@@ -402,7 +402,6 @@ void beguiler::runPostParseChecks() {
     // Safety fallbacks if schema was not loaded
     if(beguilerSettings.target.empty())      beguilerSettings.target = "glulx";
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
-    if(beguilerSettings.linqScratchSize == -1) beguilerSettings.linqScratchSize = 32;
     if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
     if(beguilerSettings.heapSize        == -1) beguilerSettings.heapSize        = 0;
 }

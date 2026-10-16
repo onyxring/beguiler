@@ -586,6 +586,7 @@ class arrayDeclaration : public variableDeclaration {
         bool isRepointed = false;    // a global the program assigns as a whole: a variable over its storage
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
+        string ownerVar;             // a local declared from a call or a step's result: the hidden local holding what it owns
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
         string copyHeld;             //   and the local counting the frame words its storage took
         string copyLength;           //   or, from a member array (no address to alias), the member's length
@@ -702,7 +703,6 @@ class beguilerSettingsDef : public typeDef {
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
         bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
-        int linqScratchSize = -1;      // LINQ chain scratch buffer capacity per buffer (-1 = unset; default 32 from schema)
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
         int heapSize        = -1;      // words in the array heap (-1 = unset; 0 = sized by target)
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)

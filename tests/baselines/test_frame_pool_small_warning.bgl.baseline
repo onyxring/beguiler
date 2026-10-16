@@ -92,6 +92,7 @@ Constant beguiler = 5;
    ];
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
@@ -144,24 +145,24 @@ object bgl
   with zcode _zcode
 ;
 [depth n _bglret seen;
-    seen = _bglArrayLocalAlloc(8);
-    _bglAt(seen, 0, 1)-->0 = n;
+    seen = _bglByteArrayLocalAlloc(16);
+    _bglByteAt(seen, 0, 1)->0 = 'a';
     if (n <= 0) {
-        _bglFrameFree(11);
+        _bglByteArrayLocalFree(16);
         return 0;
     }
     _bglret = 1 + depth(n - 1);
-    _bglFrameFree(11);
+    _bglByteArrayLocalFree(16);
     return _bglret;
 ];
 [main;
     print depth(2);
 ];
-[_bglAt arr i w n;
+[_bglByteAt arr i w n;
     n = 0;
     
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
         return _bglOutOfRange(i, n, w);
     
 ];
@@ -196,6 +197,3 @@ object bgl
     return -1;
 ];
 array _bglsink --> 1;
-[_bglArrSize arr;
-     return arr-->0; 
-];

@@ -201,9 +201,9 @@ Frame top: 0. Chain depth: 0.
 Lengths: 2 3 1 2 3. Crates free: 2.
 > snap
 >> sa2
-Holding 3, frame top 6.
+Holding 3, frame top 1.
 Please enter a file name (without an extension): Ok.
-Still holding 15, frame top 6.
+Still holding 15, frame top 1.
 > spush
 Pushed 5.
 > spush
@@ -211,7 +211,7 @@ Pushed 6.
 > restore
 >> sa2
 Please enter a file name (without an extension): Ok.
-Still holding 15, frame top 6.
+Still holding 15, frame top 1.
 > state
 Stack: 2 1 (2 of 8).
 Queue: red token, green token, blue token (3 of 3).

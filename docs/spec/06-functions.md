@@ -44,7 +44,7 @@ bool Initialise() { location = foyer; rtrue; }
 |---|---|
 | `void` | No value. `return;` is permitted; `return expr;` is an error unless `expr` is `void` (§5.14). |
 | Any other type | Every path must end in `return expr;` with `expr` compatible with the type (§5.14). |
-| `array<T>` | Returns a typed array. A returned *local* array is ephemeral (§12.6). |
+| `array<T>` | Returns a typed array. A returned local array passes to the caller (§12.6). |
 
 `rtrue`, `rfalse` and the return-path rules are specified in §5.14.
 

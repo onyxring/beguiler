@@ -5,6 +5,7 @@ Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
@@ -59,7 +60,7 @@ object bgl
 Array _bglhdr_g_src --> $9084 3;
 array g_src table 1 2 3;
 [getList;
-    return g_src;
+    return _bglHeapReturn(g_src);
 ];
 [sumList xs total x _bglfi1;
     total = 0;
@@ -91,5 +92,37 @@ array g_src table 1 2 3;
         if(arr == 0) rfalse;
         if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
         rfalse;
+    
+];
+[_bglHeapReturn a;
+    
+        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
+        return a;
+    
+];
+[_bglHeapBlockOf a b o;
+    b = 0;
+    o = 0;
+    
+        if(_bglHeap == 0) return 0;
+        b = a - 5 * WORDSIZE;
+        o = b - (_bglHeap-->0);
+        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
+        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
+        return b;
+    
+];
+[_bglHeapIsStart b;
+    
+        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        rfalse;
+    
+];
+[_bglHeapBitMask b m k;
+    m = 1;
+    k = 0;
+    
+        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
+        return m;
     
 ];

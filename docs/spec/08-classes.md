@@ -19,6 +19,7 @@
   - [8.3.3 `static` Members](#833-static-members)
   - [8.3.4 Owned Members](#834-owned-members)
   - [8.3.5 `inline` Members](#835-inline-members)
+  - [8.3.6 `required` Members](#836-required-members)
 - [8.4 Methods](#84-methods)
 - [8.5 Lifecycle: `init` and `deinit`](#85-lifecycle-init-and-deinit)
 - [8.6 Inheritance](#86-inheritance)

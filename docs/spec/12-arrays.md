@@ -6,7 +6,7 @@
 - [12.3 Subscripts, Size and Length](#123-subscripts-size-and-length)
 - [12.4 Byte Arrays — `array<char>`](#124-byte-arrays-arraychar)
 - [12.5 Assignment and Copy Semantics](#125-assignment-and-copy-semantics)
-- [12.6 Local Arrays and Lifetime](#126-local-arrays-and-lifetime)
+- [12.6 Local Arrays, the Heap and Collection](#126-local-arrays-the-heap-and-collection)
 - [12.7 Member Arrays](#127-member-arrays)
 - [12.8 `rawArray<T>`](#128-rawarrayt)
   - [12.8.1 Raw Views](#1281-raw-views)
@@ -200,10 +200,10 @@ capacity; the two arrays stay independent. It comes from `<array>` (§22.4), or 
 `array<char>` (§22.2). Copying into an element of an owning element type goes through that type's
 `static operator =` (§12.10).
 
-Two sources are copied rather than referred to, as `copyFrom` would: a function's returned local
-array and a `<linq>` chain's result, whose storage is reused (§12.6). The copy goes into the
-destination's own storage. A global or member array given an array declared in a function body takes a
-copy into its own storage the same way, since that array's storage is freed when its routine returns.
+A function's returned local array and a `<linq>` chain's result are arrays like any other: the
+destination refers to them (§12.6). Giving a parameter another array re-points the parameter only, as
+in C#; the caller's array is unchanged. To fill an array the caller passes in, copy into it with
+`copyFrom`, or return the new array.
 
 **Example**
 
@@ -219,25 +219,35 @@ spare.copyFrom(src);            // spare has its own copy
 spare[0] = 5;                   // src[0] is still 99
 ```
 
-## 12.6 Local Arrays and Lifetime
+## 12.6 Local Arrays, the Heap and Collection
 
 **Description**
 
-A local array (declared inside a function body, sized or initialized) is allocated per call at
-function entry and freed at function exit, so each call, including a recursive one, has its own
-storage (§18.10). A local array declared in a loop body starts each pass empty, as a block-scoped
-local does in C# and C++: its declaration empties it every time it runs. File-scope arrays live in
-permanent storage and may be returned freely.
+A local array (declared inside a function body, sized or initialized) is allocated from the **heap**
+each time its declaration runs, so each call, including a recursive one, has its own array. A local
+array declared in a loop body starts each pass empty, as a block-scoped local does in C# and C++. File-scope
+and member arrays live in permanent storage and are never freed.
 
-Because a local array's storage is reclaimed on return, a returned local array is an *ephemeral*
-reference, not an owned value, exactly like an ephemeral string (§22.3): the storage it names has been
-freed by the time the caller sees it. To keep the result, assign it to a typed local, which copies it
-into the local's own storage (§12.5). If the reference is consumed in an expression, or passed straight into another call, without
-first being assigned, the behavior is undefined. The same applies to results of `<array>` methods and
-chains on a local array (§22.4, §22.5).
+An array lives as long as something refers to it, as in C# and TypeScript. A function may return its
+local array, store it in a global, a member or another array, or pass it to a function that keeps it;
+the reference stays good. `<linq>` results (§22.5) are heap arrays too.
 
-A local array of a value class can't be returned: the instances its slots own are released as the
-function leaves, so there would be nothing to copy. Fill an array the caller passes in instead.
+Arrays are freed in two ways:
+
+- **At the routine's exit.** A local array that no reference has left is freed as its routine returns.
+  So is an array a local was declared from (`array<int> e = evens(nums);`) when nothing else took it.
+  A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
+  arrays to the collector, since the raw code may have kept one.
+- **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
+  It runs at the prompt, through the library binding (§23), and acts only once a quarter of the heap
+  has been allocated since it last ran. Lifetime is reachability, not turns: an array kept in a global,
+  a property or another live array survives any number of prompts.
+
+The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
+
+`bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
+and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of
+its own, calls `bgl.gc.collect()` at a point where no array it still needs is held only in a local.
 
 **Example**
 
@@ -245,12 +255,19 @@ function leaves, so there would be nothing to copy. Fill an array the caller pas
 array<int> build() {
     array<int> tmp[3];
     tmp[0] = 1; tmp[1] = 2; tmp[2] = 3;
-    return tmp;                 // ephemeral
+    return tmp;                 // the caller gets this array
 }
 
-array<int> keep = build();      // copies into storage of its own, sized from the result
-int n = keep[0];                // safe
+array<int> keep = build();      // keep refers to build's array
+int n = keep[0];                // → 1
 ```
+
+> **Conservative collection.** The collector treats every word of memory outside the heap as a
+> possible reference. An integer that happens to equal an array's address keeps that array until the
+> next collection; a live array is never freed.
+
+> **Element instances.** An array of a value class owns its slots' instances (§12.10), and freeing the
+> array releases them. A function can return such an array; the instances go with it.
 
 ## 12.7 Member Arrays
 
@@ -493,8 +510,7 @@ once; a local array's slots count once, so a recursive routine whose calls all h
 can run out, which is a run-time error. An element store into such an array is a compile-time error
 when the class has no copy operator.
 
-- A local array of a value class needs a capacity (`[n]`) or a list initializer; one sized from
-  another array at run time is a compile-time error.
+- A local array of a value class needs a capacity (`[n]`), a list initializer or a value to refer to.
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
   instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)

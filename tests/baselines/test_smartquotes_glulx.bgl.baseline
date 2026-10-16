@@ -8,6 +8,7 @@ Constant beguiler = 5;
 
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global smart = "@{201C}curly@{201D} and @{2018}single@{2019} and `tick`";
 global _bglInitDone = 0;

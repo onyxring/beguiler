@@ -195,8 +195,8 @@ construct.
 
 The Z-machine gives a routine 15 local slots for parameters and locals together; one slot is
 reserved for the frame pointer, so a routine needing more than 14 has its excess locals spilled into
-a global **frame pool**. The mechanism is recursion-safe and invisible to the author. The pool is also the backing store for local arrays
-(§12.6) on both targets, and it holds the saved fields of a routine's value-class locals and parameters
+a global **frame pool**. The mechanism is recursion-safe and invisible to the author. The pool is also the backing store for local `array<char>`
+buffers on both targets, and records each routine's heap arrays (§12.6); it holds the saved fields of a routine's value-class locals and parameters
 while that routine is called again before it returns, so each call of a recursive routine takes words
 from it. It is emitted only when some routine needs it. Its size in words is
 `framePoolSize` (§17.4) when the program sets it; otherwise the compiler sizes it from the program,

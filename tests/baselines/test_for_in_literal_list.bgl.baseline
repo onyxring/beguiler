@@ -3,12 +3,12 @@
 !% $OMIT_UNUSED_ROUTINES=1
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
-   Array _bglFramePool --> 72;
-   Constant _bglFramePoolWords = 72;
+   Array _bglFramePool --> 64;
+   Constant _bglFramePoolWords = 64;
    Global _bglFrameTop = 0;
    Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
    [ _bglFrameAlloc size r;
-      if (_bglFrameTop + size > 72) {
+      if (_bglFrameTop + size > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
          quit;
       }
@@ -46,11 +46,11 @@ Constant beguiler = 5;
       _bglFrameSrc = src;
       if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
       top = _bglFramePool + _bglFrameTop * WORDSIZE;
-      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 72 * WORDSIZE) >= 0) {
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 64 * WORDSIZE) >= 0) {
          _bglFrameTaken = n + 3;
          return _bglArrayLocalAlloc(n);
       }
-      if (_bglFrameTop + n + 3 > 72) {
+      if (_bglFrameTop + n + 3 > 64) {
          print "^[Beguile runtime error: frame pool exhausted]^";
          quit;
       }
@@ -92,6 +92,7 @@ Constant beguiler = 5;
    ];
 constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
 global _bglPromptHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
@@ -155,9 +156,9 @@ _bglClass_Room r2
 _bglClass_Room r3
 ;
 [main total x _bglfia1 _bglfi2 m n y _bglfia3 _bglfi4 seen r _bglfia5 _bglfi6;
-    _bglfia1 = _bglArrayLocalAlloc(3);
-    _bglfia3 = _bglArrayLocalAlloc(3);
-    _bglfia5 = _bglArrayLocalAlloc(3);
+    _bglfia1 = _bglHeapLocal(3);
+    _bglfia3 = _bglHeapLocal(3);
+    _bglfia5 = _bglHeapLocal(3);
     total = 0;
     _bglfia1-->1 = 1;
     _bglfia1-->2 = 2;
@@ -192,9 +193,9 @@ _bglClass_Room r3
         seen=seen + 1;
        }
     print seen;
-    _bglFrameFree(6);
-    _bglFrameFree(6);
-    _bglFrameFree(6);
+    _bglHeapLocalDrop();
+    _bglHeapLocalDrop();
+    _bglHeapLocalDrop();
 ];
 [_bglArrLength arr;
     
@@ -207,6 +208,21 @@ _bglClass_Room r3
         if(arr == 0) rfalse;
         if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
         rfalse;
+    
+];
+[_bglHeapLocal n kind a;
+    a = 0;
+    
+        a = _bglHeapAlloc(n, kind);
+        _bglFrameAlloc(1)-->0 = a;
+        return a;
+    
+];
+[_bglHeapLocalDrop;
+    
+        _bglFrameTop--;
+        _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
+        _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
     
 ];
 [_bglUnsignedCompare x y u v;
@@ -225,4 +241,180 @@ _bglClass_Room r3
         return 1;
     }
     return -1;
+];
+[_bglHeapAlloc n kind need o b nb a i;
+    need = 0;
+    o = 0;
+    b = 0;
+    nb = 0;
+    a = 0;
+    i = 0;
+    
+        if(_bglHeap == 0) _bglHeapInit();
+        need = n + 6;
+        while(o < (_bglHeap-->1)){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 == 0){
+                ! Merge the free blocks that follow into this one.
+                while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
+                    nb = b + (b-->0) * WORDSIZE;
+                    if(nb-->2 ~= 0) break;
+                    _bglHeapSetStart(nb, false);
+                    b-->0 = b-->0 + nb-->0;
+                }
+                if(b-->0 >= need){
+                    if(b-->0 - need >= 6){
+                        nb = b + need * WORDSIZE;
+                        nb-->0 = b-->0 - need;
+                        nb-->1 = 0;
+                        nb-->2 = 0;
+                        _bglHeapSetStart(nb, true);
+                        b-->0 = need;
+                    }
+                    b-->1 = kind;
+                    b-->2 = 1;
+                    a = b + 5 * WORDSIZE;
+                    a-->(-2) = $9084;
+                    a-->(-1) = 0;
+                    a-->0 = n;
+                    for(i = 1 : i <= n : i++) a-->i = 0;
+                    _bglHeap-->2 = _bglHeap-->2 + b-->0;
+                    _bglHeap-->3 = _bglHeap-->3 + b-->0;
+                    return a;
+                }
+            }
+            o = o + (b-->0) * WORDSIZE;
+        }
+        print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
+        quit;
+    
+];
+[_bglHeapDropOwned a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        _bglHeapRelease(b);
+    
+];
+[_bglHeapInit words bm i;
+    words = 1536;
+    bm = 0;
+    i = 0;
+    _bglheapstore-->0 = 0;
+    
+        _bglHeap = _bglHeapStore;
+        bm = 6 + (words / 8 + WORDSIZE) / WORDSIZE;
+        for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
+        _bglHeap-->5 = words;
+        _bglHeap-->0 = _bglHeap + bm * WORDSIZE;
+        _bglHeap-->1 = (words - bm) * WORDSIZE;
+        (_bglHeap-->0)-->0 = words - bm;
+        (_bglHeap-->0)-->1 = 0;
+        (_bglHeap-->0)-->2 = 0;
+        _bglHeapSetStart(_bglHeap-->0, true);
+        _bglPromptHook = _bglHeapAtPrompt;
+    
+];
+[_bglHeapRelease b a i;
+    a = 0;
+    i = 0;
+    
+        a = b + 5 * WORDSIZE;
+        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
+        a-->(-2) = $DEAD;
+        b-->2 = 0;
+        _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    
+];
+[_bglHeapSetStart b on i;
+    i = 0;
+    
+        i = 6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
+        if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
+        else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
+    
+];
+array _bglheapstore --> 1536;
+[_bglHeapAtPrompt;
+    
+        if(_bglHeap == 0) return;
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    
+];
+[_bglHeapBitMask b m k;
+    m = 1;
+    k = 0;
+    
+        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
+        return m;
+    
+];
+[_bglHeapBlockOf a b o;
+    b = 0;
+    o = 0;
+    
+        if(_bglHeap == 0) return 0;
+        b = a - 5 * WORDSIZE;
+        o = b - (_bglHeap-->0);
+        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
+        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
+        return b;
+    
+];
+[_bglHeapCollect p last o b a i more heapBytes;
+    p = 0;
+    last = 0;
+    o = 0;
+    b = 0;
+    a = 0;
+    i = 0;
+    more = 0;
+    heapBytes = 0;
+    
+        if(_bglHeap == 0) return;
+        heapBytes = (_bglHeap-->5) * WORDSIZE;
+        #Ifdef TARGET_ZCODE;
+            p = 0; last = 0-->7;
+        #Ifnot;
+            p = 0-->2; last = 0-->4;
+        #Endif;
+        last = last - WORDSIZE;
+        while(p ~= last){
+            o = p - _bglHeap;
+            if(o < 0 || o >= heapBytes) _bglHeapMark(p-->0);
+            p++;
+        }
+        do {
+            more = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) ~= 2) continue;
+                b-->2 = b-->2 + 1;
+                more = true;
+                a = b + 5 * WORDSIZE;
+                for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
+            }
+        } until(more == false);
+        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+            b = (_bglHeap-->0) + o;
+            if((b-->2 & 3) == 1) _bglHeapRelease(b);
+            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+        }
+        _bglHeap-->3 = 0;
+    
+];
+[_bglHeapIsStart b;
+    
+        if((_bglHeap->(6 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        rfalse;
+    
+];
+[_bglHeapMark w b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
 ];

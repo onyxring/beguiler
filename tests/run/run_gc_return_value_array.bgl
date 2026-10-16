@@ -1,0 +1,23 @@
+// run_gc_return_value_array — a function returns its local array of a value class: the caller gets the array and
+// the instances its slots own; each call's array is separate, a declaration from one refers to it (which leaves that one
+// to the collector), and the other goes back to the heap with its owner.
+// EXPECT_OUTPUT: 14 2 2 | 1 9 | used 10 | collected 0
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+#include <array>
+value class Row { int id = 0; Row operator = (Row o) { id = o.id; return self; } }
+array<Row> build(int first) { array<Row> rows[4]; rows.append(Row{ id = first; }); rows.append(Row{ id = 4; }); return rows; }
+void show() {
+    array<Row> a = build(1);
+    array<Row> b = build(7);
+    print($"{a[0].id}{a[1].id} {a.length} {b.length} | ");
+    array<Row> c = b;
+    c[0].id = 9;
+    print($"{a[0].id} {b[0].id} | ");
+}
+void main(){
+    bglInit();
+    show();
+    print($"used {bgl.gc.used} | ");
+    bgl.gc.collect();
+    print($"collected {bgl.gc.used}");
+}

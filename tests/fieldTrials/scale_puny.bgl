@@ -26,7 +26,6 @@
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/puny/lib";
-    linqScratchSize = 160;
     framePoolSize = 400;
 }
 

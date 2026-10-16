@@ -24,7 +24,7 @@ section with the full treatment.
 - **emitter class** — A class whose instances have no Inform 6 object backing; it serves as a type label and a host for emitter members. See §8.2.3.
 - **emitter namespace** — A group of emitters declared under one name without `class` (`emitter name { … }`) and called as `name.member(…)`; the name is not a type. See §7.7.
 - **emitter value** — An emitter declared without a parameter list: a typed inline expansion used by bare name, without `()`. See §7.6.
-- **ephemeral** — A returned local array or a string produced by a string operation, whose backing storage is reclaimed before the caller can hold it; it must be captured, by assigning it to a typed local, to persist. See §12.6, §22.3.
+- **ephemeral** — A string produced by a string operation, whose backing storage is reclaimed before the caller can hold it; it must be captured, by assigning it to a typed local, to persist. See §22.3.
 - **eType** — The enum returned by `typeof(v)`: the machine category of a value (`unknown`, `int`, `string`, `routine`, `object`, `class`). See §2.8.1, §21.5.9.
 - **evict** — To remove a dictionary word from an `extern` verb entirely, with the word-level form `extend V { grammar -= { {.w} }; }`; a native verb that also declares the word reclaims it, otherwise the word is disabled. See §13.5.2.
 - **expression** — Operands joined by operators, resolving to a value with a static type. See §4.1.
@@ -33,6 +33,7 @@ section with the full treatment.
 - **function** — A Beguile-declared callable, which compiles to an I6 routine. Contrast **routine**. See §6.1.
 - **grammar line** — One pattern the player may type, declared on a verb or in a grammar object: a trigger word followed by pattern tokens. See §13.4.
 - **grammar object** — A standalone `grammar` declaration holding `grammarRule` entries that name their verbs explicitly, as opposed to grammar declared on the verb itself. See §13.4.5.
+- **heap** — The block of memory that local arrays and `<linq>` results are allocated from; an array on it is freed when its routine returns, unless a reference to it has left, or by the collector once nothing refers to it. Sized by `heapSize`. See §12.6, §21.15.
 - **`.i6b` template** — A built-in Inform 6 template, shipped with the runtime core, from which the compiler emits constructs that have no fixed I6 form until it knows how they are used (the frame pool, `for`-in loops, the literal-list scratch buffer). It is not `#include`d. See §18.9.
 - **`instanceName`** — An object's name: a `const string` member of `_bglObject`, fixed at compile time, that becomes the I6 header name `print(obj)` prints. Given in an object body by name or, as every class's last positional member, by position. See §11.5.4.
 - **island** — A region of one language embedded in a file written in the other: an `#i6` island is raw Inform 6 inside a Beguile file; a `#bgl` island is Beguile inside an Inform 6 file. See §15.2, §15.3.

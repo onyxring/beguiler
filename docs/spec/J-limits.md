@@ -26,8 +26,7 @@ is specified in the section named in the last column; this table does not add li
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
-| Elements per `<linq>` scratch buffer (`linqScratchSize`) | 32 by default; at least 1 | both | §17.4, §22.5 |
-| `<linq>` chain nesting depth (a chain inside a chain's predicate or mapper) | 2 | both | §22.5 |
+| Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default; at least 64 | both | §12.6, §17.4 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |
 | String objects in the `<string>` pool (`bglStringPoolReserve`); running out stops the program | 10 by default | both | §22.3 |
 | Tracked `<buf>` buffers beyond the `<string>` pool's (`bglTrackedBufferReserve`) | 116 by default | both | §22.2 |

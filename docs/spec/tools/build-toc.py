@@ -11,10 +11,10 @@ Usage:  build-toc.py [--check] [--resolve] [--audit]
 import re, sys, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-CHAPTER_RE = re.compile(r'^(\d{2}|[A-J])-[a-z0-9-]+\.md$')
+CHAPTER_RE = re.compile(r'^(\d{2}|[A-K])-[a-z0-9-]+\.md$')
 H_RE = re.compile(r'^(#{1,6})\s+(.*?)\s*$')
-NUM_RE = re.compile(r'^(?:(\d+)(?:\.(\d+))?(?:\.(\d+))?|Appendix ([A-J])(?:\s+|$)|([A-J])\.(\d+)(?:\.(\d+))?)\s*(.*)$')
-REF_RE = re.compile(r'§(\d+|[A-J])(?:\.(\d+))?(?:\.(\d+))?(?:\s+\*([^*\n]+)\*)?')
+NUM_RE = re.compile(r'^(?:(\d+)(?:\.(\d+))?(?:\.(\d+))?|Appendix ([A-K])(?:\s+|$)|([A-K])\.(\d+)(?:\.(\d+))?)\s*(.*)$')
+REF_RE = re.compile(r'§(\d+|[A-K])(?:\.(\d+))?(?:\.(\d+))?(?:\s+\*([^*\n]+)\*)?')
 
 def slug(text):
     text = re.sub(r'[`*_]', '', text).strip().lower()

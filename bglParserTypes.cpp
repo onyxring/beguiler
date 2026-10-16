@@ -2019,6 +2019,9 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
                 rep = "_bglOpRef_" + rep;
             }
         }
+        // An array stored into another array's slot has left the routine that made it.
+        if(rep.empty() && op == "=" && isWordArrayType(elemType) && elemType != "array<char>")
+            rep = "_bglHeapEscapeAssign";
         if(rep.empty()){
             // Only a type Beguile actually emits is worth warning about. The bare-word
             // builtins (int, char, object, …) are `extern`, and for them the word IS the

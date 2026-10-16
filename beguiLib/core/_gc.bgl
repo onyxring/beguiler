@@ -12,13 +12,17 @@
 // then blocks back to back. A block is
 //     [ size | kind | state ] [ $9084 | length ] [ capacity | elements … ]
 // and the array is the address of `capacity`, as every array's is. `size` counts the block's words;
-// `kind` is the routine that releases what the block owns (0 for none); `state` is 0 free, 1 in use,
-// 2 marked, 3 marked and traced. The bookkeeping lives in the heap so a program that allocates nothing
-// pays for nothing:
-//     -->0 the first block (0 until the heap is laid out)   -->1 bytes from it to the heap's end
+// `kind` is the routine that releases what the block owns (for an array, one element at a time; 0 for none);
+// `state` is 0 free, 1 in use, 2 marked, 3 marked and traced; plus 4 once a reference to it is kept anywhere
+// but its owner (it is then left to the collector), and plus 8 while it has no owner and the next local
+// declared from it may take it (a step's result, or an array its owner returned). Only allocating names the
+// storage, so a program that allocates nothing has no heap. Its bookkeeping words:
+//     -->0 the first block                                  -->1 bytes from it to the heap's end
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
-//     -->4 routines running that hold heap arrays in locals  -->5 the heap's size in words
-superposed rawArray<int> _bglHeap[#beguilerSettings.heapSize];
+//     -->4 the array a routine is returning              -->5 the heap's size in words
+superposed rawArray<int> _bglHeapStore[#beguilerSettings.heapSize];
+// The heap: 0 until it is laid out.
+int _bglHeap = 0;
 // The routine a library binding runs at each prompt (0 until the heap is first used).
 int _bglPromptHook = 0;
 
@@ -53,8 +57,9 @@ superposed void _bglHeapInit(){
     int words = #beguilerSettings.heapSize;
     int bm = 0;
     int i = 0;
-    _bglHeap[0] = 0;   // named in Beguile, so the heap is emitted with the routines that use it
+    _bglHeapStore[0] = 0;   // named in Beguile, so the storage is emitted with the routine that lays it out
     #i6 {
+        _bglHeap = _bglHeapStore;
         bm = 6 + (words / 8 + WORDSIZE) / WORDSIZE;
         for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
         _bglHeap-->5 = words;
@@ -73,7 +78,7 @@ superposed int _bglHeapBlockOf(int a){
     int b = 0;
     int o = 0;
     #i6 {
-        if((_bglHeap-->0) == 0) return 0;
+        if(_bglHeap == 0) return 0;
         b = a - 5 * WORDSIZE;
         o = b - (_bglHeap-->0);
         if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
@@ -91,7 +96,7 @@ superposed int _bglHeapAlloc(int n, int kind = 0){
     int a = 0;
     int i = 0;
     #i6 {
-        if((_bglHeap-->0) == 0) _bglHeapInit();
+        if(_bglHeap == 0) _bglHeapInit();
         need = n + 6;
         while(o < (_bglHeap-->1)){
             b = (_bglHeap-->0) + o;
@@ -134,12 +139,116 @@ superposed int _bglHeapAlloc(int n, int kind = 0){
 // Free block `b`: what it owns is released, and a stale reference to its array reads as freed.
 superposed void _bglHeapRelease(int b){
     int a = 0;
+    int i = 0;
     #i6 {
         a = b + 5 * WORDSIZE;
-        if(b-->1) (b-->1)(a);
+        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
         a-->(-2) = $DEAD;
         b-->2 = 0;
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    }
+}
+
+// Give heap array `a` the capacity of its length (at least 1), and the words it no longer needs back to the heap.
+superposed void _bglHeapShrink(var a){
+    int b = 0;
+    int nb = 0;
+    int cap = 0;
+    int need = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b == 0) return;
+        cap = a-->(-1);
+        if(cap < 1) cap = 1;
+        if(cap >= a-->0) return;
+        a-->0 = cap;
+        need = cap + 6;
+        if(b-->0 - need < 6) return;
+        nb = b + need * WORDSIZE;
+        nb-->0 = b-->0 - need;
+        nb-->1 = 0;
+        nb-->2 = 0;
+        _bglHeapSetStart(nb, true);
+        _bglHeap-->2 = _bglHeap-->2 - nb-->0;
+        b-->0 = need;
+    }
+}
+
+// Record that a reference to array `a` has left the routine that allocated it; returns `a`.
+superposed int _bglHeapEscape(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0) b-->2 = b-->2 | 4;
+        return a;
+    }
+}
+// The same, as an element type's assignment: an array stored into another array's slot has escaped.
+superposed int _bglHeapEscapeAssign(int cur, int a){
+    #i6 { return _bglHeapEscape(a); }
+}
+
+// A new array with no owner yet (a step's result), room for `n` elements.
+superposed int _bglHeapFresh(int n){
+    int a = 0;
+    #i6 {
+        a = _bglHeapAlloc(n);
+        (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 8;
+        return a;
+    }
+}
+
+// A routine's local array of capacity `n`, from the heap. The block is recorded in the frame pool, which the
+// routine's exit unwinds with _bglHeapLocalDrop.
+superposed int _bglHeapLocal(int n, int kind = 0){
+    int a = 0;
+    #i6 {
+        a = _bglHeapAlloc(n, kind);
+        _bglFrameAlloc(1)-->0 = a;
+        return a;
+    }
+}
+// Its owner is done with array `a`: freed, unless it is kept elsewhere; when it is what the owner is returning,
+// it passes to the caller instead.
+superposed void _bglHeapDropOwned(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 0) return;
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; return; }
+        _bglHeapRelease(b);
+    }
+}
+// At a routine's exit: the last local array it allocated, as _bglHeapDropOwned.
+superposed void _bglHeapLocalDrop(){
+    #i6 {
+        _bglFrameTop--;
+        _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
+        _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
+    }
+}
+// A routine returns array `a`: its owner's exit hands it to the caller. Returns `a`.
+superposed int _bglHeapReturn(int a){
+    #i6 {
+        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
+        return a;
+    }
+}
+// A local declared from array `a` takes it when it has no owner; returns what the local now owns (`a`, or 0).
+superposed int _bglHeapAdopt(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 8) return 0;
+        b-->2 = b-->2 & ~8;
+        return a;
+    }
+}
+// The same for a routine whose raw Inform 6 may have kept a reference: the array is left to the collector.
+superposed void _bglHeapLocalKeep(){
+    #i6 {
+        _bglFrameTop--;
+        _bglFramePool-->_bglFrameTop = 0;
     }
 }
 
@@ -159,7 +268,7 @@ superposed void _bglHeapMark(int w){
     int b = 0;
     #i6 {
         b = _bglHeapBlockOf(w);
-        if(b ~= 0 && b-->2 == 1) b-->2 = 2;
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
     }
 }
 
@@ -175,7 +284,7 @@ superposed void _bglHeapCollect(){
     int more = 0;
     int heapBytes = 0;
     #i6 {
-        if((_bglHeap-->0) == 0) return;
+        if(_bglHeap == 0) return;
         heapBytes = (_bglHeap-->5) * WORDSIZE;
         #Ifdef TARGET_ZCODE;
             p = 0; last = 0-->7;
@@ -192,8 +301,8 @@ superposed void _bglHeapCollect(){
             more = false;
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
                 b = (_bglHeap-->0) + o;
-                if(b-->2 ~= 2) continue;
-                b-->2 = 3;
+                if((b-->2 & 3) ~= 2) continue;
+                b-->2 = b-->2 + 1;
                 more = true;
                 a = b + 5 * WORDSIZE;
                 for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
@@ -201,8 +310,8 @@ superposed void _bglHeapCollect(){
         } until(more == false);
         for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
             b = (_bglHeap-->0) + o;
-            if(b-->2 == 1) _bglHeapRelease(b);
-            else if(b-->2 == 3) b-->2 = 1;
+            if((b-->2 & 3) == 1) _bglHeapRelease(b);
+            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
         }
         _bglHeap-->3 = 0;
     }
@@ -211,18 +320,21 @@ superposed void _bglHeapCollect(){
 // At a prompt: collect when no routine holding heap arrays is running and enough has been allocated.
 superposed void _bglHeapAtPrompt(){
     #i6 {
-        if(_bglHeap-->0 == 0 || _bglHeap-->4 ~= 0) return;
+        if(_bglHeap == 0) return;
         if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
     }
 }
 
 // Words in blocks in use, and words the heap holds for blocks.
 superposed int _bglHeapUsedWords(){
-    #i6 { return _bglHeap-->2; }
+    #i6 {
+        if(_bglHeap == 0) return 0;
+        return _bglHeap-->2;
+    }
 }
 superposed int _bglHeapSizeWords(){
     #i6 {
-        if((_bglHeap-->0) == 0) _bglHeapInit();
+        if(_bglHeap == 0) _bglHeapInit();
         return (_bglHeap-->1) / WORDSIZE;
     }
 }

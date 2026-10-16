@@ -21,12 +21,12 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `generateBlorb` | bool | `false` | first | — | yes | §17.6 |
 | `genre` | string | `""` | first | — | yes | §17.5 |
 | `headline` | string | `""` | first | — | yes | §17.5 |
+| `heapSize` | int | `1536` (Z-machine), `16384` (Glulx) | first | — | yes | §17.4 |
 | `ifid` | string | `""` (generated) | first | — | yes | §17.5 |
 | `includePaths` | string | none | additive | `-includepaths=<dirs>` | yes | §17.2 |
 | `informName` | string | `"inform"` | first | `-inform=<name>` | yes | §17.2 |
 | `informPath` | string | none | first | `-inform=<path>` | yes | §17.2 |
 | `language` | string | `""` | first | — | yes | §17.5 |
-| `linqScratchSize` | int | `32` | first | — | yes | §17.4 |
 | `omitUnusedRoutines` | bool | `true` | first | — | yes | §17.3 |
 | `outputPath` | string | `"output"` | first | `-o <dir>` | yes | §17.3 |
 | `release` | int | `0` | first (0 = unset) | — | yes | §17.3 |

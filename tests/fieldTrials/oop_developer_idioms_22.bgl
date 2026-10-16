@@ -298,13 +298,14 @@ class League : object {
     }
 
     // The teams that count, best first; positions are written back to the teams.
-    void RankTeams(array<Team> table) {
-        table = Teams.filter((Team t) => t.CountsInTable()).orderBy(CompareStanding);
+    array<Team> RankTeams() {
+        array<Team> table = Teams.filter((Team t) => t.CountsInTable()).orderBy(CompareStanding);
         int position = 1;
         for (Team t in table) {
             t.Position = position;
             position++;
         }
+        return table;
     }
 }
 
@@ -357,8 +358,7 @@ stringObj Signed(int n) {
 }
 
 void ShowTable(bool withForm = false) {
-    array<Team> standings[6];
-    theLeague.RankTeams(standings);
+    array<Team> standings = theLeague.RankTeams();
     printLine("Pos Team P  W D L  GD   Pts");
     for (Team t in standings) {
         Record r = t.Season();
@@ -483,8 +483,7 @@ verb Query {
 verb Leader {
     grammar = {.leader};
     void handler() {
-        array<Team> standings[6];
-        theLeague.RankTeams(standings);
+        array<Team> standings = theLeague.RankTeams();
         Team top = standings.first();
         printLine($"Leader {top}, {top.Season().Points()} points.");
         int slot = -1;

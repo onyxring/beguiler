@@ -349,9 +349,11 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
-**Chain results.** A non-terminal's result lives in a scratch buffer that the next chain reuses. Consume it in the same statement, reduce it with a terminal, or capture it by assigning it to a typed array, which copies it (§22.4). A `for` loop over a chain result is not the same statement as its body: a chain the body runs, directly or in a function it calls, can overwrite the elements the loop is reading, so capture the result first when the body uses a chain. Do not return a chain result from a function whose source is a local array (§12.6).
+**Chain results.** Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given, so a result assigned back (`held = held.filter(…)`) has the room `held` had. A step's input that was itself a step's result is freed as soon as the step has read it, so only the chain's final result remains; it is freed like any other array once nothing refers to it.
 
-**Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to a depth of two (a chain inside a chain). Deeper nesting is a runtime error that ends the program.
+**Element sharing.** A result holds the same elements as its source. For an array of a value class, its slots refer to the source's instances: changing `result[0].x` changes the source's element too, and removing an element from the result doesn't release it. Copy elements into an array of your own when you need them independent.
+
+**Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to any depth.
 
 **Example**
 
@@ -368,11 +370,11 @@ void Main() {
 
 **Settings**
 
-`linqScratchSize` (§17.4, default `32`) is the capacity of each scratch buffer. A chain step whose result would exceed it is a runtime error that ends the program.
+Results come from the heap, sized by `heapSize` (§17.4).
 
 **Notes**
 
-Requires `bglInit()`, which prepares the scratch buffers. `orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
+`orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
 
 **See also** §4.14, §12.6, §17.4, §22.4.
 
