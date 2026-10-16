@@ -616,7 +616,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                             plainName = false;
                         }
                         if(plainName && !arrDecl.isRefLocal && !declaringRefArray) expr->tokens.assign(1, "_bglHeapCopyOf(" + srcText + ")");
-                        if(!plainName || (!arrDecl.isRefLocal && !declaringRefArray)) giveOwner(arrDecl);
+                        if(!plainName && isStaticArrayText(srcText, func, body)) arrDecl.staticSource = true;   // nothing to own
+                        else if(!plainName || (!arrDecl.isRefLocal && !declaringRefArray)) giveOwner(arrDecl);
                     }
                 }
             }
@@ -1516,7 +1517,8 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body, !symbol.is(token::endStatement));
     // A `var` or union local declared from a call's or chain's result takes it, as an array local does.
     if(func != nullptr && body != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.declaredExpressionValue != nullptr
-       && isWordArrayType(varDecl.declaredExpressionValue->resolvedType) && varDecl.src.file.find("beguiLib") == string::npos){
+       && isWordArrayType(varDecl.declaredExpressionValue->resolvedType) && varDecl.src.file.find("beguiLib") == string::npos
+       && !isStaticArrayText(varDecl.declaredExpressionValue->text(), func, body)){
         string vt = varDecl.declaredExpressionValue->text();
         size_t z = vt.find_last_not_of(" \t");
         if(z != string::npos && vt[z] == ')'){

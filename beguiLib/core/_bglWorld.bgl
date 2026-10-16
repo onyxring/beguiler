@@ -31,7 +31,7 @@ superposed array<object> _bglWorldNextBuf(){
 }
 
 // Record a filled buffer's length in the word after its elements, where `length` reads it.
-superposed void _bglWorldStamp(array<object> buf, int count){
+superposed void _bglWorldStamp(var buf, int count){
     #i6 { buf-->(-1) = count; }
 }
 

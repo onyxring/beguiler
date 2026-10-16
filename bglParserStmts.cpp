@@ -930,7 +930,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         assign.text = arrName + " = " + arrExprText + ";";
         // A call's or a chain's result is the loop's own while it runs (dropped after it, or at the routine's exit).
         if(currentFunc != nullptr && !arrExprText.empty() && arrExprText.back() == ')'
-           && lowerText(arrExprText).find("_bglworld") == string::npos){   // a world query's result is a static buffer
+           && !isStaticArrayText(arrExprText, func, body)){   // never a heap array
             forInOwner = claimOwner(arrName);
             assign.text = forInOwner + " = _bglHeapReown(" + forInOwner + ", (" + arrName + " = " + arrExprText + "));";
         }
@@ -3633,7 +3633,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         if(!localSlot){
             rejectEscapingView(val, "kept in a global or member");
             val->tokens = {"_bglHeapEscape(" + val->text() + ")"};
-        } else if(isWordArrayType(val->resolvedType)){
+        } else if(isWordArrayType(val->resolvedType) && !isStaticArrayText(val->text(), currentFunc, nullptr)){
             // A local takes a result nothing owns, as an array local declared from one does.
             string own = claimOwner(a.variableLeft);
             val->tokens = {"_bglHeapReown(" + own + ", (" + a.variableLeft + " = " + val->text() + "))"};

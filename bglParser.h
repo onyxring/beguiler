@@ -679,6 +679,7 @@ class bglParser {
         bool slotHoldsArray(const string& type);
         string claimOwner(const string& slot);
         bool hasOwner(const string& slot);
+        bool isStaticArrayText(const string& text, functionDef* func, statementBlock* body);
         class arrayDeclaration* localStructArray(const string& name, statementBlock* body);
         void rejectEscapingView(const expression* e, const string& how);
         void ensureOwnPrintOverload(const string& typeName);

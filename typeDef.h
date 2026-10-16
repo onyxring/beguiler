@@ -398,6 +398,8 @@ class functionDef:public typeMember, public typeDef{
         string runCounter;
         // Makes arrays with no owner (calls or chains returning arrays): its statements free the unclaimed ones.
         bool makesFresh = false;
+        // Returns arrays: whether every one is a file-scope array (no heap result to hand over); unknown until a return.
+        int returnsStatic = -1;
         pair<string,string> returnCopy;      // {instance, copy routine}: a returned value class leaves through its own instance
         // replace chaining: when this function replaces a previous definition,
         // replaced() calls in the body resolve to replacedTarget (the mangled name).
@@ -597,7 +599,8 @@ class arrayDeclaration : public variableDeclaration {
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
         string ownerVar;             // a local declared from a call or a step's result: the hidden local holding what it owns
-        arrayDeclaration* viewOf = nullptr;   // declared from a chain on the routine's own array of structs: that array
+        arrayDeclaration* viewOf = nullptr;
+        bool staticSource = false;   // declared from a file-scope array a call returned: nothing to own   // declared from a chain on the routine's own array of structs: that array
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
         string copyHeld;             //   and the local counting the frame words its storage took
         string copyLength;           //   or, from a member array (no address to alias), the member's length

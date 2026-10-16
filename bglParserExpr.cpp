@@ -6333,7 +6333,7 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
         // A call or chain left an array: one nothing may own, which the routine's statements sweep up.
         if(currentFunc != nullptr && !currentFunc->makesFresh && isWordArrayType(expr->resolvedType) && expr->resolvedType != "array<char>"
            && currentFunc->src.file.find("beguiLib") == string::npos && !expr->tokens.empty()
-           && lowerText(expr->tokens.back()).find("_bglworld") == string::npos   // a world query's result is a static buffer
+           && !isStaticArrayText(expr->tokens.back(), currentFunc, body)   // never a heap array
            && !expr->tokens.back().empty() && expr->tokens.back().back() == ')')
             currentFunc->makesFresh = true;
         if(step == ExprStep::Break) break;

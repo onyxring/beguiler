@@ -60,7 +60,7 @@ object bgl
 Array _bglhdr_g_src --> $9084 3;
 array g_src table 1 2 3;
 [getList;
-    return _bglHeapReturn(g_src);
+    return g_src;
 ];
 [sumList xs _bglret _bglownp_xs total x _bglfi1;
     _bglownp_xs = _bglHeapAdopt(xs);
@@ -74,9 +74,9 @@ array g_src table 1 2 3;
     _bglHeapDropOwned(_bglownp_xs);
     return _bglret;
 ];
-[main _bglown__bglfia2 x _bglfia2 _bglfi3 total;
+[main x _bglfia2 _bglfi3 total;
     _bglHeapFreshEnter();
-    _bglown__bglfia2 = _bglHeapReown(_bglown__bglfia2, (_bglfia2 = getlist()));
+    _bglfia2 = getlist();
        _bglfi3 = 0;
        for (: _bglfi3 < _bglArrLength(_bglfia2) : _bglfi3++) {
           x = _bglfia2-->(_bglfi3+1);
@@ -84,13 +84,11 @@ array g_src table 1 2 3;
         _bglHeapSweepFresh();
        }
     _bglHeapSweepFresh();
-    _bglHeapDropOwned(_bglown__bglfia2); _bglown__bglfia2 = 0;
     total=sumlist(g_src);
     _bglHeapSweepFresh();
     print total;
     _bglHeapSweepFresh();
     _bglHeapSweepFresh(true);
-    _bglHeapDropOwned(_bglown__bglfia2);
 ];
 [_bglArrLength arr;
     
@@ -165,20 +163,6 @@ array g_src table 1 2 3;
         a-->(-2) = $DEAD;
         b-->2 = 0;
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
-    
-];
-[_bglHeapReown own a n;
-    n = 0;
-    
-        n = _bglHeapAdopt(a);
-        if(own ~= a) _bglHeapDropOwned(own);
-        return n;
-    
-];
-[_bglHeapReturn a;
-    
-        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
-        return a;
     
 ];
 [_bglHeapSweepFresh leave i a b;

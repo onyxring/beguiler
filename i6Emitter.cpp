@@ -1055,7 +1055,7 @@ void i6Emitter::buildSpillMap(functionDef* fd){
     currentReturnCopy = fd->returnCopy;
     {
         const string& rt = fd->returnType.name;
-        currentReturnsArray = (rt == "array" || rt.rfind("array<", 0) == 0) && rt != "array<char>";
+        currentReturnsArray = (rt == "array" || rt.rfind("array<", 0) == 0) && rt != "array<char>" && fd->returnsStatic != 1;
     }
     if(auto* rb = dynamic_cast<statementBlock*>(fd->body);
        rb != nullptr && fd->returnType.name != "void" && !fd->returnType.name.empty()

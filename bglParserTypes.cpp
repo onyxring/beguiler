@@ -4581,7 +4581,11 @@ void bglParser::checkReturnValue(expression* e, const string& returnType, const 
                             typeDisplayName(shown), fnName, typeDisplayName(returnType)));
     };
     if(!genericValueFits(e, returnType, currentFunc, nullptr)) fail(elementAwareType(e, currentFunc, nullptr));
-    if(isWordArrayType(returnType)) rejectEscapingView(e, "returned");
+    if(isWordArrayType(returnType)){
+        rejectEscapingView(e, "returned");
+        if(currentFunc != nullptr && currentFunc->returnsStatic != 0)
+            currentFunc->returnsStatic = isStaticArrayText(e->text(), currentFunc, nullptr) ? 1 : 0;
+    }
     // A member array is property data on its owner, with no address of its own to return (§12.7).
     if(isWordArrayType(returnType) && isWordArrayType(e->resolvedType)){
         string text = e->text();
@@ -6339,5 +6343,54 @@ bool bglParser::slotHoldsArray(const string& type){
     }
     if(classDef* c = languageService.findClass(type); c != nullptr && c->isUnion())
         for(const string& m : c->unionMembers) if(isWordArrayType(m) && m != "array<char>") return true;
+    return false;
+}
+
+// Whether an array expression (as emitted) is a file-scope array with storage of its own, a call to a function that
+// returns only such arrays, or a local declared from one: an array that is never on the heap.
+bool bglParser::isStaticArrayText(const string& text, functionDef* func, statementBlock* body){
+    string t = text;
+    while(!t.empty() && isspace((unsigned char)t.back())) t.pop_back();
+    while(!t.empty() && isspace((unsigned char)t.front())) t.erase(0, 1);
+    if(t.empty()) return false;
+    string low = lowerText(t);
+    if(t.back() == ')'){
+        size_t p = t.find('(');
+        if(p == string::npos || p == 0) return false;
+        string name = lowerText(t.substr(0, p));
+        size_t dot = name.rfind('.');
+        if(dot != string::npos){
+            // An object's method (`bgl.world.inParent(…)`, emitted `_bglworld.inparent(…)`).
+            string owner = name.substr(0, dot), method = name.substr(dot + 1);
+            for(typeDef* g : languageService.globals)
+                if(auto* od = dynamic_cast<objectDef*>(g); od != nullptr && (od->name == owner || lowerText(od->i6name) == owner))
+                    for(typeMember* m : od->members)
+                        if(auto* fd = dynamic_cast<functionDef*>(m); fd != nullptr && !fd->isPrePassStub
+                           && (fd->name == method || lowerText(fd->i6name) == method))
+                            return fd->returnsStatic == 1;
+            return false;
+        }
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd != nullptr && !fd->isPrePassStub
+               && (fd->name == name || lowerText(fd->i6name) == name))
+                return fd->returnsStatic == 1;
+        return false;
+    }
+    if(t.find_first_of(".([- ") != string::npos) return false;
+    auto local = [&](statementBlock* b) -> int {
+        if(b == nullptr) return -1;
+        for(statement* s : b->statements)
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(s); ad && lowerText(ad->name) == low) return ad->staticSource ? 1 : 0;
+        return -1;
+    };
+    if(func != nullptr){
+        int r = local(body);
+        if(r < 0) for(auto it = activeBlockStack.rbegin(); it != activeBlockStack.rend() && r < 0; ++it) r = local(*it);
+        if(r < 0 && func->body != nullptr) r = local(dynamic_cast<statementBlock*>(func->body));
+        if(r >= 0) return r == 1;
+    }
+    if(auto* ad = languageService.findGlobalAs<arrayDeclaration>(low); ad != nullptr)
+        return !ad->isRefLocal && !ad->isRepointed && !ad->isExternal
+            && (ad->arraySize > 0 || dynamic_cast<initializerList*>(ad->declaredExpressionValue) != nullptr);
     return false;
 }

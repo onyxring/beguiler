@@ -234,7 +234,9 @@ Arrays are freed in three ways:
 - **At the end of the statement.** A call's or a chain's result that nothing takes is freed once the statement
   that used it is done: `f()[0]`, `f().length`, `a.filter(…) == b`. A result is taken by a local (an array, `ref`,
   `var` or union local), a parameter, a `for … in` (for the loop), anything that outlives the routine, or a pin.
-  An Inform 6 routine given a result takes nothing: pin the array if the I6 code keeps it.
+  An Inform 6 routine given a result takes nothing: pin the array if the I6 code keeps it. A function whose every
+  `return` hands back a file-scope array (as `bgl.world`'s queries do, §21) returns that array itself: there is
+  nothing to free or own.
 - **At the routine's exit.** A local array that no reference has left is freed as its routine returns,
   and so is an array a local took from a call or a chain, and the rows of a local array of arrays that nothing
   else took.

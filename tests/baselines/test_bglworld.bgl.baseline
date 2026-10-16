@@ -150,17 +150,17 @@ object stone cage
 ];
 object _bglWorld
   with getAll [pred;
-    return _bglHeapReturn(_bglworldgetall(pred));
+    return _bglworldgetall(pred);
   ],
        inParent [p pred;
-    return _bglHeapReturn(_bglworldinparent(p,pred));
+    return _bglworldinparent(p,pred);
   ],
        instances [cls pred;
-    return _bglHeapReturn(_bglworldinstances(cls,pred));
+    return _bglworldinstances(cls,pred);
   ]
 ;
-[_bglWorldGetAll pred _bglret _bglown_buf buf o n;
-    buf = _bglworldnextbuf(); _bglown_buf = _bglHeapReown(_bglown_buf, buf);
+[_bglWorldGetAll pred buf o n;
+    buf = _bglworldnextbuf();
     n = 0;
     
         objectloop(o) {
@@ -170,12 +170,10 @@ object _bglWorld
         }
     
     _bglworldstamp(buf, n);
-    _bglret = _bglHeapReturn(buf);
-    _bglHeapDropOwned(_bglown_buf);
-    return _bglret;
+    return buf;
 ];
-[_bglWorldInParent _l_parent pred _bglret _bglown_buf buf o n;
-    buf = _bglworldnextbuf(); _bglown_buf = _bglHeapReown(_bglown_buf, buf);
+[_bglWorldInParent _l_parent pred buf o n;
+    buf = _bglworldnextbuf();
     n = 0;
     
         objectloop(o in _l_parent) {
@@ -184,12 +182,10 @@ object _bglWorld
         }
     
     _bglworldstamp(buf, n);
-    _bglret = _bglHeapReturn(buf);
-    _bglHeapDropOwned(_bglown_buf);
-    return _bglret;
+    return buf;
 ];
-[_bglWorldInstances cls pred _bglret _bglown_buf buf o n;
-    buf = _bglworldnextbuf(); _bglown_buf = _bglHeapReown(_bglown_buf, buf);
+[_bglWorldInstances cls pred buf o n;
+    buf = _bglworldnextbuf();
     n = 0;
     
         objectloop(o ofclass cls) {
@@ -199,28 +195,24 @@ object _bglWorld
         }
     
     _bglworldstamp(buf, n);
-    _bglret = _bglHeapReturn(buf);
-    _bglHeapDropOwned(_bglown_buf);
-    return _bglret;
+    return buf;
 ];
 [_bglWorldNextBuf;
     _bglworldbufidx=(_bglworldbufidx + 1) % 4;
     switch (_bglworldbufidx) {
         0:
-            return _bglHeapReturn(_bglworldbuf0);
+            return _bglworldbuf0;
         1:
-            return _bglHeapReturn(_bglworldbuf1);
+            return _bglworldbuf1;
         2:
-            return _bglHeapReturn(_bglworldbuf2);
+            return _bglworldbuf2;
         3:
-            return _bglHeapReturn(_bglworldbuf3);
+            return _bglworldbuf3;
     }
-    return _bglHeapReturn(_bglworldbuf0);
+    return _bglworldbuf0;
 ];
-[_bglWorldStamp buf count _bglownp_buf;
-    _bglownp_buf = _bglHeapAdopt(buf);
+[_bglWorldStamp buf count;
      buf-->(-1) = count; 
-    _bglHeapDropOwned(_bglownp_buf);
 ];
 Array _bglhdr__bglworldbuf0 --> $9084 0;
 array _bglworldbuf0 table 128;
@@ -230,81 +222,3 @@ Array _bglhdr__bglworldbuf2 --> $9084 0;
 array _bglworldbuf2 table 128;
 Array _bglhdr__bglworldbuf3 --> $9084 0;
 array _bglworldbuf3 table 128;
-[_bglHeapAdopt a b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = (b-->2 & ~8) | 32;
-        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
-        return a;
-    
-];
-[_bglHeapBlockOf a b o;
-    b = 0;
-    o = 0;
-    
-        if(_bglHeap == 0) return 0;
-        b = a - 5 * WORDSIZE;
-        o = b - (_bglHeap-->0);
-        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
-        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
-        return b;
-    
-];
-[_bglHeapDropOwned a b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(a);
-        if(b == 0) return;
-        b-->2 = b-->2 & ~32;
-        if((b-->2 & 12) ~= 0) return;
-        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
-        _bglHeapRelease(b);
-    
-];
-[_bglHeapIsStart b;
-    
-        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
-        rfalse;
-    
-];
-[_bglHeapNoteFresh a;
-    
-        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
-    
-];
-[_bglHeapRelease b a i;
-    a = 0;
-    i = 0;
-    
-        a = b + 5 * WORDSIZE;
-        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
-        a-->(-2) = $DEAD;
-        b-->2 = 0;
-        _bglHeap-->2 = _bglHeap-->2 - b-->0;
-    
-];
-[_bglHeapReown own a n;
-    n = 0;
-    
-        n = _bglHeapAdopt(a);
-        if(own ~= a) _bglHeapDropOwned(own);
-        return n;
-    
-];
-[_bglHeapReturn a;
-    
-        if(_bglHeapBlockOf(a) ~= 0) _bglHeap-->4 = a;
-        return a;
-    
-];
-array _bglfresh --> 48;
-[_bglHeapBitMask b m k;
-    m = 1;
-    k = 0;
-    
-        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
-        return m;
-    
-];
