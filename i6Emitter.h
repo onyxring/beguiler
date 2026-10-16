@@ -210,6 +210,8 @@ class i6Emitter{
         void emitParamCopyIns(functionDef* fd, const string& indent);
         void prepareRecursionSave(class functionDef* fd);
         void pruneSuperposedObjectMethods(string& buf);
+        bool holdsHeapArray(const string& type);
+        string gcRootsRoutine(const std::function<bool(const string&)>& referenced);
         string actionNameOf(const string& text);
         // Emit framePool-backed allocation for each local array in `locals`, registering the matching
         // free in `fn->cleanups`. Shared by top-level functions AND class/object member methods so a

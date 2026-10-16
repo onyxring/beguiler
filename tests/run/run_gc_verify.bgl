@@ -1,0 +1,18 @@
+// run_gc_verify — at trace level 2 a debug build also reads memory for references the roots miss: an array that
+// Inform 6 code holds without bgl.gc.keep is reported and kept instead of freed.
+// BEGUILER_FLAGS: --debug
+// EXPECT_OUTPUT: [Beguile debug: the array at
+// EXPECT_OUTPUT: which the collector doesn't track; it is kept]
+// EXPECT_OUTPUT: still 9
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+#include <array>
+#i6 { Global hiddenByI6; [ HideArray a; hiddenByI6 = a; ]; }
+extern void HideArray(array<int> a);
+array<int> make(){ array<int> t[3]; t += 31; return t; }
+void main(){
+    bglInit();
+    #i6 { _bglHeapTraceLevel-->0 = 2; }
+    HideArray(make());
+    bgl.gc.collect();
+    print($"still {bgl.gc.used}");
+}

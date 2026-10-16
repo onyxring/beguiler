@@ -326,8 +326,9 @@ void Epilogue() { print("The End.^"); }  // overrides it; no replace needed
 
 > **Arrays given to I6.** A local array is freed as its routine returns unless Beguile code stored it
 > somewhere lasting (§12.6). I6 code that keeps an array it was given, in a global of its own or an
-> `#i6` block's variable, needs one that lives on: mark it with `bgl.gc.keep(a)` first (§21.15), or pass a
-> file-scope array.
+> `#i6` block's variable, needs one that lives on: pin it with `bgl.gc.keep(a)` first (§21.15), and
+> `bgl.gc.unpin(a)` once the I6 code lets go, or pass a file-scope array. The collector can't see a reference
+> held only in Inform 6.
 
 **See also** §6.1, §6.5, §12.6.
 

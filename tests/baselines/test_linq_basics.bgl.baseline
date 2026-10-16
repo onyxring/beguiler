@@ -436,54 +436,20 @@ array _bglheapstore --> 1536;
         if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
     
 ];
-[_bglHeapCollect p _l_last o b a i more heapBytes;
-    p = 0;
-    _l_last = 0;
+[_bglHeapCollect o b;
     o = 0;
     b = 0;
-    a = 0;
-    i = 0;
-    more = 0;
-    heapBytes = 0;
     
         if(_bglHeap == 0) return;
-        heapBytes = (_bglHeap-->5) * WORDSIZE;
-        #Ifdef TARGET_ZCODE;
-            p = 0; _l_last = 0-->7;
-        #Ifnot;
-            p = 0-->2; _l_last = 0-->4;
+        _bglGcRoots();
+        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 & 16) _bglHeapMark(b + 5 * WORDSIZE);
+        }
+        _bglHeapTrace();
+        #Ifdef DEBUG;
+            if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
         #Endif;
-        _l_last = _l_last - WORDSIZE;
-        ! Every word outside the heap, in two runs: before it and after it. Only a word that points into
-        ! the heap's blocks needs the full test.
-        a = (_bglHeap-->0) + 5 * WORDSIZE;
-        i = _bglHeap-->1;
-        b = _bglHeap;
-        while(p ~= b){
-            o = (p-->0) - a;
-            if(o >= 0 && o < i) _bglHeapMark(p-->0);
-            p++;
-        }
-        p = _bglHeap + heapBytes;
-        if(_bglUnsignedCompare(p, _l_last) <= 0){
-            _l_last++;
-            while(p ~= _l_last){
-                o = (p-->0) - a;
-                if(o >= 0 && o < i) _bglHeapMark(p-->0);
-                p++;
-            }
-        }
-        do {
-            more = false;
-            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-                b = (_bglHeap-->0) + o;
-                if((b-->2 & 3) ~= 2) continue;
-                b-->2 = b-->2 + 1;
-                more = true;
-                a = b + 5 * WORDSIZE;
-                for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
-            }
-        } until(more == false);
         for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
             b = (_bglHeap-->0) + o;
             if((b-->2 & 3) == 1) _bglHeapRelease(b);
@@ -497,6 +463,58 @@ array _bglheapstore --> 1536;
     
         b = _bglHeapBlockOf(w);
         if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
+];
+[_bglHeapTrace o b a i more;
+    o = 0;
+    b = 0;
+    a = 0;
+    i = 0;
+    more = 0;
+    
+        do {
+            more = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) ~= 2) continue;
+                b-->2 = b-->2 + 1;
+                more = true;
+                a = b + 5 * WORDSIZE;
+                for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
+            }
+        } until(more == false);
+    
+];
+[_bglHeapVerify found p _l_last a o b w;
+    found = 0;
+    p = 0;
+    _l_last = 0;
+    a = 0;
+    o = 0;
+    b = 0;
+    w = 0;
+    
+        ! On the Z-machine Inform 6 holds values in its globals and arrays, which follow the object tables (their
+        ! encoded text could pass for an address).
+        #Ifdef TARGET_ZCODE;
+            p = 0-->6; _l_last = 0-->7;
+        #Ifnot;
+            p = 0-->2; _l_last = 0-->4;
+        #Endif;
+        a = (_bglHeap-->0) + 5 * WORDSIZE;
+        for(_l_last = _l_last - WORDSIZE : _bglUnsignedCompare(p, _l_last) <= 0 : p++){
+            if(p == _bglHeap){ p = _bglHeap + (_bglHeap-->5) * WORDSIZE - 1; continue; }
+            w = p-->0;
+            o = w - a;
+            if(o < 0 || o >= _bglHeap-->1) continue;
+            b = _bglHeapBlockOf(w);
+            if(b == 0 || (b-->2 & 3) ~= 1) continue;
+            print "^[Beguile debug: the array at ", w, " is still referred to from address ", p,
+                  ", which the collector doesn't track; it is kept]^";
+            _bglHeapMark(w);
+            found = true;
+        }
+        return found;
     
 ];
 [_bglUnsignedCompare x y u v;
@@ -515,4 +533,9 @@ array _bglheapstore --> 1536;
         return 1;
     }
     return -1;
+];
+array _bglheaptracelevel --> 1;
+
+[ _bglGcRoots o i;
+    o = 0; i = 0;
 ];

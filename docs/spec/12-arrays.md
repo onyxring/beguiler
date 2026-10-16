@@ -240,6 +240,12 @@ Arrays are freed in two ways:
   has been allocated since it last ran. Lifetime is reachability, not turns: an array kept in a global,
   a property or another live array survives any number of prompts.
 
+The collector finds references from declared types. Its roots are the globals and properties whose type can
+hold an array (an array type, `var`, or a union with one of them), the elements of file-scope and member
+arrays of such a type, the local arrays of routines still running, and the arrays pinned with
+`bgl.gc.keep` (§21.15). It follows them through the arrays they reach. A reference it can't see, one held
+only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead.
+
 The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
 
 `bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
@@ -259,9 +265,8 @@ array<int> keep = build();      // keep takes build's array
 int n = keep[0];                // → 1
 ```
 
-> **Conservative collection.** The collector treats every word of memory outside the heap as a
-> possible reference. An integer that happens to equal an array's address keeps that array until the
-> next collection; a live array is never freed.
+> **Arrays held by Inform 6.** The collector reads only typed slots, so an array that Inform 6 code holds
+> without `bgl.gc.keep` is freed at the next collection, and a later use of it reads freed memory (§15.4.1).
 
 > **Element instances.** An array of a struct owns its slots' instances (§12.10), and freeing the
 > array releases them. A function can return such an array; the instances go with it.

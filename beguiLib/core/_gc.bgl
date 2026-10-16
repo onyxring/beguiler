@@ -14,8 +14,9 @@
 // and the array is the address of `capacity`, as every array's is. `size` counts the block's words;
 // `kind` is the routine that releases what the block owns (for an array, one element at a time; 0 for none);
 // `state` is 0 free, 1 in use, 2 marked, 3 marked and traced; plus 4 once a reference to it is kept anywhere
-// but its owner (it is then left to the collector), and plus 8 while it has no owner and the next local
-// declared from it may take it (a step's result, or an array its owner returned). Only allocating names the
+// but its owner (it is then left to the collector), plus 16 while it is pinned (a root of its own), and plus 8
+// while it has no owner and the next local declared from it may take it (a step's result, or an array its owner
+// returned). Only allocating names the
 // storage, so a program that allocates nothing has no heap. Its bookkeeping words:
 //     -->0 the first block                                  -->1 bytes from it to the heap's end
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
@@ -24,6 +25,8 @@
 superposed rawArray<int> _bglHeapStore[#beguilerSettings.heapSize];
 // The heap: 0 until it is laid out.
 int _bglHeap = 0;
+// How much the collector reports in a debug build; 2 also looks for references the roots missed.
+superposed rawArray<int> _bglHeapTraceLevel[1];
 // The routine a library binding runs at each prompt (0 until the heap is first used).
 int _bglPromptHook = 0;
 
@@ -173,6 +176,17 @@ superposed void _bglHeapShrink(var a){
         _bglHeapSetStart(nb, true);
         _bglHeap-->2 = _bglHeap-->2 - nb-->0;
         b-->0 = need;
+    }
+}
+
+// Pin array `a` (it is a root until unpinned or freed), or unpin it.
+superposed void _bglHeapPin(int a, bool on){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b == 0) return;
+        if(on) b-->2 = b-->2 | 20;
+        else b-->2 = b-->2 & ~16;
     }
 }
 
@@ -326,45 +340,39 @@ superposed void _bglHeapMark(int w){
     }
 }
 
-// Free every heap array that nothing refers to. Every word of memory outside the heap is a possible
-// reference (a word equal to an array's address keeps it), and so is every element of an array kept.
+// Free every heap array that nothing refers to: marked from the roots (the slots whose type can hold an array,
+// listed by the compiler in _bglGcRoots, and the pinned arrays), then through the elements of what is marked.
 superposed void _bglHeapCollect(){
-    int p = 0;
-    int last = 0;
+    int o = 0;
+    int b = 0;
+    #i6 {
+        if(_bglHeap == 0) return;
+        _bglGcRoots();
+        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 & 16) _bglHeapMark(b + 5 * WORDSIZE);
+        }
+        _bglHeapTrace();
+        #Ifdef DEBUG;
+            if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
+        #Endif;
+        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+            b = (_bglHeap-->0) + o;
+            if((b-->2 & 3) == 1) _bglHeapRelease(b);
+            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+        }
+        _bglHeap-->3 = 0;
+    }
+}
+
+// Mark what the marked arrays' elements refer to, until nothing new is marked.
+superposed void _bglHeapTrace(){
     int o = 0;
     int b = 0;
     int a = 0;
     int i = 0;
     int more = 0;
-    int heapBytes = 0;
     #i6 {
-        if(_bglHeap == 0) return;
-        heapBytes = (_bglHeap-->5) * WORDSIZE;
-        #Ifdef TARGET_ZCODE;
-            p = 0; last = 0-->7;
-        #Ifnot;
-            p = 0-->2; last = 0-->4;
-        #Endif;
-        last = last - WORDSIZE;
-        ! Every word outside the heap, in two runs: before it and after it. Only a word that points into
-        ! the heap's blocks needs the full test.
-        a = (_bglHeap-->0) + 5 * WORDSIZE;
-        i = _bglHeap-->1;
-        b = _bglHeap;
-        while(p ~= b){
-            o = (p-->0) - a;
-            if(o >= 0 && o < i) _bglHeapMark(p-->0);
-            p++;
-        }
-        p = _bglHeap + heapBytes;
-        if(_bglUnsignedCompare(p, last) <= 0){
-            last++;
-            while(p ~= last){
-                o = (p-->0) - a;
-                if(o >= 0 && o < i) _bglHeapMark(p-->0);
-                p++;
-            }
-        }
         do {
             more = false;
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
@@ -376,12 +384,42 @@ superposed void _bglHeapCollect(){
                 for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
             }
         } until(more == false);
-        for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
-            b = (_bglHeap-->0) + o;
-            if((b-->2 & 3) == 1) _bglHeapRelease(b);
-            else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+    }
+}
+
+// Debug builds, at trace level 2: before the sweep, read the memory where Inform 6 keeps values for words that
+// still refer to an array the roots missed. Each one is reported and kept, since freeing it would leave that reference
+// stale. A word that only looks like an address (a stale temporary) is reported too.
+superposed bool _bglHeapVerify(){
+    int found = 0;
+    int p = 0;
+    int last = 0;
+    int a = 0;
+    int o = 0;
+    int b = 0;
+    int w = 0;
+    #i6 {
+        ! On the Z-machine Inform 6 holds values in its globals and arrays, which follow the object tables (their
+        ! encoded text could pass for an address).
+        #Ifdef TARGET_ZCODE;
+            p = 0-->6; last = 0-->7;
+        #Ifnot;
+            p = 0-->2; last = 0-->4;
+        #Endif;
+        a = (_bglHeap-->0) + 5 * WORDSIZE;
+        for(last = last - WORDSIZE : _bglUnsignedCompare(p, last) <= 0 : p++){
+            if(p == _bglHeap){ p = _bglHeap + (_bglHeap-->5) * WORDSIZE - 1; continue; }
+            w = p-->0;
+            o = w - a;
+            if(o < 0 || o >= _bglHeap-->1) continue;
+            b = _bglHeapBlockOf(w);
+            if(b == 0 || (b-->2 & 3) ~= 1) continue;
+            print "^[Beguile debug: the array at ", w, " is still referred to from address ", p,
+                  ", which the collector doesn't track; it is kept]^";
+            _bglHeapMark(w);
+            found = true;
         }
-        _bglHeap-->3 = 0;
+        return found;
     }
 }
 
@@ -418,8 +456,10 @@ superposed int _bglHeapSizeWords(){
 superposed _bglObject _bglGC {
     /// Release an array now instead of at the next collection; a later use through another reference is an error.
     void free(var a)  { _bglHeapFree(a); }
-    /// Keep a local array past its routine's exit, for Inform 6 code that holds on to it; the collector frees it once nothing refers to it.
-    void keep(var a)  { _bglHeapEscape(a); }
+    /// Keep an array for Inform 6 code that holds on to it, until `unpin` or `free`.
+    void keep(var a)  { _bglHeapPin(a, true); }
+    /// Hand an array kept with `keep` back to the collector, which frees it once nothing refers to it.
+    void unpin(var a) { _bglHeapPin(a, false); }
     /// Free every array that nothing refers to; call it where no local array still needed is held only in a local.
     void collect()    { _bglHeapCollect(); }
     emitter int used  { _bglHeapUsedWords() }   /// Words of the heap in use.

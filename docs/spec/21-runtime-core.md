@@ -1053,14 +1053,16 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 | Member | Returns | Description |
 |---|---|---|
 | `bgl.gc.free(a)` | `void` | Frees array `a` now instead of at the next collection. A later use of it through another reference reads freed memory. |
-| `bgl.gc.keep(a)` | `void` | Keeps local array `a` past its routine's exit, for I6 code that holds on to it (§15.4.1). The collector still frees it once nothing refers to it. |
+| `bgl.gc.keep(a)` | `void` | Pins array `a`, for I6 code that holds on to it (§15.4.1): it lives until `unpin` or `free`, whatever refers to it. |
+| `bgl.gc.unpin(a)` | `void` | Hands a pinned array back to the collector, which frees it once nothing refers to it. |
 | `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
 | `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
 | `bgl.gc.size` | `int` | Words the heap holds for blocks. |
+| `bgl.gc.peak` | `int` | The most words ever in blocks in use: what `heapSize` must hold. |
 
 The library bindings collect at the prompt (§23). `collect()` is for a program or library that runs
-without one: call it where no array still needed is held only in a local variable, since the collector
-can't see a running routine's locals.
+without one: call it where no array still needed is held only in a local variable. The collector sees a running routine's
+declared local arrays, but not a local variable that refers to an array.
 
 **Example**
 

@@ -189,6 +189,8 @@ string i6Emitter::resolvedOutput(){
     }
 
     pruneSuperposedObjectMethods(buf);
+    // The collector's roots: written once the output is known, naming only what it holds.
+    if(referenced("_bglGcRoots") && buf.find("[_bglGcRoots") == string::npos) buf += gcRootsRoutine(referenced);
 
     // The .inf-mode trailer — `end;` through EOF — goes last of all, AFTER the superposed blocks.
     // It used to be written into `out` during emission, which put `end;` ahead of them: I6 stops
@@ -6097,4 +6099,79 @@ string i6Emitter::byteArrayDecl(const string& name, arrayDeclaration* arr, int s
                            : format("Array {0} buffer {1};\n", name, cap);   // starts full, as I6's own does
     }
     return byteCapacityPrefix(name, cap) + decl;
+}
+
+// Whether a slot of this type can hold a heap array: an array, `var`, or a union with one of them.
+bool i6Emitter::holdsHeapArray(const string& type){
+    string t = type;
+    for(char& c : t) c = (char)tolower((unsigned char)c);
+    if(t.rfind("ref ", 0) == 0) t = t.substr(4);
+    if(t.rfind("array<", 0) == 0) return t != "array<char>";
+    if(t == "var") return true;
+    int depth = 0;
+    for(size_t i = 0, from = 0; i <= t.size(); i++){
+        if(i < t.size() && t[i] == '<') depth++;
+        else if(i < t.size() && t[i] == '>') depth--;
+        else if(depth == 0 && (i == t.size() ? from > 0 : t[i] == '|')){
+            if(holdsHeapArray(t.substr(from, i - from))) return true;
+            from = i + 1;
+        }
+    }
+    if(classDef* c = languageService.findClass(t); c != nullptr && c->isUnion())
+        for(const string& m : c->unionMembers) if(holdsHeapArray(m)) return true;
+    return false;
+}
+
+// `_bglGcRoots`: marks every heap array a lasting slot refers to. The slots are the globals, properties and
+// file-scope array elements whose declared type can hold one, and the local arrays of routines still running.
+string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& referenced){
+    string body;
+    auto markProp = [&](const string& owner, const string& prop){
+        return format("    if({0} provides {1}) for(i = 0 : i < {0}.#{1} / WORDSIZE : i++) _bglHeapMark(({0}.&{1})-->i);\n",
+                      owner, prop);
+    };
+    auto propName = [&](variableDeclaration* mv){
+        return mv->i6name.empty() ? parser.propertyI6Name(mv->name) : mv->i6name;
+    };
+    auto memberHolds = [&](variableDeclaration* mv){
+        if(mv == nullptr || mv->isStatic || isHeaderMember(mv->name)) return false;
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(mv))
+            return !ad->isByteArray && !ad->isRaw && (holdsHeapArray(ad->elementType) || ad->arraySize == 0);
+        return holdsHeapArray(mv->type.name);
+    };
+    set<string> seen;
+    for(typeDef* node : languageService.globals){
+        if(auto* ad = dynamic_cast<arrayDeclaration*>(node)){
+            if(ad->isByteArray || ad->isRaw) continue;
+            string nm = ad->i6name.empty() ? ad->dName() : ad->i6name;
+            if(!seen.insert(nm).second || !referenced(nm)) continue;
+            bool hasStorage = ad->arraySize > 0 || dynamic_cast<initializerList*>(ad->declaredExpressionValue) != nullptr;
+            if(!hasStorage || ad->isRepointed || ad->isExternal) body += format("    _bglHeapMark({0});\n", nm);
+            if(hasStorage && !ad->isExternal && holdsHeapArray(ad->elementType)){
+                string table = ad->isRepointed ? "_bglarr_" + nm : nm;
+                body += format("    for(i = 1 : i <= {0}-->0 : i++) _bglHeapMark({0}-->i);\n", table);
+            }
+        } else if(auto* cd = dynamic_cast<classDef*>(node)){
+            if(cd->isExternal || cd->isEmitterClass || cd->isUnion() || !referenced(cd->i6Name())) continue;
+            for(typeMember* m : cd->members){
+                auto* mv = dynamic_cast<variableDeclaration*>(m);
+                if(!memberHolds(mv)) continue;
+                body += format("    objectloop(o ofclass {0})\n", cd->i6Name()) + "    " + markProp("o", propName(mv));
+            }
+        } else if(auto* od = dynamic_cast<objectDef*>(node)){
+            string nm = od->i6name.empty() ? od->dName() : od->i6name;
+            if(od->isExternal || !referenced(nm)) continue;
+            for(typeMember* m : od->members){
+                auto* mv = dynamic_cast<variableDeclaration*>(m);
+                if(mv != nullptr && !mv->type.name.empty() && memberHolds(mv)) body += markProp(nm, propName(mv));
+            }
+        } else if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
+            if(vd->isConst || vd->isExternal || vd->isInstanceBacking || !holdsHeapArray(vd->type.name)) continue;
+            string nm = vd->i6name.empty() ? vd->dName() : vd->i6name;
+            if(seen.insert(nm).second && referenced(nm)) body += format("    _bglHeapMark({0});\n", nm);
+        }
+    }
+    if(referenced("_bglFramePool"))
+        body += "    for(i = 0 : i < _bglFrameTop : i++) _bglHeapMark(_bglFramePool-->i);\n";
+    return "\n[ _bglGcRoots o i;\n    o = 0; i = 0;\n" + body + "];\n";
 }

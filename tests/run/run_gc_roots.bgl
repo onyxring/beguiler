@@ -1,0 +1,37 @@
+// run_gc_roots — the collector keeps an array that any lasting slot refers to: a ref global, a var global, a class
+// property, an object property, a file-scope array of arrays, a member array of arrays, and a local of a routine
+// still running. Once each lets go, the array is freed.
+// EXPECT_OUTPUT: kept 1 2 3 4 5 6 used 42 | running 9 used 49 | freed 0
+#beguilerSettings { target = z5; informName = "none"; heapSize = 512; }
+#include <array>
+ref array<int> g;
+var v;
+class Holder { ref array<int> a; }
+Holder h = Holder{};
+object shelf { ref array<int> slot; array<array<int>> rows[2]; }
+array<array<int>> table[2];
+
+array<int> make(int n){ array<int> t[1]; t += n; bgl.gc.keep(t); bgl.gc.unpin(t); return t; }
+
+void inner(){
+    array<int> mine[1];
+    mine += 9;
+    bgl.gc.collect();
+    print($"running {mine[0]} used {bgl.gc.used} | ");
+}
+
+void main(){
+    bglInit();
+    g := make(1);
+    v = make(2);
+    h.a := make(3);
+    shelf.slot := make(4);
+    table += make(5);
+    shelf.rows += make(6);
+    bgl.gc.collect();
+    print($"kept {g[0]} {((array<int>)v)[0]} {h.a[0]} {shelf.slot[0]} {table[0][0]} {shelf.rows[0][0]} used {bgl.gc.used} | ");
+    inner();
+    g := null; v = 0; h.a := null; shelf.slot := null; table.clear(); shelf.rows.clear();
+    bgl.gc.collect();
+    print($"freed {bgl.gc.used}");
+}

@@ -1,6 +1,6 @@
-// run_gc_keep — a local array given to Inform 6 code that keeps it survives its routine's exit when it is marked
-// with bgl.gc.keep, and the collector frees it once the I6 code lets go of it.
-// EXPECT_OUTPUT: held 31 | used 9 | released 0
+// run_gc_keep — a local array given to Inform 6 code survives its routine's exit when it is pinned with
+// bgl.gc.keep, stays while pinned even once nothing refers to it, and is freed after bgl.gc.unpin.
+// EXPECT_OUTPUT: held 31 | used 9 | pinned 9 | released 0
 #beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
 #include <array>
 #i6 { Global heldByI6; [ HoldArray a; heldByI6 = a; ]; [ DropArray; heldByI6 = 0; ]; }
@@ -15,7 +15,11 @@ void main(){
     print($"held {heldByI6[0]} | ");
     bgl.gc.collect();
     print($"used {bgl.gc.used} | ");
+    var v = heldByI6;
     DropArray();
+    bgl.gc.collect();
+    print($"pinned {bgl.gc.used} | ");
+    bgl.gc.unpin(v);
     bgl.gc.collect();
     print($"released {bgl.gc.used}");
 }
