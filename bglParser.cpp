@@ -1339,6 +1339,8 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
                                 p->name, typeDisplayName(p->type.name)));
             continue;
         }
+        // Overloads of `=` are named by their parameter type; name the set before taking this one's name.
+        mangleOverloadSetForReceiver(cls->name, assignOp->name);
         if(!assignOp->isEmitter && assignOp->i6name.empty())
             assignOp->i6name = mangleOperatorName(assignOp->name);
         // Synthesize a global I6 object backing. Name includes the class context (if any)

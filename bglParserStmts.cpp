@@ -3366,7 +3366,13 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
                         }
         }
         if(leftType == nullptr)
-            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }    }
+            if(auto* vd = languageService.findGlobalAs<variableDeclaration>(lhsOriginal)){ leftType = &vd->type; if(auto* _ad = dynamic_cast<arrayDeclaration*>(vd)) lhsIsByteArray = _ad->isByteArray; }
+        // A global declared as an instance of a class with a copy operator is that object: `=` copies into it.
+        if(leftType == nullptr)
+            if(auto* od = languageService.findGlobalAs<objectDef>(lhsOriginal);
+               od != nullptr && od->objectClass != nullptr && od->objectClass->copiesOnAssign)
+                leftType = &languageService.getType(od->objectClass->name);
+    }
 
     // Resolve via getDispatchClass so a template-typed LHS (e.g. `array<int>`) reaches
     // operator= dispatch — getType("array<int>") returns null (only the base `array` is
@@ -4667,6 +4673,15 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
     if(!stmtCastType.empty())
         if(isUpcast(stmtCastType, actualPathType))
             ancestorDispatchClass = getDispatchClass(stmtCastType);
+    // `((Pt)self).m();` where the receiver's class is unrelated to Pt but converts to it: the call is made
+    // on the converted value.
+    if(!stmtCastType.empty() && ancestorDispatchClass == nullptr && !actualPathType.empty()){
+        expression recv;
+        recv.tokens = {emitObjectPath};
+        recv.resolvedType = actualPathType;
+        convertReceiverForCast(&recv, stmtCastType);
+        if(recv.resolvedType == stmtCastType) emitObjectPath = recv.text();
+    }
     stmtCastType = "";  // consume the cast
     if(objectType.empty() && objectPath.find('.') != string::npos){
         // `eTone.alarm.show()`: an enum member written with its enum's name.

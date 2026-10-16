@@ -3723,6 +3723,15 @@ bglParser::ExprStep bglParser::parseExprMemberCall(ExprParseState& st, token& me
     if(!explicitCast.empty())
         if(isUpcast(explicitCast, actualType))
             ancestorDispatchClass = getDispatchClass(explicitCast);
+    // `((Pt)self).m()` where the receiver's class is unrelated to Pt but converts to it: the call is made
+    // on the converted value.
+    if(!explicitCast.empty() && ancestorDispatchClass == nullptr && !actualType.empty()){
+        expression recv;
+        recv.tokens = {objName};
+        recv.resolvedType = actualType;
+        convertReceiverForCast(&recv, explicitCast);
+        if(recv.resolvedType == explicitCast && recv.text() != objName){ objName = recv.text(); actualType = explicitCast; }
+    }
     if(objType.empty()) parsingError(format("Unknown variable '{0}'", objName));
     // Qualify objName for I6 emission: a #using-imported member like `glulx`
     // needs to emit as `bgl.glulx` (the actual property path) so I6 resolves
