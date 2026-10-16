@@ -63,8 +63,9 @@ symbols that may follow `operator` are:
 
 `prefix++` and `prefix--` name the prefix forms (`++n`); `++` and `--` name the postfix forms, so a
 class may give each its own behavior. Declaring `operator` with any symbol outside this set is a
-compile-time error. The valid operator tokens `?.`, `??`, `=>`, and the reference-binding operator
-`:=` (§3.7) are not overloadable; `:=` exists precisely to bypass operator dispatch.
+compile-time error. The valid operator tokens `?.`, `??`, `=>`, the reference-binding operator `:=`
+(§3.7) and the identity comparison `:==` (§4.6) are not overloadable: `:=` and `:==` exist precisely to
+bypass operator dispatch.
 
 The `==` row's `static` shape is the form a generic container calls (§9.6, §12.10).
 

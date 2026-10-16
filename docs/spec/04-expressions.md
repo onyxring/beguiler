@@ -65,7 +65,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 10 | `+` `-` | infix | left | Additive |
 | 9 | `<<` `>>` `<=>` | infix | left | Shift, three-way comparison |
 | 8 | `<` `<=` `>` `>=` | infix | left | Relational |
-| 7 | `==` `!=` `?=` `=~` | infix | left | Equality |
+| 7 | `==` `!=` `?=` `=~` `:==` | infix | left | Equality, identity (§4.6) |
 | 6 | `&` | infix | left | Bitwise and |
 | 5 | `^` | infix | left | Bitwise exclusive or |
 | 4 | `\|` | infix | left | Bitwise or |
@@ -137,6 +137,22 @@ machine.
 ## 4.6 Comparison Operators
 
 `== != < > <= >= ?= =~ <=>` are tabulated in §4.5.
+
+**Identity.** `a :== b` is true when `a` and `b` are the same instance. It compares references and never
+calls an `operator ==`, so it tells "the same object" apart from a class's own equality, as `:=` bypasses its
+`operator =` (§3.7). Both operands are instances: objects, instances of any class (value classes and
+`stringObj` included), arrays, or `null`. On a primitive it is a compile-time error ("use '=='"). `:==`
+can't be overloaded, and neither can `:=`.
+
+```bgl
+#include <string>
+stringObj s = "hi";
+stringObj t = "hi";
+ref stringObj u := s;
+print(s == t);       // true: the same text
+print(s :== t);      // false: two strings
+print(u :== s);      // true: u refers to s
+```
 
 ## 4.7 Logical Operators
 

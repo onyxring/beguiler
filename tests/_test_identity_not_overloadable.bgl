@@ -1,0 +1,5 @@
+/* ':==' bypasses operator dispatch, so a class can't overload it. */
+// EXPECT_ERROR: ':==' is not an overloadable operator
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Note : object { int n; bool operator :== (Note o) { return true; } }
+void main(){ }

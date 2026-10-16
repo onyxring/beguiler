@@ -605,7 +605,7 @@ static int operatorPrecedence(const string& op){
     if(op == "<<" || op == ">>")                                           return  9;
     if(op == "<=>")                                                        return  9;
     if(op == "<" || op == "<=" || op == ">" || op == ">=")                 return  8;
-    if(op == "==" || op == "!=" || op == "?=" || op == "=~")               return  7;
+    if(op == "==" || op == "!=" || op == "?=" || op == "=~" || op == ":==") return  7;
     if(op == "&")                                                          return  6;
     if(op == "^")                                                          return  5;
     if(op == "|")                                                          return  4;
@@ -661,7 +661,7 @@ static void stripOpenPrefix(expression* expr, vector<string>& prefix){
 }
 
 static const vector<string> kPrecedenceOps = {
-    "*","/","%","+","-","<<",">>","<=>","<","<=",">",">=","==","!=","?=","=~","&","^","|","&&","||"
+    "*","/","%","+","-","<<",">>","<=>","<","<=",">",">=","==","!=","?=","=~",":==","&","^","|","&&","||"
 };
 
 // ===============================================================================
@@ -5193,6 +5193,36 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
     const vector<string>& terminators = *st.terminators;
     functionDef* func = st.func;
     statementBlock* body = st.body;
+
+    // `a :== b`: the same instance, compared as references; no `operator ==` is called.
+    if(cur.value == ":=="){
+        auto instanceType = [&](const string& t){
+            classDef* c = languageService.classOf(t);
+            return t == "nullliteral" || isWordArrayType(t) || t == "bytearray" || (c != nullptr && !c->isPrimitive);
+        };
+        if(!instanceType(expr->resolvedType))
+            parsingError(format("':==' compares instances, and '{0}' is a value of type '{1}': use '=='.",
+                                expr->text(), typeDisplayName(expr->resolvedType.empty() ? "unknown" : expr->resolvedType)));
+        vector<string> rhsTerminators = terminators;
+        for(const string& op : kPrecedenceOps)
+            if(operatorPrecedence(op) <= operatorPrecedence(":==")) rhsTerminators.push_back(op);
+        if(parenDepth > 0) rhsTerminators.push_back(token::parenClose);
+        rhsTerminators.push_back("?");
+        expression* rhsExpr = parseExpression(exprNext(st), rhsTerminators, func, body);
+        if(rhsExpr->tokens.empty()) parsingError("':==' has nothing after it: an operand is missing.");
+        if(!instanceType(rhsExpr->resolvedType))
+            parsingError(format("':==' compares instances, and '{0}' is a value of type '{1}': use '=='.",
+                                rhsExpr->text(), typeDisplayName(rhsExpr->resolvedType.empty() ? "unknown" : rhsExpr->resolvedType)));
+        string lhsText = expr->text();
+        expr->tokens.assign(1, "(" + lhsText + " == " + rhsExpr->text() + ")");
+        expr->resolvedType = "bool";
+        token terminatorTok;
+        terminatorTok.value = rhsExpr->terminator;
+        terminatorTok.tokenType = (rhsExpr->terminator == ";" || rhsExpr->terminator == ")" || rhsExpr->terminator == "?")
+                                ? eTokenType::symbol : eTokenType::oper;
+        prefetched = terminatorTok;
+        return ExprStep::Advance;
+    }
 
     if(!expr->resolvedType.empty()){
         // A plain enum doesn't widen to int (§2.7.3), so int arithmetic doesn't apply to it.

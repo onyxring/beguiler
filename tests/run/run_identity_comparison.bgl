@@ -1,0 +1,25 @@
+// run_identity_comparison — `a :== b` is true when both are the same instance, never calling an `operator ==`:
+// objects, `stringObj`, arrays and references alike.
+// EXPECT_OUTPUT: true false true true false true true true ok
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+class Note : object {
+    int n;
+    bool operator == (Note o) { return n == o.n; }
+    bool operator != (Note o) { return n != o.n; }
+}
+Note a { n = 1; }
+Note b { n = 1; }
+array<int> x = {1, 2};
+void main(){
+    bglInit();
+    stringObj s = "hi";
+    stringObj t = "hi";
+    ref stringObj u := s;
+    ref Note r := a;
+    print($"{a == b} {a :== b} {r :== a} {s == t} {s :== t} {u :== s} ");
+    ref array<int> y := x;
+    print(y :== x); print(" ");
+    print(a :== b || r :== a); print(" ");
+    if (r :== a && !(r :== b)) print("ok");
+}

@@ -2411,7 +2411,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 10 | `+` `-` | infix | left | Additive |
 | 9 | `<<` `>>` `<=>` | infix | left | Shift, three-way comparison |
 | 8 | `<` `<=` `>` `>=` | infix | left | Relational |
-| 7 | `==` `!=` `?=` `=~` | infix | left | Equality |
+| 7 | `==` `!=` `?=` `=~` `:==` | infix | left | Equality, identity (§4.6) |
 | 6 | `&` | infix | left | Bitwise and |
 | 5 | `^` | infix | left | Bitwise exclusive or |
 | 4 | `\|` | infix | left | Bitwise or |
@@ -2483,6 +2483,22 @@ machine.
 ## 4.6 Comparison Operators
 
 `== != < > <= >= ?= =~ <=>` are tabulated in §4.5.
+
+**Identity.** `a :== b` is true when `a` and `b` are the same instance. It compares references and never
+calls an `operator ==`, so it tells "the same object" apart from a class's own equality, as `:=` bypasses its
+`operator =` (§3.7). Both operands are instances: objects, instances of any class (value classes and
+`stringObj` included), arrays, or `null`. On a primitive it is a compile-time error ("use '=='"). `:==`
+can't be overloaded, and neither can `:=`.
+
+```bgl
+#include <string>
+stringObj s = "hi";
+stringObj t = "hi";
+ref stringObj u := s;
+print(s == t);       // true: the same text
+print(s :== t);      // false: two strings
+print(u :== s);      // true: u refers to s
+```
 
 ## 4.7 Logical Operators
 
@@ -5147,8 +5163,9 @@ symbols that may follow `operator` are:
 
 `prefix++` and `prefix--` name the prefix forms (`++n`); `++` and `--` name the postfix forms, so a
 class may give each its own behavior. Declaring `operator` with any symbol outside this set is a
-compile-time error. The valid operator tokens `?.`, `??`, `=>`, and the reference-binding operator
-`:=` (§3.7) are not overloadable; `:=` exists precisely to bypass operator dispatch.
+compile-time error. The valid operator tokens `?.`, `??`, `=>`, the reference-binding operator `:=`
+(§3.7) and the identity comparison `:==` (§4.6) are not overloadable: `:=` and `:==` exist precisely to
+bypass operator dispatch.
 
 The `==` row's `static` shape is the form a generic container calls (§9.6, §12.10).
 
@@ -12359,7 +12376,7 @@ The table is the one in §4.3; higher precedence binds more tightly.
 | 10 | `+` `-` | infix | left | Additive |
 | 9 | `<<` `>>` `<=>` | infix | left | Shift, three-way comparison |
 | 8 | `<` `<=` `>` `>=` | infix | left | Relational |
-| 7 | `==` `!=` `?=` `=~` | infix | left | Equality |
+| 7 | `==` `!=` `?=` `=~` `:==` | infix | left | Equality, identity |
 | 6 | `&` | infix | left | Bitwise and |
 | 5 | `^` | infix | left | Bitwise exclusive or |
 | 4 | `\|` | infix | left | Bitwise or |
@@ -12372,8 +12389,8 @@ The table is the one in §4.3; higher precedence binds more tightly.
 ## C.2 Overloadable Operators
 
 The complete set of operators a class may overload, with the declaration shape of each, is the table
-in §9.1; the operators that must be declared as emitters are listed in §9.8. `?.`, `??`, `=>` and
-`:=` are operator tokens that are not overloadable.
+in §9.1; the operators that must be declared as emitters are listed in §9.8. `?.`, `??`, `=>`, `:=` and
+`:==` are operator tokens that are not overloadable.
 
 ## C.3 Operator-to-Section Index
 
@@ -12385,6 +12402,7 @@ in §9.1; the operators that must be declared as emitters are listed in §9.8. `
 | `?=` | Type-defined comparison; no built-in meaning | §4.5, §9.5 |
 | `<=>` | Three-way comparison (result `int`: negative / 0 / positive) | §4.5, §9.6 |
 | `=~` | Content / case-insensitive equality (core `char`; `<string>`) | §4.5, §21.7, §22.3 |
+| `:==` | Identity: the same instance; never calls `operator ==`; not overloadable | §4.6 |
 | `&&` `\|\|` `!` | Logical (result `eBool`) | §4.5, §9.5 |
 | `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §9.1 |
 | `&=` `\|=` `^=` `<<=` `>>=` | Compound bitwise assignment | §5.6 |
