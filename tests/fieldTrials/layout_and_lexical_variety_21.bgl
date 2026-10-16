@@ -8,7 +8,7 @@
 // routine that `throw`s when the code is already full, caught in the verb handler; digits split from a
 // `NUMBER` with `do … until` and `push()`; a code compared slot by slot in a `for` loop; a log of tries
 // kept with `append()`/`dequeue()`; an enum state switched on with multi-value cases; a coin class with an
-// enum metal, a value class totalled in a routine and returned; `while` and `for … in` range loops;
+// enum metal, a struct totalled in a routine and returned; `while` and `for … in` range loops;
 // `#using bgl.printRules` with `the()`/`cThe()` inside interpolated strings; a `stringObj` built with
 // `+=`; a raw string, character literals, hex and binary literals; keywords in odd case, comments
 // between tokens and inside argument lists, Allman and K&R braces mixed, a routine with no spaces, and a
@@ -166,7 +166,7 @@ class Coin : object
     }
 }
 
-value class Purse
+struct Purse
 {
     int count ;
     int total ;

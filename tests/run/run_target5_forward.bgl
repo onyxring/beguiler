@@ -4,7 +4,7 @@
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
 #include <array>
-value class Watt {
+struct Watt {
     int sum;
     Watt operator = (Watt o) { sum = o.sum; return self; }
     static int operator <=> (Watt a, Watt b) { return a.sum - b.sum; }

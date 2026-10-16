@@ -1,11 +1,11 @@
-/*  run_round5_codegen — a value-class local in a Z-machine try (declared, assigned and printed through
-    interpolation, all through a frame slot); a pooled class whose owned value-class member is set from
+/*  run_round5_codegen — a struct local in a Z-machine try (declared, assigned and printed through
+    interpolation, all through a frame slot); a pooled class whose owned struct member is set from
     a create() parameter named like the member's field; a sized array<char> registered as a tracked
     buf; a literal passed to a stringObj parameter.  */
 // EXPECT_OUTPUT: try=5,7,5c pool=3 25 2 110 buf=80,true pad=[Name    ]
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Money {
+struct Money {
     int Cents;
     Money operator = (Money o) { Cents = o.Cents; return self; }
     void print() { print($"{Cents}c"); }

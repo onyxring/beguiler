@@ -1,17 +1,17 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: three areas meeting in one declaration, written functionally. A value class with a copy
-// operator and an emitter `?`; a namespace object whose type aliases (a value class, an enum) are
+// Exercises: three areas meeting in one declaration, written functionally. A struct with a copy
+// operator and an emitter `?`; a namespace object whose type aliases (a struct, an enum) are
 // named bare in its own methods over array<string> parameters, an array<char> work buffer, a nested
 // member array and an inline accessor reading it through `outer`; an `extend` of that namespace adding
 // a type alias and a postfix-`?` count over strings; `#using` the namespace in a class of static
-// arrays (int, an aliased value class) beside a local array of arrays, `operator []` / `[]=` and an
+// arrays (int, an aliased struct) beside a local array of arrays, `operator []` / `[]=` and an
 // inline accessor that appends to a static array; an `extend class` adding a static array fed by an
 // array parameter, a fold over an array<array<int>> parameter driven by a block lambda, an inline
-// accessor owning a value class, and member array<char> / array of value class; a class with a static
+// accessor owning a struct, and member array<char> / array of struct; a class with a static
 // array<char>, a char `operator []` / `[]=`, a block-lambda predicate and a nested span table; an
-// object of value-class cells with `operator []` / `[]=`, a block lambda testing `?`, and an inline accessor
+// object of struct cells with `operator []` / `[]=`, a block lambda testing `?`, and an inline accessor
 // reading its host through `outer`; an `extend` of that object adding an array<char> and an
 // accessor over it; free functions folding arrays of arrays and strings with block lambdas.
 
@@ -33,8 +33,8 @@ extend extern class object {
 
 enum eShape { shapeDot, shapeBar, shapeBox }
 
-//-- A value class ---------------------------------------------------------------------------
-value class Cell {
+//-- A struct ---------------------------------------------------------------------------
+struct Cell {
     int v;
     int w;
     Cell operator = (Cell o) { v = o.v; w = o.w; return self; }

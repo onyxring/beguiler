@@ -2,17 +2,17 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a parts yard kept in tables, whose bays are reached almost only through computed
-// receivers. A Bay class with a member array of counts, a member array of a value class (Slot), an
+// receivers. A Bay class with a member array of counts, a member array of a struct (Slot), an
 // owned Slot member, a link to the next bay, a named accessor class (Gauge) and an inline `auto`
 // accessor in the class body, self-returning methods with a default argument, methods returning a
-// Slot, a Mix value class holding a member array, a stringObj label, and a static lookup returning a
+// Slot, a Mix struct holding a member array, a stringObj label, and a static lookup returning a
 // bay or null; a ColdBay subclass whose label calls the base one through `((Bay)self)`. Receivers:
 // casts of noun, second and `.parent` (`((Bay)noun).counts[k]`, `((Bay)crates[n].parent).counts[..] -=`),
 // elements of a member array of objects (`yard.bays[i].slots[j].qty`), of a jagged global table of
 // bays (`grid[r][c].level++`) and of a crate table, call results of global functions, of a table of
 // func<Bay, int> (`pickers[p](k).slotOf(k).plus(1).qty`), of static and object methods
 // (`Bay.byCode(c).next.counts[3]`, `yard.pick(i).visits++` counted once), chained self-returning calls
-// (`((Bay)second).add(k).add(k, n: 2).total()`), value-class results (`b.slotOf(k).plus(2).weight()`,
+// (`((Bay)second).add(k).add(k, n: 2).total()`), struct results (`b.slotOf(k).plus(2).weight()`,
 // `b.mix().parts[k]`), `?:` and `??` results used as receivers, `?.` chains off them, <linq> chain
 // results (`yard.bays.orderBy(f).last().label()`, `.filter(..).first().next?.code`) and lambda
 // parameters (`b.slots.any((Slot s) => s.qty > n)` inside a filter); member arrays reached through
@@ -63,9 +63,9 @@ array<array<int>> stock = {
 // The bay each bay passes on to, by index.
 array<int> links = { 1, 2, 3, NONE };
 
-//-- Value classes ---------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------
 
-value class Slot {
+struct Slot {
     inline int kind;
     inline int qty;
     Slot operator = (Slot o) { kind = o.kind; qty = o.qty; return self; }
@@ -79,7 +79,7 @@ value class Slot {
     }
 }
 
-value class Mix {
+struct Mix {
     array<int> parts[KIND_COUNT];
     int heavy;
     Mix operator = (Mix o) { parts = o.parts; heavy = o.heavy; return self; }
@@ -91,7 +91,7 @@ value class Mix {
 }
 
 // A level that saturates at 0 and 99.
-value class Gauge {
+struct Gauge {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v > 99 ? 99 : v < 0 ? 0 : v; }

@@ -974,7 +974,7 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
             // operator= on a stored-field, non-tree-citizen class would emit silent
             // pointer-assign and surprise the user expecting value-semantics.
             if(found && assignOp == nullptr && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                parsingError(format("'{0}' is a value class with no copy operator ('operator =' taking '{0}'), so there "
+                parsingError(format("'{0}' is a struct with no copy operator ('operator =' taking '{0}'), so there "
                                     "is nothing to initialise with. Declare one, or bind a reference ('ref {0} x := …').",
                     typeDisplayName((string)dataType)));
             if(!found){
@@ -1420,7 +1420,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // A value class's variable owns an instance of its own, so `const` has no binding to fix (§3.4).
     if(isConst && !isExternal)
         if(classDef* vc = languageService.findClass((string)dataType); vc != nullptr && isValueClass(vc))
-            parsingError(format("'const' doesn't apply to '{0}': '{1}' is a value class, which is storage.",
+            parsingError(format("'const' doesn't apply to '{0}': '{1}' is a struct, which is storage.",
                 varDecl.dName(), vc->dName()));
     if(isExternal && symbol.is(token::assignment))
         parsingError(format("extern '{0}' can't take a value: Inform 6 declares it, and its value comes from there.",

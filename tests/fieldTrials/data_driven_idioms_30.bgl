@@ -4,11 +4,11 @@
 // Exercises: a coin-op vending panel kept in tables. An enum of coins indexing parallel value,
 // name, word, held and capacity tables, read by a general parsing routine; a bnum of item tags
 // beside tag-name and tag-word tables, listed by bit position into a stringObj; an item table as
-// an array of a value class written as bare { … } (string, dictionary word, price, stock, bnum),
+// an array of a struct written as bare { … } (string, dictionary word, price, stock, bnum),
 // changed in place through subscripted members (--, +=); an inline auto { … } credit accessor on
 // an object whose setter refuses over a cap and counts refusals through outer; a greedy
 // change-maker filling a local array passed by parameter, walked high to low with a C-style for;
-// a coin tray array fed with append and emptied with popEnd; a sale log of a value class appended
+// a coin tray array fed with append and emptied with popEnd; a sale log of a struct appended
 // with an inline Sale{ … } and trimmed with remove(0); switch with ranges picking a price band;
 // <linq> filter/orderBy/count/any/all/first/map with lambdas capturing locals; a NUMBER grammar
 // token after a routine token; stringObj rows padded to columns with interpolated +=.
@@ -55,7 +55,7 @@ array<dictionaryWord> tagWords = { .cold,  .sweet,  .salty,  .hot };
 
 //-- Item table ----------------------------------------------------------------
 
-value class Item {
+struct Item {
     inline string label;
     inline dictionaryWord code;
     inline int price;
@@ -81,7 +81,7 @@ array<int> soldCount = { 0, 0, 0, 0, 0, 0 };
 
 //-- Sale log and coin tray ----------------------------------------------------
 
-value class Sale {
+struct Sale {
     inline int item;
     inline int paid;
     inline int change;

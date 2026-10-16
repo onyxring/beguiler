@@ -6,7 +6,7 @@
 // enum state machine with timers, daemons and thrown faults, twenty-six verbs from one verb class,
 // grammar added to, evicted from, replaced on and aliased onto library verbs, a grammar object, a
 // three-thousand-entry byte sieve and a sixteen-hundred-entry distance table filled by search, <linq>
-// chains over the pools, value classes with operators, inline and named accessors, an emitter class,
+// chains over the pools, structs with operators, inline and named accessors, an emitter class,
 // an emitter namespace and global emitters, a class hierarchy of fixtures chaining to ancestors by
 // cast, a pool of orders worked as a deque, text built with every <string> method, thirty-eight action
 // counters kept as globals, an #i6 island bound with extern, unions, lambdas in tables and as

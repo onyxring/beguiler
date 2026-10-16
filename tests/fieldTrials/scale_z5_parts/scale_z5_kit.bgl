@@ -1,6 +1,6 @@
 /*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
 
-// The kit: enums and bnums, value classes with operators, an emitter class and an emitter namespace of
+// The kit: enums and bnums, structs with operators, an emitter class and an emitter namespace of
 // the kind a library author writes, global emitters, and the `sk` namespace object that the other
 // parts reach through `#using sk`.
 
@@ -57,10 +57,10 @@ emitter class Packed {
     emitter eBool operator ? () { ($self ~= 0) }
 }
 
-// ---- Value classes -------------------------------------------------------------------------------
+// ---- Structs -------------------------------------------------------------------------------
 
 /// A grid position.
-value class Vec {
+struct Vec {
     int x;
     int y;
     Vec operator = (Vec o)      { x = o.x; y = o.y; return self; }
@@ -74,9 +74,12 @@ value class Vec {
 }
 
 /// A position with a heading.
-value class Walker : Vec {
+struct Walker {
+    int x;
+    int y;
     eHeading facing;
-    Walker operator = (Walker o) { facing = o.facing; (Vec)self = o; return self; }
+    int cell()                  { return y * 8 + x; }
+    void set(int nx, int ny)    { x = nx; y = ny; }
     void turnRight() { facing = (eHeading)(((int)facing + 1) % 4); }
     void step() {
         switch (facing) {
@@ -89,7 +92,7 @@ value class Walker : Vec {
 }
 
 /// A running total that remembers its high mark; read and written as an int.
-value class Gauge {
+struct Gauge {
     int _val;
     int _high;
     int operator ()         { return _val; }

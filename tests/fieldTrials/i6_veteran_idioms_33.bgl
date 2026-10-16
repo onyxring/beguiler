@@ -12,9 +12,9 @@
 // (`Valve.ByCode(c)?.Down(wrap: true)?.code`, `rack.Pick()?.Push(2)`); `?.` calls with default and
 // named arguments in any order (`Down(steps: 2, wrap: true)`, `Push(quiet: false, amount: n)`,
 // `LabelOf(blank:, o:)`), recursion through `?.` and `??` (`Head()`, `Tail()`, `Down()`, `Path()`);
-// `??` with `string`, `stringObj`, object, class and value-class operands, parenthesized as a
+// `??` with `string`, `stringObj`, object, class and struct operands, parenthesized as a
 // receiver (`(v?.Read() ?? noSeal).Margin()`), in returns, default-argument routines, arguments,
-// declarations, `for` initializers and interpolation; a value class with `operator ?` reached
+// declarations, `for` initializers and interpolation; a struct with `operator ?` reached
 // through `?.` (`v?.Read()?.Margin(limit: 9)`) and stored through `?.` (`v?.seal = v?.Read()`);
 // stringObj results through `?.` (`Path(sep:)?.toUpper()`, `log?.length`, `log?.contains()`,
 // `log?.isEmpty()`); `?.` and postfix `?` in `for` headers, `while`, `do`/`while`, `switch`, `if`
@@ -495,9 +495,9 @@ class Valve : object {
     attributes = {static};
 }
 
-// ---------------------------------------------------------------- value classes
+// ---------------------------------------------------------------- structs
 
-value class Seal {
+struct Seal {
     int psi;
     int code;
     Seal operator = (Seal o) {

@@ -1,10 +1,10 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a job-queue kit and its consumer. The kit declares an enum of priorities; a value class
+// Exercises: a job-queue kit and its consumer. The kit declares an enum of priorities; a struct
 // of tick spans with two copy operators, + over ints, <=> (from which < and > are derived), == and !=;
 // a pooled job class with create/destroy, static counters, an owned span member, an object member,
-// an instance <=> used by sort(), and a show method; a value-class rate accessor that clamps; a
+// an instance <=> used by sort(), and a show method; a struct rate accessor that clamps; a
 // worker class with a required positional capacity, a required accepts() routine, a default kind(),
 // a run method that throws a cost, and a subclass that hides the rate's setter and overrides kind().
 // The queue object is a namespace (alias … for the enum and the span), holds arrays of jobs and
@@ -47,7 +47,7 @@ object roomA {
 enum eLa19Pri { low, normal, urgent }
 
 /// A length of time in ticks, copied on assignment.
-value class La19Span {
+struct La19Span {
     int n;
     La19Span operator = (La19Span o) { n = o.n; return self; }
     La19Span operator = (int v) { n = v; return self; }
@@ -98,7 +98,7 @@ class La19Job[6] : object {
 }
 
 /// A rate in ticks of work per tick; never below one.
-value class La19Rate {
+struct La19Rate {
     int _v = 1;
     int operator () { return _v; }
     void operator = (int v) {

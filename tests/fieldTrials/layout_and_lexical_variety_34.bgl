@@ -3,7 +3,7 @@
 
 // Exercises: layout and lexical habits in a small program written top-down, two rooms, four jars, a
 // scale, a shelf and a store, so that almost every name is used above its declaration. Globals typed
-// by a value class with nested value-class members (a nested inline-object initializer), by a named
+// by a struct with nested struct members (a nested inline-object initializer), by a named
 // union, a bnum and an enum through an alias path, by `func<>` types whose parameters are classes from
 // below, one holding an operator reference `Weight::operator <=>` and one a static method `Jar.heavier`
 // of a class declared further down; a global initialized from an emitter value declared at the foot;
@@ -19,9 +19,9 @@
 // value alias (`alias pol = Policy`) on a namespace object that a forward `extend` adds an `auto`
 // value member to; a pooled class sized by a const below whose `create` takes a class from below; a
 // named union with a static member an `extend` adds, called through the union's name; `+=`, `-` and a
-// static `operator ==` that an `extend class` adds to the value class at the foot, used above it;
+// static `operator ==` that an `extend class` adds to the struct at the foot, used above it;
 // a forward `extend` of the shelf adding members, a member array, an inline accessor reaching `outer`,
-// a method and a `replace`d member value, all used from above; a member array of the value class on a
+// a method and a `replace`d member value, all used from above; a member array of the struct on a
 // base declared below, stored and read through objects; an owned member bound to a `ref` local; a
 // global `func<>` lambda over a class from below; `children` placement from a container declared after its contents; `?.` and `??` on lookups
 // of classes below; <linq> `filter`, `orderBy`, `first`, `count`, `any` and `all` with lambdas typed
@@ -432,7 +432,7 @@ class Vessel : Fixture
 
 class Fixture : object { int bumps = 0 ; }
 
-value class Weight
+struct Weight
 {
     int grams ;
     Weight operator =   ( Weight o ) { grams = o.grams ; return self ; }
@@ -444,7 +444,7 @@ value class Weight
     static int operator <=> ( Weight a , Weight b ) { return a.grams - b.grams ; }
 }
 
-value class Pair
+struct Pair
 {
     Weight lo ;
     Weight hi ;
@@ -453,7 +453,7 @@ value class Pair
 }
 
 /// A reading held between 0 and Limit.
-value class Reading
+struct Reading
 {
     int _r = 0 ;
     int  operator ()          { return _r ; }
@@ -522,7 +522,7 @@ extend class Vessel
 
 extend class Jar { emitter int Spare { 3 } }
 
-extend class Weight
+extend struct Weight
 {
     Weight operator += ( Weight o ) { grams += o.grams ; return self ; }
     Weight operator -  ( Weight o ) { Weight r ; r.grams = grams - o.grams ; return r ; }

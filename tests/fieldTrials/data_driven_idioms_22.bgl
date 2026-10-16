@@ -3,9 +3,9 @@
 
 // Exercises: a lending desk kept in tables. An enum of shelves indexing parallel string, loan-length
 // and fine-rate tables; a bnum of marks listed by bit position into a stringObj; a table of title
-// records as an array of a value class written as bare { … } (string, dictionary word, enum, bnum,
+// records as an array of a struct written as bare { … } (string, dictionary word, enum, bnum,
 // int); a member table of words, names and limits read by general parsing routines in a grammar line
-// with a literal word between them; loans as an array of a value class appended as Loan{ … },
+// with a literal word between them; loans as an array of a struct appended as Loan{ … },
 // searched by a loop, removed by position and copied into a local array sorted by a comparator
 // lambda; a fine computed by a switch with guards and ranges; a returns cart used as a queue
 // (enqueue/dequeue/peek); <linq> filter/count/any/all over the loans and titles with lambdas capturing
@@ -46,7 +46,7 @@ array<int> dailyFine = { 5, 10, 10, 20 };
 
 array<string> markNames = { "ref", "dmg", "big" };
 
-value class Title {
+struct Title {
     inline string label;
     inline dictionaryWord word;
     inline eShelf shelf;
@@ -74,7 +74,7 @@ array<dictionaryWord> memberWords = { .alpha, .beta, .gamma };
 array<int> memberLimit = { 3, 2, 1 };
 array<int> owed[MEMBERS] = { 0, 0, 0 };
 
-value class Loan {
+struct Loan {
     inline int title;
     inline int member;
     inline int due;

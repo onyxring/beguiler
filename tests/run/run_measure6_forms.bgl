@@ -24,7 +24,7 @@ int pick(array<int> xs, int i){
     return f(i);
 }
 int count(int k){ int n = k > 0 ? ws.filter((int w) => w > k).count() : 0; return k; }
-value class Tot { int sum = 0; Tot operator = (Tot o) { sum = o.sum; return self; } }
+struct Tot { int sum = 0; Tot operator = (Tot o) { sum = o.sum; return self; } }
 void sumFrom(int i, ref Tot out){
     if (i >= ws.length) return;
     Tot rest;

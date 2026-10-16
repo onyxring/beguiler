@@ -63,8 +63,12 @@ class _bglClass_Box
     _opconv_int[;
         return self._val;
     ],
-    _opeq[v;
+    _opeq_int[v;
         self._val=v;
+    ],
+    _opeq_box[o;
+        self._val=o._val;
+        return self;
     ]
 ;
 class _bglClass_Thing
@@ -85,9 +89,9 @@ _bglClass_Thing t3
   with b _t3_b
 ;
 [main;
-    t1.b._opeq(5);
-    t2.b._opeq(9);
-    t3.b._opeq(100);
+    t1.b._opeq_int(5);
+    t2.b._opeq_int(9);
+    t3.b._opeq_int(100);
     print t1.b._opconv_int();
     print t2.b._opconv_int();
     print t3.b._opconv_int();

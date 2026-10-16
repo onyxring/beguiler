@@ -4,7 +4,7 @@
 // Exercises: layout and lexical habits applied to data and run-time structures. A pooled class sized by
 // a constant and one sized by a literal, with `create`/`destroy` split over lines, `NEW` and `Delete` in
 // mixed case, comments between `new`, its type and its arguments, pool exhaustion and slot reuse; an
-// owned value-class member with an inline-object starting value spread over lines, reset by `new`;
+// owned struct member with an inline-object starting value spread over lines, reset by `new`;
 // inline objects positional, named and combined, bare and typed, with comments between the values and
 // the separators on lines of their own, as call arguments with run-time members; `inline instanceName`
 // re-listed first; arrays of arrays with ragged rows and `> >` / `>>` closing the type; a file-scope
@@ -58,9 +58,9 @@ object post
     description = "A post.";
 }
 
-//-- A value class owned by a pooled class ------------------------------------------------------------
+//-- A struct owned by a pooled class ------------------------------------------------------------
 
-value class Coins
+struct Coins
 {
     int cents;
     Coins operator = ( Coins o ) { cents = o.cents; return self; }

@@ -4,7 +4,7 @@
 // Exercises: a twentieth PunyInform program, written plainly: three rooms (a lit Room A, a lit Room B
 // to the north and a dark Room C below) with OPTIONAL_SCORED and OPTIONAL_EXTENDED_VERBSET; a can
 // filled at a tap through `Fill` in `before`, with an enum state and a `switch` over it; a pot class
-// owning a value-class `Moisture` member with `operator ()`, `=` and `-=`, and a pooled `Sprout` class
+// owning a struct `Moisture` member with `operator ()`, `=` and `-=`, and a pooled `Sprout` class
 // made with `new` by a `plant HELD in NOUN` verb, grown by a daemon over an `array<Pot>` with `for …
 // in`, printed through `short_name` from an `array<string>` indexed by an enum cast; a torch whose
 // battery a daemon drains, giving and taking `light`; a seed packet counting down and leaving play with
@@ -47,7 +47,7 @@ extend extern class object {
 enum eCan { empty, half, full }
 enum eGrowth { seed, shoot, bud, bloom }
 
-value class Moisture {
+struct Moisture {
     int _level = 0;
 
     int  operator ()          { return _level; }

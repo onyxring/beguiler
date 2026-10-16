@@ -758,7 +758,7 @@ void bglParser::validateEqualityPairs(){
             }
         if(eq == nullptr || ne || eq->src.file.empty() || eq->src.file.find("beguiLib") != string::npos) continue;
         // After the parse no file is open, so the location comes from the declaration.
-        cerr << format("{0}:{1}:{2}: warning: class '{3}' declares operator == but not operator !=, so != "
+        cerr << format("{0}:{1}:{2}: warning: " + kindWord(cls) + " '{3}' declares operator == but not operator !=, so != "
             "still compares identity; declare operator != too.", eq->src.file, eq->src.line, max(1, eq->src.col),
             cls->dName()) << endl;
     }
@@ -1334,7 +1334,7 @@ void bglParser::synthesizeParamBackings(functionDef& funcDef, const string& clas
         if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal || !isValueClass(cls)) continue;   // a reference: shares
         functionDef* assignOp = findAssignOperator(cls, p->type.name, [](functionDef*){ return true; }, /*allowInherited*/true);
         if(!assignOp){
-            parsingError(format("Parameter '{0}' of value class '{1}' can't be copied: the class has no copy operator "
+            parsingError(format("Parameter '{0}' of struct '{1}' can't be copied: the struct has no copy operator "
                                 "('operator =' taking '{1}'). Declare one, or make the parameter 'ref'.",
                                 p->name, typeDisplayName(p->type.name)));
             continue;
@@ -2029,6 +2029,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         openConditionals.resize(conditionalBase);
         parsingError(format("The '#if' at line {0} has no '#endif'.", line));
     }
+    if(includeDepth == 1) writeAutoCopyOperators();
     //emit.out<<endl;
     file.close();
     usingImports = savedUsingImports;  // restore parent file's imports
@@ -2206,7 +2207,7 @@ bool bglParser::processEnum(vector<token>& t, Qualifiers& q, abstractObject&)
     { return processEnumDeclaration(t[0], q.isExtern, t[1]); }
 bool bglParser::processClass(vector<token>& t, Qualifiers& q, abstractObject&)
     { return processClassDeclaration(t[0], q.isExtern || q.isPrimitive, q.isExtend, q.isEmitter || q.isPrimitive, q.isAlias, t[1],
-                                     /*allowNested*/false, q.isSuperposed, q.isValue, q.isPrimitive); }
+                                     /*allowNested*/false, q.isSuperposed, q.isValue, q.isPrimitive, q.isStruct); }
 bool bglParser::processGrammar(vector<token>& t, Qualifiers&, abstractObject&)
     { return processGrammarDeclaration(t[1]); }
 bool bglParser::processArray(vector<token>& t, Qualifiers& q, abstractObject& c)
@@ -3321,8 +3322,13 @@ Qualifiers bglParser::parseQualifiers(token& tok){
                                                  "default", "emitter"})))
                                                    { q.isRequired   = true; advance(); }
         else if(tok.value == "literal" && isLiteralQualifierAhead()) { q.isLiteral = true; advance(); }
-        // `value` and `primitive` are keywords only in front of `class`: both are ordinary names elsewhere.
-        else if(tok.is("value") && file.peekToken().is(token::classDeclaration))     { q.isValue     = true; advance(); }
+        // `primitive` is a keyword only in front of `class`, and `struct` only in front of a name: both are ordinary
+        // names elsewhere. A struct is declared like a class, so its head reads `class` from here on.
+        else if(tok.is("struct") && (file.peekToken().is(eTokenType::identifier) || file.peekToken().isDataType())){
+            q.isValue = q.isStruct = true;
+            tok.value = token::classDeclaration;
+            break;
+        }
         else if(tok.is("primitive") && file.peekToken().is(token::classDeclaration)) { q.isPrimitive = true; advance(); }
         else break;
     }

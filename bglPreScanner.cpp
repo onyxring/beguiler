@@ -1232,6 +1232,26 @@ void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClas
       while(!t.is(token::braceOpen) && !t.is(token::endStatement) && !t.is(eTokenType::eof))
           t = file.getToken();
       if(t.is(token::braceOpen)) preScanClassBody(cls);
+      // A struct without a copy operator gets one (writeAutoCopyOperators); a use above the struct finds it now.
+      if(cls != nullptr && isValue){
+          bool has = false;
+          for(typeMember* m : cls->members)
+              if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == "=" && f->params.size() == 1
+                 && f->params[0]->type.name == cls->name) has = true;
+          if(!has){
+              functionDef& fd = *(new functionDef());
+              fd.name = "=";
+              fd.returnType = languageService.getType(cls->name);
+              fd.isEmitter = false;
+              fd.isPrePassStub = true;
+              fd.i6name = mangleOperatorName(fd.name);
+              paramDef* p = new paramDef();
+              p->name = "o";
+              p->type = languageService.getType(cls->name);
+              fd.params.push_back(p);
+              cls->members.push_back(&fd);
+          }
+      }
     }
 }
 

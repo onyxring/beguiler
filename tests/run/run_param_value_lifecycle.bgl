@@ -1,4 +1,4 @@
-/*  run_param_value_lifecycle — a value-class parameter runs its class's init/deinit, like a local.
+/*  run_param_value_lifecycle — a struct parameter runs its class's init/deinit, like a local.
 
     The parameter's own instance gets `init` before the argument is copied in, and `deinit` on
     every exit, early return included. A `ref` parameter owns nothing, so neither runs.  */
@@ -8,7 +8,7 @@
 int inits;
 int deinits;
 
-value class Tally {
+struct Tally {
     int n;
     emitter void init()   { inits++; }
     emitter void deinit() { deinits++; }

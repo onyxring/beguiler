@@ -25,7 +25,7 @@ object roomA {
 //-- Property accessors ----------------------------------------------------------------------------
 
 // A named accessor: reads return what was stored, writes store twice the value.
-value class Doubled {
+struct Doubled {
     int _val;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v * 2; }

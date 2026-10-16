@@ -1,10 +1,10 @@
 // run_ternary_renamed_local_and_self_assign — a local renamed for Inform 6 (`to`) keeps its new name
-// inside the set-up a `?:` generates; and `self = v` in a value class's method copies through its
+// inside the set-up a `?:` generates; and `self = v` in a struct's method copies through its
 // `operator =` rather than rebinding I6's `self`.
 // EXPECT_OUTPUT: tern:yes sum:12 add:12
 #beguilerSettings { target = z5; informName = "none"; }
 object roomB { }
-value class Coins {
+struct Coins {
     int cents;
     Coins operator = (Coins o){ cents = o.cents; return self; }
     Coins operator + (Coins o){ Coins sum; sum.cents = cents + o.cents; return sum; }

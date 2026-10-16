@@ -2,9 +2,9 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-ninth pass: a seat reservation desk.
-// A value class for a seat (row and number) with a copy operator, `==`/`!=`, a `<=>` that `sort()` and
+// A struct for a seat (row and number) with a copy operator, `==`/`!=`, a `<=>` that `sort()` and
 // `<` use, a static factory and its own `print()` (a ToString override) used inside interpolation, with a
-// char row letter from a cast; a value class for money with `+`, `*` by a count and a formatter returning a
+// char row letter from a cast; a struct for money with `+`, `*` by a count and a formatter returning a
 // `stringObj`; the Template Method pattern: a pricing policy base whose non-virtual `PriceFor()` calls
 // `default` steps that two subclasses override; a pooled booking class with `create()`/`destroy()`, a
 // static id counter, an owned `array<Seat>` member sorted in place and a `print()` override; the Builder
@@ -54,7 +54,7 @@ string StatusName(eStatus s) {
 
 //-- Seat: a value type ----------------------------------------------------------------------------------------
 
-value class Seat {
+struct Seat {
     int Row;
     int Number;
 
@@ -93,7 +93,7 @@ value class Seat {
 
 //-- Money: a value type ---------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money o) {

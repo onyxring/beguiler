@@ -4,10 +4,11 @@
 // Exercises: a parcel desk kept in tables, read almost entirely through overload sets. A Mass value
 // class with overloaded `=` (copy, int), `==` / `!=` / `<=>` by Mass and int (instance and static),
 // `+` / `+=` by Mass and int, `*`, `-=`, an emitter `operator switch`, an explicit int conversion,
-// static `of` overloads by arity and type (called with named arguments and through a subclass),
+// static `of` overloads by arity and type (called with named arguments and through Tare),
 // `kg` and `scaled` overloads mixing emitter and plain methods, and an `extend` adding `+ (Count)` and
-// `kg(bool)`; a Tare value subclass adding `+ (Tare)`, `scaled(bool)` and replacing `== (int)`; a
-// Count value class with an implicit int and an explicit string conversion. A Parcel / Fragile /
+// `kg(bool)`; a Tare struct with Mass's grams and its own box, `+ (Tare)`, `scaled(bool)`, an `== (int)`
+// counting the box and an explicit Mass conversion; a
+// Count struct with an implicit int and an explicit string conversion. A Parcel / Fragile /
 // Sealed class hierarchy with overloaded `cost`, `mark` and `heavierThan` (a default override calling
 // the base through a cast, an added `mark(char)`, a hidden `mark(string)`, an `extend` adding
 // `cost(Mass)` and replacing one `heavierThan`), overloaded instance `==` / `!=` / `+=` and `operator
@@ -26,7 +27,7 @@
 // `Mass::operator ==(int)`, `Parcel::operator <=>`) kept in func<> variables and tables of lambdas.
 
 #beguilerSettings {
-    // Glulx: value-class tables and pooled strings outgrow the Z-machine's readable memory.
+    // Glulx: struct tables and pooled strings outgrow the Z-machine's readable memory.
     target = glulx;
     includePaths = "../../../inform6/stdlib";
 }
@@ -45,9 +46,9 @@ const int NONE = -1;
 
 enum zone { local, region, abroad }
 
-//-- Value classes ---------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------
 
-value class Mass {
+struct Mass {
     inline int g;
     Mass operator = (Mass o) { g = o.g; return self; }
     Mass operator = (int n) { g = n; return self; }
@@ -80,25 +81,34 @@ value class Mass {
     int kg(int step) { return (g + step / 2) / step * step / 1000; }
 }
 
-// A tare is a box weight: its own box grams come first, then the inherited g.
-value class Tare : Mass {
+// A tare is a box weight: its own box grams come first, then the contents' g.
+struct Tare {
     inline int box;
-    Tare operator = (Tare o) { (Mass)self = o; box = o.box; return self; }
+    inline int g;
     Mass operator + (Tare o) { return Mass{ g + o.g + box + o.box }; }
+    Mass operator + (Mass o) { return Mass{ g + o.g }; }
+    Mass operator + (int n) { return Mass{ g + n }; }
+    Tare operator += (Mass o) { g += o.g; return self; }
+    Tare operator += (int n) { g += n; return self; }
+    bool operator == (Mass o) { return g == o.g; }
+    bool operator == (int n) { return g + box == n; }
+    bool operator != (int n) { return g + box != n; }
+    explicit Mass operator () { return Mass{ g }; }
+    static Mass of(int kilos, int grams) { return Mass.of(kilos, grams); }
     int gross() { return g + box; }
+    emitter int scaled() { ($self.g / 100) }
+    int scaled(int k) { return g / 100 * k; }
     int scaled(bool withBox) { return withBox ? (g + box) / 100 : g / 100; }
-    replace bool operator == (int n) { return g + box == n; }
-    replace bool operator != (int n) { return g + box != n; }
 }
 
-value class Count {
+struct Count {
     inline int n;
     Count operator = (Count o) { n = o.n; return self; }
     int operator () { return n; }
     explicit string operator () { return n > 5 ? "many" : "few"; }
 }
 
-extend class Mass {
+extend struct Mass {
     Mass operator + (Count c) { return Mass{ g + c.n * 1000 }; }
     string kg(bool brief) { return brief ? "kg" : "kilograms"; }
 }
@@ -428,7 +438,7 @@ verb KindsTest {
     void handler() {
         print($"{kindOf(5)} {kindOf(masses[0])} {kindOf(pA)} {kindOf(pD)} {kindOf((Parcel)pD)} {kindOf(shelf)} {kindOf(zone.local)} {kindOf('x')}.^");
         object o = pC;
-        print($"{kindOf(o)} {kindOf(stock[2])} {kindOf((Fragile)stock[2])} {kindOf(tares[0])}.^");
+        print($"{kindOf(o)} {kindOf(stock[2])} {kindOf((Fragile)stock[2])} {kindOf((Mass)tares[0])}.^");
     }
 }
 
@@ -522,7 +532,7 @@ verb TareTest {
         Mass more = t + masses[1];
         t += 10;
         stringObj line = $"Tares {tares[0].gross()} and {tares[1].gross()}; both {both.g}; plus {plus.g}; more {more.g}; t {t.g}";
-        line += $"; t == 1010: {t == 1010 ? "yes" : "no"}; kind {kindOf(t)}.";
+        line += $"; t == 1010: {t == 1010 ? "yes" : "no"}; kind {kindOf((Mass)t)}.";
         line.print();
         print("^");
     }
@@ -784,7 +794,7 @@ verb ScaleTest {
     void handler() {
         int k = (int)noun;
         Tare t = tares[1];
-        ref Mass r := tares[0];
+        ref Tare r := tares[0];
         array<Fragile> fs = { pC, pD };
         fs.sort(Fragile::operator <=>);
         print($"Scaled {masses[2].scaled()} {masses[2].scaled(k)} {masses[2].scaled(masses[1])}; tare {t.scaled()} {t.scaled(k)} {t.scaled(true)} {t.scaled(false)} {r.scaled(k)}");

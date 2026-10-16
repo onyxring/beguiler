@@ -44,7 +44,7 @@ section with the full treatment.
 - **named union** — A `union Name = A | B { … }` declaration: a union type with a name and a place to hang members. See §2.8.2.
 - **object-backed class** — A class whose instances are Inform 6 objects with storage of their own (a normal class, including a pooled one), as opposed to an emitter, alias or primitive class, whose instances are bare words or do not exist. See §8.2, §11.3.2.
 - **outer** — Inside a property accessor body, the host object the accessor is declared on, as distinct from `self`, the accessor instance itself; resolved at compile time and usable to read and write the host's other members. See §9.9.3.
-- **owned member** — A member whose type is a value class with stored members, declared without an initializer; each instance of the enclosing type gets its own backing instance, so the member is a live object rather than a bare slot. See §8.3.4.
+- **owned member** — A member whose type is a struct with stored members, declared without an initializer; each instance of the enclosing type gets its own backing instance, so the member is a live object rather than a bare slot. See §8.3.4.
 - **pass-through conversion** — A conversion operator declared without a body (`emitter T operator ();`): the value is left unchanged and merely retyped. See §2.10.2, §9.4.
 - **pooled class** — A class declared `class Name[N]`, which reserves `N` statically allocated instances that `new` and `delete` hand out and reclaim. See §8.2.6, §4.13.
 - **positional member** — A member an instance can be given by position rather than by name, in an inline object or a declaration body. A class's positional order is its own list — its `inline` members and the members it re-lists with `inline name;` — then each base's, subclass first. See §8.3.5, §11.3.1.
@@ -52,10 +52,10 @@ section with the full treatment.
 - **primary trigger** — The first dictionary word in a verb's first grammar line; the word an `extend V { grammar += … }` targets. See §13.2.3.
 - **primitive type** — A type whose variable holds the value itself, one word, with no instance: `int`, `bool`, `char`, `float`, `string`, `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage` and every enum. Copied on assignment; `ref` doesn't apply. Declared `primitive class`. See §2.10.3, §8.2.5.
 - **program** — The set of source files compiled together to produce one story file. See §3.1.
-- **property accessor** — A member that reads and writes like a plain member but runs code on each access: a value class declaring a getter `operator ()` and a setter `operator =`, used as an owned member of the host class or object. See §9.9.
+- **property accessor** — A member that reads and writes like a plain member but runs code on each access: a struct declaring a getter `operator ()` and a setter `operator =`, used as an owned member of the host class or object. See §9.9.
 - **proxy member** — A member that represents a relation over its owner rather than storing a value, such as `children` on `object`; it has no slot of its own, and its emitter methods act on the owner through `$host`. See §7.3, §11.5.
 - **pseudo-type** — The compile-time type of a literal (`intLiteral`, `stringLiteral`, …), inferred by the compiler and never written by the author; it takes part in overload and operator resolution separately from the runtime type it corresponds to. See §2.4.
-- **reference class** — A class not declared `value` (the default): a variable declared with no value has an object of its own, one given a value refers to it, and assignment and passing share. See §2.10.3, §8.2.1.
+- **reference class** — A class, as opposed to a struct: a variable declared with no value has an object of its own, one given a value refers to it, and assignment and passing share. See §2.10.3, §8.2.1.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **required** — A class-member qualifier: every object of the class must get a value for the member, from itself or from a class between it and the declaring class. See §8.3.6.
@@ -74,7 +74,7 @@ section with the full treatment.
 - **tracked buf** — With `<buf>` included, a sized `array<char>` that records its capacity and current length; its value behaves as an Inform 6 hybrid buffer. See §22.2.
 - **trigger word** — The dictionary word that begins a grammar line and selects its verb; a verb's first trigger word is its primary trigger. See §13.2.3, §13.4.
 - **typesealed** — A member qualifier that locks the member's type: a subclass or instance may re-initialize the member but not re-declare it with another type. See §8.2.8.
-- **value class** — A class declared `value class`: a global, local, member or parameter of the type owns an instance of its own and is copied on assignment and passing through the class's copy operator (`operator =` taking the class). Contrast a reference class, whose variables refer to shared instances. See §2.10.3, §8.2.7.
+- **struct** — A class declared `struct`: a global, local, member or parameter of the type owns an instance of its own and is copied on assignment and passing through the class's copy operator (`operator =` taking the class). Contrast a reference class, whose variables refer to shared instances. See §2.10.3, §8.2.7.
 - **veneer class** — A type label declared `extern emitter class` over a word that manages its own storage (`array<T>`). The one-word value types are primitive classes. See §8.2.5.
 - **word** — The machine's native integer unit: 16 bits on the Z-machine, 32 on Glulx. Every scalar value, reference and `array<T>` element other than an `array<char>` element occupies one word. See §2.2, Appendix J.
 

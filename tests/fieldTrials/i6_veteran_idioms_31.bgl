@@ -7,17 +7,17 @@
 // calling a method of the object, a new member used by the object's own methods, an `auto` value
 // alias on a namespace object); globals typed by an alias type path to a class declared below and by
 // one to an enum declared below, initialized with an enum value through the alias path; routines
-// taking alias-typed and class-typed parameters, a `ref` parameter of a value class, overloads
-// chosen between a value class and a class declared below; reads of an inline `auto` accessor (with
+// taking alias-typed and class-typed parameters, a `ref` parameter of a struct, overloads
+// chosen between a struct and a class declared below; reads of an inline `auto` accessor (with
 // `outer` reaching members declared after it) and `++` and reads of a named accessor member from
 // routines and verbs above the object; member arrays of an object and of a class written and read
 // from above, through a value alias (`post.desk.slots[b]`) and through casts to the class and to an
-// object (`((scale)post.office.Pan()).uses`); a global array of the value class read and `+=`d by
-// element and compared with derived `>`; a value class's copy, conversion-assignment, `+=`, `==`,
+// object (`((scale)post.office.Pan()).uses`); a global array of the struct read and `+=`d by
+// element and compared with derived `>`; a struct's copy, conversion-assignment, `+=`, `==`,
 // `!=` and `<=>` operators; static members and a static method of a class declared below; enum
 // values through an alias path in `case`, a global initializer and casts; `is()` with an alias
 // path; objects declared ahead of their class, whose base is declared after it, with an owned member
-// given by inline objects of the value class and of its alias path; an `extend class` method
+// given by inline objects of the struct and of its alias path; an `extend class` method
 // called from above; `??` on a parent; a children loop over an object declared below; a conveyor
 // daemon feeding parcels from a member array; native Weigh, Stamp, Sort verbs and meta Ledger and
 // Trace verbs.
@@ -500,9 +500,9 @@ extend class Parcel {
     }
 }
 
-// ---------------------------------------------------------------- value classes
+// ---------------------------------------------------------------- structs
 
-value class Grams {
+struct Grams {
     int g;
     Grams operator = (Grams o) { g = o.g; return self; }
     Grams operator = (int n) { g = n; return self; }
@@ -513,7 +513,7 @@ value class Grams {
     int operator <=> (int n) { return g - n; }
 }
 
-value class Tally {
+struct Tally {
     int _n;
     int operator () { return _n; }
     void operator = (int v) {
@@ -522,7 +522,7 @@ value class Tally {
     }
 }
 
-extend class Grams {
+extend struct Grams {
     emitter int kg { ($self.g / 1000) }
 }
 

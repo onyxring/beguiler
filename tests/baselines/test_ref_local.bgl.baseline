@@ -60,7 +60,12 @@ object bgl
 class _bglClass_Box
   with
     x,
-    y
+    y,
+    _opeq[o;
+        self.x=o.x;
+        self.y=o.y;
+        return self;
+    ]
 ;
 _bglClass_Box boxSrc
 ;

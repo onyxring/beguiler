@@ -28,7 +28,7 @@
 }
 
 // Plain class with non-emitter user-declared operator= → backing synthesized.
-value class Window {
+struct Window {
     int width;
     int height;
     Window operator = (Window v){
@@ -47,7 +47,7 @@ Window mkWin(int w, int h){
 
 // Plain class with EMITTER operator= → backing synthesized; emitter body substitutes
 // $self/$val with the backing name at emit time (i6Emitter.cpp:1271-1278).
-value class Tag {
+struct Tag {
     int n;
     emitter Tag operator = (Tag v){ $self.n = $v.n }
 }

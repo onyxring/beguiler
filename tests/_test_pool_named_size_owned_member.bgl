@@ -1,8 +1,8 @@
 // _test_pool_named_size_owned_member.bgl — a pool sized by a name gets no per-slot backing for an owned
-// (value-class) member, so the member is an error there (§8.2.6).
+// (struct) member, so the member is an error there (§8.2.6).
 // EXPECT_ERROR: so it cannot have the owned member 'Pos'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 const int N = 3;
-value class V { int X; V operator = (V o) { X = o.X; return self; } }
+struct V { int X; V operator = (V o) { X = o.X; return self; } }
 class S[N] { int Id; V Pos; }
 void main(){ S s = new S(); }

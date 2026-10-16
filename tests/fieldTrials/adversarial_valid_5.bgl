@@ -3,7 +3,7 @@
 
 // Exercises: valid but unusual combinations, many areas in one declaration, on the Z-machine.
 // An object of a class with a `default` method that holds type aliases (`alias … for`) and uses them
-// bare: an owned value-class member through the alias, a nested member array, a union member; its inline
+// bare: an owned struct member through the alias, a nested member array, a union member; its inline
 // accessor has static members, a static array appended through a `ref` alias, `[]`, a primitive local,
 // a range switch, a positional inline value object, `new` through the alias, `?.`, postfix `?`, a lambda
 // reading outer's nested array, a children walk and `perform` on outer; its `replace` method dispatches to
@@ -17,7 +17,7 @@
 // replaced(); a pooled class with a static nested array, `[]`/`[]=`, an array of a union, a stringObj
 // switch and <linq> over arrays of arrays. Hidden accessor writes, members re-listed positionally across
 // two parents, prefix `++` on an object accessor, bare inline arguments in recursion, `<=>` sorting, an
-// #i6 island with a nested #bgl, value classes two deep in a pool, a ref to a nested array, an emitter
+// #i6 island with a nested #bgl, structs two deep in a pool, a ref to a nested array, an emitter
 // class with #if in a block lambda, a pooled class whose inline accessor holds an array, and a verb
 // with a recursive method over an inner array of a local nested array.
 
@@ -54,7 +54,7 @@ verb Ping {
 
 // ---- shared types ------------------------------------------------------------------------------
 
-value class Cell {
+struct Cell {
     inline int n;
     inline int m;
     Cell operator = (Cell o) { n = o.n; m = o.m; return self; }
@@ -288,7 +288,7 @@ extern class Gauge : object {
 extern Gauge gaugeOne;
 extern Gauge gaugeTwo;
 
-// ---- routines: byte array, array of a value class and an I6 island; an emitter class and #if -------
+// ---- routines: byte array, array of a struct and an I6 island; an emitter class and #if -------
 
 int byteTable(int k) {
     array<char> bytes = "mno";
@@ -442,7 +442,7 @@ int deepDuo(int n) {
     return useDuo({ n, n }) + deepDuo(n - 1) * 1000;
 }
 
-value class Rank {
+struct Rank {
     inline int v;
     Rank operator = (Rank o) { v = o.v; return self; }
     int operator <=> (Rank o) { return v - o.v; }
@@ -478,14 +478,14 @@ int viaIslands(int n) {
     return r;
 }
 
-// ---- owned value classes two deep inside a pooled class; a ref to a nested array ---------------------
+// ---- owned structs two deep inside a pooled class; a ref to a nested array ---------------------
 
-value class Pt {
+struct Pt {
     inline int x;
     Pt operator = (Pt o) { x = o.x; return self; }
 }
 
-value class Seg {
+struct Seg {
     Pt a;
     Pt b;
     Seg operator = (Seg o) { a = o.a; b = o.b; return self; }

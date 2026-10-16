@@ -2,11 +2,11 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-second pass: a league table.
-// A value class for a win/draw/loss record with a copy operator, `+` combining a home and an away record,
+// A struct for a win/draw/loss record with a copy operator, `+` combining a home and an away record,
 // `==`/`!=`, computed points and goal difference, and a static factory for an outcome; a team entity deriving
 // from a "ranked" base and a "sponsored" mixin, owning two record members, a recent-form `array<eOutcome>`
 // queue (`push`/`popEnd`) and a clamping `auto { … }` rating property; a guest-team subclass whose `default`
-// `CountsInTable` override drops it from the standings; a value class for a fixture holding its two teams
+// `CountsInTable` override drops it from the standings; a struct for a fixture holding its two teams
 // as `object` read back through `(Team)` casts, kept in a schedule's member `array<Fixture>` filled through a fluent
 // `selfType` builder and read through an `operator []`; a pooled error class thrown from a guard method and caught in a typed `catch`;
 // a league service with an observer list of `func<void, Fixture>` listeners (a named function and a
@@ -41,7 +41,7 @@ enum eOutcome { Win, Draw, Loss }
 
 //-- Record: a value type --------------------------------------------------------------------------------------
 
-value class Record {
+struct Record {
     int Won;
     int Drawn;
     int Lost;
@@ -187,7 +187,7 @@ GuestTeam teamG { "team G", "GST"; }
 
 //-- Fixtures --------------------------------------------------------------------------------------------------
 
-value class Fixture {
+struct Fixture {
     ref Team HomeRef;
     ref Team AwayRef;
     int HomeGoals;

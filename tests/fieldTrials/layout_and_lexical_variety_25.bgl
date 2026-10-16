@@ -10,7 +10,7 @@
 // `before` rule on the library's `Fill`; a lamp whose `after` rules start and stop a daemon that grows
 // the plants on the bench and logs their total height in an `array<int>` kept with
 // `append()`/`dequeue()`; a pour routine with a default parameter, called positionally and by name,
-// that `throw`s an int code caught in the verb handler; a value class census returned from a routine
+// that `throw`s an int code caught in the verb handler; a struct census returned from a routine
 // and filled through a `ref` parameter; an `array<Plant>` read with <linq> (`filter`, `count`, `orderBy`
 // with a comparator, `first`, `all`, `any`, `take`, `skip`) and an `array<int>` read with `distinct`; a
 // `stringObj` label built with `+=`, captured output, `toUpper()` and `left()`; `while` and `do … until`
@@ -284,7 +284,7 @@ object lamp
 
 // ==== census ==========================================================================================
 
-value class Census
+struct Census
 {
     int seeds ;
     int growing ;      // sprouts and buds

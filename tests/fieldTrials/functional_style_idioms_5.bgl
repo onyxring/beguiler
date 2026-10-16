@@ -3,7 +3,7 @@
 
 // Exercises: a global array<func<int, int>> pipeline edited at compile time with `extend` (inject
 // before/after/first, move, remove) using function names as elements; a namespace object of pure
-// functions reached by path and through #using, its methods wrapped in lambdas as func<> values; a value class
+// functions reached by path and through #using, its methods wrapped in lambdas as func<> values; a struct
 // (Pair) with a copy operator and `+`, mapped through a `ref` parameter by a func<>, folded by copy, and
 // built up by a lambda that captures it; a class whose `operator []` and implicit `operator ()` run a
 // literal func<> member (a lazy sequence), with `?=` as a membership test; a pooled class of memoizing
@@ -71,9 +71,9 @@ object fx {
 
 int applyTwice(func<int, int> f, int x) { return f(f(x)); }
 
-//-- A value class -------------------------------------------------------------------------
+//-- A struct -------------------------------------------------------------------------
 
-value class Pair {
+struct Pair {
     int a;
     int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }

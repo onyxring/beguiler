@@ -199,7 +199,7 @@ int moveByI6(object thing, object dest) {
 }
 
 // ===== TALLIES (ref and I6) =====
-value class Tally {
+struct Tally {
     int n;
     Tally operator = (Tally o) {
         n = o.n;

@@ -382,7 +382,7 @@ the one that fits its form (§8.6):
   | `is(bglClass)` | the object is of the class, or of one derived from it |
   | `print()` | prints the object's short name; what `print(obj)` calls |
 
-  A value class copies through its own copy operator instead of the root assignment (§2.10.3, §9.1).
+  A struct copies through its own copy operator instead of the root assignment (§2.10.3, §9.1).
   `object` adds world-tree citizenship (`parent`, `children`, attributes) on top.
 
 - **`_bglPrimitive`** — the root of every primitive class (`int`, `char`, `string`, `bglClass`, …, §8.2.5), whose
@@ -764,7 +764,7 @@ The link text is printed plainly on an interpreter without hyperlink support.
 
 **Description**
 
-**`bglSize`.** A value class with `int width` and `int height` members and a copying `operator =`. It is the return type of the image-metadata calls in `<glulxImage>` (§22.8) and the argument type of the runtime's scaling helpers.
+**`bglSize`.** A struct with `int width` and `int height` members and a copying `operator =`. It is the return type of the image-metadata calls in `<glulxImage>` (§22.8) and the argument type of the runtime's scaling helpers.
 
 **Blorb asset enums.** The core declares three enums, empty unless blorb packaging is enabled, and one union over them:
 

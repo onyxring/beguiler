@@ -71,9 +71,9 @@ int catalogIndexOf(dictionaryWord w) {
     return -1;
 }
 
-// ---- a price band: a value class ordered by a static <=> -----------------------------------------------------
+// ---- a price band: a struct ordered by a static <=> -----------------------------------------------------
 
-value class PriceBand {
+struct PriceBand {
     int price = 0;
     int index = 0;
 

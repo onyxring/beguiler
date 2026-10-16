@@ -5,7 +5,7 @@
 // tables; a transition table as an array of arrays read [state][event] with -1 for a refused event;
 // an array<func<void>> of entry actions dispatched by the new state; an event word table searched with
 // indexOf; a bnum lamp table printed bit by bit; a history ring kept with enqueue/dequeue and queried
-// with <linq> (distinct, filter, count, any); a value-class job record queued in an array of the class,
+// with <linq> (distinct, filter, count, any); a struct job record queued in an array of the class,
 // appended from inline objects with run-time members, sorted by a comparator lambda, copied out and
 // removed; a check table of objects written as bare { … } with a func<> member, extended with inject
 // after and first; <linq> filter/count/any over the job array with lambdas capturing a local; a run
@@ -95,7 +95,7 @@ object panel {
     attributes = {static};
 }
 
-value class Job {
+struct Job {
     inline int id;
     inline int pri;
     inline int cost;

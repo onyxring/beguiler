@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a wiring kit whose public names are reached only through namespaces. A parts object
-// holds type aliases (two enums, a value class of ohms, a wire class, a device class, a pooled job
+// holds type aliases (two enums, a struct of ohms, a wire class, a device class, a pooled job
 // class) and helpers that name them bare inside its own body; a superposed calc object is reached by
 // a value alias; an emitter class of formatting with an alias member is reached by a class value
 // alias; the root object holds parts as an auto member, calc and fmt as aliases and a member array
@@ -10,7 +10,7 @@
 // static-only class and a method that uses both. The alias paths appear as class member types, a base
 // class, object declarations, parameters, ref parameters, returns, unions, casts, is(), new, array
 // and func<> generic arguments, lambda parameters, for-in variables, enum values in initializers,
-// switch cases and comparisons, a value-class operator's parameter and a default argument. The
+// switch cases and comparisons, a struct operator's parameter and a default argument. The
 // consumer imports with #using (the root for partial paths, a branch for bare names, an emitter
 // class) at file scope and inside a routine, reaches an emitter alias member three steps down, a
 // static method through a class value alias and the pooled class through an imported alias with new
@@ -41,7 +41,7 @@ enum eLa31Gauge { thin, medium, thick }
 enum eLa31Kind { lamp, bell, fan }
 
 /// A resistance, copied on assignment.
-value class La31Ohms {
+struct La31Ohms {
     int r;
     La31Ohms operator = (La31Ohms o) { r = o.r; return self; }
     La31Ohms operator = (int n) { r = n; return self; }
@@ -286,7 +286,7 @@ extend la31 {
 }
 
 /// A reading: resistance and how many wires.
-value class La31Meter {
+struct La31Meter {
     la31.parts.ohms ohms;
     int wires;
     La31Meter operator = (La31Meter o) { ohms = o.ohms; wires = o.wires; return self; }

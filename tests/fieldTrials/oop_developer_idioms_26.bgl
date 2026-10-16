@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-sixth pass: a build pipeline.
-// A value class for a duration in seconds with a copy operator, `+`, a `+=` taking seconds, `==`/`!=` and a
+// A struct for a duration in seconds with a copy operator, `+`, a `+=` taking seconds, `==`/`!=` and a
 // `<=>` that `>` comes from, a static factory and a formatter returning a `stringObj`; a "tagged" mixin
 // holding an `array<string>` searched with `contains`; a task base deriving from the mixin with an owned
 // `Duration`, an `array<Task>` of dependencies, fluent `selfType` methods, a `required` `Run` routine,
@@ -55,7 +55,7 @@ string StatusName(eStatus s) {
 
 //-- Duration: a value type ------------------------------------------------------------------------------------
 
-value class Duration {
+struct Duration {
     int Seconds;
 
     Duration operator = (Duration o) {

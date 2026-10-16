@@ -12,8 +12,8 @@
 // and the union as a member, a return type and an array element walked with for-in; var values switched
 // on typeof; emitter classes with init/deinit as locals inside for, while, nested blocks, a switch case
 // left by break, a lambda body and a function returning from inside two loops; a pooled class whose
-// create() takes three arguments and which owns a value-class member with an inline-object starting value
-// (reset by new); a value class with emitter operator switch cases; a static func<> member called
+// create() takes three arguments and which owns a struct member with an inline-object starting value
+// (reset by new); a struct with emitter operator switch cases; a static func<> member called
 // directly and a static method stored as a func value; a getter/setter member made read-only on a
 // subclass with hide and written through a base parameter and an upcast; postfix ? on noun and second;
 // #startup and #message.
@@ -118,7 +118,7 @@ int findMiddle() {
 }
 
 // ===== MONEY =====
-value class Coins {
+struct Coins {
     int cents;
     Coins operator = (Coins o) { cents = o.cents; return self; }
 }
@@ -140,7 +140,7 @@ class Token[2] : object {
 }
 
 // ===== MARKS =====
-value class Mark {
+struct Mark {
     int points;
     Mark operator = (Mark o) { points = o.points; return self; }
     // a case value is the tens of the points
@@ -155,7 +155,7 @@ class Helpers {
 }
 
 // ===== SIZES =====
-value class dim {
+struct dim {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }

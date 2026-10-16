@@ -2,19 +2,19 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: layout and lexical habits where three language areas meet inside one declaration.
-// A value class with static `array<string>`s, an `array<char>` member, two inline accessors (one
+// A struct with static `array<string>`s, an `array<char>` member, two inline accessors (one
 // appending to a static array), a copy operator that copies the byte array, `operator []`/`[]=` over the
 // bytes, a postfix `?` on a string read from the static array, a block lambda in a method taking an
 // `array<Cell>` parameter and one subscripting `self`; an `extend class` giving it an emitter
-// `operator ?`. A routine whose block lambda captures a value-class local and subscripts it; one that
+// `operator ?`. A routine whose block lambda captures a struct local and subscripts it; one that
 // walks an `array<Tag>` parameter. A class with an `array<array<int>>` member read by its
 // `operator []`, an `array<char>` member, an `array<Cell>` member, an inline accessor and a block
 // lambda over the rows. An `extend class` written straight after `#using`, adding static arrays of
-// strings, of an aliased reference class, of an aliased value class and of `array<string>` rows, an
+// strings, of an aliased reference class, of an aliased struct and of `array<string>` rows, an
 // `operator []=`, an accessor reading a static `array<string>`, a block lambda subscripting `self`,
-// a `for … in` over the static rows, a local `array<char>` and member writes on static value-class
+// a `for … in` over the static rows, a local `array<char>` and member writes on static struct
 // slots. An object whose inline accessor writes the object's `array<char>`, its nested array and its
-// value-class member (also through that member's `operator []=`) via `outer`, beside a type alias and
+// struct member (also through that member's `operator []=`) via `outer`, beside a type alias and
 // an `array<Cell>` parameter; an `extend` of that object adding an alias and an accessor testing
 // `outer.near?`; an object whose accessor runs a block lambda that reads `outer`'s nested rows, beside
 // an `array<array<char>>`. Lexically: `#Define`/`#DEFINE` in mixed case, `$` hex and `$$` binary
@@ -53,9 +53,9 @@ Cell c3 { $$111 ; }                     // seven
 array<Cell> trio = { c1 , c2 , c3 } ;
 array<Cell> pair = { c3 , c1 } ;
 
-//-- A value class: names, bytes, an accessor and a lambda ----------------------------------------------
+//-- A struct: names, bytes, an accessor and a lambda ----------------------------------------------
 
-value class Tag
+struct Tag
 {
     int code ;
     array<char> mark[4] ;
@@ -115,7 +115,7 @@ value class Tag
     }
 }
 
-extend class Tag
+extend struct Tag
 {
     emitter eBool operator ? () { ($self ~= 0 && $self.code ~= 0) }   // an empty slot holds 0
 }

@@ -1,33 +1,33 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a grain depot ledger kept as value-class tables. A Qty value class (inline kg) with a
+// Exercises: a grain depot ledger kept as struct tables. A Qty struct (inline kg) with a
 // copy operator, == / != / <=> (instance, plus a static <=> passed as an operator reference to sort),
 // ?= (within a tolerance), + - * / returning inline values, += -= ++ prefix++ and !, an emitter
 // operator switch, an explicit int conversion read through casts, a static factory and a method
-// returning an inline value; a Price value class whose == != <=> are static only (used by indexOf,
-// distinct, orderBy() and at ordinary sites) and whose * takes a Qty; a Lot value class owning Qty and
+// returning an inline value; a Price struct whose == != <=> are static only (used by indexOf,
+// distinct, orderBy() and at ordinary sites) and whose * takes a Qty; a Lot struct owning Qty and
 // Price members positionally, a ref Lot link bound with := into a chain walked by rebinding a ref
-// local; a Graded subclass that puts its grade first and chains the copy operator by cast, copied
-// into and compared with plain Lots; a Span value class owning two Qty members and a string, kept in a
-// table written as nested bare { { … }, { … } } rows; a Tally value class holding a member array of
+// local; a Graded struct that puts its grade ahead of a Lot's positional members, converted to and
+// from plain Lots and compared with them; a Span struct owning two Qty members and a string, kept in a
+// table written as nested bare { { … }, { … } } rows; a Tally struct holding a member array of
 // Qty and a stringObj; an object owning Qty / Lot / Price / Tally members, a ref Lot and a member
 // array of Qty; a Bin class owning a positional Qty given in each object's body; parallel tables
-// indexed by an enum; functions taking and returning value classes (by value, ref, with inline-value
+// indexed by an enum; functions taking and returning structs (by value, ref, with inline-value
 // defaults and named arguments), returning array elements and ?: choices; ref locals bound to table
 // elements, object members and members of members; a table of lambdas taking and returning Qty;
 // <linq> filter / any / all / count / first / last / take / skip / takeWhile / skipWhile / distinct /
-// orderBy / map over value-class arrays with captured value-class locals, a chain nested inside a
+// orderBy / map over struct arrays with captured struct locals, a chain nested inside a
 // predicate, chain results captured into local arrays; <array> indexOf / contains / -= / insert /
-// prepend / swap / reverse / sort() / sort(opref) / remove / peekEnd on value-class arrays; a
+// prepend / swap / reverse / sort() / sort(opref) / remove / peekEnd on struct arrays; a
 // recursive splitter keeping its Qty parameters per call, called with bare { … } and named arguments;
 // a Tally operator [] returning a member-array element; a pooled Crate class owning a Qty with a
 // starting value and a static Qty, reset by new; a static method returning Qty used as a func value;
-// a captured value-class local changed inside a lambda passed to any(); value-class operands inside
+// a captured struct local changed inside a lambda passed to any(); struct operands inside
 // interpolation, conditions, C-style for and while loops, and switch on a member.
 
 #beguilerSettings {
-    // Glulx: the value-class instances outgrow the Z-machine's readable memory.
+    // Glulx: the struct instances outgrow the Z-machine's readable memory.
     target = glulx;
     includePaths = "../../../inform6/stdlib";
     // split() recurses with Qty parameters and locals, each call taking frame-pool words.
@@ -49,9 +49,9 @@ const int NONE = -1;
 
 enum grain { wheat, barley, oats, rye }
 
-//-- Value classes ---------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------
 
-value class Qty {
+struct Qty {
     inline int kg;
     Qty operator = (Qty o) { kg = o.kg; return self; }
     bool operator == (Qty o) { return kg == o.kg; }
@@ -74,7 +74,7 @@ value class Qty {
     Qty half() { return Qty{ kg / 2 }; }
 }
 
-value class Price {
+struct Price {
     inline int cents;
     Price operator = (Price o) { cents = o.cents; return self; }
     static bool operator == (Price a, Price b) { return a.cents == b.cents; }
@@ -85,7 +85,7 @@ value class Price {
     void into(ref stringObj s) { s += $"{cents / 100}.{cents % 100 / 10}{cents % 10}"; }
 }
 
-value class Lot {
+struct Lot {
     inline grain kind;
     inline Qty weight;
     inline Price rate;
@@ -109,17 +109,32 @@ value class Lot {
     }
 }
 
-// A graded lot puts its grade ahead of the inherited positional members.
-value class Graded : Lot {
+// A graded lot puts its grade ahead of a Lot's positional members.
+struct Graded {
     inline char grade;
-    Graded operator = (Graded o) {
-        (Lot)self = o;
-        grade = o.grade;
-        return self;
+    inline grain kind;
+    inline Qty weight;
+    inline Price rate;
+    int bin;
+    int operator <=> (Graded o) { return weight <=> o.weight; }
+    Lot toLot() {
+        Lot l;
+        l.kind = kind;
+        l.weight = weight;
+        l.rate = rate;
+        l.bin = bin;
+        return l;
     }
+    void copyFrom(Lot o) {
+        kind = o.kind;
+        weight = o.weight;
+        rate = o.rate;
+        bin = o.bin;
+    }
+    void into(ref stringObj s) { toLot().into(s); }
 }
 
-value class Span {
+struct Span {
     inline Qty lo;
     inline Qty hi;
     inline string label;
@@ -128,7 +143,7 @@ value class Span {
     Qty width() { return hi - lo + Qty{ 1 }; }
 }
 
-value class Tally {
+struct Tally {
     array<Qty> recent[LOG_MAX];
     stringObj note;
     int hits;
@@ -489,7 +504,7 @@ verb GradeTest {
         if (g.weight > Qty{ 100 }) g.grade = 'A';
         Graded h = g;
         h.weight += Qty{ 5 };
-        Lot plain = h;
+        Lot plain = h.toLot();
         bool same = plain == lots[i];
         bool near = plain.weight ?= lots[i].weight;
         stringObj row = $"Grade {g.grade}: ";
@@ -560,7 +575,7 @@ verb TopUpTest {
 verb PricesTest {
     grammar = {.prices};
     void handler() {
-        // map() can't produce value-class elements, so the rates are gathered by a loop.
+        // map() can't produce struct elements, so the rates are gathered by a loop.
         array<Price> seen[LOT_MAX];
         for (Lot l in lots) seen += l.rate;
         array<Price> uniq[LOT_MAX] = seen.distinct();
@@ -680,7 +695,7 @@ verb GradesTest {
         array<Graded> gs[LOT_MAX];
         for (Lot l in lots) {
             Graded g;
-            (Lot)g = l;
+            g.copyFrom(l);
             g.grade = l.weight >= Qty{ 100 } ? 'A' : 'C';
             gs += g;
         }
@@ -694,7 +709,7 @@ verb GradesTest {
         gs[0].rate = rates[1];
         Graded top = gs.filter((Graded g) => g.grade == 'A').last();
         int as = gs.filter((Graded g) => g.grade == 'A').count();
-        Lot asLot = top;
+        Lot asLot = top.toLot();
         stringObj row = $"First now {gs[0].weight.kg} @";
         gs[0].rate.into(row);
         row += $"; {as} grade A, top ";

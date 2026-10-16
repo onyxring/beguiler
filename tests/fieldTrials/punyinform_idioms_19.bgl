@@ -7,7 +7,7 @@
 // a token machine whose button makes pooled `Token` instances with `new` (create sets the parent) and
 // whose slot `delete`s them through `Receive`, with a `short_name` and a `parse_name` using TryNumber; a conveyor started by a lever with `StartTimer`, an
 // `each_turn` warning and a `time_out` that brings a parcel; a clerk with `life` (Give, Ask) and a
-// daemon; a value class tallying credit with `operator +=`; a class method shared by two lamps with
+// daemon; a struct tallying credit with `operator +=`; a class method shared by two lamps with
 // `after`; a `before` on a room reading `selected_direction`; a helper with a default argument; and
 // meta verbs that report state with interpolated strings, an `array<string>` of hints picked by a
 // staging function using `hasnt()`, a counter taking an `attribute` parameter over `for … in` children,
@@ -44,7 +44,7 @@ extend extern class object {
 enum eDial { idle, turning, solved }
 enum eBelt { stopped, running }
 
-value class Credit {
+struct Credit {
     int _units = 0;
 
     int  operator ()         { return _units; }

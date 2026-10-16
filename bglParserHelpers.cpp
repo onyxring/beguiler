@@ -307,3 +307,5 @@ bool isConstVariable(const string& name, functionDef* func, statementBlock* body
     if(auto* vd = languageService.findGlobalAs<variableDeclaration>(name)) return vd->isConst;
     return false;
 }
+
+std::string kindWord(classDef* cls){ return isValueClass(cls) ? "struct" : "class"; }

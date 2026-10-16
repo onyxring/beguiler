@@ -1,16 +1,16 @@
-// run_target3_receivers — bare `{ ... }` rows in an object's member array of a value class, compound,
+// run_target3_receivers — bare `{ ... }` rows in an object's member array of a struct, compound,
 // increment and `=` through a nested array element's member, a statement opening with a cast over
 // `.parent`, for-in over member arrays reached through casts and elements, an accessor read through an
 // element of an object's member array, and member reads on `?:` receivers in a method and a routine.
 // EXPECT_OUTPUT: 2 2 2 1 2 5 3 4 9 6 11 11 11 11 7 big 7 20 20 20 20
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Slot {
+struct Slot {
     inline int kind;
     inline int qty;
     Slot operator = (Slot o) { kind = o.kind; qty = o.qty; return self; }
 }
-value class Gauge {
+struct Gauge {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

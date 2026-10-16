@@ -8,7 +8,7 @@
 // overridden by a parcel subclass, a class-wide static counter and a static method; a franking machine
 // with an inline `auto { … }` ink accessor that clamps through `outer`, driven by `-=` and `=`; a scale
 // whose reading is a named accessor class that rounds up; a rack with a member `array<int>` of hole
-// counts read and bumped by enum index; a value class day total with methods, held in a global; a
+// counts read and bumped by enum index; a struct day total with methods, held in a global; a
 // global `array<Letter>` of sorted mail appended to, searched with `contains` and walked with <linq>
 // `orderBy`, `filter`, `count`, `any`, `all`, `first` and `map`; a franking routine that `throw`s int
 // codes caught and switched on in the verb handler; a `stringObj` postmark padded with `prepend` in a
@@ -205,7 +205,7 @@ int frankLetter ( Letter l )
 // ---- the scale -------------------------------------------------------------------------------------
 
 /// A reading rounded up to the next ten grams.
-value class roundedGrams
+struct roundedGrams
 {
     int _g = 0 ;
     int  operator ()        { return _g ; }
@@ -246,7 +246,7 @@ object rack
 
 // ---- the day's total -------------------------------------------------------------------------------
 
-value class DayTotal
+struct DayTotal
 {
     int pieces ;
     int pence ;

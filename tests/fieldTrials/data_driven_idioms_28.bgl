@@ -3,8 +3,8 @@
 
 // Exercises: a bus timetable kept in tables. An enum of stops indexing parallel name and word
 // tables; a symmetric leg-time matrix as an array of arrays read [from][to]; a jagged route table
-// (array<array<int>> of stop numbers) beside a value-class route record table written as
-// bare { … } with positional fields; a Clock value class with a copy operator, `+ int`, a
+// (array<array<int>> of stop numbers) beside a struct route record table written as
+// bare { … } with positional fields; a Clock struct with a copy operator, `+ int`, a
 // three-way `<=>` that supplies `<`, `>`, `<=` and `>=`, `==`/`!=`, and a method that formats
 // hh:mm into a stringObj; Clock values returned from functions and kept in a local array<Clock>
 // sorted with sort(); a bnum of stop amenities listed by bit position; per-route delays in an
@@ -58,7 +58,7 @@ array<array<int>> legs = {
 
 //-- Clock ---------------------------------------------------------------------
 
-value class Clock {
+struct Clock {
     inline int mins;
 
     Clock operator = (Clock o) {
@@ -101,7 +101,7 @@ bool validTime(int hhmm) {
 
 //-- Route tables --------------------------------------------------------------
 
-value class Route {
+struct Route {
     inline int no;
     inline int first;     // first departure, minutes after midnight
     inline int every;     // minutes between departures

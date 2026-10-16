@@ -3,10 +3,10 @@
 
 // Exercises: a small kitchen ticket rail written in a functional style on z5. Dishes are scenery
 // objects of a class with an enum station, a cooking time and a price in cents, held in a global
-// array; tickets are a value class (with a copy operator and a dish reference) held in a sized global
+// array; tickets are a struct (with a copy operator and a dish reference) held in a sized global
 // array<Ticket>, appended from a named inline value, removed by index and walked by <linq> chains
 // (filter/count/any/all/orderBy with two-key comparators/first/take) and hand-written indexWhere and
-// fold helpers over func<> parameters; a value class load with `operator +` folded per station; a bill
+// fold helpers over func<> parameters; a struct load with `operator +` folded per station; a bill
 // priced by a pipeline held in an array<func<int, int>> of named functions and lambdas; parallel
 // served logs filtered by index and zipped with a func<int, int, int>; money formatted into a stringObj
 // returned by value; a `ref stringObj` notes line; verbs reading noun and parsed_number.
@@ -56,7 +56,7 @@ array<eStation> stations = {eStation.grill, eStation.fryer, eStation.cold};
 
 //-- Tickets --------------------------------------------------------------------------------------
 
-value class Ticket {
+struct Ticket {
     int id = 0;
     int table = 0;
     Dish item = null;
@@ -164,7 +164,7 @@ int byPrice(Dish a, Dish b) {
 
 //-- Station load ---------------------------------------------------------------------------------
 
-value class Load {
+struct Load {
     int count = 0;
     int minutes = 0;
 

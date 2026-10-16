@@ -6,7 +6,7 @@
 // that was filled member by member from helpers returning style values; destroy() closing the window;
 // pooled subclasses with their own pools inheriting create(), overriding a default render(), and one
 // calling the base version through a cast of self; static counters on the base read through a subclass
-// name; an owned value-class member (a cell with +, ==, !=, <=> and print()) passed by ref and by
+// name; an owned struct member (a cell with +, ==, !=, <=> and print()) passed by ref and by
 // copy, and returned from a helper; a registry array<pane> walked with virtual dispatch, appended with
 // += and pruned with -=; box drawing with Unicode corners and a centered bold title into each grid,
 // sized from win.width and win.height; a func<void, textGridWindow> member hook set to a lambda;
@@ -40,7 +40,7 @@ class item : object {
 }
 
 // A grid position: column, then row.
-value class cell {
+struct cell {
     inline int col;
     inline int row;
     cell operator = (cell o) { col = o.col; row = o.row; return self; }

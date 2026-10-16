@@ -9,9 +9,9 @@
 // a ref member bound with := to the static array, a recursive static sum, a bay cell read by double
 // index and a method that runs the library's Take through perform(); a tag class with an emitter
 // member, a <buf> capture with postfix ? on the next link, and a local block lambda named has that
-// queries with ?; a nested list of codes through the kit's alias; two value classes and a value
-// class with both as parents, written after #using the kit through its type aliases (as bases and
-// as casts), with + - * += == !=, an emitter through $i6Expr, a for-in over an array of the class,
+// queries with ?; a nested list of codes through the kit's alias; two structs and a struct
+// holding one of each, written after #using the kit through its type aliases (as member types and
+// in its copy operator), with + - * += == !=, an emitter through $i6Expr, a for-in over an array of the class,
 // a ref parameter it adds into, a block lambda that captures self and uses its own * and a
 // stringObj result; the consumer's extend class of the shelf with an #i6 island reading a local and
 // a member through $i6Expr; a nested list of codes declared after #using through the alias,
@@ -199,8 +199,8 @@ verb Amounts {
     grammar = {.amounts};
     void handler() {
         amount a;
-        a.n = 3;
-        a.unit = 1;
+        a.count.n = 3;
+        a.kind.unit = 1;
         amount b = a * 2;
         amount c = a + b;
         amount d = c - a;
@@ -210,11 +210,11 @@ verb Amounts {
         list += b;
         list += c;
         amount t;
-        t.unit = 2;
+        t.kind.unit = 2;
         t.addAll(list);
         print($"total {t}; over {a.countOver(list, 2)} {a.countOver(list, 1)}; ");
         amount held;
-        held.n = 10;
+        held.count.n = 10;
         a.into(held);
         a.into(held);
         print($"held {held}; ");

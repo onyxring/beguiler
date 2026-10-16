@@ -7,12 +7,12 @@
 // `array<int>` parameter walked inside `try`/`catch` with `throw`, a `<linq>` filter over that
 // parameter, `new`/`delete` of a pooled class read through `??`, a `stringObj` member set from an
 // interpolated string, `#if`/`#else` on a defined symbol and `perform()` of a verb; a class with two
-// parents carrying a primitive newtype member and a value-class member, comparison and `+=`
+// parents carrying a primitive newtype member and a struct member, comparison and `+=`
 // operators, a method binding a `ref` local with `:=`, copying through a `ref` parameter, a
 // block-bodied lambda, `?.` over an inherited member, `var` told apart with `typeof`, `#if` and
 // `perform()`; and an I6 class bound with `extern class` whose emitter `operator +=` and static
 // method combine an emitter-class local, an array of arrays, a `switch` choosing text set into a
-// `bgl.util.buf` buffer, a `ref` value-class parameter, `?.`, a cast dispatch to a base class and
+// `bgl.util.buf` buffer, a `ref` struct parameter, `?.`, a cast dispatch to a base class and
 // `perform()`.
 
 #beguilerSettings {
@@ -42,7 +42,7 @@ primitive class grams {
     emitter bool  operator < (grams g)  { ($self < $g) }
 }
 
-value class Pair {
+struct Pair {
     int a;
     int b;
 

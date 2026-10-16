@@ -1,8 +1,8 @@
-// run_target2_accessors — value-class parameters fresh on each call, a bare accessor as a `?:` and `if`
+// run_target2_accessors — struct parameters fresh on each call, a bare accessor as a `?:` and `if`
 // condition inside its host, `= null` through accessor setters, and writes to members of a getter's result.
 // EXPECT_OUTPUT: 1 1 1 off off off safe safe armed armed 1 none none 5 6 7 3 4 5 7
 #beguilerSettings { target = z5; informName = "none"; }
-value class Box {
+struct Box {
     int v = 0;
     int sets = 0;
     Box operator = (Box o) { v = o.v; return self; }
@@ -10,7 +10,7 @@ value class Box {
 }
 Box g;
 int touch(Box b) { b.put(5); return b.sets; }
-value class Flag {
+struct Flag {
     bool _f = false;
     bool operator () { return _f; }
     void operator = (bool b) { _f = b; }
@@ -36,13 +36,13 @@ object panel {
     }
     void flip() { armed = !armed; }
 }
-value class Tag {
+struct Tag {
     string _s = "start";
     int writes = 0;
     string operator () { return _s; }
     void operator = (string s) { _s = s; writes++; }
 }
-value class Gg {
+struct Gg {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

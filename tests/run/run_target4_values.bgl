@@ -1,15 +1,15 @@
-// run_target4_values — bare nested `{ ... }` for a value-class member inside an inline value, a table row
-// and an object body (beside a value-class method that calls a routine declared below), and reads of
+// run_target4_values — bare nested `{ ... }` for a struct member inside an inline value, a table row
+// and an object body (beside a struct method that calls a routine declared below), and reads of
 // never-stored slots of an object's member array.
 // EXPECT_OUTPUT: 2 3 150 1 0 0 7
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Qty {
+struct Qty {
     inline int kg;
     Qty operator = (Qty o) { kg = o.kg; return self; }
     bool near(Qty o) { return gap(kg, o.kg) <= 5; }
 }
-value class Pair { inline Qty a; inline Qty b; Pair operator = (Pair o) { a = o.a; b = o.b; return self; } }
+struct Pair { inline Qty a; inline Qty b; Pair operator = (Pair o) { a = o.a; b = o.b; return self; } }
 class Bin : object { inline Qty cap; }
 array<Pair> ps = { { { 1 }, { 2 } } };
 Pair g = Pair{ { 3 }, { 4 } };

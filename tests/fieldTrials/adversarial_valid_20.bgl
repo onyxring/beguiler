@@ -4,9 +4,9 @@
 // Exercises: valid but unusual code in a small parts-bin index program, on the Z-machine, leaning on
 // namespaces and the names that meet across them.
 // An object namespace `_stock` holding type aliases for a class, a pooled subclass, an enum, a bnum and a
-// value class, a member `count` beside a global `count`, a member array typed by its own alias and
+// struct, a member `count` beside a global `count`, a member array typed by its own alias and
 // methods naming the aliases bare (one calling its own `binWord` beside a global `binWord`); a superposed
-// namespace `_calc` taking and returning the aliases by full path (value-class returns, `array<T>` and
+// namespace `_calc` taking and returning the aliases by full path (struct returns, `array<T>` and
 // `func<…>` parameters); a root `idx` given members by an `extend` written ABOVE it (`auto stock`) and
 // below it (`alias calc`, `alias tally` to a class's statics, `alias store` as a second path to `_stock`);
 // a third level (`idx.stock.bay`, holding a type alias and objects typed through it); later `extend
@@ -44,7 +44,7 @@ int count = 0;
 enum eBin { upper, middle, lower }
 bnum eMark { dented, tagged, sealed }
 
-value class Size {
+struct Size {
     inline int w;
     inline int h;
     Size operator = (Size o) { w = o.w; h = o.h; return self; }

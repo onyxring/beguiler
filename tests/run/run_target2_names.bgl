@@ -41,7 +41,7 @@ class Gauge : object {
     int a() { return reading.total(); }
     int b() { Gauge g = self; return g.reading.total(); }
 }
-value class Reading {
+struct Reading {
     int level = 0;
     int total() { return level + 5; }
 }

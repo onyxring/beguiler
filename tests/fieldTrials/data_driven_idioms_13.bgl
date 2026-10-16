@@ -1,22 +1,22 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: tables meeting in threes. A namespace object (`alias … for` a value class and a class)
+// Exercises: tables meeting in threes. A namespace object (`alias … for` a struct and a class)
 // holding a jagged int table, a string table with empty slots tested with postfix ?, an inline
 // accessor reaching the host through outer with an indexer, a block-lambda filter over a table row,
-// a value-class local named through its alias, and a local array<char> spelled from a row; a class
+// a struct local named through its alias, and a local array<char> spelled from a row; a class
 // declared right after `#using` of that namespace, naming the imported aliases in static member
-// arrays (a sized static array of the value class filled by +=, a static array of objects, of
-// strings and of arrays), an inline accessor whose setter clamps against the static value-class
+// arrays (a sized static array of the struct filled by +=, a static array of objects, of
+// strings and of arrays), an inline accessor whose setter clamps against the static struct
 // table, array<T> parameters, an indexer read through self[i], a block lambda over the static object
-// array, postfix ? walks along a link, a captured array<char> line judged by a value-class copy, the
-// element indexer of the static object array, the static value-class table walked through a ref
+// array, postfix ? walks along a link, a captured array<char> line judged by a struct copy, the
+// element indexer of the static object array, the static struct table walked through a ref
 // local, and the imported tables read bare; a bare write to the imported accessor runs its setter;
 // a class whose operator [] reads a member array<char> copied from a capture of its string array; an
 // extend class adding an indexer that hops along links with postfix ?; an extend of the namespace
 // object adding a type alias, an object array, a string array filtered by a block lambda that counts
 // through a capture, and a captured array<char>; an object whose inline accessor reads a string
-// table through outer, gated by an owned value-class member, set from a block lambda over an
+// table through outer, gated by an owned struct member, set from a block lambda over an
 // array<T> parameter; and an extend of that object adding an object array, a string array, an
 // array<char> member and two inline accessors (one with an indexer) that read them through outer.
 
@@ -46,7 +46,7 @@ object roomA {
 
 //-- Row types -----------------------------------------------------------------
 
-value class Span {
+struct Span {
     int lo;
     int hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }

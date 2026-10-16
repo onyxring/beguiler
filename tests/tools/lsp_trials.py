@@ -38,8 +38,8 @@ RESERVED = set(w.lower() for w in '''
     continue default delete dictionaryWord dictionaryWordLiteral do else emitter enum explicit extend extern
     false float for func hide if in inject inline int interpolatedStringLiteral intLiteral move
     negativeIntLiteral new nothing null object operator outer primitive property rawArray ref remove replace
-    replaced required return rfalse rtrue self static string stringLiteral superposed switch synonyms throw
-    to true try typesealed uint union until value var verb void while this literal'''.split())
+    replaced required return rfalse rtrue self static string stringLiteral struct superposed switch synonyms throw
+    to true try typesealed uint union until var verb void while this literal'''.split())
 
 
 # ── Lexing and sampling ───────────────────────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ def candidates(text, inactive):
             cat = 'member'
         elif prev and prev.text == '::':
             cat = 'scoped'
-        elif prev and prev.kind == 'id' and prev.text.lower() in ('class', 'enum', 'bnum', 'verb'):
+        elif prev and prev.kind == 'id' and prev.text.lower() in ('class', 'struct', 'enum', 'bnum', 'verb'):
             cat = 'decl'
         elif prev and (prev.kind == 'id' and prev.text.lower() not in ('return', 'new', 'print', 'case', 'in', 'throw', 'delete', 'else', 'do')
                        or prev.text == '>') and nxt and nxt.text in ('=', ';', '(', '{', ':', ',', ')', '['):

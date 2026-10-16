@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a kit section configured by #define symbols the consumer sets first; a value class of
+// Exercises: a kit section configured by #define symbols the consumer sets first; a struct of
 // amounts with copy operators, + over amounts and ints and < against an int; a kit verb whose handler
 // reports a shared note and is run from code through perform(). A pooled slip class (literal size)
 // with an owned amount member, a ref amount member bound with :=, a byte array code, a union member
@@ -15,7 +15,7 @@
 // owned amount and a stringObj member, a var tag and an emitter method over its kind; its add method
 // switches on the enum, builds the text, tests the var with typeof, prints the emitter through
 // $i6Expr in an #i6 island and performs the kit verb; a rank method switching on the stringObj by
-// content. The consumer's grade, a value class derived from the amount with a chained copy operator,
+// content. The consumer's grade, a struct shaped like the amount with the automatic copy,
 // an emitter operator switch by band and a covariant operator +; a pooled chip class with two parents,
 // an owned grade, a sized byte array, static arrays of stringObj and of a union, operator < between
 // chips and an #i6 island with a nested #bgl that writes the grade; an extend class of the log with a
@@ -59,7 +59,7 @@ verb La15Note {
 }
 
 /// An amount that copies on assignment.
-value class La15Amt {
+struct La15Amt {
     int n;
     La15Amt operator = (La15Amt o) { n = o.n; return self; }
     La15Amt operator = (int v) { n = v; return self; }
@@ -255,13 +255,9 @@ class La15Log : object {
 // ==== The consumer. ====
 
 /// A grade: an amount whose switch compares its band of ten.
-value class La15Grade : La15Amt {
+struct La15Grade {
+    int n;
     int bumps;
-    La15Grade operator = (La15Grade o) {
-        bumps = o.bumps;
-        (La15Amt)self = o;
-        return self;
-    }
     La15Grade operator = (int v) { n = v; return self; }
     /// A case matches the band of ten the grade falls in.
     emitter eBool operator switch (int b) { ($self.n / 10 == $b) }
@@ -281,6 +277,8 @@ value class La15Grade : La15Amt {
             default: return 'H';
         }
     }
+    /// Prints the grade.
+    void print() { ::print($"<{n}>"); }
 }
 
 /// A chip from a pool of three: a bin with a width, a grade and a face; every chip shares what was said.

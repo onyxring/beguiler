@@ -1,12 +1,12 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: code written the way a C#/Java developer writes it, seventh pass. A value class kept
+// Exercises: code written the way a C#/Java developer writes it, seventh pass. A struct kept
 // in collections: a class's `array<Money>` member and a local `array<Money>`, stores that copy (from
 // a variable, a by-value parameter and a returned value), element member writes, `sort()` through an
 // instance `<=>`, `indexOf`/`contains`/`-=` through an instance `==`, `remove`/`clear` returning
 // slots to the pool and a refill after them; a `ref` local bound to an array element and a swap
-// through two `ref` parameters; a method returning a value-class local by value; an owning
+// through two `ref` parameters; a method returning a struct local by value; an owning
 // collection of a pooled reference class whose `static deinit` deletes the dropped element (remove,
 // `-=`, clear and a local array's scope exit), with `dequeue` handing one back; a diamond
 // (`Service : Logged, Cached`, both over `Component`) with a template method, depth-first member
@@ -32,9 +32,9 @@ extend extern class object {
     stringOrRoutine description;
 }
 
-//-- Money, a value class kept in collections ------------------------------------------------------
+//-- Money, a struct kept in collections ------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money o)      { Cents = o.Cents; return self; }

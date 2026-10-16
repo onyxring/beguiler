@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a tenth first-time-programmer program, the one where the author reads the chapters on
-// references and namespaces and tries to build "real" data structures. A value class with a ref member
+// references and namespaces and tries to build "real" data structures. A struct with a ref member
 // of its own type chained with := (globals, locals, a ref parameter, array<V> slots linked into a
 // ring), a walk that rebinds a ref local in a while loop until it runs out, = through a ref copying
 // into the referent, a copy made by passing that loses the links, a ref member on an object bound at
@@ -30,7 +30,7 @@
 #include <string>
 
 // ===== NODES (a chain of things that point at each other) =====
-value class Node {
+struct Node {
     int id;
     ref Node next;
     Node operator = (Node o) {

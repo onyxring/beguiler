@@ -5,14 +5,14 @@
 // inside one declaration. A class whose indexer (`operator []` / `[]=`) reads and writes a `static
 // array<int>`, mirrors each write into a `static array<char>`, keeps a `static array<Item>` filled from a
 // method taking an `array<int>` parameter (guarded by postfix `?`), and averages through a block lambda
-// taking a value-class parameter; a class whose `static array<Phrase>` of a value class holding an
+// taking a struct parameter; a class whose `static array<Phrase>` of a struct holding an
 // `array<string>` is filled from a `static array<array<string>>` and drained through a block lambda that
 // gets a copy; a class holding `array<array<int>>`, `array<array<string>>` and `array<Item>` whose indexer
 // reads the nested strings and whose block lambda takes a nested row as an `array<int>` parameter, summed
-// into a value-class tally; an `extend class` adding an `array<char>` member, an indexer over it, a
-// inline accessor holding an `array<string>` (used above its declaration), and a method taking an `array<int>` beside a value-class
+// into a struct tally; an `extend class` adding an `array<char>` member, an indexer over it, a
+// inline accessor holding an `array<string>` (used above its declaration), and a method taking an `array<int>` beside a struct
 // local and a block lambda testing a peer with `?`; an object whose inline accessors reach its host through
-// `outer` (an `array<string>`, an `array<char>`, an `array<Item>`, an owned value-class member), whose
+// `outer` (an `array<string>`, an `array<char>`, an `array<Item>`, an owned struct member), whose
 // setter validates through a block lambda that also reads `outer`, which has its own `operator []` and
 // loads an `array<string>` parameter; a namespace object (`alias … for`) with an `array<part>`, an
 // `array<char>` and an indexer returning the aliased type, tested with `?`; and accessors added by `extend`
@@ -39,7 +39,7 @@ object roomA {
     attributes = {light};
 }
 
-value class Tally {
+struct Tally {
     int Count;
     int Sum;
     Tally operator = (Tally o) { Count = o.Count; Sum = o.Sum; return self; }
@@ -112,9 +112,9 @@ Register regB { "register B"; }
 array<int> FrontSlots = { 0, 1 };
 array<int> BackSlots  = { 2, 2 };
 
-//-- A class-wide bank of value-class phrases -------------------------------------------------------------
+//-- A class-wide bank of struct phrases -------------------------------------------------------------
 
-value class Phrase {
+struct Phrase {
     array<string> Words[3];
     int Uses;
     Phrase operator = (Phrase o) {

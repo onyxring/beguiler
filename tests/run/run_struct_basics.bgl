@@ -1,0 +1,43 @@
+// run_struct_basics — a struct is a value type: a parameter gets a copy, a return copies out, and `=` copies.
+// Its methods and operators are routines of its own, and `extend struct` adds more. A cast of `self` to a type it
+// converts to calls that type's method on the converted value, and a struct with an `operator =` taking another type
+// still copies its own parameters.
+// EXPECT_OUTPUT: 2 3 6 12 false true | 9 2 | k(5) 51 | 7
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pos {
+    int row; int col;
+    Pos operator = (Pos o) { row = o.row; col = o.col; return self; }
+    int sum() { return row + col; }
+}
+extend struct Pos {
+    int twice() { return sum() * 2; }
+    bool operator == (Pos o) { return row == o.row && col == o.col; }
+    bool operator != (Pos o) { return !(self == o); }
+}
+struct Pt { int x; int sum() { return x * 10; } void show() { print($"({x})"); } }
+struct Tagged {
+    int x; char tag;
+    explicit Pt operator () { Pt p; p.x = x; return p; }
+    int sum() { return 1 + ((Pt)self).sum(); }
+    void show() { print((char)tag); ((Pt)self).show(); }
+}
+struct L { int cm; }
+struct G { int cm; string side = "x"; G operator = (L o) { cm = o.cm; return self; } int sum(G o) { return cm + o.cm; } }
+Pos home;
+Pos shift(Pos p) { p.row = p.row + 1; return p; }
+void main(){
+    bglInit();
+    home.row = 2; home.col = 3;
+    Pos q = shift(home);
+    print($"{home.row} {q.row} {q.sum()} {q.twice()} {q == home} {q != home} | ");
+    Pos r = q;
+    r.row = 9;
+    print($"{r.row} {home.row} | ");
+    Tagged t;
+    t.x = 5; t.tag = 'k';
+    t.show();
+    print($" {t.sum()} | ");
+    G a; a.cm = 3;
+    G b; b.cm = 4;
+    print(a.sum(b));
+}

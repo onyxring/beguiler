@@ -16,7 +16,7 @@
 // from an I6 objectloop through $i6Name; array extend with inject before/first, move, remove by
 // index and an inline object; a pool sized by a const; bare inline objects as positional and
 // named arguments with run-time members; a ref array member bound with := and appended through;
-// a value class with prefix and postfix ++, !, ?=, [] and []=, and an explicit conversion; a kit
+// a struct with prefix and postfix ++, !, ?=, [] and []=, and an explicit conversion; a kit
 // before rule switching on action with rtrue of interpolated text.
 
 #beguilerSettings {
@@ -104,7 +104,7 @@ replace emitter int la8Scale(int v) { ($v * 5) }
 // ---- The consumer's own value type. ----
 
 /// Two numbers that copy, index and compare by sum.
-value class la8Pair {
+struct la8Pair {
     int a;
     int b;
     la8Pair operator = (la8Pair o)         { a = o.a; b = o.b; return self; }

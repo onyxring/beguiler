@@ -1,6 +1,6 @@
 // run_target7_strings — a bare static stringObj assigned (literal and interpolated) and subscripted inside
 // its class's methods, subscripted through its class; an emitter taking two interpolated-string parameters;
-// and a value class's binary `+` and `==` taking a stringObj, given a literal or a `string` operand.
+// and a struct's binary `+` and `==` taking a stringObj, given a literal or a `string` operand.
 // EXPECT_OUTPUT: set y x n4 one 4 / two 5 ab ac aw eq ne
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
@@ -13,7 +13,7 @@ class Box {
 }
 Box b { }
 emitter void two(interpolatedStringLiteral a, interpolatedStringLiteral c) { $a; print " / "; $c; }
-value class Sheet {
+struct Sheet {
     stringObj body;
     Sheet operator = (Sheet o) { body = o.body; return self; }
     Sheet operator + (stringObj s) { Sheet r; r = self; r.body += s; return r; }

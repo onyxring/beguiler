@@ -2,11 +2,11 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, fourth pass. An `alias class` as the
-// project's own base type, with classes derived from it; a value class for money with a copy operator
+// project's own base type, with classes derived from it; a struct for money with a copy operator
 // overloaded by `int`, arithmetic by value and by int, `-`/`/`/`%`, an instance `<=>` driving `<`/`>=`,
-// `==`/`!=`, and postfix and prefix `--`; a bit-set value class with `|`, `&`, `^`, `<<`, `>>`, `!` and
+// `==`/`!=`, and postfix and prefix `--`; a bit-set struct with `|`, `&`, `^`, `<<`, `>>`, `!` and
 // `?=`, and `|=`, `&=` and `<<=` met by the fallback to the plain operator; an owned value member
-// holding another value class; a clamping named accessor class used as an owned member, made
+// holding another struct; a clamping named accessor class used as an owned member, made
 // read-only by `hide Member.operator =` on a subclass and written again through a base cast, and
 // reset on pooled `new`; interfaces by convention (`required` routines met by a class, `default`
 // routines overridden) under multiple inheritance, with a four-level chain, `replace default` in
@@ -32,7 +32,7 @@ enum Place { Head = 0, Body = 1, Hand = 2 }
 
 //-- Money -----------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money o) { Cents = o.Cents; return self; }
@@ -68,7 +68,7 @@ value class Money {
 
 //-- Bit set ---------------------------------------------------------------------------------------
 
-value class Mask {
+struct Mask {
     int Bits;
 
     Mask operator = (Mask o) { Bits = o.Bits; return self; }
@@ -94,7 +94,7 @@ value class Mask {
 
 //-- Gauges with a clamping accessor ---------------------------------------------------------------
 
-value class Clamped {
+struct Clamped {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) {

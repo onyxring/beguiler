@@ -2066,7 +2066,7 @@ string LspServer::hoverIdentifier(const string& uri, int line, int col, bool isC
         // resolveSymbol set enough info; enrich with type/class specifics
         typeDef& td = languageService.getType(lower);
         if(auto* cd = dynamic_cast<classDef*>(&td)) {
-            typeInfo = "class " + cd->dName();
+            typeInfo = (cd->isValue && !cd->isEmitterClass ? "struct " : "class ") + cd->dName();
             if(cd->isEmitterClass) typeInfo = "emitter " + typeInfo;
             if(cd->isExternal) typeInfo = "extern " + typeInfo;
         } else if(auto* ed = dynamic_cast<enumDef*>(&td)) {
@@ -2935,6 +2935,7 @@ json LspServer::completeClassHeader(int col, const string& lineText, bool& handl
             auto* cd = dynamic_cast<classDef*>(t);
             if(!cd) continue;
             if(!cd->name.empty() && cd->name[0] == '_') continue;  // skip system internals
+            if(cd->isValue && !cd->isEmitterClass) continue;        // a struct has no subclasses
             const string& label = cd->displayName.empty() ? cd->name : cd->displayName;
             items.push_back({
                 {"label", label},
@@ -3354,11 +3355,11 @@ json LspServer::completeMemberModifiers(int line, int col, const string& docText
                 // so only an EXPLICIT `extend class`/`extend object` counts as a member body here — a
                 // bare `extend <name> {` stays silent rather than guessing modifiers for a verb/array.
                 string sw = secondWord; transform(sw.begin(), sw.end(), sw.begin(), ::tolower);
-                bool isClassBody  = (fw == "class")
-                                 || (fw == "extend" && (sw == "class" || sw == "object"));
+                bool isClassBody  = (fw == "class" || fw == "struct")
+                                 || (fw == "extend" && (sw == "class" || sw == "struct" || sw == "object"));
                 // `Type name {` (two identifiers, no parens/initializer/control-or-extend kw) → object body.
                 bool isObjectBody = !hasParen && !isInitializer && !controlKw.count(fw)
-                                    && fw != "class" && fw != "enum" && fw != "grammar" && fw != "extend"
+                                    && fw != "class" && fw != "struct" && fw != "enum" && fw != "grammar" && fw != "extend"
                                     && !firstWord.empty() && !secondWord.empty();
                 if(isClassBody || isObjectBody) {
                     json items = json::array();
@@ -4248,7 +4249,7 @@ static const set<string> bglModifiers = {
     // The rest of Appendix A's qualifier set, which this list had drifted behind.
     // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
     "additive", "alias", "asbgl", "asi6", "hide", "primitive", "ref", "required",
-    "superposed", "synonyms", "typesealed"
+    "struct", "superposed", "synonyms", "typesealed"
 };
 // No `#ifdef` / `#ifndef`, in either hash form: `#if SYMBOL` and `#if !SYMBOL` test definedness
 // (appendix A, 14.2.5). Colouring them as directives told the author they existed. `readonly` is

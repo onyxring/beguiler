@@ -1,7 +1,7 @@
 // run_target5_overloads — two overloads of a global function named like a <string> library method, an
 // object-body overload chosen by exact match over the class's overloads, an object-body method of a new
-// signature beside the class's single method of the name, a base value-class value assigned to a
-// subclass declaration, and an object's `replace` of one overload of a class method.
+// signature beside the class's single method of the name, a struct value assigned to another
+// struct's declaration through its converting `operator =`, and an object's `replace` of one overload of a class method.
 // EXPECT_OUTPUT: rods lengths char x int 5 bool true int 5 char x int 5 105 7 5 7 50 2 50 42 3
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
@@ -13,13 +13,14 @@ class Rod : object {
 class Peg : object {
     void mark(int n) { print("int "); print(n); print(" "); }
 }
-value class Length {
+struct Length {
     inline int cm;
     Length operator = (Length o) { cm = o.cm; return self; }
 }
-value class Gap : Length {
+struct Gap {
+    inline int cm;
     int side = 7;
-    Gap operator = (Gap o) { side = o.side; (Length)self = o; return self; }
+    Gap operator = (Length o) { cm = o.cm; return self; }
 }
 string compare(Rod a, Rod b) { return "rods"; }
 string compare(Length a, Length b) { return "lengths"; }

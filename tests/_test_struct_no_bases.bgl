@@ -1,0 +1,6 @@
+// Negative test: a struct doesn't inherit.
+// EXPECT_ERROR: can't have bases
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pos { int row; Pos operator = (Pos o) { row = o.row; return self; } }
+struct Pos3 : Pos { int lvl; }
+void main() { }

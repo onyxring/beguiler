@@ -137,13 +137,13 @@ class La12Tag : object {
 // ---- Counts in units: two value bases. ----
 
 /// A count of something.
-value class La12Qty {
+struct La12Qty {
     int n;
     La12Qty operator = (La12Qty o) { n = o.n; return self; }
 }
 
 /// What a count is counted in.
-value class La12Unit {
+struct La12Unit {
     la12Code unit;
     La12Unit operator = (La12Unit o) { unit = o.unit; return self; }
 }
@@ -180,36 +180,39 @@ object la12 {
 #using la12
 
 /// A count in a unit: added, scaled, compared and printed.
-value class La12Amount : qty, unit {
+struct La12Amount {
+    qty  count;
+    unit kind;
+
     La12Amount operator = (La12Amount o) {
-        (qty)self = o;
-        (unit)self = o;
+        count = o.count;
+        kind = o.kind;
         return self;
     }
     La12Amount operator + (La12Amount o) {
         La12Amount r = self;
-        r.n = n + o.n;
+        r.count.n = count.n + o.count.n;
         return r;
     }
     La12Amount operator - (La12Amount o) {
         La12Amount r = self;
-        r.n = n - o.n;
+        r.count.n = count.n - o.count.n;
         return r;
     }
     La12Amount operator * (int k) {
         La12Amount r = self;
-        r.n = n * k;
+        r.count.n = count.n * k;
         return r;
     }
     La12Amount operator += (La12Amount o) {
-        n = n + o.n;
+        count.n = count.n + o.count.n;
         return self;
     }
-    bool operator == (La12Amount o) { return n == o.n && unit == o.unit; }
+    bool operator == (La12Amount o) { return count.n == o.count.n && kind.unit == o.kind.unit; }
     bool operator != (La12Amount o) { return !(self == o); }
 
     /// Twice the count, worked out where it is used.
-    emitter int twice() { $i6Expr(bgl.asm.add($self.n, $self.n)) }
+    emitter int twice() { $i6Expr(bgl.asm.add($self.count.n, $self.count.n)) }
 
     /// Adds every amount of a list in.
     void addAll(array<La12Amount> list) {
@@ -224,7 +227,7 @@ value class La12Amount : qty, unit {
         func<bool, La12Amount> over = (La12Amount a) => {
             La12Amount both = a + a;
             La12Amount big = self * k;
-            return both.n > big.n;
+            return both.count.n > big.count.n;
         };
         int c = 0;
         for (La12Amount a in list) if (over(a)) c++;
@@ -233,14 +236,14 @@ value class La12Amount : qty, unit {
 
     /// The amount in words.
     stringObj text() {
-        stringObj s = $"{n}";
+        stringObj s = $"{count.n}";
         s += " ";
-        s += la12.unitName(unit);
+        s += la12.unitName(kind.unit);
         return s;
     }
 
     /// Prints the amount.
-    void print() { ::print($"{n}/{(int)unit}"); }
+    void print() { ::print($"{count.n}/{(int)kind.unit}"); }
 }
 
 extend la12 {

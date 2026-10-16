@@ -5,8 +5,8 @@
 // explicit types everywhere, small methods calling each other; a three-level hierarchy whose
 // overrides chain to the base version with ancestor casts; `default` methods as abstract-feeling
 // bases; interfaces imitated with a shared base class and multiple inheritance; static members,
-// static factory methods on value classes and static calls from inside the class; `const` members
-// set in object declarations; value classes for money and coordinates with operators and derived
+// static factory methods on structs and static calls from inside the class; `const` members
+// set in object declarations; structs for money and coordinates with operators and derived
 // ordering; a clamping property accessor with compound assignment; enums in switches and as
 // parameters; a pooled class with create/destroy and `new`/`delete`; `is` tests and downcasts; `null`
 // checks, `?.` and `??`; try/catch/throw with thrown error objects.
@@ -31,7 +31,7 @@ enum eDamageKind { Blunt = 1, Sharp, Fire }
 
 //-- Value types -----------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money other) { Cents = other.Cents; return self; }
@@ -58,7 +58,7 @@ value class Money {
     }
 }
 
-value class Coord {
+struct Coord {
     int X;
     int Y;
 
@@ -80,7 +80,7 @@ value class Coord {
 }
 
 // Health that never leaves 0..MAX_HEALTH.
-value class BoundedHealth {
+struct BoundedHealth {
     int _value;
     int operator () { return _value; }
     void operator = (int v) {

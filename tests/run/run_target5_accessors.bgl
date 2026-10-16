@@ -1,33 +1,33 @@
 // run_target5_accessors — an ordering derived from an inherited `<=>` on a subclass accessor member, an
 // accessor member as a `for` initializer and step (`++` and `= x + 1`) going through its setter, a
-// stringObj field of a value-class member on a pooled class, a host-class method passing its own accessor
+// stringObj field of a struct member on a pooled class, a host-class method passing its own accessor
 // member to a `ref` parameter or binding it with `ref :=`, and a declared `operator +=(int)` given a
-// value-class operand.
+// struct operand.
 // EXPECT_OUTPUT: 1 0 3 3 4 3 3 4 pooled 16 3 21
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Clamp {
+class Clamp : object {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }
     Clamp operator = (Clamp o) { _v = o._v; return self; }
     int operator <=> (Clamp o) { return _v - o._v; }
 }
-value class Wrap : Clamp {
+class Wrap : Clamp {
     replace void operator = (int v) { _v = v % 10; }
 }
-value class Level {
+struct Level {
     int _v = 0;
     int _w = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; _w++; }
 }
-value class Caption {
+struct Caption {
     stringObj _text;
     stringObj operator () { return _text; }
     void operator = (string v) { _text = v; }
 }
-value class Reading {
+struct Reading {
     int _v;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

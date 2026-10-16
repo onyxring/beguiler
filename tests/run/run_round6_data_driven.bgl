@@ -1,6 +1,6 @@
 // run_round6_data_driven — table-style code: a bnum cast as a right operand, a renamed member read
 // through an element, a method with arguments on an inner array, 0 as a bnum element, and a bare
-// { … } building a value class as an element, an initializer and an argument.
+// { … } building a struct as an element, an initializer and an argument.
 // EXPECT_OUTPUT: has 5 5
 // EXPECT_OUTPUT: 9 4 7
 // EXPECT_OUTPUT: true 0
@@ -9,11 +9,11 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 bnum ePerm { enter, take, craft }
-value class Stop {
+struct Stop {
     inline int turn;
     Stop operator = (Stop o) { turn = o.turn; return self; }
 }
-value class Pair {
+struct Pair {
     inline int a;
     inline int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }

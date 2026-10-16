@@ -1,0 +1,27 @@
+// run_struct_auto_copy — a struct that declares no copy operator gets one that copies each field: a number, a
+// nested struct (through its own copy), a stringObj (its text), an array (shared, as a class's reference is), a
+// `ref` field, a class reference, and a field `extend struct` adds. It works where the struct is used above its
+// declaration too.
+// EXPECT_OUTPUT: 4 7 hi 5 9 true | 3,6
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+#include <array>
+Pt makePt(Pt p){ return p; }
+struct In { int v; }
+class Box { int id; }
+struct Out { int n; In inner; stringObj label; array<int> nums[3]; ref In shared; Box b; }
+extend struct Out { int late; }
+Box bx;
+Out x; Out y;
+void main(){
+    bglInit();
+    x.n = 4; x.inner.v = 7; x.label = "hi"; x.nums += 5; x.late = 9; x.b = bx;
+    y = x;
+    x.inner.v = 1; x.label = "no";
+    print($"{y.n} {y.inner.v} {y.label} {y.nums[0]} {y.late} {y.b == bx} | ");
+    Pt r = makePt({3, 4});
+    Pt s;
+    s = makePt({5, 6});
+    print($"{r.x},{s.y}");
+}
+struct Pt { inline int x; inline int y; }

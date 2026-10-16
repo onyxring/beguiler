@@ -28,7 +28,7 @@ object peg { object parent = box; }
 
 // D1241: an extend-class method whose parameter is named like a type.
 union Label = string | object;
-value class Cell { int x; Cell operator = (Cell o) { x = o.x; return self; } }
+struct Cell { int x; Cell operator = (Cell o) { x = o.x; return self; } }
 extend class Item { int mark(var label, ref Cell acc) { acc.x += 5; return 7; } }
 
 // D1242: a local array in an inline accessor's operators.

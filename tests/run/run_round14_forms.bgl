@@ -7,7 +7,7 @@ class Box : object { }
 class Bag : object { }
 bglClass pick(int n) { if (n == 1) return Box; return Bag; }
 
-value class Span {
+struct Span {
     int lo = 0;
     int hi = 0;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
@@ -39,7 +39,7 @@ void addTo(array<int> into, int n) { into -= n; into += n; }
 class Holder : object { inline int id; inline array<int> vals[2]; }
 int showHolder(Holder h) { return h.id + h.vals[0] + h.vals[1]; }
 
-value class Node { int id; Node operator = (Node o) { id = o.id; return self; } }
+struct Node { int id; Node operator = (Node o) { id = o.id; return self; } }
 
 class First : object { inline int a; }
 class Second : object { inline int b; }

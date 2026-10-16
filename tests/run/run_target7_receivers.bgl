@@ -24,7 +24,7 @@ Tray trayB { }
 Tray trayC { }
 array<Bin> rack = { binA, binB };
 array<Bin> trays = { trayC };
-value class BinPick {
+struct BinPick {
     int at;
     Bin operator () { return rack[at]; }
     void operator = (int v) { at = v; }
@@ -40,13 +40,13 @@ Node n1 { load = 1; label = "one"; }
 Node n2 { load = 2; label = "two"; }
 array<Node> nodes = {n1, n2};
 bool any(Node n) { return true; }
-value class Handle {
+struct Handle {
     int idx;
     Handle operator = (Handle o) { idx = o.idx; return self; }
     explicit Node operator () { return nodes[idx]; }
 }
 array<Handle> handles[2];
-value class Peer {
+struct Peer {
     ref Node _p;
     Node operator () { return _p; }
     void operator = (Node n) { _p = n; }
@@ -55,7 +55,7 @@ class Hub : object { Peer buddy; }
 class Relay : Node { int gain = 2; }
 Relay r1 { label = "relay"; }
 Hub hubA { }
-value class Gauge {
+struct Gauge {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

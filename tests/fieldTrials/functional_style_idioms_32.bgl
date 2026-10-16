@@ -3,10 +3,10 @@
 
 // Exercises: a stop-and-link table written in a functional style, leaning on `?.` and `??`.
 // Stops are a class with nullable `next` and `branch` links, a label that may be unset, a func<bool,
-// Stop> member, a stringObj member and recursive methods that return a stop, a stringObj, a value class
+// Stop> member, a stringObj member and recursive methods that return a stop, a stringObj, a struct
 // or an int through `?.` (`hop(n, viaBranch:)`, `last()`, `depth()`, `path(sep:, limit:)`,
 // `fareTo()`, `find(pred)`); a subclass overrides a default method reached through `?.`, and owns a
-// member array of spokes with empty slots (`mainHub.spokes[i]?.label`). A value class `Fare` defines
+// member array of spokes with empty slots (`mainHub.spokes[i]?.label`). A struct `Fare` defines
 // `operator ?` (absent when it costs nothing) and is coalesced with `??` and chained with `?.`.
 // `?.` is used as a statement on variables, members, elements, call results, casts, chain results and
 // static method results, with default and named arguments, with `++`, `+=` and stringObj `+=`;
@@ -36,10 +36,10 @@ extend extern class object {
 
 const int MAXSPOKES = 4;
 
-//-- A value class with a presence test ------------------------------------------------------------
+//-- A struct with a presence test ------------------------------------------------------------
 
 // A fare is absent when it costs nothing.
-value class Fare {
+struct Fare {
     int cents;
     int legs;
 

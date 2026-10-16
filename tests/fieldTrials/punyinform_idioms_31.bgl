@@ -8,9 +8,9 @@
 // `?.` calls (`forward(steps:, wrap:)`, `pass(amount, hop:, loud:)`), hold a `Gauge` accessor class
 // read and assigned through chains and in interpolation, a member `array<int>` read through `took()`
 // off a chain, a `stringObj` member appended with `+=` through `?.` and read with `?.length` and `??`,
-// and return a value class `Reading` with its own
+// and return a struct `Reading` with its own
 // `operator ?` used with `?.`, `??` and postfix `?`; `?.` statements on variables, members, array
-// elements, call results and casts; `??` chains on objects, strings, value classes and call results,
+// elements, call results and casts; `??` chains on objects, strings, structs and call results,
 // in declarations, assignments, arguments, returns, interpolation and `throw`; postfix `?` and `?.`
 // in `if`, `while`, `for`, `do`/`while`, `switch` and a parenthesized ternary; `?.` inside <linq>
 // lambdas over `bgl.world.instances`; string and stringObj results reached through chains (`label?.`,
@@ -48,7 +48,7 @@ extern bool scope_modified;
 
 const int GAUGE_MAX = 9;
 
-value class Gauge {
+struct Gauge {
     int _v = 0;
 
     int  operator ()        { return _v; }
@@ -59,7 +59,7 @@ value class Gauge {
     }
 }
 
-value class Reading {
+struct Reading {
     int volts;
     int hops;
 

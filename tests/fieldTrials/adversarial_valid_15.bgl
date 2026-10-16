@@ -4,12 +4,12 @@
 // Exercises: valid but unusual code in a small tank-gauge program, on Glulx, built around `float`.
 // A `const float` (one negative) and a `#define` mixed into float arithmetic; int-to-float widening
 // on declaration, as an `inline` positional argument, a member default, a parameter default and a
-// setter argument, and float-to-int casts truncating toward zero; a value class of readings whose
+// setter argument, and float-to-int casts truncating toward zero; a struct of readings whose
 // `ref` member chains instances bound with `:=`, walked by a `ref` local rebound in a loop and tested
-// with `!`, a `ref` parameter versus a copied parameter, and a subclass copy operator chaining to its
-// base by cast; a named float accessor clamping its setter, owned by a tank class and read inside
+// with `!`, a `ref` parameter versus a copied parameter, and a wrapping struct's copy operator copying
+// its embedded struct; a named float accessor clamping its setter, owned by a tank class and read inside
 // float arithmetic; an inline `auto` accessor on an object reaching its host through `outer`; global
-// overloads told apart by int, float and value-class arguments; a float switch of comparison guards
+// overloads told apart by int, float and struct arguments; a float switch of comparison guards
 // and a float value case, and an int switch of ranges over a cast; float `%`, `*=`, `/=`, unary minus
 // and comparisons inside nested ternaries; a replaced float function chained through `replaced()`, an
 // array of func<float, float> mixing named functions, a lambda and the replaced one, a function that
@@ -42,9 +42,9 @@ extend extern class object {
 const float RATE = 1.5;
 const float FLOOR_MARK = -2.5;
 
-// ---- readings: a value class chained through ref members -------------------------------------------
+// ---- readings: a struct chained through ref members -------------------------------------------
 
-value class Reading {
+struct Reading {
     float level;
     int hour;
     ref Reading next;
@@ -61,12 +61,13 @@ value class Reading {
     }
 }
 
-value class StampedReading : Reading {
+struct StampedReading {
+    Reading base;
     char tag;
 
     StampedReading operator = (StampedReading o) {
         tag = o.tag;
-        (Reading)self = o;
+        base = o.base;
         return self;
     }
 }
@@ -152,7 +153,7 @@ string decile(float lv) {
 
 // ---- tanks -------------------------------------------------------------------------------------------
 
-value class Percent {
+struct Percent {
     float _p;
     float operator () { return _p; }
     void operator = (float v) { _p = v < 0 ? 0.0 : (v > 100 ? 100.0 : v); }
@@ -258,15 +259,15 @@ verb Chain {
 verb Stamp {
     grammar = {.stamp};
     void handler() {
-        stampA.level = 4.25;
-        stampA.hour = 3;
+        stampA.base.level = 4.25;
+        stampA.base.hour = 3;
         stampA.tag = 'q';
         stampB = stampA;
         stampA.tag = 'z';
-        stampA.level = 0.0;
-        printLine($"Stamp {stampB.tag} {stampB.hour} {stampB.level}; A {stampA.tag} {stampA.level}.");
+        stampA.base.level = 0.0;
+        printLine($"Stamp {stampB.tag} {stampB.base.hour} {stampB.base.level}; A {stampA.tag} {stampA.base.level}.");
         Reading plain;
-        plain = stampB;
+        plain = stampB.base;
         show(plain);
         show(plain.hour);
         show(plain.level);

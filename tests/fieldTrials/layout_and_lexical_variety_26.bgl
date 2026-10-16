@@ -4,13 +4,13 @@
 // Exercises: layout and lexical habits in an ordinary small program with two rooms, four jars on a
 // shelf, a scale, a mixing bowl and an oven. A jar class with a class-wide static counter, an
 // `inline instanceName` and an `inline` enum member given by position, a `default` method overridden
-// by a dish subclass; a value class portion kept in a global `array<Portion>` that is appended to,
+// by a dish subclass; a struct portion kept in a global `array<Portion>` that is appended to,
 // searched, changed through `portions[i].grams +=` and cleared; a routine with a default parameter,
 // called positionally and by name, that `throw`s a string caught in the verb handler; recipe objects
 // in an `array<Recipe>` matched with <linq> `filter`/`first`; an enum and a namespace object of type
 // aliases; a bowl whose `before` refuses `Receive` and handles `Empty`; an oven whose `before` takes
 // only the mixed bowl and whose daemon warms up in steps and bakes through a switch with constant
-// expression cases; a value class tally filled through a `ref` parameter; a `stringObj` card built
+// expression cases; a struct tally filled through a `ref` parameter; a `stringObj` card built
 // with `capture()`/`release()`, `format()` and `+=` with char literals; <linq> `orderBy` with a
 // comparator, `filter`, `count`, `takeWhile`, `skipWhile`, `last`, `map` and `any` over an
 // `array<Jar>`; `#define` values tested by `#if`/`#else`; `NUMBER` grammar with alternation; hex and
@@ -146,7 +146,7 @@ array<Jar> jars = { flourJar , sugarJar , saltJar , butterDish } ;
 // ---- the bowl --------------------------------------------------------------------------------------
 
 /// One kind of thing in the bowl and how much of it.
-value class Portion
+struct Portion
 {
     eKind kind ;
     int   grams ;
@@ -342,7 +342,7 @@ object oven
 
 // ---- tally -----------------------------------------------------------------------------------------
 
-value class Tally
+struct Tally
 {
     int kinds ;
     int grams ;

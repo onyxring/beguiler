@@ -4,7 +4,7 @@
 // Exercises: a small routing-and-production model kept entirely in tables. An enum of stations
 // indexing parallel string and bnum tables; a road table as an array of arrays read [from][to]; a
 // shortest-path search over it with local dist/done/prev arrays, the path rebuilt by walking prev
-// into an array and reversed; a value-class trip summary filled through a ref parameter; recipe
+// into an array and reversed; a struct trip summary filled through a ref parameter; recipe
 // records as objects with member arrays of goods and amounts, matched against a TOPIC word; a
 // stock table indexed by a good's bit position; recipes filtered, counted and ordered with <linq>
 // lambdas that capture locals; a report table of dictionary words paired with an array<func<void>>
@@ -101,7 +101,7 @@ Recipe bakeBread   { "bread";  name = {.bread};  parent = recipeBook; output = f
 
 array<Recipe> recipes = { millFlour, smeltMetal, forgeTools, bakeBread };
 
-value class Trip {
+struct Trip {
     int legs;
     int length;
     int toll;

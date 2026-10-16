@@ -1,7 +1,7 @@
 // run_target4_accessors — `<=>` and the ordering operators between two accessor members using the accessor
 // class's static `<=>` (above and below the class), returning an accessor member as its class, `??` and
 // postfix `?` on an accessor member with its own `operator ?`, a member array of an accessor class, and a
-// store into a member whose subclass replaces `operator =(int)`, written above the classes.
+// store into a member whose struct rounds in its own `operator =(int)`, written above the classes.
 // EXPECT_OUTPUT: 2 0 1 2 0 1 15 main none 1 0 3 4 7 8
 #beguilerSettings { target = z5; informName = "none"; }
 void main() {
@@ -31,7 +31,7 @@ void main() {
     int c = pa.coarse;
     print(c);
 }
-value class Dial {
+struct Dial {
     int _raw;
     void put(int v) { _raw = v; }
     int operator () { return _raw; }
@@ -39,10 +39,13 @@ value class Dial {
     Dial operator = (Dial o) { _raw = o._raw; return self; }
     static int operator <=> (Dial a, Dial b) { return b._raw - a._raw; }
 }
-value class Step : Dial {
-    replace void operator = (int v) { put(v - v % 2); }
+struct Step {
+    int _raw;
+    void put(int v) { _raw = v; }
+    int operator () { return _raw; }
+    default void operator = (int v) { put(v - v % 2); }
 }
-value class Caption {
+struct Caption {
     string _s;
     string operator () { return _s ?? "blank"; }
     void operator = (string s) { _s = s; }

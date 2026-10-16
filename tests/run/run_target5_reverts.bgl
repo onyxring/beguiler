@@ -1,5 +1,5 @@
-// run_target5_reverts — an object named as a cast over a call-then-member receiver, a value-class
-// local's array of value-class elements emptied on each call, and an accessor written (`=`, `+=`)
+// run_target5_reverts — an object named as a cast over a call-then-member receiver, a struct
+// local's array of struct elements emptied on each call, and an accessor written (`=`, `+=`)
 // through a path that starts at a #using-imported member.
 // EXPECT_OUTPUT: 7 7 1 1 6 9 9
 #beguilerSettings { target = z5; informName = "none"; }
@@ -9,11 +9,11 @@ class SealedTray : Tray { int seal = 3; }
 SealedTray trayD { int extra = 7; code = 4; }
 Tray trayA { code = 1; spare = trayD; }
 Tray pick(int i) { return trayA; }
-value class Len {
+struct Len {
     inline int mm;
     Len operator = (Len o) { mm = o.mm; return self; }
 }
-value class Tally { array<Len> seen[4]; }
+struct Tally { array<Len> seen[4]; }
 int fresh() {
     Tally t;
     t.seen += Len{ 1 };

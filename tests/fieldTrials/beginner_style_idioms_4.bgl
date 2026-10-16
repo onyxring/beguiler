@@ -3,8 +3,8 @@
 
 // Exercises: a fourth first-time-programmer program, again built from the spec's own examples.
 // A bnum of item flags combined with | and tested with &, overloaded functions next to default
-// and named arguments, a pooled class with create/destroy and an exhausted pool, value classes
-// (a copy operator, a subclass that chains to it, a ref local and a ref parameter), a class with
+// and named arguments, a pooled class with create/destroy and an exhausted pool, structs
+// (a copy operator, one with the automatic copy, a ref local and a ref parameter), a class with
 // a static counter and a const member, an array of arrays walked with nested for-in, an array of
 // func values filled with lambdas (one capturing a parameter), a union of string and routine
 // narrowed with typeof, ternaries nested in print arguments, ?. and ?? on objects, stringObj
@@ -56,13 +56,12 @@ class marbleClass[3] : object {
     void destroy() { weight = 0; }
 }
 
-value class Vec2 {
+struct Vec2 {
     int x; int y;
     Vec2 operator = (Vec2 o) { x = o.x; y = o.y; return self; }
 }
-value class Vec3 : Vec2 {
-    int z;
-    Vec3 operator = (Vec3 o) { z = o.z; (Vec2)self = o; return self; }
+struct Vec3 {
+    int x; int y; int z;
 }
 
 
@@ -301,7 +300,7 @@ verb Calc {
     }
 }
 
-// VEC - value classes
+// VEC - structs
 verb Vec {
     meta = true;
     grammar = {.vec};

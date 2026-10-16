@@ -1,8 +1,8 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: code written the way a C#/Java developer writes it, third pass. A value-class
-// hierarchy whose subclass chains its copy operator with `(Base)self = o`; operators overloaded by
+// Exercises: code written the way a C#/Java developer writes it, third pass. A struct
+// with a copy operator, and a second struct with the automatic copy, flattened to the first; operators overloaded by
 // right-hand type (`+` with a value and with an int), postfix and prefix `++`, `+=`, `!`, `[]` and
 // `[]=`, `?=`, an explicit conversion, and an operator and a static factory added with `extend class`;
 // value parameters against `ref` parameters; a linked chain of value nodes with a `ref` member, walked
@@ -28,9 +28,9 @@ extend extern class object {
     stringOrRoutine description;
 }
 
-//-- Value classes ---------------------------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------------------------
 
-value class Vec2 {
+struct Vec2 {
     static int Made = 0;
     int X;
     int Y;
@@ -63,19 +63,26 @@ value class Vec2 {
     }
 }
 
-extend class Vec2 {
+extend struct Vec2 {
     Vec2 operator * (int k) { return Vec2.Of(X * k, Y * k); }
     static Vec2 Unit() { return Vec2.Of(1, 1); }
 }
 
-value class Vec3 : Vec2 {
+struct Vec3 {
+    int X;
+    int Y;
     int Z;
 
-    Vec3 operator = (Vec3 o) { Z = o.Z; (Vec2)self = o; return self; }
-    replace void print() { print($"({X}, {Y}, {Z})"); }
+    Vec2 Flat() {
+        Vec2 v;
+        v.X = X;
+        v.Y = Y;
+        return v;
+    }
+    void print() { print($"({X}, {Y}, {Z})"); }
 }
 
-value class Node {
+struct Node {
     int Id;
     ref Node Next;
     Node operator = (Node o) { Id = o.Id; return self; }
@@ -155,7 +162,7 @@ Penguin penguinA { "penguin"; name = {.penguin}; parent = roomA; }
 
 //-- Pooled classes --------------------------------------------------------------------------------
 
-value class Coins {
+struct Coins {
     int Cents;
     Coins operator = (Coins o) { Cents = o.Cents; return self; }
     void print() { print($"{Cents}c"); }
@@ -276,7 +283,7 @@ verb Copies {
         p.X = 1; p.Y = 2; p.Z = 3;
         Vec3 q = p;
         q.Z = 30;
-        Vec2 flat = p;
+        Vec2 flat = p.Flat();
         flat.X = 50;
         printLine($"p {p}, q {q}, flat {flat}.");
         Vec2 target = Vec2.Of(0, 0);

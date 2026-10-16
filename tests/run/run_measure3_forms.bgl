@@ -12,10 +12,10 @@ class Box : object { int n; static int operator <=> (Box a, Box b) { return a.n 
 Box b1 { n = 5; }
 Box b2 { n = 2; }
 
-value class Tally { int count; Tally operator = (Tally o) { count = o.count; return self; } Tally operator += (int v) { count += v; return self; } }
+struct Tally { int count; Tally operator = (Tally o) { count = o.count; return self; } Tally operator += (int v) { count += v; return self; } }
 array<Tally> tallies[2];
 
-value class Volume {
+struct Volume {
     float litres;
     Volume operator = (Volume o) { litres = o.litres; return self; }
     Volume operator = (float f) { litres = f; return self; }

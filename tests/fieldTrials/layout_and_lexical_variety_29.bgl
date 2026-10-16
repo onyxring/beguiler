@@ -8,9 +8,9 @@
 // counter and a method that `throw`s a string caught in the verb handler; a tray object with member
 // `array<int>` cells read through its own `operator []`, and a method taking a `func<bool, int>`
 // predicate called with lambdas; a watering can with an inline `auto { … }` accessor clamped through
-// `outer`; a value class reading with a copy operator and a `static operator <=>`, kept in a global
+// `outer`; a struct reading with a copy operator and a `static operator <=>`, kept in a global
 // `array<Reading>` that drops its oldest entry when full and is copied into a local array and sorted;
-// a value class tally filled through a `ref` parameter; overloaded `label` routines; a `stringObj` cell
+// a struct tally filled through a `ref` parameter; overloaded `label` routines; a `stringObj` cell
 // label padded in a `while` loop, with `left()`, `toUpper()` and `+=`; a ternary chain; `continue` and
 // `break` in loops; a `NUMBER` grammar line; <linq> `filter`, `count`, `any` and `first` over a global
 // `array<Packet>`; `?.` and `??` on a lookup that can be null; `#define` values tested by `#if`/`#else`;
@@ -192,7 +192,7 @@ object heater
 }
 
 /// One thermometer reading.
-value class Reading
+struct Reading
 {
     int turn ;
     int heat ;
@@ -246,7 +246,7 @@ object thermometer
 
 // ---- tally ---------------------------------------------------------------------------------------
 
-value class Tally
+struct Tally
 {
     int empty ; int sown ; int up ;
     Tally operator = (Tally o) { empty = o.empty ; sown = o.sown ; up = o.up ; return self ; }

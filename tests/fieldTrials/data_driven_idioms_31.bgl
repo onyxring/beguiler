@@ -1,28 +1,28 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a survey grid kept as value-class tables. A point value class with inline members, a copy
+// Exercises: a survey grid kept as struct tables. A point struct with inline members, a copy
 // operator, == / != / <=> (with < and >= derived), + and - returning inline values built from members,
-// +=, a static factory and a method returning a swapped inline value; a mark subclass that re-lists the
-// inherited members to put its own label first and chains the copy operator by cast; a box value class
+// +=, a static factory and a method returning a swapped inline value; a mark struct holding a point
+// between its label and weight, forwarding ==, !=, <=> and += to it; a box struct
 // owning two point members, initialized globally with nested inline values and locally from operator
-// results; a route value class owning an array of points built from Route{ { … } } with call results; an array
-// of marks written as bare { … } rows, sorted by the inherited <=>, searched by the inherited ==,
+// results; a route struct owning an array of points built from Route{ { … } } with call results; an array
+// of marks written as bare { … } rows, sorted by the forwarded <=>, searched by the forwarded ==,
 // changed by += on a subscript and through a ref member bound with :=; ref locals bound to array
 // elements and object members; ref parameters given object members and locals; value parameters given
-// subclass values, with an inline-value default and named arguments; returns of inline values and of
-// array elements; ?: choosing between value-class operands; == against an inline value; operator
-// results read for members inside interpolation; a recursive routine keeping its value-class parameters
+// a mark's point, with an inline-value default and named arguments; returns of inline values and of
+// array elements; ?: choosing between struct operands; == against an inline value; operator
+// results read for members inside interpolation; a recursive routine keeping its struct parameters
 // per call; an object owning point and route members and a member array of points (contains, -=,
-// insert, last); a reference class owning a point per object; a note value class holding a stringObj,
+// insert, last); a reference class owning a point per object; a note struct holding a stringObj,
 // kept in a capped array; a table of lambdas taking a point; <linq> filter / any / all / count / orderBy
-// / first / last / take / skip / takeWhile / map over value-class arrays with lambdas capturing
-// value-class locals and globals, and chain results captured into local value-class arrays.
+// / first / last / take / skip / takeWhile / map over struct arrays with lambdas capturing
+// struct locals and globals, and chain results captured into local struct arrays.
 
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/stdlib";
-    // walk() recurses 11 deep with value-class parameters, each call taking frame-pool words.
+    // walk() recurses 11 deep with struct parameters, each call taking frame-pool words.
     framePoolSize = 128;
 }
 
@@ -40,10 +40,10 @@ const int TRAIL_MAX = 4;
 const int NOTE_MAX = 3;
 const int NONE = -1;
 
-//-- Value classes ---------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------
 
 
-value class Pt {
+struct Pt {
     inline int x;
     inline int y;
     Pt operator = (Pt o) { x = o.x; y = o.y; return self; }
@@ -62,21 +62,18 @@ value class Pt {
     static Pt at(int x, int y) { return Pt{ x, y }; }
 }
 
-// A mark puts its label ahead of the inherited x and y, then its weight.
-value class Mark : Pt {
+// A mark puts its label ahead of its point, then its weight.
+struct Mark {
     inline string label;
-    inline x;
-    inline y;
+    inline Pt pos;
     inline int weight;
-    Mark operator = (Mark o) {
-        (Pt)self = o;
-        label = o.label;
-        weight = o.weight;
-        return self;
-    }
+    bool operator == (Mark o) { return pos == o.pos; }
+    bool operator != (Mark o) { return pos != o.pos; }
+    int operator <=> (Mark o) { return pos <=> o.pos; }
+    Mark operator += (Pt o) { pos += o; return self; }
 }
 
-value class Box {
+struct Box {
     inline Pt lo;
     inline Pt hi;
     Box operator = (Box o) { lo = o.lo; hi = o.hi; return self; }
@@ -98,7 +95,7 @@ value class Box {
     }
 }
 
-value class Note {
+struct Note {
     inline int mark;
     inline int at;
     stringObj text;
@@ -106,7 +103,7 @@ value class Note {
 }
 
 // A planned route: a start, a midpoint and an end.
-value class Route {
+struct Route {
     inline array<Pt> stops[3];
     int cost;
     Route operator = (Route o) {
@@ -119,13 +116,13 @@ value class Route {
 
 //-- Tables ----------------------------------------------------------------------
 
-//                     label     x  y  weight
+//                     label    pos         weight
 array<Mark> marks = {
-    { "post",  1, 1, 3 },
-    { "well",  4, 2, 5 },
-    { "gate",  6, 0, 2 },
-    { "oak",   2, 4, 4 },
-    { "cairn", 8, 3, 1 }
+    { "post",  Pt{ 1, 1 }, 3 },
+    { "well",  Pt{ 4, 2 }, 5 },
+    { "gate",  Pt{ 6, 0 }, 2 },
+    { "oak",   Pt{ 2, 4 }, 4 },
+    { "cairn", Pt{ 8, 3 }, 1 }
 };
 
 array<dictionaryWord> markWords = { .post, .well, .gate, .oak, .cairn };
@@ -215,7 +212,7 @@ int nearestMark(Pt from) {
     int bestD = 0;
     for (int i in 0 to marks.length - 1) {
         ref Mark m := marks[i];
-        int d = m.dist(from);
+        int d = m.pos.dist(from);
         if (best == NONE || d < bestD) {
             best = i;
             bestD = d;
@@ -228,12 +225,12 @@ int nearestMark(Pt from) {
 Pt farthest(Pt from) {
     int at = 0;
     for (int i in 1 to marks.length - 1)
-        if (marks[i].dist(from) > marks[at].dist(from)) at = i;
-    return marks[at];
+        if (marks[i].pos.dist(from) > marks[at].pos.dist(from)) at = i;
+    return marks[at].pos;
 }
 
 int countIn(array<Mark> a, Box b) {
-    return a.filter((Mark m) => b.holds(m)).count();
+    return a.filter((Mark m) => b.holds(m.pos)).count();
 }
 
 // Steps one square at a time toward goal; lists the squares on the way back out.
@@ -267,11 +264,11 @@ void routeInto(ref stringObj s, Route r) {
 void markRow(ref stringObj row, Mark m) {
     row += m.label;
     padTo(row, 7);
-    m.into(row);
+    m.pos.into(row);
     padTo(row, 14);
     row += $"w{m.weight}";
     padTo(row, 18);
-    row += field.holds(m) ? "in" : "out";
+    row += field.holds(m.pos) ? "in" : "out";
 }
 
 //-- Verbs -----------------------------------------------------------------------
@@ -320,7 +317,7 @@ verb WhereTest {
         int n = nearestMark(here);
         stringObj line = "At ";
         here.into(line);
-        line += $", {surveyor.moves} moves. Nearest: {marks[n].label}, {marks[n].dist(here)} away.";
+        line += $", {surveyor.moves} moves. Nearest: {marks[n].label}, {marks[n].pos.dist(here)} away.";
         line.print();
         print("^");
         Pt far = farthest(here);
@@ -336,7 +333,7 @@ verb WhereTest {
         if (here == surveyor.home) print("At home.^");
         else print($"Offset from home: {(here - surveyor.home).x},{(here - surveyor.home).y}.^");
         if (here == Pt{ 0, 0 }) print("At the origin.^");
-        if (marks.any((Mark m) => m == here)) print("On a mark.^");
+        if (marks.any((Mark m) => m.pos == here)) print("On a mark.^");
     }
 }
 
@@ -346,7 +343,7 @@ verb AimTest {
         int i = (int)noun;
         surveyor.target := marks[i];
         stringObj line = $"Aimed at {surveyor.target.label} ";
-        surveyor.target.into(line);
+        surveyor.target.pos.into(line);
         line += ".";
         line.print();
         print("^");
@@ -415,7 +412,7 @@ verb RouteTest {
             return;
         }
         stringObj path = "";
-        int n = walk(surveyor.pos, surveyor.target, path);
+        int n = walk(surveyor.pos, surveyor.target.pos, path);
         path.print();
         print($" ({n} steps)^");
     }
@@ -468,12 +465,12 @@ verb BoxTest {
         print("^");
         Pt c = mid(near.lo, near.hi);
         if (c == surveyor.pos) print("Centered.^");
-        array<Mark> close[MARK_COUNT] = marks.filter((Mark m) => near.holds(m));
+        array<Mark> close[MARK_COUNT] = marks.filter((Mark m) => near.holds(m.pos));
         print($"Near marks: {countIn(close, near)}");
         for (Mark m in close) print($" {m.label}");
         print(".^");
         int sum = 0;
-        for (var d in marks.map((Mark m) => m.dist(c))) sum += d;
+        for (var d in marks.map((Mark m) => m.pos.dist(c))) sum += d;
         print($"Total distance from center: {sum}.^");
     }
 }
@@ -486,7 +483,7 @@ verb StakesTest {
             stringObj line = $"{st.code}: ";
             st.at.into(line);
             if (!field.holds(st.at)) line += " outside";
-            if (marks.any((Mark m) => m.dist(st.at) <= 1)) line += " by a mark";
+            if (marks.any((Mark m) => m.pos.dist(st.at) <= 1)) line += " by a mark";
             Pt off = st.at - surveyor.pos;
             line += $" off {off.x},{off.y}";
             line.print();
@@ -503,7 +500,7 @@ verb NoteTest {
         n.mark = i;
         n.at = surveyor.moves;
         n.text = $"{marks[i].label} seen";
-        if (marks[i] == surveyor.pos) n.text += " close";
+        if (marks[i].pos == surveyor.pos) n.text += " close";
         if (notes.length == NOTE_MAX) notes.remove(0);
         notes += n;
         print($"Noted ({notes.length}).^");
@@ -521,7 +518,7 @@ verb NotesTest {
             stringObj row = $"{n.at}: ";
             row += n.text;
             row += " ";
-            marks[n.mark].into(row);
+            marks[n.mark].pos.into(row);
             row.print();
             print("^");
         }
@@ -533,7 +530,7 @@ verb TradeTest {
     void handler() {
         int a = (int)noun;
         int b = (int)second;
-        swapPts(marks[a], marks[b]);
+        swapPts(marks[a].pos, marks[b].pos);
         stringObj row = "";
         markRow(row, marks[a]);
         row.print();
@@ -552,12 +549,12 @@ verb DriftTest {
         before.copyFrom(marks);
         for (int i in 0 to marks.length - 1) {
             marks[i] += Pt{ 1, 0 };
-            field.clamp(marks[i]);
+            field.clamp(marks[i].pos);
         }
         int moved = 0;
         for (int i in 0 to marks.length - 1)
             if (marks[i] != before[i]) moved++;
-        Mark stuck = marks.filter((Mark m) => m.x == field.hi.x).last();
+        Mark stuck = marks.filter((Mark m) => m.pos.x == field.hi.x).last();
         print($"Moved {moved}; last at the edge: {stuck.label}.^");
     }
 }
@@ -567,13 +564,13 @@ verb TopTest {
     void handler() {
         array<Mark> top2[2] = marks.orderBy((Mark a, Mark b) => b.weight - a.weight).take(2);
         stringObj line = "Top:";
-        for (Mark m in top2) line += $" {m.label} {distFrom(m)}/{distFrom(m, surveyor.pos)}/{distFrom(m, scale: 2)}";
+        for (Mark m in top2) line += $" {m.label} {distFrom(m.pos)}/{distFrom(m.pos, surveyor.pos)}/{distFrom(m.pos, scale: 2)}";
         line += ".";
         line.print();
         print("^");
         Mark light = marks.orderBy((Mark a, Mark b) => b.weight - a.weight).last();
-        Pt anchor = top2[0];
-        array<Mark> nearTop[MARK_COUNT] = marks.skip(1).takeWhile((Mark m) => m.dist(anchor) < 8);
+        Pt anchor = top2[0].pos;
+        array<Mark> nearTop[MARK_COUNT] = marks.skip(1).takeWhile((Mark m) => m.pos.dist(anchor) < 8);
         print($"Lightest: {light.label}; near the top from the second on: {nearTop.length}.^");
     }
 }
@@ -590,7 +587,7 @@ verb ScoreTest {
         int best = NONE;
         int bestScore = 0;
         for (int i in 0 to marks.length - 1) {
-            int sc = f(marks[i]);
+            int sc = f(marks[i].pos);
             if (best == NONE || sc > bestScore) {
                 best = i;
                 bestScore = sc;
@@ -627,7 +624,7 @@ verb PlanTest {
             print("No target.^");
             return;
         }
-        Route r = Route{ { surveyor.pos, mid(surveyor.pos, surveyor.target), surveyor.target } };
+        Route r = Route{ { surveyor.pos, mid(surveyor.pos, surveyor.target.pos), surveyor.target.pos } };
         r.cost = r.total();
         surveyor.plan = r;
         r.stops[2] = r.stops[0];

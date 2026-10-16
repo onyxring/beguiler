@@ -3,11 +3,11 @@
 // `^`, which Inform 6 lacks), and a regular-method `operator +=` on a value and a reference class.
 // EXPECT_OUTPUT: acc:4 bnum:2 xor:3 val:3 ref:5 prec:7
 #beguilerSettings { target = z5; informName = "none"; }
-value class Level { int _v; int operator (){ return _v; } void operator = (int v){ _v = v; } }
+struct Level { int _v; int operator (){ return _v; } void operator = (int v){ _v = v; } }
 class Thing : _bglObject { Level lvl; }
 Thing t { }
 bnum eCond { dusty, hot, loud }
-value class Coins {
+struct Coins {
     int cents;
     Coins operator = (Coins o){ cents = o.cents; return self; }
     Coins operator += (Coins o){ cents = cents + o.cents; return self; }

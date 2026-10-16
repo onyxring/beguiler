@@ -21,13 +21,13 @@
     outputPath = "tests/output";
 }
 
-// Plain value class with no operator= — used as a ref member below so no copy is needed.
-value class Payload {
+// Plain struct with no operator= — used as a ref member below so no copy is needed.
+struct Payload {
     int a;
     int b;
 }
 
-value class Node {
+struct Node {
     int id;
     ref Node next;        // self-referential: a pointer to another Node (no copy)
     ref Payload load;     // ref to a plain class with no operator= (no copy)

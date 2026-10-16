@@ -1,6 +1,6 @@
 /*  Field trial part — included by scale_glulx.bgl. Not a trial on its own.  */
 
-// The shared vocabulary of the program: enums and bnums, the value classes every other part uses
+// The shared vocabulary of the program: enums and bnums, the structs every other part uses
 // (a grid cell, a running tally, a clamped level), small text helpers and the `sg` namespace object.
 
 #once
@@ -144,9 +144,9 @@ stringObj flagText(crateFlag f) {
     return s;
 }
 
-// ---- a grid cell: a value class with operators -----------------------------------------------------
+// ---- a grid cell: a struct with operators -----------------------------------------------------
 
-value class Cell {
+struct Cell {
     int r = 0;
     int c = 0;
 
@@ -191,7 +191,7 @@ Cell cellAt(int index) {
 
 // ---- a running tally: low, high, sum and count, with a float mean ----------------------------------
 
-value class Tally {
+struct Tally {
     int lo = 0;
     int hi = 0;
     int sum = 0;
@@ -233,7 +233,7 @@ value class Tally {
 
 // ---- a clamped level: a named accessor class --------------------------------------------------------
 
-value class clampedLevel {
+struct clampedLevel {
     int _v = 50;
     int operator () { return _v; }
     void operator = (int v) {

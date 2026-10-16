@@ -2,18 +2,18 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-fourth pass: a parts catalog whose
-// types are reached only through namespaces declared further down the file. A value class for a 2-D
+// types are reached only through namespaces declared further down the file. A struct for a 2-D
 // offset whose operators, copy and `<=>` are typed through the path to its own alias; a primitive newtype
 // for a count and an `alias class` for a bin, both aliased; a part hierarchy (part, tool, gem) whose
-// owned value-class member, static fields, default parameters and chained returns are typed through
+// owned struct member, static fields, default parameters and chained returns are typed through
 // paths; a root object `Catalog` holding a geometry branch (`auto`), an items branch (value alias) that
 // holds a rules branch (value alias, three steps deep, with its own enum alias), a static-only math class
 // (value alias) whose static methods are taken as `func<>` values through the path and through `#using`,
-// an emitter class with an alias member, an owned value-class member and an inline `auto` accessor;
+// an emitter class with an alias member, an owned struct member and an inline `auto` accessor;
 // a later `extend` of the items branch adds a type alias and methods that use names declared above and
 // below it; an `extend class` of an aliased class. Paths appear in inline objects (`Path.Type{ … }`
 // as array elements, arguments and initializers), `new` as a direct argument, unions of two path types,
-// `ref` value-class parameters and locals, casts of call results, `is()` with full, partial and bare
+// `ref` struct parameters and locals, casts of call results, `is()` with full, partial and bare
 // names, generic arguments (`func<>` with path types on both sides, `array<>` of a path enum), lambdas,
 // `<linq>` chains, switch cases written four ways, ternaries, compound assignment on a member reached
 // through a path, interpolation and returns; the consumer imports the root, a branch reached by value
@@ -47,7 +47,7 @@ object roomA {
 enum eCtGrade { Common, Fine, Rare }
 enum eCtVerdict { Allow, Hold, Deny }
 
-value class CtOffset {
+struct CtOffset {
     inline int X;
     inline int Y;
 

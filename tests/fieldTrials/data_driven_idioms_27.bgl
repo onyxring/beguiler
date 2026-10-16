@@ -4,7 +4,7 @@
 // Exercises: a parcel depot kept in tables. An enum of zones indexing parallel name, word and
 // delivery-day tables; a rate table as an array of arrays read [zone][band] beside a band-name
 // table, the band picked by a switch with ranges; a bnum of parcel marks set with |= from a mark word
-// table and listed by bit position; parcels as an array of a value class appended as Parcel{ … } and
+// table and listed by bit position; parcels as an array of a struct appended as Parcel{ … } and
 // changed through [i].member; a stage enum named by a switch and cast from an int; a waiting queue as
 // array<int> fed with enqueue, drained with dequeue, refilled with copyFrom from a local array,
 // trimmed with -= and sorted by a named comparator reading the parcel table; vans as objects of
@@ -65,7 +65,7 @@ array<dictionaryWord> markWords = { .fragile, .urgent, .signed };
 
 //-- Parcel table --------------------------------------------------------------
 
-value class Parcel {
+struct Parcel {
     inline int no;
     inline eZone zone;
     inline int weight;

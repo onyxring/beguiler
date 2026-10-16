@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a kit part with a value class that has static member arrays (flat and an array of
+// Exercises: a kit part with a struct that has static member arrays (flat and an array of
 // arrays), operator ?, a non-emitter operator [] that its own methods and statics use on cells, a
 // static that takes an array of the class and queries each with postfix ?; a label class with a byte
 // array member, operator [] over it and a recursive show through ?; a namespace object with type
@@ -9,9 +9,9 @@
 // ?? and postfix ?; #using the namespace before a rack class written with the aliases: static arrays
 // (an array of arrays and a flat one), an owned alias-typed value member indexed with its [], a byte
 // array tag, an inline accessor in the class body that writes the static array, and an operator []
-// whose block lambda walks the static bays. The consumer's own value class derived from the kit's,
-// with a chained copy operator; its #using and extend class of the rack adding static arrays of the
-// value class (by name and by alias), an array of arrays of weights, a byte array seal, operator []=
+// whose block lambda walks the static bays. The consumer's own struct holding the kit's as a
+// member; its #using and extend class of the rack adding static arrays of the
+// struct (by name and by alias), an array of arrays of weights, a byte array seal, operator []=
 // over the static bays, a method taking an array of cells read by a block lambda over the kept
 // tallies, and a block lambda over the two byte arrays; a board object whose inline accessors, through
 // outer, sum a row of an array of arrays with a block lambda, add into an owned value member, mark a
@@ -51,20 +51,16 @@ La13Rack rackA { "rack A"; }
 La13Rack rackB { "rack B"; }
 
 /// A cell that also counts how often it was added to.
-value class La13Tally : La13Cell {
+struct La13Tally {
+    La13Cell cell;
     int adds;
-    La13Tally operator = (La13Tally o) {
-        adds = o.adds;
-        (La13Cell)self = o;
-        return self;
-    }
     /// Adds to the count and notes the add.
     void add(int v) {
-        n = n + v;
+        cell.n = cell.n + v;
         adds++;
     }
     /// Prints the count and the adds.
-    replace void print() { ::print($"[{n} x{adds}]"); }
+    void print() { ::print($"[{cell.n} x{adds}]"); }
 }
 
 #using la13
@@ -95,8 +91,8 @@ extend class La13Rack {
 
     /// Keeps a tally back when it is present.
     void keep(La13Tally t) {
-        if (La13Rack.offered.length < La13Rack.offered.size) La13Rack.offered += t;
-        if (t?) La13Rack.kept += t;
+        if (La13Rack.offered.length < La13Rack.offered.size) La13Rack.offered += t.cell;
+        if (t.cell?) La13Rack.kept += t;
     }
 
     /// The kept tallies weighted by the row for how many there are.
@@ -107,7 +103,7 @@ extend class La13Rack {
         int t = 0;
         for (int i = 0; i < k; i++) {
             La13Tally one = La13Rack.kept[i];
-            t += one.n * w[i];
+            t += one.cell.n * w[i];
         }
         return t;
     }
@@ -116,7 +112,7 @@ extend class La13Rack {
     int countOver(array<La13Cell> list, int lim) {
         func<bool, La13Cell> over = (La13Cell c) => {
             int t = c.n;
-            for (La13Tally k in La13Rack.kept) t += k.n;
+            for (La13Tally k in La13Rack.kept) t += k.cell.n;
             return t > lim;
         };
         int k = 0;
@@ -308,7 +304,7 @@ verb Keep {
         rackB.keep(a);
         print($"Kept {La13Rack.kept.length}, weighted {rackA.weighted()}; ");
         print($"offered {La13Cell.countSet(La13Rack.offered)} of {La13Rack.offered.length}; ");
-        print($"digits {La13Rack.kept[0][0]}{La13Rack.kept[1][0]}; present {La13Rack.kept[1]? && La13Rack.kept[0]?}; ");
+        print($"digits {La13Rack.kept[0].cell[0]}{La13Rack.kept[1].cell[0]}; present {La13Rack.kept[1].cell? && La13Rack.kept[0].cell?}; ");
         la13Cells.clear();
         La13Cell one = 1;
         La13Cell ten = 10;
@@ -332,7 +328,7 @@ verb Board {
         print($"; label {la13Board.label}");
         la13Board.label = labelA;
         la13Board.label = labelB;
-        print($" {la13Board.label}; shown {la13Board.shown.length}, last {la13Board.shown[la13Board.shown.length - 1][0]}; digit {la13Board.total[1]}.^");
+        print($" {la13Board.label}; shown {la13Board.shown.length}, last {la13Board.shown[la13Board.shown.length - 1][0]}; digit {la13Board.total.cell[1]}.^");
     }
 }
 

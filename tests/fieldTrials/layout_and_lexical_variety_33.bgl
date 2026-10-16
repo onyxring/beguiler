@@ -4,7 +4,7 @@
 // Exercises: layout and lexical habits in an ordinary small program with two rooms, three valves, a
 // tank, a meter and a log book, written so that its names meet. Globals `level`, `pressure` and
 // `volume` share names with valve and tank members, an inline accessor, a method an `extend class`
-// adds, value-class fields, parameters, named arguments, loop and lambda variables, read bare,
+// adds, struct fields, parameters, named arguments, loop and lambda variables, read bare,
 // through `self.`, through `::` and in interpolation; a parameter named like the library property
 // `capacity` beside the tank's `capacity`; a global function `opened()` beside a class static
 // `opened` (bare inside the class, `Valve.opened` and `BigValve.OPENED` outside, `::opened()` for the
@@ -257,7 +257,7 @@ object logBook
 
 // ---- a sample ------------------------------------------------------------------------------------
 
-value class Sample
+struct Sample
 {
     int level ;                         // like the global
     int pressure ;                      // like the global and the accessor

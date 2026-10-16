@@ -3,7 +3,7 @@
 
 // Exercises: layout and lexical habits in a small program with two rooms, a bench, a rack, six parts
 // and a pool of tags, written so that almost every type and class is reached through a namespace. A
-// namespace object `kit` with type aliases for a class, an enum, a bnum, a value class and an emitter
+// namespace object `kit` with type aliases for a class, an enum, a bnum, a struct and an emitter
 // class, a value alias to a class (statics through the path, read, written, `++`d and taken as a
 // `func<>`) and one to an object (fields read, assigned and `++`d, a member array appended to and
 // iterated), and methods and members that name its own aliases bare; a second namespace object `depot`
@@ -14,8 +14,8 @@
 // methods, fields and value aliases named bare and through partial paths. Alias paths as global, local,
 // parameter, return, member and static types, as array element types (global, local and member arrays)
 // and `func<>` generic arguments, in a base-class list, in casts (`((kit.inner.gear)x).m`), `is()`, `new`
-// of a pooled class (positional and named arguments), inline value-class initializers (as arguments, in
-// returns and in object bodies), `ref` parameters and locals, value-class members of a value class,
+// of a pooled class (positional and named arguments), inline struct initializers (as arguments, in
+// returns and in object bodies), `ref` parameters and locals, struct members of a struct,
 // operator parameters, <linq> lambdas, `switch` cases, casts of ints to enums and bnums, and defaults of
 // parameters given by name; `extend class` through an alias path; enum and bnum values through paths in
 // conditions and compound assignment; an operator reference through a type alias; `?.` and `??` on
@@ -460,9 +460,9 @@ class Calc
 enum eGrade { low , mid , high }
 bnum bFlag  { oiled , worn , tagged }
 
-value class Pair { kit.span a ; span b ; }
+struct Pair { kit.span a ; span b ; }
 
-value class Span
+struct Span
 {
     int lo ;
     int hi ;

@@ -23,7 +23,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
 
-value class inventory {
+struct inventory {
     int gold = 0;
     int arrows = 12;
     void operator = (inventory o) { gold = o.gold; arrows = o.arrows; }   // claims `=` for copying

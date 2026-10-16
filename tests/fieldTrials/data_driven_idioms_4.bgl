@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a state machine held as data twice (a flat rawArray<int> next-state table indexed
-// state*events+event, and a value-class edge list edited at build time with extend ... { inject Type{ }
+// state*events+event, and a struct edge list edited at build time with extend ... { inject Type{ }
 // before [N] / move [N] last / remove [N] }) cross-checked by a validation pass, an event enum indexing
 // an array<func<void, Slot>> of actions, a slot pool of inline-positional objects with a per-instance
 // member array larger than a Z-machine property (separate storage) and a free list used as a queue,
@@ -66,7 +66,7 @@ array<eMark> marks = { fresh, worn | broken, 0, worn };
 array<bool> seen[ST_COUNT];
 array<int> ledger[SLOT_COUNT];
 
-value class Edge {
+struct Edge {
     inline eState from;
     inline eEvent on;
     inline eState to;

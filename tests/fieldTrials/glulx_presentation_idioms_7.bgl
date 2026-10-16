@@ -69,7 +69,7 @@ choice waitHere   { "Wait",       5, "clock"; parent = roomA; look = HEADING; de
 
 // ---- an accessor that keeps a row index in range -------------------------------------------------
 
-value class rowIndex {
+struct rowIndex {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = bgl.util.math.clamp(v, 0, MAX_ROWS - 1); }

@@ -3,12 +3,12 @@
 
 // Exercises: a thirty-third PunyInform program written bottom-up in reverse, so that nearly every name
 // is used above its declaration: two rooms (Room A with a bench and four crates, Room B with a platform);
-// globals typed by a class, an alias type path, an enum, a bnum and a value class declared at the foot,
+// globals typed by a class, an alias type path, an enum, a bnum and a struct declared at the foot,
 // initialized with objects and enum values declared below; a global `array<Mass>` sized by a const
-// declared below, appended, searched with the value class's static `==`, sorted through an operator
+// declared below, appended, searched with the struct's static `==`, sorted through an operator
 // reference `Mass::operator <=>` taken above the class, and compared with orderings derived from a
 // static `<=>`; routines returning, taking (`ref`, plain, defaulted to a const and an enum value
-// declared below) and comparing the value class; a forward `extend` of a namespace object adding a type
+// declared below) and comparing the struct; a forward `extend` of a namespace object adding a type
 // alias, and a forward `extend` of a platform object adding a method and a member; a namespace object
 // at the foot with type aliases (class, enum, pooled class) and value aliases (`alias`, `auto`) used
 // above in declarations, parameters, casts, `is()`, `new`, and member-array reads; a pooled class sized
@@ -25,8 +25,8 @@
 // `bgl.world.instances` with lambdas calling members added by the foot `extend`; a strongbox subclass
 // declared above its base that hides the base's accessor setter (written through an upcast) and adds a
 // class-body inline accessor; a static `<=>` and an `operator + (Mass)` added to the base by the foot
-// `extend`; overloads choosing between a value class and the subclass; a named union parameter with a
-// default object declared below; inline objects of the value class as a global initializer, an
+// `extend`; overloads choosing between a struct and the subclass; a named union parameter with a
+// default object declared below; inline objects of the struct as a global initializer, an
 // argument, a return value and an array append; `ref` accessor parameters bound to members through
 // casts and `?.`; a `ref` local of an alias type; `array<kit.crate>`; a member `array<Mass>` on the
 // platform added to through a forward `extend`; and verbs weigh, stamp, tear, rack, compare, grade,
@@ -627,7 +627,7 @@ object kit {
     auto scale = platform;
 }
 
-// --- enums and the value class ----------------------------------------------------------------------
+// --- enums and the struct ----------------------------------------------------------------------
 
 enum eGrade {
     light, mid, heavy,
@@ -637,7 +637,7 @@ enum eGrade {
 
 bnum eTag { sealed, marked, checked }
 
-value class Mass {
+struct Mass {
     int grams;
     int count;
 
@@ -705,7 +705,7 @@ const int NUDGE_STEP = 1;
 emitter int twice(int n) { ($n * 2) }
 emitter string dotted { "." }
 
-value class Dial {
+struct Dial {
     int _g = 0;
 
     int  operator () { return _g; }

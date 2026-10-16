@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a shelf of jars shown three ways. A class Jar : object with members, methods that
-// return stringObj and float, and a pour between two jars; a value class Meter (cells, fill and
+// return stringObj and float, and a pour between two jars; a struct Meter (cells, fill and
 // empty chars, copy operator) that renders a fraction as a bar; an enum eTheme switched to pick a
 // styleSheet; a text-grid HUD split above the main window and a text-buffer log split to its right,
 // held in globals that start null and guarded with ?.; print, printLine, clear and moveCursor on
@@ -48,7 +48,7 @@ styleSheet loudLook = styleSheet{
 
 // ---- the meter -----------------------------------------------------------------------------------
 
-value class Meter {
+struct Meter {
     int  cells = 10;
     char full  = '#';
     char empty = '.';

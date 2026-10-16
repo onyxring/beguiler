@@ -2,7 +2,7 @@
 // it is still recognized, and a bare member read (`target`, for self.target) runs the getter on the owner.
 // EXPECT_OUTPUT: 3333
 #beguilerSettings { target = z5; informName = "none"; }
-value class sheet { int w = 7; sheet operator = (sheet s){ self.w = s.w; return self; } }
+struct sheet { int w = 7; sheet operator = (sheet s){ self.w = s.w; return self; } }
 sheet look = sheet{ w = 3; };
 void takeRef(ref sheet o){ print(o.w); }
 class Holder[2] : _bglObject {

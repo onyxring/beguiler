@@ -36,7 +36,7 @@ compile-time error (§19.2). That includes the globals a binding declares: a ver
 verb (`verb Empty` beside the binding's `extern verb Empty`) is an error, and the library verb is
 extended instead (§13.5). The exceptions are an emitter function, which may share its name with a
 variable or object (§3.10), and a verb, which may share its name with a class: the class's name names a
-type, the verb's an action (`verb Seal` beside `value class Seal`).
+type, the verb's an action (`verb Seal` beside `struct Seal`).
 
 ## 3.2 Declaration Qualifiers
 
@@ -66,7 +66,7 @@ the construct it modifies.
 | `superposed` | A routine, global, object or class that is emitted only if it is used. | §3.12 |
 | `typesealed` | A member whose type a derived class may not change. | §8.2.8 |
 | `primitive` | A class whose variables hold the value itself (`primitive class`). | §8.2.5 |
-| `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
+| `struct` | A value type: each variable owns an instance, and assignment copies. | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
 | `ref` | A variable, member or parameter that refers to an instance owned elsewhere, empty until bound. | §3.7 |
 | `required` | A class member every object must get a value for. | §8.3.6 |
@@ -132,7 +132,7 @@ both:
 | Type | What a variable of it holds | Why `const` has nothing to fix |
 |---|---|---|
 | an array (`array<T>`, `rawArray<T>`) | the array's elements | the name always stands for the same storage; assigning to it copies elements in (§12) |
-| a value class (§8.2.7) | an instance of its own, with storage for its fields | the name always stands for its own instance; assigning to it copies fields in |
+| a struct (§8.2.7) | an instance of its own, with storage for its fields | the name always stands for its own instance; assigning to it copies fields in |
 
 A variable of a reference type holds a reference: assigning to it makes the name stand for another
 object, which is what `const` prevents. A variable of a storage type never stands for anything else. It
@@ -140,15 +140,15 @@ is created with its own storage, and an assignment copies new contents into that
 already as fixed as `const` could make it, and what the storage holds is the part `const` does not
 govern, so on these types `const` would promise nothing.
 
-A class is a value class when its declaration says `value class`, or when it derives from a class that
+A class is a struct when its declaration says `struct`, or when it derives from a class that
 does (§8.2.7). Nothing at the use site says so: `Money price` reads the same whether `Money` is a value
-class or a reference class. The value class's declaration (or a hover in the editor) is where to look.
+class or a reference class. The struct's declaration (or a hover in the editor) is where to look.
 
 **Example**
 
 <!-- doctest: compile -->
 ```bgl
-value class Money {
+struct Money {
     int cents;
     Money operator = (int c) { cents = c; return self; }
 }
@@ -249,12 +249,12 @@ ref ⟨type⟩ ⟨name⟩ ;                    // starts empty
 **Description**
 
 A class-typed slot is either an **owning slot** or a **reference slot**. A global, member or local
-declared without `ref` and with no value owns an instance: always for a value class (§8.2.7), and for a
+declared without `ref` and with no value owns an instance: always for a struct (§8.2.7), and for a
 reference class as its own object (§2.10.3). A reference-class slot declared with a value refers to that
 instance, as do parameters of a reference class and loop variables. A slot of a primitive type holds the
 value itself (§2.10.3) and can't take `ref`.
 
-**Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
+**Owning slots.** A global, local, member or parameter of a struct owns an instance: it starts out
 holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
 member is created with its host (§8.3.4). `=` and passing copy into that instance through the class's
 copy operator (§9.1). A slot with an initializer starts as a copy of it.
@@ -263,7 +263,7 @@ copy operator (§9.1). A slot with an initializer starts as a copy of it.
 empty (`null`) until bound, so `if (!slot)` distinguishes an unbound slot from a bound one. `ref` is
 valid on file-scope and local variables, on parameters, and on class and object members, of any class
 type; on a primitive type, or on an `extern` or `const` declaration, it is a compile-time error. A
-`ref` parameter is bound to its argument. A slot that may be empty is declared `ref`. A member of a value class whose type is that class must be
+`ref` parameter is bound to its argument. A slot that may be empty is declared `ref`. A member of a struct whose type is that class must be
 `ref`: owning one would own another without end.
 
 **Binding and assignment.** `:=` binds a `ref` slot: it stores the reference and never dispatches
@@ -271,7 +271,7 @@ type; on a primitive type, or on an `extern` or `const` declaration, it is a com
 same class, or the right side a subclass; binding an unrelated class or a non-instance value is a
 compile-time error. `:=` is not overloadable, and on a slot not declared `ref` it is a compile-time
 error. `=` is the assignment of the slot's type, the same in a declaration and a statement and on a plain
-or a `ref` slot: a reference class's re-points, and a value class's copies, into the referent when the
+or a `ref` slot: a reference class's re-points, and a struct's copies, into the referent when the
 slot is a bound reference. Reads and member writes through a reference chain normally (`node.next.id`).
 
 **Declaration pairing.** A `ref` declaration, a member's included, binds with `:=`, whatever its type;
@@ -280,7 +280,7 @@ slot is a bound reference. Reads and member writes through a reference chain nor
 **Example**
 
 ```bgl
-value class Node { int id; ref Node next; Node operator = (Node o){ id = o.id; return self; } }
+struct Node { int id; ref Node next; Node operator = (Node o){ id = o.id; return self; } }
 
 Node first;   first.id = 1;
 Node second;  second.id = 2;
@@ -292,7 +292,7 @@ first.next := second;         // a ref member is bound the same way
 
 **Notes**
 
-A parameter of a value class is a copy of its argument, as any owning slot is (§2.10.3); a `ref`
+A parameter of a struct is a copy of its argument, as any owning slot is (§2.10.3); a `ref`
 parameter refers to the argument instead. A parameter of a reference class refers to its argument.
 
 **See also** §4.13, §5.15.

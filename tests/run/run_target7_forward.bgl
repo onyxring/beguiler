@@ -1,6 +1,6 @@
 // run_target7_forward — uses above the declaring object or class of `ref` member arrays, oversized
-// (separate-storage) member arrays, static member arrays, rawArray members and static value-class members
-// (read and field-written, with the value class declared later still); a value-class global named in an
+// (separate-storage) member arrays, static member arrays, rawArray members and static struct members
+// (read and field-written, with the struct declared later still); a struct global named in an
 // array initializer above its own declaration; and a subclass of an alias-path base used above it.
 // EXPECT_OUTPUT: 2 2 5 7 2 2 2 40 9 4 1 2 3 5 4 5 6 5 4 0 4 5 (1,1) (2,3) 9 3 2
 #beguilerSettings { target = z5; informName = "none"; }
@@ -60,7 +60,7 @@ class Bin : object { static array<int> seen[4]; }
 class Reg { static Pt home; }
 class Gear : kit.part { int teeth = 8; }
 Gear gearA { size = 3; }
-value class Pt {
+struct Pt {
     inline int x;
     inline int y;
     Pt operator = (Pt o) { x = o.x; y = o.y; return self; }

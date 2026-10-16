@@ -4,9 +4,9 @@
 // Exercises: valid but unusual code in a small rail-car coupling program, on the Z-machine, leaning on
 // computed receivers inside `?.` and `??` chains.
 // A class `Car` whose reference member `next` links objects into chains, with a member array, an owned
-// value-class member whose type declares an emitter `operator ?()`, an inline `auto` accessor with a
+// struct member whose type declares an emitter `operator ?()`, an inline `auto` accessor with a
 // string getter, methods with defaulted parameters (called through `?.` with named arguments), a
-// `selfType` method, a value-class return and static methods returning cars; an `extend class` adding
+// `selfType` method, a struct return and static methods returning cars; an `extend class` adding
 // methods with defaults (one returning a stringObj, one a `??` of a call); a subclass with its own member
 // array and a stringObj method; an object hub with a member array of cars, a method and an inline accessor
 // whose getter returns a car. Members, member arrays, methods and accessors reached through casts of
@@ -16,7 +16,7 @@
 // ending in postfix `?`, `?.` statements on cast, element and call receivers (and one assigning the
 // accessor), chains in `if`, `while`, `for` conditions and increments, `do/until`, `switch` heads,
 // ternary conditions, returns, arguments, interpolation and lambdas; `??` chained (`a ?? b ?? c`) with
-// call and cast operands, string and value-class results, and nested inside `?.` operands; a null chain
+// call and cast operands, string and struct results, and nested inside `?.` operands; a null chain
 // read into a stringObj; `is()` through `?.`.
 
 #beguilerSettings {
@@ -38,7 +38,7 @@ extend extern class object {
 
 // ---- types --------------------------------------------------------------------------------------------
 
-value class Gauge {
+struct Gauge {
     int _v = 0;
     Gauge operator = (Gauge o) { _v = o._v; return self; }
     int read() { return _v; }

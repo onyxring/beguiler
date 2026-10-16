@@ -1,6 +1,6 @@
 // run_target7_overloads — overloaded `operator []=` on an object and on a class instance; a program's
 // `print(Parcel)` overload in interpolation; overloaded `operator []` on an array element; a bare `{ … }`
-// argument beside an overload of another arity; an int returned where a value class with `operator =(int)`
+// argument beside an overload of another arity; an int returned where a struct with `operator =(int)`
 // is the return type; and an untyped operator reference resolved by the func type it is stored into.
 // EXPECT_OUTPUT: 5 107 5 107 <1200> <1200> <1200>|<1200> 102 102 102 2 1651 1652 8 500 500 2 -2
 #beguilerSettings { target = z5; informName = "none"; }
@@ -28,7 +28,7 @@ class Shelf : object {
 }
 Shelf s1 { }
 array<Shelf> shelves = { s1 };
-value class Mass {
+struct Mass {
     inline int g;
     Mass operator = (Mass o) { g = o.g; return self; }
     Mass operator = (int n) { g = n; return self; }

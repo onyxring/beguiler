@@ -2,9 +2,9 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, eighth pass. Recursion over value
-// classes: a recursive function whose value-class locals and by-value parameter survive the inner
+// classes: a recursive function whose struct locals and by-value parameter survive the inner
 // call, reporting through a `ref` out-parameter, and a recursive method on a tree of objects that
-// widens a `ref` accumulator while keeping a value-class snapshot local; a value class composed of
+// widens a `ref` accumulator while keeping a struct snapshot local; a struct composed of
 // an owned accessor member (a named clamping accessor), an owned value member and an `array<int>`
 // member, with a copy operator that copies all three (getter-to-setter, chained copy operator and
 // array copy), passed by value, held by a class and written through a two-level member path;
@@ -36,9 +36,9 @@ extend extern class object {
     stringOrRoutine description;
 }
 
-//-- Interval: a value class through recursion -----------------------------------------------------
+//-- Interval: a struct through recursion -----------------------------------------------------
 
-value class Interval {
+struct Interval {
     int Lo;
     int Hi;
 
@@ -89,15 +89,15 @@ Node leafB  { Value = 11; }
 Node branch { Value = 7; Left = leafA; }
 Node root   { Value = 5; Left = branch; Right = leafB; }
 
-//-- Gauge: a value class composed of an accessor, a value member and an array ----------------------
+//-- Gauge: a struct composed of an accessor, a value member and an array ----------------------
 
-value class Clamp {
+struct Clamp {
     int Raw;
     int  operator ()        { return Raw; }
     void operator = (int v) { Raw = v < 0 ? 0 : (v > 9 ? 9 : v); }
 }
 
-value class Gauge {
+struct Gauge {
     Clamp Level;
     Interval Seen;
     array<int> History[6];

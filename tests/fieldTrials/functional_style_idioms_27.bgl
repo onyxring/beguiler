@@ -6,7 +6,7 @@
 // are a global array<array<int>> of candidate indices of differing lengths, plus a sized array of
 // single-choice ballots appended by a verb. A recursive first-live-choice search over a func<bool,
 // int> predicate (named function or lambda); first-choice tallies returned as a local array and
-// captured into typed locals; a value class standing with a copy operator, picked by a hand-written
+// captured into typed locals; a struct standing with a copy operator, picked by a hand-written
 // scan taking a func<bool, int, int> comparison and returned by value; an instant runoff by recursion
 // that writes a `ref stringObj` log and restores the withdrawn flags from a snapshot made by map;
 // Borda scores ordered by <linq> orderBy with a two-key comparator over a returned local index
@@ -148,7 +148,7 @@ void showCounts(array<int> counts, func<bool, int> ok = anyone) {
     }
 }
 
-value class Standing {
+struct Standing {
     int who = -1;
     int votes = 0;
 

@@ -2,9 +2,9 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirtieth pass: a lift controller.
-// A value class for a clock time with a copy operator, `+` by minutes, `==`/`!=`, a `<=>` that `<`/`>`
+// A struct for a clock time with a copy operator, `+` by minutes, `==`/`!=`, a `<=>` that `<`/`>`
 // come from, a static factory and its own `print()` used inside interpolation, held in a global and in a
-// pooled class's member; a named property accessor (a value class counting changes) as a lift's floor,
+// pooled class's member; a named property accessor (a struct counting changes) as a lift's floor,
 // moved with `++`/`--` and with a method of its own; the State pattern: a state base class with `default`
 // `Enter()`/`Tick()`/`AcceptsCalls()` overridden by four subclasses, each with a singleton object, one
 // state's `Enter()` chaining to the base version with an ancestor cast; a lift class holding its state, an
@@ -63,7 +63,7 @@ string FaultName(eFault f) {
 
 //-- Clock: a value type ---------------------------------------------------------------------------------------
 
-value class Clock {
+struct Clock {
     int Minutes;
 
     Clock operator = (Clock o) {
@@ -102,7 +102,7 @@ Clock Now;
 
 //-- A property accessor: the floor a lift is on ---------------------------------------------------------------
 
-value class FloorGauge {
+struct FloorGauge {
     int _level;
     int _changes;
 

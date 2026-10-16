@@ -3684,7 +3684,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             // reference semantics by convention). Force the user to declare
             // operator= so copy semantics aren't a surprise.
             if(found && !foundViaOperatorEq && classHasStoredFields(classType) && !isReferenceBacked(classType))
-                parsingError(format("'{0}' is a value class with no copy operator ('operator =' taking '{0}'), so there "
+                parsingError(format("'{0}' is a struct with no copy operator ('operator =' taking '{0}'), so there "
                                     "is nothing to copy with. Declare one; or, to re-point a 'ref', use ':='.",
                     typeDisplayName(leftType->name)));
             if(!found){

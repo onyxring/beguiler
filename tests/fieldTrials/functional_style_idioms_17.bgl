@@ -4,8 +4,8 @@
 // Exercises: two dense declarations on Glulx, written functionally. An I6 class with two parents,
 // declared in an `#i6` island and bound with a two-parent `extern class`: emitter `+`, `-`, `+=` and
 // `++` operators and static routines that fold a countdown recursively (throwing when a reading would
-// go negative), band a reading through a value-class range imported with `#using`, and run a check
-// that binds a `ref` value-class local with `:=`, scales through a block-lambda func<>, falls back
+// go negative), band a reading through a struct range imported with `#using`, and run a check
+// that binds a `ref` struct local with `:=`, scales through a block-lambda func<>, falls back
 // with `??`, counts with a <linq> filter, captures a line into an array<char> through <buf>, gives an
 // attribute, switches on `typeof` of a var, takes a pooled subclass from `new` and dispatches to its
 // ancestor by cast, tallies in an `#i6` island through `$i6Expr`, traces under `#if` and performs a
@@ -14,7 +14,7 @@
 // and a run method that mixes the same features from inside a Beguile class body. An `extend extern
 // class` of the I6 class returning a `string | func<>` union of block lambdas, narrowed by `typeof`
 // and a cast in a recursive sweep over an array of instances, and a <linq> filter / orderBy with `??`.
-// A verb with a `ref` value-class member, a float array filtered by <linq>, a block-lambda func<>
+// A verb with a `ref` struct member, a float array filtered by <linq>, a block-lambda func<>
 // member walked recursively, a string `??` and postfix `?`, and a throw out of a <linq> predicate.
 
 #beguilerSettings {
@@ -48,7 +48,7 @@ object shelfA { "shelf A"; parent = roomA; }
 //-- Shared types ---------------------------------------------------------------------------------
 enum eBand { none, low, mid, high }
 
-value class Span {
+struct Span {
     float lo;
     float hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }

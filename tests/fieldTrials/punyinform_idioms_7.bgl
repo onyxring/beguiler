@@ -6,7 +6,7 @@
 // fields from both bases, an inherited `const` member re-set by an object, and a `static superposed`
 // method reached through a subclass name; `inline instanceName;` re-listed first, with `extend class`
 // appending an enum-typed positional member; an enum with emitter methods and an `extend enum` emitter
-// value; a value-class accessor made read-only on a subclass with `hide member.operator =`, written again
+// value; a struct accessor made read-only on a subclass with `hide member.operator =`, written again
 // through a base cast; a `primitive class` newtype over int with conversion, an emitter value and
 // `operator auto()`; `extend extern class int` and `extend extern class array` (a `T second()` emitter on a
 // global and a member array); object-method overloads by type and arity, and global overloads chosen by
@@ -80,7 +80,7 @@ alias class place for object {
     ref object w_to;
 }
 
-value class Dial {
+struct Dial {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v % 10; }

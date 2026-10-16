@@ -4,7 +4,7 @@
 // Exercises: Inform 6 habits on z5, the old pooled-class and replace habits meeting new syntax. An
 // I6 `Class Chip(3)` bound as a pooled extern class, then extended: its identity == replaced by a
 // value comparison, != and <=> added (so < > <= >= derive), static methods that call new and delete on
-// it, open an emitter-class lease and bind ref value-class slots with :=; an extern emitter class
+// it, open an emitter-class lease and bind ref struct slots with :=; an extern emitter class
 // with two extern emitter parents, init/deinit over I6 routines, == != <=> emitters, a replaced
 // inherited emitter, and static methods that walk a slot chain by rebinding and allocate a pooled
 // Beguile class; that pooled Beguile class with two parents, create(args)/destroy, non-emitter == !=
@@ -64,7 +64,7 @@ int tokens_freed;
 
 // ---------------------------------------------------------------- slots
 
-value class Slot {
+struct Slot {
     int n;
     ref Slot next;
     Slot operator = (Slot o) { n = o.n; next := o.next; return self; }

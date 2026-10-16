@@ -44,7 +44,7 @@ extend extern class object {
 enum eLa23Heft { feather, light, heavy, crushing }
 
 /// A weight in grams, copied on assignment.
-value class La23Mass {
+struct La23Mass {
     int grams;
     La23Mass operator = (La23Mass o) { grams = o.grams; return self; }
     La23Mass operator = (int g) { grams = g; return self; }

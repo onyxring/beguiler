@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-first pass: a 2-D drawing kit
-// built around overloads. A value class for a point with a copy operator, a conversion `operator = (int)`,
+// built around overloads. A struct for a point with a copy operator, a conversion `operator = (int)`,
 // `+`/`-`/`*` overloaded by a point and by an int (`*` by a point is the dot product), `+=` by a point
 // and by an int, an instance `==` that `indexOf`/`contains` use, a `static` `<=>` passed to `sort`, overloaded
 // static factories and its own `print()`; a shape hierarchy (shape, rect, square, circle, strip) with overloaded `MoveBy`/`MoveTo`/
@@ -11,7 +11,7 @@
 // of one overload; instance `==`/`!=`/`+` and a `static` `<=>` on the base used with subclass operands,
 // with `<`/`>` derived from it and `Shape::operator <=>` passed to `sort` and `orderBy`; global overload
 // sets chosen by class, by ancestor, by enum, by int, by string, by `func<>` arity, with a `var`
-// fallback, a `ref` value-class overload, an overload `replace`d with `replaced()`, overloaded emitters,
+// fallback, a `ref` struct overload, an overload `replace`d with `replaced()`, overloaded emitters,
 // default and named arguments selecting between overloads; a canvas object with overloaded methods,
 // `+=`/`-=` and `[]`/`[]=` operators; a units object whose overloads are imported with `#using`;
 // overload calls in conditions, loops, ternaries, lambdas, `<linq>` chains and interpolation.
@@ -53,7 +53,7 @@ string FillName(eFill f) {
 
 //-- Point: a value type with overloaded operators -------------------------------------------------------------
 
-value class Point {
+struct Point {
     int X;
     int Y;
 

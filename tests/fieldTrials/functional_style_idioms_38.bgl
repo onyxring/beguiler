@@ -8,7 +8,7 @@
 // and returns a new local array (captured by the caller), and is iterated by a hand-written `iterate`
 // over a func<> parameter to project levels without changing the tanks; hand-written fold, zipWith,
 // scan and indicesWhere over func<> parameters; a rule pipeline held in an array<func<int, int>>
-// applied by a fold over functions; a value class tally with a copy operator and `operator +` folded
+// applied by a fold over functions; a struct tally with a copy operator and `operator +` folded
 // over levels; <linq> filter/map/orderBy (two-key comparator)/first/last/count/any/all/take/skip/
 // takeWhile/distinct over tanks and the level history; level bars built into a stringObj returned by
 // value; a bnum of tank states combined with `|` and tested with `&`; a switch over the enum; verbs
@@ -225,7 +225,7 @@ void record() {
 
 //-- Tally ----------------------------------------------------------------------------------------
 
-value class Tally {
+struct Tally {
     int count = 0;
     int total = 0;
     int most = 0;

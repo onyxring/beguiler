@@ -8,7 +8,7 @@
 // the queue size, the fine and the ticket book, bool flags, an enum for a bay's state kept in a class
 // member and switched on, a named getter/setter accessor class (the meter, clamped by its setter)
 // used as a class member and read, written, bumped with += and -- and read inside interpolation, a
-// value class for a ticket (plate, bay, fine, paid) with a copy operator kept in an array of the value
+// struct for a ticket (plate, bay, fine, paid) with a copy operator kept in an array of the value
 // class sized by a const, plates waiting in an array used as a queue with enqueue / dequeue / peek,
 // arrivals taken from two parallel arrays, a class of bays (label, meter, state, late turns, a method
 // for the turns one coin buys, a feed method that throws when the meter is full, a before() for
@@ -71,7 +71,7 @@ enum BayState { empty, parked, expired }
 // ===== THE METER =====
 
 // a meter that never goes below 0 or above METER_MAX
-value class Meter {
+struct Meter {
     int _turns = 0;
     int operator () {
         return _turns;
@@ -90,7 +90,7 @@ value class Meter {
 // ===== TICKETS =====
 
 // one ticket in the book
-value class Ticket {
+struct Ticket {
     string plate;
     int bay;
     int fine;

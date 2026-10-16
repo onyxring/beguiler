@@ -5,7 +5,7 @@
 // sack of four letters, a scale, a franking machine, an ink bottle and a clerk; Room B to the south
 // with a rack of three pigeonholes) and OPTIONAL_SCORED; an enum district; a `Letter` class with a
 // district, a weight, a franked flag, an address string and a paid amount, its description a routine
-// with a `switch` over the district; a `Postage` value class (`operator ()`, `=` from int, `+=`, a
+// with a `switch` over the district; a `Postage` struct (`operator ()`, `=` from int, `+=`, a
 // method returning `stringObj`) held as a global; a rate table chosen by a `switch` with ranges and a
 // guard; a scale whose `after` takes `Receive` and reports the weight; a switchable franking machine
 // with a warm-up daemon and an ink count, franking through a `frank NOUN` verb that calls a routine
@@ -53,7 +53,7 @@ array<string> districtNames = {"north", "east", "west"};
 const int INK_FULL   = 3;
 const int WARM_TURNS = 2;
 
-value class Postage {
+struct Postage {
     int _pence = 0;
 
     int  operator ()        { return _pence; }

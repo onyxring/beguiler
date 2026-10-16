@@ -5,7 +5,7 @@
 // an object of a class whose inline `auto { }` accessor holds a `static array<int>`, an `operator []`
 // and a setter writing its host through `outer.` and performing a verb, beside `operator +=` and `-` on
 // the object, a `replace`d inherited method, an `array<Chip>` member of a pooled class filled with
-// `new`/`delete` and read through `??`, a `ref` value-class local bound with `:=`, an array of arrays,
+// `new`/`delete` and read through `??`, a `ref` struct local bound with `:=`, an array of arrays,
 // a block-bodied lambda reading the accessor, an emitter-class local, an `#i6` line using `$i6Expr`,
 // a `switch` over an enum member and `has()`/`give()`/`ungive()`; and an `extend class` of a class
 // with two parents, opened with `#using` of an object namespace whose `alias … for` names a value
@@ -37,7 +37,7 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 enum eShade { pale, mid, deep }
 
-value class Pair {
+struct Pair {
     int a;
     int b;
 

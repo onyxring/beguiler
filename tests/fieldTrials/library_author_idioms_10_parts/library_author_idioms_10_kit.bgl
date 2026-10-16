@@ -26,7 +26,7 @@ extern float La10_Mix(float a, float b);
 // ---- A point on a plane, held by value. ----
 
 /// A point on a plane.
-value class la10Point {
+struct la10Point {
     inline float x;
     inline float y;
     la10Point operator = (la10Point o) { x = o.x; y = o.y; return self; }

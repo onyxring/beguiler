@@ -1,19 +1,19 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: valid but unusual combinations, nine areas at a time, on the Z-machine. A value class
+// Exercises: valid but unusual combinations, nine areas at a time, on the Z-machine. A struct
 // with arithmetic overloads (one taking an enum operand), an emitter `operator switch` that lets the
 // class itself be switched on, emitter members whose $i6Expr bodies chain through the class's own
 // operators, a named-union member, and a method that keeps a local array<string>, tests and gives
 // attributes, switches on an enum, on ranges and on itself, narrows a var with typeof and performs
 // a verb; an object with an inline accessor that declares its own `operator +=` and `operator ++`
-// and reaches its host through outer (moving children, writing a value-class member), and methods
+// and reaches its host through outer (moving children, writing a struct member), and methods
 // taking array<object> parameters that move objects by parent, switch on ranges, keep var locals,
-// run #i6 islands over their locals with $i6Expr, and perform verbs; a value class deriving from
-// another that subscripts its ancestor through a cast (also inside an emitter's $i6Expr), stores
+// run #i6 islands over their locals with $i6Expr, and perform verbs; a struct holding another
+// that subscripts its member struct (also inside an emitter's $i6Expr), stores
 // through its own `operator []=`, scans an array<char> parameter with a char-range switch, and
 // performs a verb; enum emitter members reached from $i6Expr; verbs whose handlers combine the same
-// areas again, walk children, switch on action and read a byte array through a value class.
+// areas again, walk children, switch on action and read a byte array through a struct.
 
 #beguilerSettings {
     target = z5;
@@ -23,7 +23,7 @@
 #includeI6 "parser"
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
-#include <array>   // element stores into arrays of value classes
+#include <array>   // element stores into arrays of structs
 
 extend extern class object {
     string description;
@@ -68,9 +68,9 @@ object ironRing  { "iron ring";  parent = roomB; }
 int taps = 0;
 int pings = 0;
 
-// ---- cluster 1: a value class with arithmetic, enum and attribute work ---------------------------
+// ---- cluster 1: a struct with arithmetic, enum and attribute work ---------------------------
 
-value class Tally {
+struct Tally {
     int n;
     eShade shade;
     eMark marks;
@@ -208,9 +208,9 @@ object rack {
     }
 }
 
-// ---- cluster 3: a value class over another, subscripting its ancestor ----------------------------
+// ---- cluster 3: a struct holding another, subscripting its member ---------------------------
 
-value class Cell {
+struct Cell {
     int v;
     eShade tint;
     Cell operator = (Cell o) { v = o.v; tint = o.tint; return self; }
@@ -218,22 +218,23 @@ value class Cell {
     int describe() { return v * 2; }
 }
 
-value class Row : Cell {
+struct Row {
+    Cell cell;
     int w;
     array<char> code[6];
 
     Row operator = (Row o) {
         w = o.w;
         for (int i = 0; i < 6; i++) code[i] = o.code[i];
-        (Cell)self = o;
+        cell = o.cell;
         return self;
     }
-    replace int operator [] (int i) { return ((Cell)self)[i] * 10 + code[i]; }
+    int operator [] (int i) { return cell[i] * 10 + code[i]; }
     int operator []= (int i, int x) { code[i] = x; return x; }
-    int describe() { return ((Cell)self).describe() + w; }
+    int describe() { return cell.describe() + w; }
 
     emitter int peek(int i)  { $i6Expr($self[$i] + 1) }
-    emitter int base(int i)  { $i6Expr(((Cell)$self)[$i]) }
+    emitter int base(int i)  { $i6Expr($self.cell[$i]) }
 
     int scan(array<char> text, object o) {
         int hits = 0;
@@ -341,7 +342,7 @@ verb ProbeRow {
     meta = true;
     void handler() {
         Row r;
-        r.v = 2;
+        r.cell.v = 2;
         r.w = 5;
         r[1] = 3;
         printLine($"Sub {r[0]} {r[1]}, peek {r.peek(1)}, base {r.base(4)}, describe {r.describe()}.");
@@ -349,10 +350,10 @@ verb ProbeRow {
         printLine($"Hits {hits}, slot2 {r[2]}, slot5 {r[5]}, pings {pings}.");
         Row s;
         s = r;
-        s.v = 1;
+        s.cell.v = 1;
         printLine($"Copy {s[2]} {s[5]} {s.describe()}, original {r.describe()}.");
         Cell c;
-        c = s;
+        c = s.cell;
         printLine($"Cell {c[2]} {c.describe()}.");
         rows[0] = r;
         rows[1] = s;

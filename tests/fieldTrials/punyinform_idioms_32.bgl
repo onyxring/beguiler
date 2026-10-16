@@ -45,7 +45,7 @@ extend extern class object {
 
 const int LEVEL_MAX = 9;
 
-value class Level {
+struct Level {
     int _v = 0;
     int sets = 0;
 
@@ -71,7 +71,7 @@ value class Level {
     }
 }
 
-value class Tally {
+struct Tally {
     int _n = 0;
     int adds = 0;
 

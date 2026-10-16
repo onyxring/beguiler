@@ -2,16 +2,16 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: tiles laid out across a text grid, with a strip of labels and a desk namespace. A tile
-// class with a positional caption, an owned value-class position tested with postfix ?, an inline
+// class with a positional caption, an owned struct position tested with postfix ?, an inline
 // weight accessor (auto { }) whose setter records a mark in a static array<char>, operator [] over its
 // array<char> tag, a static array<tile> deck filled from the object tree, sorted by a block-bodied
 // lambda comparator, laid out into a static array<array<int>> of spans that a block-bodied lambda
 // reads back, and drawn into a grid; an extend class on the tile adding operator []= on the tag, an
 // inline glow accessor, an array<string> of notes, a tag built from an array<string> parameter, a
-// nearest-tile search over an array<tile> parameter by value-class distance, and a block-bodied
+// nearest-tile search over an array<tile> parameter by struct distance, and a block-bodied
 // lambda that dims glowing tiles; a label strip class with operator [] and []= over an array<string>,
 // loaded from an array<string> parameter through a block-bodied lambda, an inline focus accessor, an
-// array<char> of initials, a member array<array<int>> of runs, and an array of value-class stops
+// array<char> of initials, a member array<array<int>> of runs, and an array of struct stops
 // copied from an owned origin; a desk object namespace aliasing the tile class, with an object
 // operator [] over an array<string>, an array of the aliased type gathered by a block-bodied lambda,
 // and an inline accessor reaching its host through outer (an array<char>, the picks, the words);
@@ -54,7 +54,7 @@ void eachText(array<string> list, func<void, string> f) {
 
 // ---- positions -----------------------------------------------------------------------------------
 
-value class cellPos {
+struct cellPos {
     int col;
     int row;
     cellPos operator = (cellPos o) {

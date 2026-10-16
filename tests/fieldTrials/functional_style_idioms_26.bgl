@@ -9,7 +9,7 @@
 // counts (made by map from the materials), passed down a mutual recursion with a `ref stringObj` log
 // and applied back to the objects only when the whole plan succeeds; a largest-batch search by
 // takeWhile over a returned local range array whose predicate runs the planner (chains inside a
-// chain's predicate); a value class shortfall with a copy operator, returned by value; recipes
+// chain's predicate); a struct shortfall with a copy operator, returned by value; recipes
 // ordered by label with compareTo; materials ranked by raw worth with a two-key comparator; a
 // hand-written index-based `all` over a func<bool, int>; folds over func<> parameters; named and
 // defaulted func<> parameters; per-grade listings over an array of the enum; verbs reading noun
@@ -215,7 +215,7 @@ int largestRun(Recipe r) {
     return sizes.takeWhile((int n) => feasible(r, n)).count();
 }
 
-value class Shortfall {
+struct Shortfall {
     ref Material what;
     int need = 0;
 

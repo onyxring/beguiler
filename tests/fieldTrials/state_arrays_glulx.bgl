@@ -4,15 +4,15 @@
 // Exercises: array state across save, restore, undo and restart on Glulx, and over a long run.
 // A global tracked array<int> used as a stack (push/pop/peek), a queue (enqueue/dequeue/peekEnd) and
 // a list (insert/remove/removeValue/+=/-=), with length and size printed after each change; an array
-// of a value class (copy operator, static == and <=>) filled by +=, insert, element stores, removed by
+// of a struct (copy operator, static == and <=>) filled by +=, insert, element stores, removed by
 // remove and -=, cleared, sorted, copied whole into a second array and back, and passed as an
 // array<Point> parameter; a pooled class (bglAllocated) whose instances are kept in an
 // array<Token> and released with delete, counted by remaining(); local arrays in routines (sized,
-// initialized, copied from a returned local, one per loop pass, one of a value class), recursion
+// initialized, copied from a returned local, one per loop pass, one of a struct), recursion
 // with a local array per call; <linq> chains (filter, map, take, skip, distinct, orderBy, any, all,
 // first, last, count), a chain nested in a predicate, a chain captured by assignment; sort() with and
 // without a comparator; an each_turn that allocates a local array and a chain every turn; and the
-// runtime's frame-pool top, linq depth and value-class slot map read through extern for the leak probe.
+// runtime's frame-pool top, linq depth and struct slot map read through extern for the leak probe.
 
 #beguilerSettings {
     target = Glulx;
@@ -34,7 +34,7 @@ extern rawArray<char> _bglVal_Point_used;
 
 // ---- types ---------------------------------------------------------------------------------------
 
-value class Point {
+struct Point {
     int x;
     int y;
     Point operator = (Point o) { x = o.x; y = o.y; return self; }
@@ -218,7 +218,7 @@ verb SortAll {
     }
 }
 
-// ---- verbs: the value class ----------------------------------------------------------------------
+// ---- verbs: the struct ----------------------------------------------------------------------
 
 verb AddPoint {
     grammar = {.point, NUMBER, NUMBER};

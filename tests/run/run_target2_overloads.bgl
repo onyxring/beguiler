@@ -5,12 +5,12 @@
 // EXPECT_OUTPUT: 4 5 5/2 14 14 12 12 10 12 20 2 5 tag tag 3 plain plain true true false true none 5 global x int 3 str x
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Q {
+struct Q {
     int n;
     Q operator = (Q o) { n = o.n; return self; }
     void print() { print($"{n}"); }
 }
-value class R {
+struct R {
     int n;
     R operator = (R o) { n = o.n; return self; }
     void print() { print($"{n}"); }
@@ -27,7 +27,7 @@ class Crate : Box {
 }
 Crate c1 { }
 Crate c2 { }
-value class Qv {
+struct Qv {
     int n;
     Qv operator = (Qv o) { n = o.n; return self; }
     Qv operator = (int v) { n = v; return self; }
@@ -45,7 +45,7 @@ int scale(string s, int by) { return by; }
 }
 extern int quad(int n);
 enum eU { one, two }
-value class Pv {
+struct Pv {
     int n;
     Pv operator = (Pv o) { n = o.n; return self; }
     void print() { ::print(n); }
@@ -59,7 +59,7 @@ class Tag : object {
 class Plain : object { void print() { ::print("plain"); } }
 Tag t1 { }
 Plain p1 { }
-value class Ov {
+struct Ov {
     int n;
     Ov operator = (Ov o) { n = o.n; return self; }
     Ov operator = (int v) { n = v; return self; }

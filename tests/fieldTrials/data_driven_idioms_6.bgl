@@ -6,7 +6,7 @@
 // so it dispatches to subclass overrides of default methods, an ancestor call through a cast, emitter
 // methods added to every array with extend extern class array and used on global, local and member
 // arrays, filter rules parsed at startup from strings with s[i], char classification and =~ into
-// value-class records, a table of comparison lambdas chosen by an operator char, a sort column held
+// struct records, a table of comparison lambdas chosen by an operator char, a sort column held
 // in a global and read by a named comparator, float statistics (means, a weighted mean, a standard
 // deviation through bgl.util.math.sqrt) sorted with float::operator <=>, names sorted with
 // string::operator <=>, a uint checksum with wrapping multiply and logical shift, clamp/min/max,
@@ -106,7 +106,7 @@ array<func<bool, int, int>> opTests = {
 // Rule sets as text: column letter (any case), operator, signed number; ';' separates rules.
 array<string> ruleSets = { "W>2;p<9;S>0;t>-2", "s=0", "x>1;P>10" };
 
-value class Rule {
+struct Rule {
     int col = NONE;
     int op = NONE;
     int limit = 0;

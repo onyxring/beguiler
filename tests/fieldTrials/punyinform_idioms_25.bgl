@@ -8,7 +8,7 @@
 // and whose state is an enum, with the missing kinds a `bnum` built with `|` and cleared with `^`; a
 // `mix` verb that takes the ingredients out of play with `parent = null`; an oven that is an openable,
 // switchable container, its `before` taking `Receive`, `SwitchOn` and `Open`, its daemon warming a
-// value class `Heat` (`operator ()`, `=`, `+=`, `-=`, a method) toward a target and baking the bowl on
+// struct `Heat` (`operator ()`, `=`, `+=`, `-=`, a method) toward a target and baking the bowl on
 // a `StartTimer`/`time_out` kitchen timer; a `set oven to NUMBER` verb with a `switch` holding a range
 // and a guard case; a `weigh NOUN` verb summing weights recursively over `children`; a cook with `life`
 // (Ask through NextWord, Give of an ingredient) and `orders` (Wait, others); an `array<int>` of the
@@ -53,7 +53,7 @@ bnum eNeed { needFlour, needSugar, needEgg }
 array<string> foodNames  = {"flour", "sugar", "egg"};
 array<string> bowlStates = {"empty", "filling", "batter", "baked", "burnt"};
 
-value class Heat {
+struct Heat {
     int _degrees = 20;
 
     int  operator ()          { return _degrees; }

@@ -3,7 +3,7 @@
 
 // Exercises: layout and lexical habits in a small program with two rooms, a cabinet of three drawers,
 // five parts and a pool of cards, written so that members are nearly always reached through computed
-// receivers. A part class with a named accessor value class `Dial`, an owned value class `Size`, a
+// receivers. A part class with a named accessor struct `Dial`, an owned struct `Size`, a
 // member array of marks, a `default` describe() returning a stringObj, a method returning the part, a
 // `selfType` method and a method returning its drawer through a cast of `parent`; a gear subclass that
 // overrides describe() and adds a mesh() returning a gear; a spring subclass that hides the setter of
@@ -16,7 +16,7 @@
 // select the base describe() through elements and call results; call results of methods, static
 // methods, `func<>` values and `new`; array and member-array elements, subscripts on call results
 // `pick(1)[0]`, member arrays reached through call results (read, subscripted, appended to with `+=`,
-// iterated, filtered); `?:` and `??` results; `selfType` and self-returning chains; value-class results
+// iterated, filtered); `?:` and `??` results; `selfType` and self-returning chains; struct results
 // chained into further methods. Through them: fields read and assigned, `+=`, `++` and `--` on fields,
 // accessors and member-array elements, accessors compared and interpolated, methods with default and
 // named arguments, `?.` after a cast, receivers in `if`, `while`, `for`, `for`-in, `switch` and
@@ -39,17 +39,17 @@
 
 #using bgl.printRules ;
 
-// ---- value classes --------------------------------------------------------------------------------
+// ---- structs --------------------------------------------------------------------------------
 
 /// Wear held between 0 and 20.
-value class Dial
+struct Dial
 {
     int _v = 0 ;
     int  operator ()          { return _v ; }
     void operator = ( int v ) { _v = v > 20 ? 20 : ( v < 0 ? 0 : v ) ; }
 }
 
-VALUE CLASS Size {
+STRUCT Size {
     inline int w ;
     inline int h ;
     Size operator =  ( Size o ) { w = o.w ; h = o.h ; return self ; }

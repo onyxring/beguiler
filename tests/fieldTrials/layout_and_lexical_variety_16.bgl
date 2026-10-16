@@ -2,23 +2,23 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: layout and lexical habits where up to eighteen language areas meet inside one declaration.
-// A value subclass with `+` (returning a local copy), `==`/`!=`/`<=>`, `[]`/`[]=` over a global
+// A struct with `+` (returning a local copy), `==`/`!=`/`<=>`, `[]`/`[]=` over a global
 // `array<char>`, a method holding an emitter-class local with init/deinit, a `stringObj`, a local
 // `array<char>` loaded through `bgl.util.buf`, a local `array<Bin>` of objects switched on with ranges,
-// an ancestor call through a cast, a `var` told apart by `typeof` and a performed verb; its `extend`
+// a call of its unscaled width, a `var` told apart by `typeof` and a performed verb; its `extend`
 // adding an emitter `operator switch`, `operator +=` taking the class, an `explicit` conversion and a
-// method that throws `self`, caught by type in a routine taking a `ref array<Dial>`; a value class with
+// method that throws `self`, caught by type in a routine taking a `ref array<Dial>`; a struct with
 // `+=` taking a primitive class, `++`, `<`, `==`, a switching `[]`, and a method that walks a nested
 // list initializer inside `try`, throws out of the loop, switches on `typeof` of a named union and
 // performs a verb; its `extend` under `#IF` (tab-indented) adding `-=` that throws, `--`, `prefix++` and a
 // method taking a `ref array<string>` that catches per row; an emitter class with `+=`, `?` and an
 // `operator switch`; an extern class bound to I6 objects with emitter `()`, `[]`, `==`, `!=` and a
 // static `<=>`, holding a static method with a local `array<string>`, a `stringObj`, a ref bound with
-// `:=` to a value-class global, an enum from a ranged/guarded switch and a performed verb; a value class
+// `:=` to a struct global, an enum from a ranged/guarded switch and a performed verb; a struct
 // with a converting `operator =`, a regular-method conversion, `==`/`!=` against strings, an instance
 // `<=>` that `sort()` uses on an `array<Word>`, and a method that switches on string and enum cases and
 // calls an extern routine renamed with `asBgl`; verbs whose handlers mix all of these (an
-// `array<stringObj>`, a ref rebound with `:=` across value-class slots, a string `switch`).
+// `array<stringObj>`, a ref rebound with `:=` across struct slots, a string `switch`).
 // Lexically: `#Define`/`#DEFINE`/`#IF`/`#EndIf` in mixed case, `$` hex and `$$` binary literals in
 // directives and code, keywords in odd case (`TRY`, `Catch`, `THROW`, `SWITCH`, `Case`, `TO`, `EXPLICIT`,
 // `Static`), comments between `operator` and its symbol and inside argument and parameter lists, an
@@ -89,7 +89,7 @@ Bin binC { "bin C" ; load = 5 ; }
 
 array<char> dialText[12] ;
 
-value class Gauge
+struct Gauge
 {
     int lo ;
     int hi ;
@@ -97,12 +97,13 @@ value class Gauge
     int width () { return hi - lo ; }
 }
 
-//-- Cluster 1: a value subclass with + == != <=> [] []= and one dense method -----------------------------
+//-- Cluster 1: a struct with + == != <=> [] []= and one dense method ------------------------------------
 
-value class Dial : Gauge
+struct Dial
 {
+    int lo ;
+    int hi ;
     int step ;
-    Dial operator = ( Dial o ) { step = o.step ; (Gauge)self = o ; return self ; }
     Dial operator + ( int n /* steps */ )
     {
         Dial d = self ;
@@ -114,7 +115,8 @@ value class Dial : Gauge
     int   operator /* by width */ <=> ( Dial o ) { return width() - o.width() ; }
     char  operator [] ( int i ) { return dialText[(lo + i) % 12] ; }
     void  operator []= ( int i , char c ) { dialText[(lo + i) % 12] = c ; }
-    replace int width () { return (hi - lo) * step ; }
+    int baseWidth () { return hi - lo ; }
+    int width () { return (hi - lo) * step ; }
 
     int survey ( var what )
     {
@@ -122,7 +124,7 @@ value class Dial : Gauge
         stringObj   s ;
         array<char> word[8] ;
         array<Bin>  bins = { binA , binB , binC } ;
-        int base = ((Gauge)self).width() ;
+        int base = baseWidth() ;
         int sum  = 0 ;
         for (int i = 0 ; i < bins.length ; i++)
         {
@@ -149,7 +151,7 @@ value class Dial : Gauge
 
 //-- More of Dial: an operator switch, += taking a Dial, an explicit conversion and a throw of self ----------
 
-extend class Dial
+extend struct Dial
 {
     emitter eBool operator switch ( int v ) { ($self.step == $v) }
     Dial operator += ( Dial o ) { hi = hi + o.width() ; return self ; }
@@ -170,7 +172,7 @@ int   sweep ( ref array<Dial> row , int most )
         try { ok += row[i].check(most) ; }
         catch (Dial bad)
         {
-            print("[") ; print((int)bad) ; print(":") ; print(((Gauge)bad).width()) ; print("]") ;
+            print("[") ; print((int)bad) ; print(":") ; print(bad.baseWidth()) ; print("]") ;
         }
     }
     SWITCH (row[0]) { case 1 : print("s1") ; case 2 : print("s2") ; default : print("s?") ; }
@@ -179,9 +181,9 @@ int   sweep ( ref array<Dial> row , int most )
          + t ;
 }
 
-//-- Cluster 2: a value class with += ++ < == [] and a method with try/throw over a nested list ----------
+//-- Cluster 2: a struct with += ++ < == [] and a method with try/throw over a nested list ----------
 
-value class Purse {
+struct Purse {
     int total ;
     int moves ;
     Purse operator =  ( Purse o ) { total = o.total ; moves = o.moves ; return self ; }
@@ -288,7 +290,7 @@ array<string> rowNames   = { "one" , "two" , "three" } ;
 array<string> levelNames = { "low" , "mid" , "high" , "mid" } ;
 
 #IF WIDE
-extend class Purse
+extend struct Purse
 {
 	Purse operator -= ( Cents c )
 	{
@@ -345,11 +347,11 @@ emitter class Mark
     eBool operator switch ( int v ) { ($self / 10 == $v) }
 }
 
-//-- Words: a value class with a stringObj member, a conversion, ordering and a subscript ---------------
+//-- Words: a struct with a stringObj member, a conversion, ordering and a subscript ---------------
 
 extern void PrintShortName ( object o ) asBgl showName ;
 
-value class Word
+struct Word
 {
     stringObj text ;
     eShade    tone ;
@@ -502,7 +504,7 @@ verb V_sweep
         row[2].lo = 2 ; row[2].hi = 4 ; row[2].step = 3 ;
         row[2] += row[0] ;
         print(sweep(row, 5)) ; print(" ") ;
-        printLine($"{row[2].hi} {(int)row[1]} {((Gauge)row[2]).width()} {typeof(row[0]) == eType.object} {tallyDepth}") ;
+        printLine($"{row[2].hi} {(int)row[1]} {row[2].baseWidth()} {typeof(row[0]) == eType.object} {tallyDepth}") ;
     }
 }
 

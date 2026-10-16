@@ -5,7 +5,7 @@
 // queue of incoming calls fed by a daemon from a fixed script, and a pool of paper stubs. A line class
 // with positional members (`inline instanceName` re-listed, an `inline int` number), an enum state shown
 // as a char glyph from a switch, a class-wide static counter and a method that `throw`s a string caught
-// by the verb that connects two lines; a value class call with a copy operator, `==`, a static `<=>`
+// by the verb that connects two lines; a struct call with a copy operator, `==`, a static `<=>`
 // that puts urgent calls first, and a method returning a `stringObj` code; a global `array<Call>` queue
 // sorted, searched by index, trimmed with `remove` and copied into a local array; a script in an
 // `array<int>` read four words at a time; a bnum of marks set with `|=`, tested with `&` and cleared
@@ -160,7 +160,7 @@ Line lineAt ( int n )
 // ---- calls ----------------------------------------------------------------------------------------
 
 /// One call: who rings, whom they want, when it came in.
-value class Call
+struct Call
 {
     int   from ;
     int   to ;

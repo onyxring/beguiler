@@ -13,7 +13,7 @@
 // `#using` so its method, member and aliases are used bare (named and defaulted arguments, `new`
 // through the alias), and extended with a value alias to a superposed object; overloads by class,
 // int and an anonymous union fed from a ternary of unrelated types; a chain of two global `replace`s;
-// a value class with static `<=>`, `==` and `!=` sorted, searched, sorted through an operator
+// a struct with static `<=>`, `==` and `!=` sorted, searched, sorted through an operator
 // reference in a lambda, copied out and bound by `ref` to an element; do/until under `#if`;
 // `children +=` and moving children inside the loop; char utilities, uint shift and bgl.util.math;
 // a throw of an object caught as `object`; rfalse(expr); a computed property read through a
@@ -212,9 +212,9 @@ int surcharge(int w) { return w; }
 replace int surcharge(int w) { return replaced(w) + (w > 5 ? 3 : 0); }
 replace int surcharge(int w) { return replaced(w * 2); }
 
-// ---- tickets: a value class with static operators ---------------------------------------------------
+// ---- tickets: a struct with static operators ---------------------------------------------------
 
-value class Ticket {
+struct Ticket {
     inline int code;
     inline int prio;
     Ticket operator = (Ticket o) { code = o.code; prio = o.prio; return self; }

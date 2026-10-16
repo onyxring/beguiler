@@ -16,7 +16,7 @@ Gauge g1 { level = 5; }
 Gauge g2 { level = 3; }
 class Acct : object { int n = 4; }
 Acct ledgerA { }
-value class Pair { int A; Pair operator = (Pair o) { A = o.A; return self; } }
+struct Pair { int A; Pair operator = (Pair o) { A = o.A; return self; } }
 class Counter : object {
     void Down(int n) {
         Pair mine;
@@ -26,7 +26,7 @@ class Counter : object {
     }
 }
 Counter cnt { }
-value class Clamp { int Raw; int operator () { return Raw; } void operator = (int v) { Raw = v > 9 ? 9 : v; } }
+struct Clamp { int Raw; int operator () { return Raw; } void operator = (int v) { Raw = v > 9 ? 9 : v; } }
 class Meter : object {
     Clamp Level;
     array<int> History[4];
@@ -40,9 +40,9 @@ int score(int n) { return n * 2; }
 int both(int n) { return score(n) + 1; }
 replace int score(int n, int bonus = 0) { return replaced(n) + bonus; }
 enum eHint { width = 7, depth }
-value class Inner { int width = 3; Inner operator = (Inner o) { width = o.width; return self; } }
-value class Outer { Inner part; Outer operator = (Outer o) { part = o.part; return self; } }
-value class Dim { int raw = 4; int writes = 0; int operator () { return raw; } void operator = (int v) { raw = v; writes = writes + 1; } }
+struct Inner { int width = 3; Inner operator = (Inner o) { width = o.width; return self; } }
+struct Outer { Inner part; Outer operator = (Outer o) { part = o.part; return self; } }
+struct Dim { int raw = 4; int writes = 0; int operator () { return raw; } void operator = (int v) { raw = v; writes = writes + 1; } }
 class Box : object { Dim size; int count() { return self.size.writes; } }
 Box b1 { }
 int TrackOpen() { print("open"); return 1; }

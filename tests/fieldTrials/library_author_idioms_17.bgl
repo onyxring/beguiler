@@ -64,7 +64,7 @@ verb La17Ping {
 enum eLa17Size { small, medium, large }
 
 /// A quantity that copies on assignment.
-value class La17Qty {
+struct La17Qty {
     int n;
     La17Qty operator = (La17Qty o) { n = o.n; return self; }
     La17Qty operator = (int v) { n = v; return self; }

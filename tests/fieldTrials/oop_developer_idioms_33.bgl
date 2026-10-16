@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-third pass: a ledger built around
-// overloads on a class hierarchy. A value class for an amount with a copy operator and an int conversion
+// overloads on a class hierarchy. A struct for an amount with a copy operator and an int conversion
 // assignment; `+`/`-` overloaded by an amount and by an int, `*`/`/`/`%` by an int, postfix `++` and
 // `prefix++` with different meanings, `!`, `?=` by an amount and by an int, instance and `static` `==` side
 // by side (each by an amount and by an int) with matching `!=`, an instance `<=>` and a static one,
@@ -16,8 +16,8 @@
 // picked by named argument), static overloads called through subclass names, a default-argument method
 // beside a subclass overload, an object body that adds its own overload and one that replaces one inherited
 // overload; a subclass operator overload for a new operand type; global overload sets chosen by
-// most-derived class, by a value class, by a union, by an enum, by implicit conversion, by array element
-// type, by the parameter type of a `func<>` (int and value-class lambdas), by `ref`, and with default and
+// most-derived class, by a struct, by a union, by an enum, by implicit conversion, by array element
+// type, by the parameter type of a `func<>` (int and struct lambdas), by `ref`, and with default and
 // named arguments; an emitter and a regular function in one set; a `replace` chain on one overload; a
 // recursive overload pair; a teller object whose overloads are imported with `#using`; overload calls in
 // conditions, loops, ternaries, returns, lambdas, `<linq>` chains and interpolation.
@@ -50,7 +50,7 @@ enum eKind { Deposit, Withdrawal, Fee }
 
 //-- Amount: a value type --------------------------------------------------------------------------------------
 
-value class Amount {
+struct Amount {
     int Cents;
 
     static Amount Of(int cents) {

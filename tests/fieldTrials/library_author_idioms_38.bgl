@@ -3,7 +3,7 @@
 
 // Exercises: a task-and-score kit and its consumer. The kit is configured by #define symbols set
 // before it (#if with a default, #if on a value, #message); it declares an enum of task kinds with
-// emitter members, a bnum of task flags, a value class tallying points (copy operator, + and +=, ==,
+// emitter members, a bnum of task flags, a struct tallying points (copy operator, + and +=, ==,
 // a percent and a show method), a task class with a required positional worth, a kind, flags, a done
 // flag, static counters, a default label() and ready(), an award() that adds to the library's score,
 // an emitter testing a flag through $i6Expr and an emitter value; a pooled note class owning a
@@ -61,7 +61,7 @@ enum eSkKind {
 bnum eSkFlag { hidden, bonus, repeatable }
 
 /// Points scored against points possible.
-value class SkTally {
+struct SkTally {
     int got;
     int max;
 

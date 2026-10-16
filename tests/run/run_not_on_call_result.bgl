@@ -1,8 +1,8 @@
-// run_not_on_call_result — `!` on a call that returns a value class goes through the class's
+// run_not_on_call_result — `!` on a call that returns a struct goes through the class's
 // `operator !`, as it does on a variable, not I6's `~~` on the result.
 // EXPECT_OUTPUT: var call true
 #beguilerSettings { target = z5; informName = "none"; }
-value class V {
+struct V {
     int X;
     V operator = (V o) { X = o.X; return self; }
     bool operator ! () { return X == 0; }

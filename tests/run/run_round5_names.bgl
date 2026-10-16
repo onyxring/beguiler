@@ -8,7 +8,7 @@
 // EXPECT_OUTPUT: asI6=2 alias=8 extend=5 replaced=3 using=8
 #beguilerSettings { target = z5; informName = "none"; }
 extern object child(object o);
-value class Money {
+struct Money {
     int Cents;
     Money operator = (Money o) { Cents = o.Cents; return self; }
     Money Doubled() { return Money.FromCents(Cents * 2); }

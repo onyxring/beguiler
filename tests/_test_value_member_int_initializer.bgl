@@ -1,7 +1,7 @@
-// Negative test: an owned value-class member starts from its class's aggregate, not from an int.
+// Negative test: an owned struct member starts from its class's aggregate, not from an int.
 // EXPECT_ERROR: member 'price' owns a 'Cents', so it can't start from a value of type 'int'
 #beguilerSettings { target = z5; informName = "none"; }
-value class Cents { int c; Cents operator = (Cents o) { c = o.c; return self; } Cents operator = (int n) { c = n; return self; } }
+struct Cents { int c; Cents operator = (Cents o) { c = o.c; return self; } Cents operator = (int n) { c = n; return self; } }
 class Item : object { Cents price; }
 Item pebble { price = 200; }
 void main() { }

@@ -7,7 +7,7 @@
 // EXPECT_OUTPUT: 123
 #beguilerSettings { target = z5; informName = "none"; }
 
-value class Vec2 { int x; int y; Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; } }
+class Vec2 : object { int x; int y; Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; } }
 class Vec3 : Vec2 {
     int z;
     Vec3 operator = (Vec3 o){ z = o.z; (Vec2)self = o; return self; }

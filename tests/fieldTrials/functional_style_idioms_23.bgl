@@ -6,7 +6,7 @@
 // by pure helpers with enum/int casts; binary operators held in an array<func<int, int, int>> of named
 // functions and a lambda, chosen by a switch over the enum and called straight off the call; the stack
 // a global array<int> used as a deque (enqueue, popEnd, peekEnd); faults thrown as enum values cast to
-// int and caught by the runner; a value class outcome with a copy operator and a string member,
+// int and caught by the runner; a struct outcome with a copy operator and a string member,
 // returned by value and filled through a `ref` parameter; a step callback func<void, int, int> given
 // lambdas that capture a local counter and a stringObj; a peephole constant folder returning a local
 // array captured into a typed local, applied repeatedly until a fixed point; <linq> chains (filter,
@@ -154,7 +154,7 @@ int countIf(array<int> xs, func<bool, int> p) {
 
 //-- The machine ----------------------------------------------------------------------------------
 
-value class Outcome {
+struct Outcome {
     int value = 0;
     int depth = 0;
     int steps = 0;

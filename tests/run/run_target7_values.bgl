@@ -1,10 +1,10 @@
-// run_target7_values — `!x` on a bare class-typed name (a `ref` member inside its class, a value-class
+// run_target7_values — `!x` on a bare class-typed name (a `ref` member inside its class, a struct
 // local, a reference-class local) combined with `||` and `&&` and stored into a bool; and a `ref` local
-// declared bound to an element of the same value class.
+// declared bound to an element of the same struct.
 // EXPECT_OUTPUT: unbound bound 0 0 0 1 1 9
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Nn { int c; Nn operator = (Nn o) { c = o.c; return self; } }
+struct Nn { int c; Nn operator = (Nn o) { c = o.c; return self; } }
 class Rc : object { int c; }
 class Holder : object {
     ref Nn best;

@@ -4,17 +4,17 @@
 // Exercises: Inform 6 habits on z5, three dense declarations each packing an area cluster into one unit.
 // A class written after #using a namespace object, with inline (positional) members, operator == and
 // <=> (so > derives), operator [], a replace of its parent's default method, a static member array of
-// strings, a recursive method, and a static method taking an array<Bin>, a var, a ref value-class
+// strings, a recursive method, and a static method taking an array<Bin>, a var, a ref struct
 // parameter and a primitive-class value: it filters with a block-bodied lambda that tests an attribute
 // and compares with >, asks any() through another block lambda that compares, falls back with ??, walks
 // a nested-literal array of arrays, news and deletes a pooled tag, switches with ranges, builds a
-// stringObj, uses ?. and postfix ?, gives an attribute and performs. A value class with operator +, *
+// stringObj, uses ?. and postfix ?, gives an attribute and performs. A struct with operator +, *
 // and ==, a static member array, and a method using an expression lambda, a capturing block lambda in a
 // <linq> filter, ?. into the object tree with ??, a nested array of bands, a recursive climb, a pooled
 // tag and a perform. An extend of an object adding an inline accessor that writes outer., a recursive
 // method, and a method over a nested-literal array of arrays with <linq> any() on a row, an extern I6
 // routine, an #i6 statement with $i6Expr, ?. into the object tree with ??, a children loop, a pooled
-// tag, a switch, a ref value-class parameter, a var and a perform. Verbs drive each declaration.
+// tag, a switch, a ref struct parameter, a var and a perform. Verbs drive each declaration.
 
 #beguilerSettings {
     target = z5;
@@ -178,7 +178,7 @@ array<Bin> pool = {binA, binB, binC, binD};
 
 // ---------------------------------------------------------------- cluster 2: spans
 
-value class Span {
+struct Span {
     int lo;
     int hi;
     static int adds = 0;

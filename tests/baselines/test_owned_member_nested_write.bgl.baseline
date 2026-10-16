@@ -60,7 +60,12 @@ object bgl
 class _bglClass_statBlock
   with
     strength 10,
-    agility 7
+    agility 7,
+    _opeq[o;
+        self.strength=o.strength;
+        self.agility=o.agility;
+        return self;
+    ]
 ;
 _bglClass_statBlock _player_stats;
 object player

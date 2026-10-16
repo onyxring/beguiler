@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a pots-and-watering kit and its consumer. The kit declares an enum of growth stages; a
-// value class of water with two copy operators, + and - over ints, + over water, <=> (giving < and
+// struct of water with two copy operators, + and - over ints, + over water, <=> (giving < and
 // >), == and != against an int, a static maker from litres and a show method that prints millilitres
 // or litres; a plant class with a required positional thirst, an owned water, a growth and a dry
 // count, static bloom and loss counts, a required kind() routine, a default scent() and cap(), a
@@ -46,7 +46,7 @@ extend extern class object {
 enum eLa27Stage { seed, sprout, leafy, bloom, wilted }
 
 /// An amount of water in millilitres, copied on assignment.
-value class La27Water {
+struct La27Water {
     int ml;
     La27Water operator = (La27Water o) { ml = o.ml; return self; }
     La27Water operator = (int n) { ml = n; return self; }

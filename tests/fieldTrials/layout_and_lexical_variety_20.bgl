@@ -6,7 +6,7 @@
 // enum member, a capacity and a `stringObj` label; `before` rules on the library's `Fill` and on
 // `SwitchOn`, an `after` rule that starts a timer with `time_left`/`time_out`; a pooled slip class with
 // `create`/`destroy`, a `short_name` routine and a class-wide counter, slips moved into the player by
-// `parent`; a value class returned from a routine and copied; an `array<Jar>` of objects sorted with a
+// `parent`; a struct returned from a routine and copied; an `array<Jar>` of objects sorted with a
 // comparator lambda and filtered with <linq>; a scratch `array<object>` collected before deleting pool
 // slots; a switch with ranges and a multi-value case; `NUMBER` and `TOPIC`-free grammar with
 // alternation; interpolated strings with ternaries and calls; `stringObj` labels set from a fixed list
@@ -197,7 +197,7 @@ int nextSlip = 1 ;
 
 //-- A reading of the shelf, as a value -----------------------------------------------------------------
 
-value class Reading
+struct Reading
 {
     int total ;
     int full ;

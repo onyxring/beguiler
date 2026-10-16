@@ -63,8 +63,12 @@ class _bglClass_heightProxy
     _opconv_int[;
         return self._val;
     ],
-    _opeq[v;
+    _opeq_int[v;
         self._val=v * 2;
+    ],
+    _opeq_heightproxy[o;
+        self._val=o._val;
+        return self;
     ]
 ;
 class _bglClass_thing
@@ -77,7 +81,7 @@ _bglClass_thing t
   with height _t_height
 ;
 [main a b c;
-    t.height._opeq(5);
+    t.height._opeq_int(5);
     a=t.height._opconv_int();
     b=t.height._opconv_int();
     c=t.height._opconv_int() + 1;

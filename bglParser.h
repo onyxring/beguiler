@@ -115,7 +115,8 @@ struct Qualifiers {
                                // I6 `Property additive foo;`, so the property slot accumulates values
                                // across the class hierarchy (obj + ancestors) rather than overriding.
                                // Directive-only in I6 — valid only on a non-extern `property`.
-    bool isValue = false;      // `value class`: instances are copied; variables own one (type kinds)
+    bool isValue = false;      // `struct`: a value type; instances are copied; variables own one (type kinds)
+    bool isStruct = false;     // the declaration was written `struct`, not `class` (the head token reads `class` after it)
     bool isLiteral = false;    // `literal` variable or member: holds only values known at compile time (§6.3)
     bool isPrimitive = false;  // `primitive class`: the value itself, no instance (implies extern emitter)
     bool isRequired = false;   // `required` class member: every object must get a value for it
@@ -395,7 +396,7 @@ class bglParser {
         bool processFunc(vector<token>& t, Qualifiers& q, abstractObject& c);
 
         // Parser handler methods — called from grammar handlers and processNextStatement.
-        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool allowNested=false, bool isSuperposed=false, bool isValue=false, bool isPrimitive=false);
+        bool processClassDeclaration(token, bool isExternal, bool isExtend=false, bool isEmitterClass=false, bool isAlias=false, token nameOverride=token(), bool allowNested=false, bool isSuperposed=false, bool isValue=false, bool isPrimitive=false, bool isStruct=false);
         // --- processClassDeclaration / processObjectDeclaration / processObjectExtension helpers ---
         // Parse the optional `<T, ...>` type-parameter clause of a class declaration; no-op if absent.
         void parseClassTypeParameters(classDef& newClass, token nameTok, bool isExtend, bool isAlias);
@@ -690,6 +691,8 @@ class bglParser {
         // The declaration a statement's assignment target names (local, member, global), or nullptr.
         class variableDeclaration* findAssignedDeclaration(const string& path, class functionDef* func, class statementBlock* body);
         void giveOwner(class arrayDeclaration& ad);
+        vector<classDef*> autoCopyStructs;   // structs whose copy operator is written for them, once every field is known
+        void writeAutoCopyOperators();
         void declareOwner(class functionDef* func, class arrayDeclaration& ad);
         // Errors when `value`, stored into a slot of type `slotType` whose `literalMembers` apply, is not
         // known at compile time. `what` describes the slot for the message.

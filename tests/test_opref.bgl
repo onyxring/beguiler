@@ -23,7 +23,7 @@
 #include <array>
 
 // static operator → free-routine address
-value class Point {
+struct Point {
     int x;
     Point operator = (Point o) { x = o.x; return self; }
     static bool operator == (Point a, Point b) { return a.x == b.x; }
@@ -32,7 +32,7 @@ value class Point {
 
 // instance operator → a routine that sends it to the left operand. `<=>` has the same
 // freedom as any other operator.
-value class Tagged {
+struct Tagged {
     int v;
     Tagged operator = (Tagged o) { v = o.v; return self; }
     bool operator == (Tagged o) { return v == o.v; }
@@ -40,7 +40,7 @@ value class Tagged {
 }
 
 // overloaded statics — the two-argument form selects between them
-value class Money {
+struct Money {
     int cents;
     Money operator = (Money o) { cents = o.cents; return self; }
     static bool operator == (Money a, Money b) { return a.cents == b.cents; }
@@ -50,7 +50,7 @@ value class Money {
 }
 
 // $opref with no element type in scope falls back to the receiver's type
-value class Plain {
+struct Plain {
     int v;
     Plain operator = (Plain o) { v = o.v; return self; }
     bool operator == (Plain o) { return v == o.v; }

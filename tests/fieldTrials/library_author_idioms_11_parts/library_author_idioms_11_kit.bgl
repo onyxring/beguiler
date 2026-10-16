@@ -177,7 +177,7 @@ object la11 {
 #using la11
 
 /// Three codes held by value, indexed and compared.
-value class la11Row {
+struct la11Row {
     inline code a;
     inline code b;
     inline code c;

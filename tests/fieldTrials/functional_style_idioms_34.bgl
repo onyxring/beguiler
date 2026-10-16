@@ -4,10 +4,10 @@
 // Exercises: a tray rack written in a functional style on Glulx, leaning on members reached through
 // computed receivers. A rack object holds a member array of trays and an `operator []` returning a
 // tray; a tray class has an `operator []` returning an item and an `operator []=` storing one, a
-// member array of items, a named accessor class, an inline `auto` accessor, a value class footprint,
+// member array of items, a named accessor class, an inline `auto` accessor, a struct footprint,
 // a next link, a func<bool, Item> member, methods returning self, an item, an int and a stringObj, a
 // static method and an instance member on one object (reached with an instance cast). Items are a
-// class with a member array of marks, an owned value class size, self-returning and stringObj methods
+// class with a member array of marks, an owned struct size, self-returning and stringObj methods
 // and a `default` score overridden by a subclass. A pooled slip class made with `new` returns self.
 // Members, member arrays, accessors, value members and methods are reached through chained class
 // subscripts `rackA[i][j].label`, subscripts on call results and member results `trayAt(n)[0]`,
@@ -15,8 +15,8 @@
 // `noun`, `noun.parent` and elements, array-of-array elements `grid[i][j].tray().label`, func-variable
 // call results `pick(n)[0]`, ternary and `??` results `(a.weight > b.weight ? a : b).label`,
 // operator results `(a.size + b.size).grown(1).text()`, <linq> chain results and subscripts on them
-// (`trays.orderBy(f).first()[0]`), static method results, `new` results, value-class array elements
-// and a member array of a value class; accessors are assigned, compound-assigned and incremented
+// (`trays.orderBy(f).first()[0]`), static method results, `new` results, struct array elements
+// and a member array of a struct; accessors are assigned, compound-assigned and incremented
 // through those receivers (`trays[i][0].wear += n`, `self[0].wear += n`); receivers appear in for-in collections, `while`, `do` and
 // `switch` heads, returns, lambdas, <linq> predicates, `?.`/`??` and interpolation; verbs read
 // noun, second and parsed_number.
@@ -44,7 +44,7 @@ enum Kind { loose, boxed, fragile }
 
 //-- Values ---------------------------------------------------------------------------------------
 
-value class Dim {
+struct Dim {
     inline int w;
     inline int h;
 
@@ -77,7 +77,7 @@ value class Dim {
 }
 
 // Read as an int; writes are kept within 0..99.
-value class Clamp {
+struct Clamp {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v < 0 ? 0 : (v > 99 ? 99 : v); }

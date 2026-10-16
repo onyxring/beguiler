@@ -4,13 +4,13 @@
 // Exercises: an eleventh PunyInform program, built on area pairs no earlier program combined: an
 // object's `auto { }` accessor over a `stringOrRoutine` whose setter tests `typeof` and counts through
 // `outer`; a class whose emitter members feed a `try`/`throw`/`catch` method and a `?.`/`??` chain; a
-// value class whose methods index arrays of arrays (a local one and one passed in), and an array of
-// arrays of that value class built from inline objects; recursive routines over an enum (counting and
+// struct whose methods index arrays of arrays (a local one and one passed in), and an array of
+// arrays of that struct built from inline objects; recursive routines over an enum (counting and
 // a maximum), over `?.`/`??` along positionally declared links, over a run-time inline object
 // `Dims{ n, n + 1 }` (one per-site instance, re-populated by the inner call), and over `stringObj` (a
-// `ref stringObj` accumulator and a returned, copied `stringObj`); a pooled class and a value class
+// `ref stringObj` accumulator and a returned, copied `stringObj`); a pooled class and a struct
 // that spell their text into `array<char>` arrays (a local one, and one passed in and then copied with
-// `=`); a class with two parents holding a `ref` value-class member bound with `:=`, with a `default`
+// `=`); a class with two parents holding a `ref` struct member bound with `:=`, with a `default`
 // method overridden to build a `stringObj` and reaching the base version through a cast; a global
 // function `replace`d with a `ref` parameter passed on to `replaced()`; an `#i6` island in a method
 // reading positional members through `$i6Expr`, and one in a function printing a `stringObj`'s length;
@@ -69,9 +69,9 @@ object guard {
     parent = shed;
 }
 
-// --- value classes ----------------------------------------------------------------------------------
+// --- structs ----------------------------------------------------------------------------------
 
-value class Gauge {
+struct Gauge {
     int level;
     int peak;
     Gauge operator = (Gauge o) { level = o.level; peak = o.peak; return self; }
@@ -81,7 +81,7 @@ value class Gauge {
     }
 }
 
-value class Label {
+struct Label {
     array<char> text[8];
     int uses;
     Label operator = (Label o) { text.copyFrom(o.text); uses = o.uses; return self; }
@@ -101,7 +101,7 @@ value class Label {
     }
 }
 
-value class Cell {
+struct Cell {
     int row;
     int col;
     Cell operator = (Cell o) { row = o.row; col = o.col; return self; }

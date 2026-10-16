@@ -2,8 +2,8 @@
 // deep (`label.price.cents = c;`, `+= 1`) goes to self, as the read does.
 // EXPECT_OUTPUT: 5 5
 #beguilerSettings { target = z5; informName = "none"; }
-value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
-value class Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
+struct Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+struct Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
 class Crate : object {
     Label label;
     void set(int c) { label.price.cents = c; label.code = c; }

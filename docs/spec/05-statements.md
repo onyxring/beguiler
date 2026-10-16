@@ -217,7 +217,7 @@ the element type or it is a compile-time error; `var` matches any element type, 
 element type from the source, including through `operator auto()` (§7.8). Any other source expression
 is a compile-time error. Loops nest; each keeps its own iteration state.
 
-A loop variable of a value class owns its instance, as any local of the class does (§8.2.7): each
+A loop variable of a struct owns its instance, as any local of the class does (§8.2.7): each
 element is copied into it, so a write to the variable doesn't change the array. To change the
 elements, index the array (`ps[i].col = 0`).
 

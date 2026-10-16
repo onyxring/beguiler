@@ -15,7 +15,7 @@
 // +=, passed to an emitter, printed from lambdas and inside nested loops, with spans holding
 // concatenations, ?? chains, s[i], casts of chars, compareTo, =~, call chains on array elements and
 // method results of class instances; a class with stringObj members and string | stringObj methods,
-// a static method returning stringObj; a value class holding stringObj kept in an array of the value
+// a static method returning stringObj; a struct holding stringObj kept in an array of the value
 // class; an array<stringObj> sorted, searched and filtered with lambdas building their own text;
 // pool pressure from recursion (wrapping, counting down, splitting, two routines calling each other
 // through a ref) and from loops that make and drop stringObjs in every pass; string switch on a
@@ -255,9 +255,9 @@ class Ticket : object {
     }
 }
 
-// ===== STUBS: A VALUE CLASS WITH TEXT IN IT =====
+// ===== STUBS: A STRUCT WITH TEXT IN IT =====
 
-value class Stub {
+struct Stub {
     stringObj text;
     int seat;
 

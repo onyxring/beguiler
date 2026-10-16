@@ -5,7 +5,7 @@
 // An enum with gapped values and an emitter value in its body, given a second emitter value by an
 // `extend enum` at the end of the file, switched on with a range case and walked from an inline list;
 // a bnum of packet flags combined, tested and toggled inside `selfType` methods chained across a
-// subclass; a named accessor value class (int setter beside a copy operator, a getter, its own `+=`
+// subclass; a named accessor struct (int setter beside a copy operator, a getter, its own `+=`
 // and `?=`) as an owned member, read into locals and compared with `?=`; a packet class whose positional
 // order puts instanceName third, with a `required` routine met by a subclass and by single objects, a
 // `literal func<void>` member defaulting to a named function and overridden by objects, a static
@@ -49,7 +49,7 @@ bnum packetFlag { sealed, labeled, damp, rare }     // 1, 2, 4, 8
 
 // ---- grams: a named accessor ------------------------------------------------------------------------
 
-value class Grams {
+struct Grams {
     int _g = 0;
 
     int operator () { return _g; }

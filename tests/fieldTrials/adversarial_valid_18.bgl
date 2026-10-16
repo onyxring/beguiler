@@ -339,7 +339,7 @@ verb Sound {
 
 // ---- types --------------------------------------------------------------------------------------------
 
-value class Level {
+struct Level {
     int _v = 0;
     int _w = 0;
     int  operator ()        { return _v; }

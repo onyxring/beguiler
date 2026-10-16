@@ -4,17 +4,17 @@
 // Exercises: Inform 6 habits on z5, three features at a time. A namespace object aliasing a value
 // class and an enum, with operator [] / []= over its array<string>, an array<array<string>> searched
 // by a block-bodied lambda, an array<char> scratch buffer captured into and scanned by a block-bodied
-// lambda, and a value-class member; #using that namespace ahead of a class whose static members are
+// lambda, and a struct member; #using that namespace ahead of a class whose static members are
 // an int array, an array<array<int>>, an array<string>, an array<char>, an array of the aliased
-// value class, an array<array<>> of it built from inline objects of the alias and copied into from an
+// struct, an array<array<>> of it built from inline objects of the alias and copied into from an
 // owned member, and an array of its own instances, with an inline accessor appending to a static
 // array, operator [] / []= over its row of the static nested array, array<T> parameters fed static
 // arrays and their rows, a block-bodied lambda sorting the static instance array through the
 // subscript and accessor, and postfix ? on a peer and on a label; an extend class adding a static
 // array<array<char>>, a static array<string>, a second inline accessor, array<T> parameters (one an
 // array of arrays) and block-bodied lambdas; an object whose inline accessor reaches the object's
-// array of class instances, array of arrays, array<char> bar and value-class member through outer,
-// calls a block-bodied lambda over the nested array and hands an array to a method taking a value class.
+// array of class instances, array of arrays, array<char> bar and struct member through outer,
+// calls a block-bodied lambda over the nested array and hands an array to a method taking a struct.
 
 #beguilerSettings {
     target = z5;
@@ -42,7 +42,7 @@ extern int trial_last;
 
 // ---------------------------------------------------------------- the kit namespace
 
-value class Pair {
+struct Pair {
     int a;
     int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }

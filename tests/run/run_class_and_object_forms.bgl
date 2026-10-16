@@ -25,14 +25,14 @@ union Res = Thing | string;
 Res pickRes(int i) { if (i == 1) return tt; return "text"; }
 void print(Res r) { if (typeof(r) == string) print((string)r); else print("thing"); }
 class Tok[3] { int A; int B; void create(int first, int second = 7) { A = first; B = second; } }
-value class amt { int units; amt operator = (amt o) { units = o.units; return self; } amt operator = (int n) { units = n; return self; } }
+struct amt { int units; amt operator = (amt o) { units = o.units; return self; } amt operator = (int n) { units = n; return self; } }
 class pass[2] : object {
     int serial; amt value; static int live = 0;
     void create(int s) { serial = s; pass.live++; }
     void destroy() { pass.live--; }
 }
 class stub[2] : pass { }
-value class coins { inline int cents; coins operator = (coins o) { cents = o.cents; return self; } }
+struct coins { inline int cents; coins operator = (coins o) { cents = o.cents; return self; } }
 class item : object { coins price = coins{ cents = 3; }; }
 item plain { }
 class item2[2] : object { coins price = coins{ cents = 3; }; }

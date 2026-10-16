@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a books-and-shelves lending kit and its consumer. The kit declares an enum of book
-// kinds; a value class of days with two copy operators, + and - over ints, + over days, <=> (giving <
+// kinds; a struct of days with two copy operators, + and - over ints, + over days, <=> (giving <
 // and >), == against an int, a static maker from weeks and a show method that prints weeks and days;
 // a book class with a required positional page count, a kind with an initializer, a const shelf
 // mark given per object, a required author() routine, a default blurb() and lendable(), static lent
@@ -48,7 +48,7 @@ extend extern class object {
 enum eLa29Kind { novel, manual, atlas }
 
 /// A span of days, copied on assignment.
-value class La29Days {
+struct La29Days {
     int d;
     La29Days operator = (La29Days o) { d = o.d; return self; }
     La29Days operator = (int n) { d = n; return self; }

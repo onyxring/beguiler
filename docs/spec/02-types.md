@@ -179,7 +179,7 @@ In an operator it takes the base type `_bglObject` (§21.5.8), as `intLiteral` t
 `x == null` uses an operator taking `_bglObject`: the root's identity comparison on any object, and
 the ones `string` and `obj.parent` declare.
 
-A variable of a value class owns its instance (§8.2.7), so it can't hold `null`: assigning `null` to
+A variable of a struct owns its instance (§8.2.7), so it can't hold `null`: assigning `null` to
 one, or returning `null` from a routine that returns one, is a compile-time error. A `ref` of the class
 can be bound to `null` (`r := null;`). Inform 6's `nothing` is not a Beguile word; Beguile writes
 `null`.
@@ -682,13 +682,13 @@ There are three kinds:
 |---|---|---|---|---|
 | `primitive class int` | primitive | the value itself | copies the value | compile-time error |
 | `class Room` | reference (the default) | its own object when declared with no value; else the instance it is given | refers to the same instance | a reference, empty until bound |
-| `value class Vec2` | value | its own instance | copies into its own instance | shares one instance |
+| `struct Vec2` | value | its own instance | copies into its own instance | shares one instance |
 
 - **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
   fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
   every enum. A variable holds the value; there is no instance,
   so nothing is allocated and there is nothing for `ref` to refer to.
-- **Reference classes** — every class not declared `value`. A global, member or local declared with
+- **Reference classes** — every class. A global, member or local declared with
   no value has an object of its own: at file scope the declaration is that object (`Room hall;` is
   `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry. One
   declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
@@ -696,12 +696,12 @@ There are three kinds:
   through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
   declared `ref` (§3.7). A reference class that declares a copy operator copies on `=` instead
   (§8.2.9).
-- **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
+- **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
-  through the class's copy operator, `operator =` taking the class; a value class that has none can't
-  be assigned or passed. A `ref` variable of a value class shares an instance instead (§3.7). A
+  through the class's copy operator, `operator =` taking the class; a struct that has none can't
+  be assigned or passed. A `ref` variable of a struct shares an instance instead (§3.7). A
   routine that calls itself keeps each call's locals and parameters its own across the inner call,
-  and returns a value class as any routine does.
+  and returns a struct as any routine does.
 
 Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
 follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
@@ -710,7 +710,7 @@ parameter is given its own copy (§8.5), and a `ref` variable aliases storage ow
 **Example**
 
 ```bgl
-value class Vec2 {                   // copies: operator = (Vec2)
+struct Vec2 {                   // copies: operator = (Vec2)
     int x = 0; int y = 0;
     Vec2 operator = (Vec2 v) { x = v.x; y = v.y; return self; }
 }

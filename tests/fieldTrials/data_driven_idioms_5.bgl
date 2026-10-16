@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a manifest of value-class records edited at build time inside #if/#elif on a #define
+// Exercises: a manifest of struct records edited at build time inside #if/#elif on a #define
 // value, a zone enum with emitter members (a value and a method) read on table elements and enum
 // variables, enum and bnum types reached through namespace aliases on an object, a named union
 // (string | func<void>) reply table holding strings, a named routine and a lambda, printed through a
@@ -71,7 +71,7 @@ array<reply> zoneReplies = {
     () => print("remote zone, two hops")
 };
 
-value class Row {
+struct Row {
     inline string dest;
     inline int weight;
     inline tables.flag flags;

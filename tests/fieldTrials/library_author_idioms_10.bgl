@@ -6,7 +6,7 @@
 // defaults and reads from an emitter body; const float, a float emitter value written in I6 float
 // syntax, extend extern class float with emitters calling kit routines; a primitive newtype over float
 // with its own and replacing operators, an explicit conversion, a static <=> and a global print
-// overload, as a global, a member and an array element sorted by a comparator; a value class of floats
+// overload, as a global, a member and an array element sorted by a comparator; a struct of floats
 // with a method print(), copy, == and !=, ref and by-copy parameters, filled by an extern I6 routine
 // that works in float; an inline float accessor on an object with outer; a pooled class with a four-float create (Glulx
 // forwards them all), a static count and a local float array sorted by float::operator <=>; func<>

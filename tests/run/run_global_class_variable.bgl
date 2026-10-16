@@ -1,14 +1,14 @@
 /*  run_global_class_variable — a class-typed global is a variable.
 
     `Window globalA;` was emitted as an I6 object named `globalA` — a constant — so it could not be
-    re-pointed or assigned. Now a value-class global owns an instance the variable starts out holding,
+    re-pointed or assigned. Now a struct global owns an instance the variable starts out holding,
     and assignment copies into it (an initializer too, at startup); a `ref` global is empty until assigned, and assignment
     makes it refer to the assigned instance. Static data that names an owning global (the array below)
     names its instance, which is what it holds at compile time.  */
 // EXPECT_OUTPUT: own 3, copy 5, independent 5, refers 7, init 0, array 3
 #beguilerSettings { target = z5; informName = "none"; }
 
-value class Window {
+struct Window {
     int width;
     Window operator = (Window o){ width = o.width; return self; }
 }

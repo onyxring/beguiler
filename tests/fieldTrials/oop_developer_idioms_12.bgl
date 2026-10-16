@@ -251,7 +251,7 @@ object thermostat {
 
 //-- A ref chain read through I6 -----------------------------------------------------------------------
 
-value class Link {
+struct Link {
     int id;
     ref Link next;
     Link operator = (Link o) { id = o.id; return self; }

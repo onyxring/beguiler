@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual code in a small signal-relay program, on the Z-machine.
-// A value class with distinct postfix `++` and `prefix++`, `!`, `?=`, an implicit int conversion and
+// A struct with distinct postfix `++` and `prefix++`, `!`, `?=`, an implicit int conversion and
 // an explicit string conversion, static `<=>`, `==` and `!=`, used as locals, `ref` parameters and
 // array elements (sorted, searched, sorted again by a comparator taking an operator reference); a
 // relay class whose positional order re-lists `instanceName` first and is grown by a later `extend
@@ -14,7 +14,7 @@
 // captured local which the caller reads after the call; a file-scope `rawArray<int>` handed to a
 // `rawArray<int>` parameter with its length; a stringObj built in a loop that `continue`s past
 // owning locals; a bnum switched through an int, nested ternaries, a ternary in a `for` condition,
-// do/while, overloads by value class and int, a global `replace` that calls `replaced()`, children
+// do/while, overloads by struct and int, a global `replace` that calls `replaced()`, children
 // walked and moved, and an object `before` that answers a verb.
 
 #beguilerSettings {
@@ -47,9 +47,9 @@ int sumRaw(rawArray<int> vals, int n, int skip = 0) {
     return s;
 }
 
-// ---- the signal: a value class with an unusual operator set ---------------------------------------
+// ---- the signal: a struct with an unusual operator set ---------------------------------------
 
-value class Signal {
+struct Signal {
     inline int strength;
     inline int hops;
 

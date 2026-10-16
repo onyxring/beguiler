@@ -127,7 +127,7 @@ class Call[CALL_POOL] : object, bglAllocated {
 
 // ---- the car ----------------------------------------------------------------------------------------
 
-value class Odometer {
+struct Odometer {
     int _n = 0;
     int  operator ()        { return _n; }
     void operator = (int v) { _n = _n + v; }

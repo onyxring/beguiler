@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-eighth pass: a crafting bench.
-// A value class for a stack of material with a copy operator, `*` by a count, `==`/`!=`, a `<=>` that
+// A struct for a stack of material with a copy operator, `*` by a count, `==`/`!=`, a `<=>` that
 // `sort()` and `<`/`>` use, a static factory and its own `print()` used inside interpolation; an
 // inventory class holding an `array<Stack>` member, an indexer by enum, overloaded `Add` (by material and
 // count, by stack), a `Take` that throws a pooled error carrying an owned `Stack`, and a summary returning
@@ -54,7 +54,7 @@ string MaterialName(eMaterial m) {
 
 //-- Stack: a value type ---------------------------------------------------------------------------------------
 
-value class Stack {
+struct Stack {
     eMaterial Material;
     int Count;
 

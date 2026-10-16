@@ -10,10 +10,10 @@
 // an object; inline positional members with a re-listed instanceName; a const member set by an
 // object; subclass names reaching base statics; an author's additive property fed rawArray words
 // from class, subclass and object; a routine member overridden per object; a property parameter
-// read and sent as a message across bgl.world.instances; a value class with a copy operator, an int
+// read and sent as a message across bgl.world.instances; a struct with a copy operator, an int
 // setter, +=, ==, != and <=> (with <, >, <= and >= derived), held as an owned member
-// with an inline-object initializer, copied into a local and bound through ref :=; a value subclass
-// chaining its copy operator through a cast; a getter/setter accessor class on a base, made
+// with an inline-object initializer, copied into a local and bound through ref :=; a struct
+// holding one, copied whole by its automatic copy operator; a getter/setter accessor class on a base, made
 // read-only on a subclass with hide x.operator = and written through a base cast; hide of a method;
 // a named union with an extend emitter member, a print overload for it, an array of it and a
 // ternary producing it; typeof switched on; an array<object> sorted by a comparator lambda.
@@ -33,9 +33,9 @@
 additive property marks;
 additive property onPoke;
 
-// ---------------------------------------------------------------- value classes
+// ---------------------------------------------------------------- structs
 
-value class Coins {
+struct Coins {
     int cents;
     Coins operator = (Coins o) { cents = o.cents; return self; }
     void  operator = (int c)   { cents = c; }
@@ -46,12 +46,12 @@ value class Coins {
     void show() { print($"{cents / 100}.{cents % 100 / 10}{cents % 10}"); }
 }
 
-value class Purse : Coins {
+struct Purse {
+    Coins coins;
     int held;
-    Purse operator = (Purse o) { held = o.held; (Coins)self = o; return self; }
 }
 
-value class Gauge {
+struct Gauge {
     int _v;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = bgl.util.math.clamp(v, 0, 100); }
@@ -322,13 +322,13 @@ verb Pool {
     meta = true;
     void handler() {
         Purse p;
-        p.cents = lampA.price.cents + fuse.price.cents;
+        p.coins.cents = lampA.price.cents + fuse.price.cents;
         p.held = 2;
         kitty = p;
         p.held = 99;
-        Coins plain = kitty;
+        Coins plain = kitty.coins;
         print($"Kitty holds {kitty.held}: ");
-        kitty.show();
+        kitty.coins.show();
         print("; plain ");
         plain.show();
         printLine($"; local {p.held}.");

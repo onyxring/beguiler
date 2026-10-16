@@ -5,18 +5,18 @@
 // public surface lives in namespaces. A root object `Company` holds a support branch as an `auto` member,
 // a billing branch, a static-only stats class and a superposed audit object as value aliases, and is
 // extended later with a reports branch (`auto`), an emitter-class value alias whose alias member is
-// reached two steps down, a type alias to an enum, a value-class member and methods that name its own
+// reached two steps down, a type alias to an enum, a struct member and methods that name its own
 // alias bare. The support branch aliases a ticket class, a subclass, a pooled subclass, two enums and an
-// `alias class`; billing aliases a value class and, through a later `extend`, a second value class; the
+// `alias class`; billing aliases a struct and, through a later `extend`, a second struct; the
 // reports branch aliases the same types again. Paths appear as member
-// types, base classes, object declarations, globals, a global array of a value class, parameters
+// types, base classes, object declarations, globals, a global array of a struct, parameters
 // (`ref`, defaults built from enum values reached through the path), returns, a union return, casts
 // of receivers, `is()`, `new` with named arguments, `func<>` and `array<>` generic arguments, lambda
 // parameters, `for`-in variables, `switch` cases and an `extend class` of an aliased class. The
 // consumer imports the root, a branch reached by `auto`, a branch reached by a value alias and the
 // stats class with `#using`, then writes partial paths, bare type names, bare enum paths, imported
 // methods and imported static variables, and qualifies a name two imports share; a `func<>` returning the
-// aliased value class, a local value-class array typed through the reports branch and a `ref` value-class local
+// aliased struct, a local struct array typed through the reports branch and a `ref` struct local
 // bound to the root's member.
 
 #beguilerSettings {
@@ -47,7 +47,7 @@ object roomA {
 enum eTkPriority { Low, Normal, High }
 enum eTkState { Active, Paused, Done }
 
-value class TkMoney {
+struct TkMoney {
     int Cents;
 
     TkMoney operator = (TkMoney o) {
@@ -268,7 +268,7 @@ extend Company {
     bool Afford(Company.Reports.Money cost) { return cost <= Budget; }
 }
 
-value class TkInvoice {
+struct TkInvoice {
     Company.Billing.Money Amount;
     ref Company.Support.Ticket Subject;
 

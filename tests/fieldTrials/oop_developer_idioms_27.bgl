@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-seventh pass: a parcel mainDepot.
-// A value class for money in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
+// A struct for money in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
 // `>`/`<` come from, a static factory and a formatter returning a `stringObj`; hub objects of a `Hub` class
 // held in a file-scope `array<Hub>`, joined by pooled `Lane` instances; a network service running Dijkstra's
 // shortest path over static `array<int>` distance tables and rebuilding the route into a member
@@ -51,7 +51,7 @@ string ServiceName(eService s) {
 
 //-- Money: a value type ---------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money o) {

@@ -1,12 +1,12 @@
 // run_measure8_forms — a case label with arithmetic on a #define, an alias-typed member and an inline
 // accessor read above their object, `==`/`?=` between accessor members, a recursive routine and a
-// dispatching override returning a value class, and member arrays reached through a cast.
+// dispatching override returning a struct, and member arrays reached through a cast.
 // EXPECT_OUTPUT: case5 5 2 80 near far near 6 35 1 7 has 1 0
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 #define BASE 3
 enum eCoin { penny, dime }
-value class Cents { int c = 0; Cents operator = (Cents o) { c = o.c; return self; } }
+struct Cents { int c = 0; Cents operator = (Cents o) { c = o.c; return self; } }
 class Shop : object { int price = 100; int cost() { return price - price * till.discount / 100; } }
 void showTill() { print($"{till.takings.c} {(int)till.big(30)} "); }
 object till {
@@ -21,7 +21,7 @@ object till {
     }
 }
 Shop stall { }
-value class Grams {
+struct Grams {
     int _g = 0;
     int operator () { return _g; }
     void operator = (int v) { _g = v; }
@@ -34,7 +34,7 @@ class Pk : object { Grams weight; }
 Pk pa { }
 Pk pb { }
 Pk pc { }
-value class Dur { int S; Dur operator = (Dur o) { S = o.S; return self; } }
+struct Dur { int S; Dur operator = (Dur o) { S = o.S; return self; } }
 Dur count(int n) { Dur d; d.S = n; if (n > 0) { Dur inner = count(n - 1); d.S = d.S + inner.S; } return d; }
 class Task : object {
     int n;

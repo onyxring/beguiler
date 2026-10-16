@@ -6,7 +6,7 @@
 // extend enum), switched on and off inside interpolated text and walked through an array<eTone>; an
 // author's emitter namespace and a global emitter value used as print rules in interpolation, with
 // ##if TARGET_GLULX inside a body; a class that customizes its own print() and is printed by {g} into
-// the main window, a child window and a text grid; a value class with a copy operator and its own
+// the main window, a child window and a text grid; a struct with a copy operator and its own
 // print() built from interpolated text; an object with an inline auto { }
 // accessor whose setter clamps, counts through outer and redraws a text-grid window; direct Glk calls
 // through bgl.asm: putCharUni and streamunichar beyond Latin-1, charToUpper, a Unicode memory stream
@@ -79,7 +79,7 @@ class gauge : object {
 }
 
 // A run of text in one tone; prints itself.
-value class span {
+struct span {
     string text;
     eTone  tone;
     span operator = (span o) { text = o.text; tone = o.tone; return self; }

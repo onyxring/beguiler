@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a route-lookup kit whose public surface hands back things that may be absent, and a
-// consumer that reaches everything through `?.`, `??` and postfix `?`. The kit has a value class of
+// consumer that reaches everything through `?.`, `??` and postfix `?`. The kit has a struct of
 // spans with its own `operator ?` (present when it has width), copy operator and stringObj show();
 // a stop class with next/back links, a string note, a member array of side stops, a func<> member,
 // an enum kind, a span, an inline accessor with a static write count, overloaded mark() methods, a
@@ -18,8 +18,8 @@
 // elements of chain results, func<> call results, func<> members, `new`, `self` and the object tree
 // (child, sibling, parent); `?.` with default and named arguments and overloads; `?.` statements
 // with =, compound assignment, prefix and postfix ++/-- on fields, accessors, member-array elements,
-// value-class members and stringObj members (+= of chars, strings and interpolations); `??` on
-// classes, objects, strings, value classes, accessors and `new`, parenthesized as a receiver,
+// struct members and stringObj members (+= of chars, strings and interpolations); `??` on
+// classes, objects, strings, structs, accessors and `new`, parenthesized as a receiver,
 // right-nested, in a local array's initializer and only evaluated when needed; chains in default
 // arguments, returns, lambdas (value and void), <linq> filter/first/any/count/orderBy, switch subjects
 // (enum and string), for/while/do conditions, `&&`/`||`/`!`, ?: conditions and branches, arithmetic,
@@ -51,7 +51,7 @@ const int LA35_DEPTH = 4;
 enum eLa35Kind { plain, gate, sink }
 
 /// A span between two marks; present when it has width.
-value class La35Span {
+struct La35Span {
     int lo;
     int hi;
 

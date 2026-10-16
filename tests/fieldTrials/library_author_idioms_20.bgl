@@ -3,7 +3,7 @@
 
 // Exercises: a notice-bus kit and its consumer. The kit declares an enum of notice kinds; a routine
 // that turns a kind into a bit with <<; a primitive mask over int whose emitters add a kind and test
-// one by calling that routine; a value class of stamps with a copy operator, <=> (giving < and >), ==
+// one by calling that routine; a struct of stamps with a copy operator, <=> (giving < and >), ==
 // and != and a show method; a pooled notice class with create/destroy, static counters, an owned
 // stamp, an object member and an instance <=> that puts alerts first for sort(); a listener class
 // with a required mask, a required hear() routine, a default rank() and a method testing the mask; a
@@ -75,7 +75,7 @@ primitive class La20Mask {
 }
 
 /// When a notice was posted: the turn, then the order within the turn.
-value class La20Stamp {
+struct La20Stamp {
     int turn;
     int seq;
     La20Stamp operator = (La20Stamp o) {

@@ -11,7 +11,7 @@
 // another lambda's body capturing the outer parameter; `=> print($"…")` over captured floats. A value
 // class whose `operator |` takes a func<> (a pipe), chained over a named function, a static method
 // reference and a capturing lambda, with `|=` by compound fallback, an instance `<=>` giving `<`, and
-// an implicit int conversion; a lambda writing through a `ref` value-class parameter it captures. Static class methods as func<> values,
+// an implicit int conversion; a lambda writing through a `ref` struct parameter it captures. Static class methods as func<> values,
 // in an array and in a for-in over an inline list of functions. Recursive and mutually recursive
 // lambdas stored in global func<> variables. A lambda whose ternary returns a union of a string and a
 // function, held in a func<> returning a named union. stringObj built from func<char, char> maps
@@ -142,7 +142,7 @@ int foldItems(array<Item> a, int seed, func<int, int, Item> f) {
 
 //-- A pipe value ------------------------------------------------------------------------------
 
-value class Val {
+struct Val {
     int v;
     int stages;
     Val operator = (Val o) { v = o.v; stages = o.stages; return self; }

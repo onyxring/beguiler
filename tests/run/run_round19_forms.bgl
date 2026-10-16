@@ -3,8 +3,8 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 
-// D1189: a value class with an inline accessor member.
-value class Spot {
+// D1189: a struct with an inline accessor member.
+struct Spot {
     int row;
     auto drops = { int _n = 0; int operator () { return _n; } void operator = (int v) { _n = v; } }
     Spot operator = (Spot o) { row = o.row; drops = o.drops; return self; }
@@ -39,9 +39,9 @@ class Slip[2] : object { array<char> code = "...."; }
 object box { int n = 3; }
 int shadow() { int n = 8; #i6 { n = n; } return box.n * 10 + n; }
 
-// D1196: a value-class local's union member starts empty on each call.
+// D1196: a struct local's union member starts empty on each call.
 union token = string | object;
-value class Note { token last; Note operator = (Note o) { last = o.last; return self; } }
+struct Note { token last; Note operator = (Note o) { last = o.last; return self; } }
 bool fresh() { Note t; bool wasEmpty = t.last == null; t.last = box; return wasEmpty; }
 
 // D1197: compound and step operators of an inline accessor, used as expressions.
@@ -60,8 +60,8 @@ Dial dialA { }
 class Bin : object { int n = 3; }
 extend class Bin { static int pick(int k, string | object hint) { if (typeof(hint) == eType.string) return k; return k + 100; } }
 
-// D1200: a value-class element's method inside `operator []`.
-value class Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } int size() { return hi; } }
+// D1200: a struct element's method inside `operator []`.
+struct Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } int size() { return hi; } }
 class Rack : object {
     static array<Span> spans[2];
     int operator [] (int i) { return Rack.spans[i].size(); }
@@ -99,7 +99,7 @@ extend knob { replace emitter int twice() { ($self.n * 3) } }
 verb TallyVerb { grammar = {.tallyv}; func<int, int> twice = (int x) => x * 2; void handler() { } }
 
 // D1208: an accessor member named like a library routine.
-value class Lvl { int _r; int operator () { return _r; } void operator = (int v) { _r = v; } }
+struct Lvl { int _r; int operator () { return _r; } void operator = (int v) { _r = v; } }
 class Host : object { Lvl cap; void copyFrom(Host o) { cap = o.cap; } }
 Host h1 { }
 Host h2 { }

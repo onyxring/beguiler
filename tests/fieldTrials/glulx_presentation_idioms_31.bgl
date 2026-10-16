@@ -14,7 +14,7 @@
 // taking interpolatedStringLiteral and expression-bodied lambdas; their spans hold method chains,
 // ternaries, ??, chars, elements, element methods, calls taking and returning stringObj, article
 // and style print rules and links. The pool is pressed by loops that build and drop text each pass
-// and by recursion holding a stringObj per frame. A value class Note with a stringObj field, copied
+// and by recursion holding a stringObj per frame. A struct Note with a stringObj field, copied
 // and kept in an array<Note>; ref stringObj bound to a member and passed an element's field; ?. on
 // a string feeding ??; postfix ? on a string. <linq> orderBy (compareTo, case-insensitive), filter,
 // count, first and any over an array<Tile> and an array<stringObj>; a fixed-pitch table built from
@@ -167,7 +167,7 @@ stringObj taggedWord(Tile t) {
     return out;
 }
 
-value class Note {
+struct Note {
     stringObj text;
     int turn;
 

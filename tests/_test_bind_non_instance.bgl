@@ -5,7 +5,7 @@
 */
 #beguilerSettings { informName = "none"; }
 
-value class inventory { int gold = 0; }
+struct inventory { int gold = 0; }
 object holder { ref inventory pack; }
 
 void f() {

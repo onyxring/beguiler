@@ -4,9 +4,9 @@
 // Exercises: a twenty-eighth PunyInform program, written plainly: two rooms (Room A with a bench, a
 // tap, a watering can and a seed packet, Room B to the east with three pots, a heater and a
 // gardener) and OPTIONAL_SCORED; a `Plant` class with an enum stage, a kind string, a growth count
-// and a value-class `Gauge` member for its water, its description a routine with a `switch` over the
+// and a struct `Gauge` member for its water, its description a routine with a `switch` over the
 // stage and a `switch` with a range and a guard case over the water; a `Pot` class whose `before`
-// takes `Receive` (plants only, one at a time) and whose `after` takes `LetGo`; a value class `Gauge`
+// takes `Receive` (plants only, one at a time) and whose `after` takes `LetGo`; a struct `Gauge`
 // (`operator ()`, `=` from int, `+=`, `-=`, two methods) with a capped maximum; a switchable heater
 // whose `after` takes `SwitchOn`/`SwitchOff` and starts or stops a grower daemon; a `fill NOUN` verb
 // at the tap, a `water NOUN` verb pouring from the can into a plant's gauge through a `ref`
@@ -52,7 +52,7 @@ const int GAUGE_MAX    = 4;
 const int CAN_MAX      = 6;
 const int GROW_TURNS   = 2;
 
-value class Gauge {
+struct Gauge {
     int _level = 0;
 
     int  operator ()         { return _level; }

@@ -4,20 +4,20 @@
 // Exercises: a thirty-fifth first-time-programmer program, a measuring bench where rods are
 // measured, joined, marked and sorted, written by a beginner who has just found overloading and
 // gives every helper several shapes "so it works with anything". Global functions overloaded on int,
-// char, string, bool, an enum, a value class, a reference class and its subclasses (most specific
+// char, string, bool, an enum, a struct, a reference class and its subclasses (most specific
 // wins, a declared object matching its class exactly), with a var fallback, a conversion operator
 // match and a union parameter; overloads that differ only in arity, picked by default arguments and
 // by named arguments; a `replace` of one overload calling `replaced()`; emitter overloads; overloaded
 // methods on a class, inherited by subclasses that add overloads beside them and replace one of them;
 // overloaded methods on objects and on an object of a class; static method overloads; an object used
-// as a namespace whose overloaded methods are imported with #using and called bare; a value class
+// as a namespace whose overloaded methods are imported with #using and called bare; a struct
 // with instance operators overloaded by operand type (+, -, ==, !=, +=, *) and static <=>; a reference
 // class hierarchy with instance == and + overloads and a static <=> used by sort; operator references
 // (Length::operator ==(int), Rod::operator <=>) held in func<> variables and passed to sort; overload
 // calls nested as arguments of other overloads, in returns, conditions, ?: branches, loops and
 // interpolation spans; overloads added by `extend class` (methods, operators, emitter methods) and
-// a subclass ordering operator over an inherited static <=>; a value subclass using its base's
-// operator overloads beside its own, sorted and searched in an array; a program print(Length)
+// a subclass ordering operator over an inherited static <=>; a second struct converting to and
+// from Length beside its own operator overloads, sorted and searched in an array; a program print(Length)
 // overload reached from interpolation and printLine; compound assignment and ++ falling back to
 // overloaded + - * on locals, members and array elements; ref and func<> parameters, array
 // parameters and stringObj picking overloads; overloads in default-argument values, ?: arguments
@@ -48,7 +48,7 @@ enum eShape { straight, bent, coiled }
 // ===== LENGTHS =====
 
 // a length in centimetres
-value class Length {
+struct Length {
     inline int cm;
 
     Length operator = (Length o) {
@@ -741,12 +741,17 @@ string compare(Rod a, int n) {
 // ===== GAPS: A LENGTH WITH A NAME =====
 
 // a gap between two rods
-value class Gap : Length {
+struct Gap {
+    inline int cm;
     string side = "left";
-    Gap operator = (Gap o) {
-        side = o.side;
-        (Length)self = o;
+    // a length becomes a gap on the left
+    Gap operator = (Length o) {
+        cm = o.cm;
         return self;
+    }
+    // a gap reads as its length
+    Length operator () {
+        return Length.make(cm);
     }
     // two gaps make a wider gap on the first one's side
     Gap operator + (Gap o) {
@@ -755,11 +760,33 @@ value class Gap : Length {
         r.cm = cm + o.cm;
         return r;
     }
+    Length operator + (int n) {
+        return Length.make(cm + n);
+    }
+    Length operator - (Gap o) {
+        return Length.make(cm - o.cm);
+    }
+    Gap operator += (int n) {
+        cm = cm + n;
+        return self;
+    }
     bool operator == (Gap o) {
         return cm == o.cm && side == o.side;
     }
+    bool operator == (int n) {
+        return cm == n;
+    }
     bool operator != (Gap o) {
         return !(cm == o.cm && side == o.side);
+    }
+    static int operator <=> (Gap a, Gap b) {
+        return a.cm - b.cm;
+    }
+    // makes a gap from metres and centimetres
+    static Gap make(int m, int n) {
+        Gap r;
+        r.cm = m * 100 + n;
+        return r;
     }
 }
 
@@ -1208,7 +1235,7 @@ verb ShowMore {
     }
 }
 
-// GAPS - a value subclass with the base's operators and its own
+// GAPS - a struct converting to and from Length, with its own operators
 verb ShowGaps {
     grammar = {.gaps};
     void handler() {

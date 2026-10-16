@@ -15,8 +15,8 @@ class Scaler : object {
 }
 Scaler scalerA { }
 
-// A member named like its value class is the member; `::Spot` names the type.
-value class Spot { int x; Spot operator = (Spot o) { x = o.x; return self; } }
+// A member named like its struct is the member; `::Spot` names the type.
+struct Spot { int x; Spot operator = (Spot o) { x = o.x; return self; } }
 class Board : object {
     Spot spot;
     int setIt() { spot.x = 7; return spot.x; }
@@ -25,7 +25,7 @@ class Board : object {
 Board boardA { }
 
 // An accessor member's class's own operator applies to the member.
-value class Meter {
+struct Meter {
     int _v;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v; }

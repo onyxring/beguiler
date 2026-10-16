@@ -140,7 +140,7 @@ machine.
 
 **Identity.** `a :== b` is true when `a` and `b` are the same instance. It compares references and never
 calls an `operator ==`, so it tells "the same object" apart from a class's own equality, as `:=` bypasses its
-`operator =` (§3.7). Both operands are instances: objects, instances of any class (value classes and
+`operator =` (§3.7). Both operands are instances: objects, instances of any class (structs and
 `stringObj` included), arrays, or `null`. On a primitive it is a compile-time error ("use '=='"). `:==`
 can't be overloaded, and neither can `:=`.
 

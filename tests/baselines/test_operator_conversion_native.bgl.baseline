@@ -62,11 +62,19 @@ class _bglClass_nativeBox
     _v 7,
     _opconv_int[;
         return self._v * 3;
+    ],
+    _opeq[o;
+        self._v=o._v;
+        return self;
     ]
 ;
 class _bglClass_emitBox
   with
-    _v 9
+    _v 9,
+    _opeq[o;
+        self._v=o._v;
+        return self;
+    ]
 ;
 class _bglClass_holder
   class object

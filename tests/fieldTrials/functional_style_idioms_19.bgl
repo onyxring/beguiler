@@ -4,7 +4,7 @@
 // Exercises: a small stock ledger written in a functional style on Glulx. Crates of a class with an
 // enum category, held in a global array and on shelf objects; predicates and projections as named
 // functions, lambdas and arrays of `func<>`s; hand-written map/fold/compose helpers over `func<>`
-// parameters (including folding into a value class returned by value); a value class of running
+// parameters (including folding into a struct returned by value); a struct of running
 // figures with a copy operator, a float mean and a method that folds an array; <linq> chains
 // (filter, map, orderBy with comparators, take, skip, distinct, any, all, first, last, count) on
 // array<Crate> and array<int>, captured into typed locals; tail-recursive helpers with accumulators
@@ -55,9 +55,9 @@ Crate crateE { "crate E"; label = "E"; cat = eCat.tool; units = 7;  weight = 3; 
 array<Crate> stock = {crateA, crateB, crateC, crateD, crateE};
 array<int> requests = {2, 5, 1, 5, 8, 3, 2};
 
-//-- Running figures (a value class) ---------------------------------------------------------------
+//-- Running figures (a struct) ---------------------------------------------------------------
 
-value class Figures {
+struct Figures {
     int n = 0;
     int sum = 0;
     int lo = 0;

@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-sixth pass: a job board whose
-// members are reached through computed receivers. A value class for a grid cell with a copy operator,
+// members are reached through computed receivers. A struct for a grid cell with a copy operator,
 // `+`, `==`/`!=`, methods returning new cells (chained `Scaled(2).Swapped().X`) and a static factory; a
 // named accessor class (a meter counting its writes) with an int setter, a copy operator and its own
 // `+=`; a job class with an owned cell, a meter, an inline `auto` accessor with a method of its own,
@@ -17,7 +17,7 @@
 // instance cast `((epicE)x).Extra`), ancestor casts (`((Job)epicE).Kind()`), casts of call results and
 // array elements, call results (`Board.At(1).Marks[0] += 10`, `Board.At(1).Hits++`, `Board.At(1).Memo
 // += '!'`, counted so a receiver is evaluated once), static call results, `func<>` call results,
-// `operator []` results (`Board.At(3)[0][0].Title`), global, nested and value-class array elements, an
+// `operator []` results (`Board.At(3)[0][0].Title`), global, nested and struct array elements, an
 // element whose index has side effects, `<linq>` results (`orderBy(…)[0].Title`), ternaries and `??`
 // (`(big ? jobA : jobB).Marks += 6`), `?.` on call results and elements, parenthesized operator results (`(a.Pos + b.Pos).Area()`), `new`
 // and fluent chains; `ref` locals and `ref` parameters bound to members of computed receivers; `for … in`
@@ -61,7 +61,7 @@ string LaneName(eLane l) {
 
 //-- Cell: a value type ----------------------------------------------------------------------------------------
 
-value class Cell {
+struct Cell {
     int X;
     int Y;
 
@@ -115,7 +115,7 @@ value class Cell {
 
 //-- Meter: a named accessor that counts its writes ------------------------------------------------------------
 
-value class Meter {
+struct Meter {
     int _v;
     int _sets;
 

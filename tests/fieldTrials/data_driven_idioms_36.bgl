@@ -4,9 +4,9 @@
 // Exercises: a tool crib kept in parallel slot tables, whose names keep meeting. Global tables
 // label, word, qty, kind, state and lent beside a global variable slot, a global total and owner,
 // #defines LIMIT and WIDTH, consts SLOTS and NONE, and an array named log beside the library's log
-// emitter. An Entry value class whose fields slot, qty and kind are named like the global tables and
+// emitter. An Entry struct whose fields slot, qty and kind are named like the global tables and
 // variable, built inline with named members from same-named parameters (`slot = slot; kind =
-// kind[slot];`), with a method label() reading ::label and a test against ::slot; a Tally value class
+// kind[slot];`), with a method label() reading ::label and a test against ::slot; a Tally struct
 // whose fields are named like the eKind values, with == / != taking a parameter named tally and a
 // static made, beside a verb Tally (`Tally t;` and `Tally.made` in the verb's own handler, `action ==
 // Tally`, a function taking `ref Tally tally`); an eState enum whose member locked is also the library
@@ -70,9 +70,9 @@ int slot = NONE;            // the slot touched last
 int total = 0;              // items issued, all slots
 string owner = "desk";
 
-//-- Value classes -------------------------------------------------------------
+//-- Structs -------------------------------------------------------------
 
-value class Entry {
+struct Entry {
     inline int slot;
     inline int qty;
     inline eKind kind;
@@ -83,7 +83,7 @@ value class Entry {
 
 array<Entry> log[LOG_MAX];
 
-value class Tally {
+struct Tally {
     inline int tool;
     inline int part;
     inline int spare;

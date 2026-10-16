@@ -3,19 +3,19 @@
 
 // Exercises: a stock-counting kit laid out header-first, the way a library author writes a file whose
 // public surface comes before its implementation, so that nearly every name is used above its
-// declaration. The namespace object comes first: type aliases to a value class, a class, a pooled
+// declaration. The namespace object comes first: type aliases to a struct, a class, a pooled
 // class, an enum and a bnum all declared further down; a value alias to a static-only class below;
 // an `auto` member naming a store object below; overloaded note() methods whose parameters are typed
 // through those aliases, and a further note() overload added by an `extend` before the class it names. `#using` of
 // that namespace right after it, so bare alias names reach types not yet declared. Globals typed
-// through alias paths (a value class, an enum initialized through the path, an array of the class
+// through alias paths (a struct, an enum initialized through the path, an array of the class
 // sized by a const declared below). Global overload sets split across the file (some overloads
 // above the calls, some below), with default arguments naming an enum value and a const declared
-// below, named arguments, `ref` parameters of the value class, returns of alias-typed values, and
+// below, named arguments, `ref` parameters of the struct, returns of alias-typed values, and
 // func<> parameters typed by classes below; a global func<>, stringObj and enum array declared
 // below and used above. Verb instances of a verb class; objects
 // of a class declared below; a derived class declared above its base. Calls above their declarations
-// of: value-class operators (+, -, +=, ==, !=, <=>, implicit int, explicit string), operator
+// of: struct operators (+, -, +=, ==, !=, <=>, implicit int, explicit string), operator
 // references passed to sort and orderBy, static makers through a value alias, instance and static
 // members, member arrays of a class and of an object (through casts, alias paths and the auto
 // member), method overloads inherited and overridden, an overload added by `extend class` at the
@@ -318,7 +318,7 @@ class La33Crate : La33Bin {
 }
 
 /// A number of things, copied on assignment.
-value class La33Tally {
+struct La33Tally {
     int n;
 
     La33Tally operator = (La33Tally o) { n = o.n; return self; }
@@ -366,7 +366,7 @@ class La33Calc {
 }
 
 /// A bin's level: never below zero, with its own sum and equality.
-value class La33Gauge {
+struct La33Gauge {
     int _raw = 0;
     int operator () { return _raw; }
     void operator = (int v) { _raw = v < 0 ? 0 : v; }

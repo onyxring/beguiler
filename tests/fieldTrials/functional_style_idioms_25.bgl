@@ -5,7 +5,7 @@
 // a class with an enum crew, a length in days, a finished flag and a member array of the tasks they
 // need, given as object lists in their definitions; held in a global array. Pure recursive helpers
 // for earliest finish (forward over needs) and latest finish (backward over dependents found by a
-// <linq> filter whose predicate runs contains() on a member array), a value class span returned by
+// <linq> filter whose predicate runs contains() on a member array), a struct span returned by
 // value and copied; a topological order built by repeatedly filtering for tasks whose needs are all
 // placed (a chain inside a chain's predicate) and ordered with a two-key comparator; the critical path
 // written into a `ref stringObj` parameter by recursion; a day-by-day crew simulation over local int
@@ -153,7 +153,7 @@ int tailOf(Task t) {
     return t.days + longest;
 }
 
-value class Span {
+struct Span {
     int start = 0;
     int finish = 0;
 

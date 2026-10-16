@@ -1,10 +1,10 @@
-// run_target3_values — value-class loop variables in `for` update clauses (`c = expr` copies, `c += one`
-// falls back to `c = c + one`), a lambda capturing a local with a `?:` body, and a for-in value-class
+// run_target3_values — struct loop variables in `for` update clauses (`c = expr` copies, `c += one`
+// falls back to `c = c + one`), a lambda capturing a local with a `?:` body, and a for-in struct
 // loop variable that owns a copy of each element.
 // EXPECT_OUTPUT: 0,0 1,1 [0,0] [1,1] 0,0 1 0 1 2 -2 5 1 1
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Pos {
+struct Pos {
     inline int col;
     inline int row;
     Pos operator = (Pos o) { col = o.col; row = o.row; return self; }

@@ -19,7 +19,7 @@
 // array ordered by a lambda over compareTo; a char switch with ranges and value lists over a stringObj's
 // characters, character writes `s[i] = c`, `do/until` padding, `=~`, `format()` with `$0`..`$2`,
 // capture()/release() of object printing, a `ref stringObj` local bound to a member, an enum emitter value
-// and emitter method (added by `extend enum` and reading an #i6 array), a value class tallying results
+// and emitter method (added by `extend enum` and reading an #i6 array), a struct tallying results
 // printed in interpolation; a content switch on a stringObj (an empty-string case among them), mid/right/
 // insert/delete chained, `<=>` and `<` against a literal, a static method added by an `extend class` after
 // the objects; a `string | func<void>` global set from a ternary of a literal and a function name, then
@@ -428,7 +428,7 @@ extend enum eStyle {
 
 #i6 { Array bglStyleNames --> "none" "plain" "boxed" "loud" "quiet"; }
 
-value class Tally {
+struct Tally {
     int ok;
     int bad;
     Tally operator = (Tally o) {

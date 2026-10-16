@@ -2,13 +2,13 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a fastener ledger whose every type is reached through a namespace object. `pk` holds
-// type aliases for two enums, a value class, a value class owning two of it, an object-backed part
+// type aliases for two enums, a struct, a struct owning two of it, an object-backed part
 // class and a pooled subclass; a value alias to a superposed rules object, a value alias to a class
 // of static members, an `auto` runtime member for a stock object, and methods typed with its own bare
 // aliases; `lib` holds `pk` by `auto` and a tables object by value alias, three steps from a type; a
 // later `extend pk` adds a type alias and a value alias used above it; an emitter class composes two
-// unit classes through alias members. Paths appear in tables of value-class rows (nested bare
-// initializers), an array of func<> taking and returning the aliased value class, object declarations
+// unit classes through alias members. Paths appear in tables of struct rows (nested bare
+// initializers), an array of func<> taking and returning the aliased struct, object declarations
 // typed through a path with positional enum and value members, class members, static members,
 // operators, parameters (by value, `ref`, defaults naming enum values through the path, named
 // arguments), returns, locals, casts of children and call results, `is()` with full, imported and
@@ -41,9 +41,9 @@ const int NONE = -1;
 enum ePkKind { bolt, nut, washer, spring }
 enum ePkFinish { bare, zinc, brass }
 
-//-- Value classes, typed through the namespace declared below --------------------
+//-- Structs, typed through the namespace declared below --------------------
 
-value class PkLen {
+struct PkLen {
     inline int mm;
     pk.len operator = (pk.len o) { mm = o.mm; return self; }
     bool operator == (pk.len o) { return mm == o.mm; }
@@ -55,7 +55,7 @@ value class PkLen {
     pk.len operator += (pk.len o) { mm += o.mm; return self; }
 }
 
-value class PkSpan {
+struct PkSpan {
     inline pk.len lo;
     inline pk.len hi;
     inline string label;
@@ -64,7 +64,7 @@ value class PkSpan {
     pk.len width() { return hi - lo + pk.len{ 1 }; }
 }
 
-value class PkTally {
+struct PkTally {
     array<pk.len> seen[4];
     int hits;
     PkTally operator = (PkTally o) { seen.copyFrom(o.seen); hits = o.hits; return self; }

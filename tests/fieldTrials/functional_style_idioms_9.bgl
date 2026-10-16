@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: lambdas whose parameters own storage — a stringObj parameter and a value-class parameter
+// Exercises: lambdas whose parameters own storage — a stringObj parameter and a struct parameter
 // are copies inside the lambda (init at entry, deinit at exit), called many times so a leak would
 // exhaust the string pool; a block lambda holding a stringObj local declared inside a loop that
 // leaves by `continue` and `break`, and a switch in that loop whose `break` ends the case while
@@ -9,7 +9,7 @@
 // lambda parameters; a pooled class whose `create()` takes a literal func<> (new given named functions
 // and non-capturing lambdas), a pooled subclass with its own pool inheriting create(), allocation until
 // `new` returns null, <linq> over the live instances, `delete` from a for-in and reuse of the reset
-// slots (an owned value-class member written by the run method, read by <linq> lambdas, fresh again
+// slots (an owned struct member written by the run method, read by <linq> lambdas, fresh again
 // after new); multiple inheritance where a method's lambdas reach members from both parents (capturing self),
 // and a subclass that hides an inherited method reached again by an upcast inside a lambda;
 // bgl.printRules articles (`cThe`, `the`, `a`) inside interpolated strings in expression lambdas;
@@ -68,9 +68,9 @@ int repeatMeasure(int times, func<int, stringObj> f) {
 
 array<stringObj> noteList[6];
 
-//-- Pairs: a value class handed to lambdas -------------------------------------------------
+//-- Pairs: a struct handed to lambdas -------------------------------------------------
 
-value class Pair {
+struct Pair {
     int a;
     int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }

@@ -91,7 +91,7 @@ need `#include <array>`.
 | `bglInit()` | function | core | §21.2, §18.8 |
 | `_bglObject` | type (emitter class) | core | §21.5.8 |
 | `_bglPrimitive` | type (emitter class) | core | §21.5.8 |
-| `bglSize` | type (value class) | core | §21.12 |
+| `bglSize` | type (struct) | core | §21.12 |
 | `bglStringDefaultSize` | constant (I6, set before the include) | `<buf>` | §22.2 |
 | `bglStringPoolReserve` | constant (I6, set before the include) | `<string>` | §22.3 |
 | `bGlulxWindowBorder` | type (bnum) | core (Glulx) | §22.7.10 |
@@ -240,10 +240,10 @@ need `#include <array>`.
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
 | `stringOrRoutine` | type (named union) | binding | §2.8.2, §21.5.10, §23.3.7 |
-| `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the value class below) | core | §7.7 |
+| `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the struct below) | core | §7.7 |
 | `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
-| `styleSheet` | type (value class; one `style` per style type) | `<glulxWindow>` | §22.7.7 |
-| `style` | type (value class; written `style { … }`; the same word as the emitter namespace above) | `<glulxWindow>` | §22.7.7 |
+| `styleSheet` | type (struct; one `style` per style type) | `<glulxWindow>` | §22.7.7 |
+| `style` | type (struct; written `style { … }`; the same word as the emitter namespace above) | `<glulxWindow>` | §22.7.7 |
 | `styleUnset` | constant | `<glulxWindow>` | §22.7.10 |
 | `swap(pos1, pos2)` | method on `array<T>` | `<array>` | §22.4 |
 | `switchable`, `on`, `workflag`, `scored` | value (`attribute`) | binding (both) | §23.4 |

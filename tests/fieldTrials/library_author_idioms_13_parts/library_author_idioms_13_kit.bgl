@@ -7,7 +7,7 @@
 // ---- Cells: a count held by value; zero is empty. ----
 
 /// A count that copies on assignment.
-value class La13Cell {
+struct La13Cell {
     int n;
     /// Every count marked by any cell, in order.
     static array<int> marks[8];

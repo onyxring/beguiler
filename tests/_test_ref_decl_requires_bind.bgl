@@ -5,7 +5,7 @@
 */
 #beguilerSettings { informName = "none"; }
 
-value class Box { int x = 0; }
+struct Box { int x = 0; }
 object b1 : Box { x = 1; }
 
 void f() {

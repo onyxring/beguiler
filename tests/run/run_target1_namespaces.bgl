@@ -3,7 +3,7 @@
 // own code too), a value alias added by extend, and bare aliases in the host's methods.
 // EXPECT_OUTPUT: 8 4 2 0 14 1 5 5
 #beguilerSettings { target = z5; informName = "none"; }
-value class Ohms { int r; Ohms operator = (int n) { r = n; return self; } Ohms operator = (Ohms o) { r = o.r; return self; } }
+struct Ohms { int r; Ohms operator = (int n) { r = n; return self; } Ohms operator = (Ohms o) { r = o.r; return self; } }
 class Wire : object { static int laid = 0; }
 class Tally { static int n = 0; }
 class Counts { static int n = 0; }

@@ -11,7 +11,7 @@
 // take `stringObj` copies, `ref stringObj` and `string | stringObj` (narrowed with `typeof`), with
 // `char` defaults; `append`/`prepend`/`+`/`+=` with chars, literals, strings and results on both sides;
 // subscript reads and writes with `char` methods; `switch` on a `stringObj` with string cases; content
-// comparisons (`==`, `<`, `=~`, `<=>`, `compareTo`); a value class `Line` holding a `stringObj`, kept in
+// comparisons (`==`, `<`, `=~`, `<=>`, `compareTo`); a struct `Line` holding a `stringObj`, kept in
 // an `array<Line>`; an `array<stringObj>` of pinned texts sorted and searched; an `array<string>`
 // table; a table of lambdas taking and returning `stringObj`; <linq> over `bgl.world.instances` with
 // lambdas reading card text; capture of a description routine; a thrown string caught as a string and
@@ -159,9 +159,9 @@ stringObj ping(int n) {
     return ping(0).prepend('i') + pong(n - 1);
 }
 
-// --- lines: a value class holding text ---------------------------------------------------------------
+// --- lines: a struct holding text ---------------------------------------------------------------
 
-value class Line {
+struct Line {
     stringObj text;
     int width;
 

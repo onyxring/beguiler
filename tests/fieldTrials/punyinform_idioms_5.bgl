@@ -4,7 +4,7 @@
 // Exercises: a fifth PunyInform program, on what the first four did not touch: the entry points
 // GamePreRoutine, GamePostRoutine, TimePasses, LookRoutine, ChooseObjects, InScope, UnknownVerb and
 // DisallowTakeAnimate; a pooled class (`new`/`delete`, create/destroy, a static counter) whose slots
-// carry an owned value-class accessor and print through a `short_name` routine; an inline `auto`
+// carry an owned struct accessor and print through a `short_name` routine; an inline `auto`
 // accessor reaching its host with `outer`, driven by `+=` inside do/until; `inline` positional members
 // with a `required` member and a `default` method overridden by an object that calls the base version
 // through an ancestor cast; `children` placement, `for … in obj.children` while moving, and
@@ -97,7 +97,7 @@ void report(string label, int n = 0, bool brief = false) {
     else printLine($"{label} stands at {n}.");
 }
 
-value class Clamp {
+struct Clamp {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v < 0 ? 0 : (v > 9 ? 9 : v); }

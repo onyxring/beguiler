@@ -4,13 +4,13 @@
 // Exercises: a window layout declared as a tree of objects and opened by walking it. A layout-node
 // class with positional inline members (an enum edge, a size, an enum kind) ahead of the name, a
 // bnum of options, required members (a string title and a fill(window) routine each object gives
-// its own body), a window-typed member that starts null, an owned value-class tint member and a static
+// its own body), a window-typed member that starts null, an owned struct tint member and a static
 // operator <=>; the type and its enums reached through a namespace object (alias … for …) in
 // declarations, parameters and positional values; a recursive walk over children that splits each
 // node from its parent's window (from the main window at the top), choosing the split with a switch
 // on the edge and a ternary on the kind, and scale and border from the bnum; a styleSheet built at
 // run time whose style colors come from the tint through an implicit operator () conversion; an
-// explicit stringObj conversion used by a cast inside interpolation; positional value-class literals
+// explicit stringObj conversion used by a cast inside interpolation; positional struct literals
 // built from run-time expressions and returned from a helper; an emitter class of color values
 // imported with #using; nodes collected into an array, sorted with an operator reference and with a
 // lambda over <=>, and compared with the derived <; post-order closing of the tree and reopening one
@@ -52,7 +52,7 @@ object roomA {
 
 // ---- colors --------------------------------------------------------------------------------------
 
-value class rgb {
+struct rgb {
     inline int r;
     inline int g;
     inline int b;

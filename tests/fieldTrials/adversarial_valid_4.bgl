@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual combinations, many areas in one declaration, on the Z-machine.
-// Cluster 1 — an object of a class with a `default` method, whose body holds an owned value-class
+// Cluster 1 — an object of a class with a `default` method, whose body holds an owned struct
 // member, a `ref` member of it, an array<char>, an array<string> and a var; its inline accessor declares
 // a static int, static array<string> and static array<func<int, int>> members, `[]`, `+=`, `-=` and
 // `--`, binds a `ref array<string>` local to its own static array, calls through a function-array
@@ -56,7 +56,7 @@ verb Ping {
 
 // ---- cluster 1 ---------------------------------------------------------------------------------
 
-value class Box {
+struct Box {
     int n;
     Box operator = (Box o) { n = o.n; return self; }
 }

@@ -3,7 +3,7 @@
 // through its getter and setter (§9.7).
 // EXPECT_OUTPUT: 1 11 10 v2 21 20
 #beguilerSettings { target = z5; informName = "none"; }
-value class V {
+struct V {
     int X;
     V operator = (V o) { X = o.X; return self; }
     void operator ++ () { X++; }

@@ -1,7 +1,0 @@
-/* element store into array<N> whose class has no copy operator */
-// EXPECT_ERROR: N has no operator = to copy one in
-#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-#include <array>
-value class N { int c; }
-array<N> ns[3];
-void main(){ ns[1] = ns[0]; }

@@ -14,12 +14,12 @@
 // ternary of function values, an array of func values, and named arguments to a func parameter with a
 // default; a local shadowing a global with `::` reaching the global, and sibling blocks reusing a name;
 // nested aggregates (a class with an `inline` array member, declared positionally as a global and as
-// elements of an array of the class); a value class owning value-class members, returned from a
+// elements of an array of the class); a struct owning struct members, returned from a
 // function, copied and mutated; an owned member with an inline-object initializer on world objects;
 // a `switch` on `dictionaryWord`; a `func<func<bool, object>, int>` variable whose result is called
 // directly; recursion through a global `func<>` variable; an object method's lambda that captures
-// `self` and a local through the recursive walker; `bglClass` returned from a function; a value-class
-// method returning a value-class local; a library `description` routine on a class printing a member;
+// `self` and a local through the recursive walker; `bglClass` returned from a function; a struct
+// method returning a struct local; a library `description` routine on a class printing a member;
 // and the status bar height written and read through the binding.
 
 #beguilerSettings {
@@ -42,9 +42,9 @@ extern bool scope_modified;
 
 #includeI6 "puny"
 
-// --- value classes ---------------------------------------------------------------------------------
+// --- structs ---------------------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int lo = 0;
     int hi = 0;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
@@ -57,7 +57,7 @@ value class Span {
     }
 }
 
-value class Pair {
+struct Pair {
     Span inner;
     Span outer;
     Pair operator = (Pair o) { inner = o.inner; outer = o.outer; return self; }

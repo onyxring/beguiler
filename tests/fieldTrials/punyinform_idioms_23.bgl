@@ -8,7 +8,7 @@
 // an `array<int>` (`contains`, `enqueue`, `dequeue`, `length`) served by a lift object on `StartTimer`
 // and `time_out`; a call button floating through the halls with `found_in` as a list; a level-3 lock
 // that needs a key card carried; an enum direction from a function with a `switch` over it; a `Load`
-// class with a weight, summed recursively over `children`, against the lift's limit; a value class
+// class with a weight, summed recursively over `children`, against the lift's limit; a struct
 // `Odometer` with `operator ()`, `=` and `+=`; a porter with `life` (Ask through NextWord, Give of a
 // load) and `orders` (Wait, Go); a `stringObj` log appended with interpolated strings by a helper with
 // a default argument; a `switch` with a range case and a guard; `bgl.world.instances` over the class
@@ -53,7 +53,7 @@ array<string> motionNames = {"idle", "going up", "going down"};
 const int TOP_LEVEL  = 3;
 const int LIFT_LIMIT = 12;
 
-value class Odometer {
+struct Odometer {
     int _levels = 0;
 
     int  operator ()         { return _levels; }

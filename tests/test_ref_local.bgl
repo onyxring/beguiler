@@ -24,7 +24,7 @@
 }
 
 // Plain class — no operator= defined. Would normally error on class-typed assignment.
-value class Box {
+struct Box {
     int x;
     int y;
 }
@@ -33,7 +33,7 @@ Box mkBox(int x, int y){ boxSrc.x = x; boxSrc.y = y; return boxSrc; }
 
 // Class WITH operator=. Used both as value (backing synthesis) and ref (pointer-alias)
 // in main below.
-value class Window {
+struct Window {
     int w;
     int h;
     Window operator = (Window v){ self.w = v.w; self.h = v.h; return self; }

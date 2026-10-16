@@ -1,4 +1,4 @@
-// run_nested_value_class_local — a value-class local whose members are value classes: each call
+// run_nested_value_class_local — a struct local whose members are structs: each call
 // resets the nested instances (not their pointers) to their declared values, and a `ref` parameter with
 // a default works; an inline initializer gives a primitive member any value its `operator =` takes.
 // EXPECT_OUTPUT: 13 i4
@@ -9,12 +9,12 @@ primitive class styleFlag {
     emitter styleFlag operator = (int v){ $target = $v; }
     emitter int operator () { $val }
 }
-value class st {
+struct st {
     inline int weight = unsetV;
     inline styleFlag italics = unsetV;
     st operator = (st s){ self.weight = s.weight; self.italics = s.italics; return self; }
 }
-value class sheet {
+struct sheet {
     st alert;
     st normal;
     sheet operator = (sheet s){ self.alert = s.alert; self.normal = s.normal; return self; }

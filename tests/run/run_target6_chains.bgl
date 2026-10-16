@@ -1,10 +1,10 @@
-// run_target6_chains — value-class results of `?.` chains compared (also through `??`), methods named
+// run_target6_chains — struct results of `?.` chains compared (also through `??`), methods named
 // `child` and `sibling`, the right of `??` / `&&` / `||` / `?:` skipped when the left decides even when it
 // is a `?.` chain, and char arguments to string methods at the end of a `?.` chain.
 // EXPECT_OUTPUT: n n n n 6 4 0 0 0 0 0 0 0 0 0 1 y y y 2
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Span {
+struct Span {
     int lo;
     int hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }

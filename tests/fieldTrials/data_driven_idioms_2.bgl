@@ -1,11 +1,11 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a crafting table as an array of value-class records written as Type{ … } and bare { … }
+// Exercises: a crafting table as an array of struct records written as Type{ … } and bare { … }
 // with positional inline members, a reply table as an array of object records keyed by dictionary
 // words and read from a life routine, a map as jagged array<array<eRoom>> adjacency lists used to
 // move the player and to search a shortest route with a queue (enqueue/dequeue), a turn schedule of
-// value-class records driving a character's daemon, bnum permission masks combined with |, masked
+// struct records driving a character's daemon, bnum permission masks combined with |, masked
 // with & and ^, toggled with ^ and tested with &, enum-indexed parallel tables read with (int) casts and
 // reverse lookups from a dictionary word back to an enum, record views sorted by different keys with
 // named comparators (an int key, a string key through <=>), searching records by a second key, and a
@@ -71,7 +71,7 @@ array<int>            stock[ITEM_COUNT] = { 8, 6, 1, 0, 0, 0 };
 
 array<string> permNames = { "enter", "take", "craft", "talk" };
 
-value class Recipe {
+struct Recipe {
     inline eItem makes;
     inline eItem partA;
     inline int   qtyA;
@@ -107,7 +107,7 @@ array<Reply> replies = {
     { .wood,   "The clerk says nothing new.",                 0 }
 };
 
-value class Stop {
+struct Stop {
     inline int   turn;
     inline eRoom where;
     Stop operator = (Stop o) { turn = o.turn; where = o.where; return self; }

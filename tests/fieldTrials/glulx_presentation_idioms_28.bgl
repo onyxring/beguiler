@@ -5,7 +5,7 @@
 // a class attributeList) with a label, a letter char, a water level, a thirst, a growth count, an enum
 // stage and a watering count, a static wilt counter, methods returning char, bool and stringObj, a
 // daemon() that dries the pot, grows it and wilts it (StopDaemon), and a before() that answers
-// Examine; a watering can object whose before() answers the library's Fill action; a value class
+// Examine; a watering can object whose before() answers the library's Fill action; a struct
 // Reading (low, high, sum and count, copy operator, += of an int, a float mean and a stringObj span)
 // over a history ring and over the pots; a room each_turn() that records the total water into an
 // <array> ring (enqueue, dequeue) drawn as a sparkline through a switch with ranges; a text grid
@@ -127,7 +127,7 @@ void logLine(stringObj text) {
 
 // ---- readings ------------------------------------------------------------------------------------
 
-value class Reading {
+struct Reading {
     int low;
     int high;
     int sum;

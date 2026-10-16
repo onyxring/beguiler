@@ -4,7 +4,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 #include <linq>
-value class Money {
+struct Money {
     inline int p;
     Money operator = (Money o) { p = o.p; return self; }
     bool operator == (Money o) { return p == o.p; }

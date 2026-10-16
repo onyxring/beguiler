@@ -4,15 +4,15 @@
 // Exercises: valid but unusual code in a small meter-board program, on Glulx, leaning on property
 // accessors whose getters return things other than int, reached from above their declarations.
 // Routines written above every class, object, array, alias, const and emitter value they use: a
-// value-class parameter given an accessor member (the getter reads it, the int setter fills the copy),
+// struct parameter given an accessor member (the getter reads it, the int setter fills the copy),
 // `ref` parameters of the accessor class and of a namespace alias of it (defaults from a const and an
 // emitter value declared below), returns of an accessor's enum and bool getters, `??` on an accessor
 // whose getter returns an object, and a subscript `b.lvl[i]` through the accessor class's own
 // `operator []`. Named accessor classes with two setters (int and bool), a copy operator, `==`/`!=`
 // taking int and the class, an instance `<=>` (derived orderings between two members), `operator +`,
-// `operator ?` and methods; a subclass accessor that replaces the int setter and chains its copy
-// operator; accessors whose getters return bool, an enum and a class reference (then chained: `.lvl`,
-// `?.glow`, written through and passed by `ref`); a value class holding two accessor members, owned by
+// `operator ?` and methods; a second accessor struct with its own int setter, clamped through a
+// `ref` overload; accessors whose getters return bool, an enum and a class reference (then chained: `.lvl`,
+// `?.glow`, written through and passed by `ref`); a struct holding two accessor members, owned by
 // a class and an object and copied whole; class-body inline accessors (one with a static counter, one
 // added by `extend class`); object-body inline accessors using `outer` members and a method declared
 // after them (one added by an `extend` written above its object, one returning an element of a global
@@ -50,6 +50,8 @@ int peekCopy(Clamp c) {
 void nudge(ref Clamp c, int by = STEP) { c += by; }
 
 void nudgeVia(ref kit.gauge g, int by = bumpBy) { g = g + by; }
+
+void nudgeVia(ref Wrap g, int by = bumpBy) { g.clamped(g + by); }
 
 bool anyGlowing() { return boards.any((Board b) => b.glow); }
 
@@ -369,7 +371,7 @@ emitter int bumpBy { 3 }
 
 enum eMode { off, slow, fast }
 
-value class Clamp {
+struct Clamp {
     int _v = 0;
     int _top = 9;
     int _sets = 0;
@@ -407,20 +409,51 @@ value class Clamp {
     int sets() { return _sets; }
 }
 
-value class Wrap : Clamp {
-    replace void operator = (int v) {
+struct Wrap {
+    int _v = 0;
+    int _top = 9;
+    int _sets = 0;
+    int operator () { return _v; }
+    void operator = (int v) {
         int m = top() + 1;
         _v = v % m;
         if (_v < 0) _v = _v + m;
         _sets++;
     }
+    void operator = (bool b) {
+        _v = b ? _top : 0;
+        _sets++;
+    }
     Wrap operator = (Wrap o) {
-        (Clamp)self = o;
+        _v = o._v;
+        _top = o._top;
         return self;
     }
+    bool operator == (int n)  { return _v == n; }
+    bool operator != (int n)  { return _v != n; }
+    bool operator == (Wrap o) { return _v == o._v; }
+    bool operator != (Wrap o) { return _v != o._v; }
+    int  operator <=> (Wrap o) { return _v - o._v; }
+    int  operator + (int n)   { return _v + n; }
+    int  operator [] (int i) {
+        int d = _v;
+        for (int k = 0; k < i; k++) d = d / 10;
+        return d % 10;
+    }
+    emitter eBool operator ? () { ($self._v ~= 0) }
+    void clamped(int v) {
+        _v = v < 0 ? 0 : (v > _top ? _top : v);
+        _sets++;
+    }
+    void cap(int t) {
+        _top = t;
+        if (_v > t) _v = t;
+    }
+    int top()  { return _top; }
+    int sets() { return _sets; }
 }
 
-value class Flag {
+struct Flag {
     bool _on = false;
     int _flips = 0;
     bool operator () { return _on; }
@@ -436,19 +469,19 @@ value class Flag {
     int flips() { return _flips; }
 }
 
-value class ModeBox {
+struct ModeBox {
     eMode _m = eMode.off;
     eMode operator () { return _m; }
     void operator = (eMode m) { _m = m; }
 }
 
-value class Holder {
+struct Holder {
     Board _b = null;
     Board operator () { return _b; }
     void operator = (Board b) { _b = b; }
 }
 
-value class Pair {
+struct Pair {
     Clamp lo;
     Clamp hi;
     Pair operator = (Pair o) {

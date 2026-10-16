@@ -12,7 +12,7 @@
 // container class with an `array<string>` member, children walks, `has()`/`give()`/`ungive()` and a
 // buf filled by attribute; a class with an emitter member queried with postfix `?` inside `try`,
 // whose `catch` prints through `$i6Expr`, and an array of arrays read by an `#i6` island; a class
-// holding a `ref` value-class member bound with `:=` beside a `func<>` member; and an `extern class`
+// holding a `ref` struct member bound with `:=` beside a `func<>` member; and an `extern class`
 // pooled in I6 (`[]` marker) whose static methods call `new`/`delete` and build an inline object.
 
 #beguilerSettings {
@@ -53,9 +53,9 @@ object store {
     "store";
 }
 
-// --- a value class with arithmetic and compound operators -------------------------------------------
+// --- a struct with arithmetic and compound operators -------------------------------------------
 
-value class Purse {
+struct Purse {
     int coins;
     eGrade grade = eGrade.low;
     ref Purse backup;

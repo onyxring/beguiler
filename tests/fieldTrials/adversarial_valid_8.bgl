@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual code in a small tank-and-transfer program, on Glulx.
-// A value class over a float with a copy operator and a float setter, `+=` and `-=` that clamp, an
+// A struct over a float with a copy operator and a float setter, `+=` and `-=` that clamp, an
 // implicit float conversion beside an explicit int one, its own print() reaching the global one through
 // `::`, and static `<=>`, `==` and `!=`; it is an owned member of a tank class whose positional order
 // names instanceName first, read through its getter, compound-assigned and cast; a subclass whose own
@@ -13,7 +13,7 @@
 // by a nested ternary through `outer`, a member array of tanks sized by a constant, a method with a
 // defaulted argument called by name, and a switch on a float with guards; a named union member set to
 // text in one tank and to a routine in another; a thrown tank caught by its class and rethrown from an
-// inner catch; overloads by float, int and class; a local array of the value class sorted, searched,
+// inner catch; overloads by float, int and class; a local array of the struct sorted, searched,
 // sorted again through an operator reference, and an element bound by `ref`; a stringObj built from interpolations and trimmed; bnum flags; do/until; a range
 // for-in over a member array's length; a children walk that moves a child; and an `extend` adding a
 // `before` to one tank.
@@ -50,9 +50,9 @@ void flushNote() { print("flush on empty"); }
 
 const int MAX_TANKS = 4;
 
-// ---- a volume: a value class over one float --------------------------------------------------------
+// ---- a volume: a struct over one float --------------------------------------------------------
 
-value class Volume {
+struct Volume {
     float litres;
 
     Volume operator = (Volume o) { litres = o.litres; return self; }

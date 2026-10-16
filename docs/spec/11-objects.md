@@ -142,9 +142,9 @@ and evaluates to a reference to it. It is the same declaration as the named form
 at startup, and it is unrelated to `new` (§4.13), which allocates at run time.
 
 The form is available for any class that can be declared as a named object. It has no meaning for
-namespace types (`emitter class`, `alias class`). For a value class (§8.2.7) it is a value of that class
+namespace types (`emitter class`, `alias class`). For a struct (§8.2.7) it is a value of that class
 with the given members: a variable or argument receives a copy through the class's `operator =`, and a
-member initialized with it — the way to give an owned value-class member its starting value, since a
+member initialized with it — the way to give an owned struct member its starting value, since a
 member initializer is fixed at compile time and can't run `operator =` — holds those values
 (`Item pebble { price = Coins{ cents = 5; }; }`). It may appear anywhere an
 expression may: an array-literal element, an `inject` element in `extend` for arrays (§12.11), a
@@ -192,12 +192,12 @@ target's type. Inference applies in six positions:
 - the element of a declarative `inject` (§12.11);
 - a call argument whose parameter is an object-backed class;
 - an argument to an `array<T>` method whose parameter is `T`, when `T` is an object-backed class or a
-  value class with `inline` members (`pts.append({ 1, 2 })`);
-- a member's value inside an aggregate or object body, when the member's type is a value class with
+  struct with `inline` members (`pts.append({ 1, 2 })`);
+- a member's value inside an aggregate or object body, when the member's type is a struct with
   `inline` members (`Pair{ { 1 }, { 2 } }`, `Panel p1 { fill = { 40, 200, 40 }; }`).
 
 A bare `{ … }` produces an object only when the target type is an object-backed class. If the target
-is an `array<…>`, or a value class or collection type with an `operator =(initializerList)`, a bare
+is an `array<…>`, or a struct or collection type with an `operator =(initializerList)`, a bare
 `{ … }` is a braced list. An explicit `Type{ … }` is always available and also distinguishes a single
 element from a list.
 
@@ -236,7 +236,7 @@ argument (§6.3), and on a method call.
 
 For the bare form the parameter type must resolve unambiguously: the type is inferred only when every
 viable overload of that name expects the same aggregate-constructible class at that argument position
-(an object-backed class, or a value class declaring `inline` members). If the overloads disagree, or
+(an object-backed class, or a struct declaring `inline` members). If the overloads disagree, or
 the parameter cannot take an aggregate, it is a compile-time error; write an explicit `Type{ … }`.
 
 **Example**

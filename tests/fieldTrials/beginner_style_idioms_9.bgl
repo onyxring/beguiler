@@ -7,16 +7,16 @@
 // routines; extern variables (read and written) and an extern const; extern functions, one renamed with
 // asBgl and one defined in #emitlast; asI6 on a global, an object, an attribute, a member and a method,
 // all reached by their I6 names from #i6; & on a tracked array and on a raw array passed to I6; a
-// primitive class over int (operator = from int, conversion to int, its own +); a value class with
+// primitive class over int (operator = from int, conversion to int, its own +); a struct with
 // regular-method operator [] and []= over a member array, used in loops and with += on an element; a
-// value class with only + and a copy operator so += and -= fall back, separate ++ and prefix++, an
+// struct with only + and a copy operator so += and -= fall back, separate ++ and prefix++, an
 // explicit string conversion, operator ! and operator ?=; extend extern class array with a T emitter
 // called on int, string and member arrays; inline members re-listed and appended by extend class,
 // with nested { } aggregates for an array member; attributes with ! on a class's attribute, give / ungive
 // / has at run time, counted from I6; rtrue( ) and rfalse( ) with interpolated text (one in a before()
 // with a ternary inside the span); my types as class members (an owned Shelf subscripted in place, a
 // Tally, a steps with a starting value bumped with +=), as parameters and returns, in an array<steps>
-// walked with for-in and an array of a value class with += on a slot; and a superposed function and
+// walked with for-in and an array of a struct with += on a slot; and a superposed function and
 // global, one used and one never used.
 
 #beguilerSettings {
@@ -100,7 +100,7 @@ primitive class steps {
 }
 
 // ===== A SHELF WITH FOUR SPOTS =====
-value class Shelf {
+struct Shelf {
     array<int> spots[4];
     Shelf operator = (Shelf o) {
         for (int i = 0; i < 4; i++) {
@@ -125,7 +125,7 @@ value class Shelf {
 }
 
 // ===== A TALLY =====
-value class Tally {
+struct Tally {
     int n;
     Tally operator = (Tally o) { n = o.n; return self; }
     Tally operator = (int v) { n = v; return self; }
@@ -155,7 +155,7 @@ value class Tally {
 }
 
 // ===== A SCORE (like a tally but simpler) =====
-value class Score {
+struct Score {
     int n;
     Score operator = (Score o) { n = o.n; return self; }
     Score operator + (int v) {

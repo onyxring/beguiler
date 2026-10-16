@@ -5,7 +5,7 @@
 // fuel, capacity and burn rate, a daemon() that burns fuel, warns once when low and puts the lamp out
 // when empty, a before() that refuses SwitchOn without fuel, an after() that starts and stops the
 // daemon and gives and takes light, and an invent() that adds the fuel after the name; an enum eLevel
-// derived from a float fraction and switched on to pick a gauge character; a value class Reading
+// derived from a float fraction and switched on to pick a gauge character; a struct Reading
 // (fuel and capacity, copy operator, == operator, a float percentage and a stringObj label); a fuel
 // can with a refill verb taking two nouns; a text grid split above the main window held in a
 // textGridWindowHorz global and resized from a NUMBER token through height; a text-buffer notices
@@ -122,7 +122,7 @@ void notice(stringObj text) {
 
 // ---- readings ------------------------------------------------------------------------------------
 
-value class Reading {
+struct Reading {
     int fuel = 0;
     int capacity = 0;
 

@@ -7,7 +7,7 @@
 // children, tested with `&` and combined with `|`, its `before` taking `Receive` (one part of each
 // kind) and its `after` taking `SwitchOn`, `SwitchOff`, `Receive` and `LetGo`; a `Part` class with an
 // enum kind, a worn flag and a description routine with a `switch` over the kind; a daemon on the radio
-// cycling broadcast lines from an `array<string>` with `%`; a value class `Volume` with `operator ()`,
+// cycling broadcast lines from an `array<string>` with `%`; a struct `Volume` with `operator ()`,
 // `=`, `+=` and `-=` that clamps; a `tune NUMBER` verb finding a station in an `array<int>` with a
 // `for` loop and a `switch` with a range and a guard case; a `scan` verb stepping the stations with
 // `do`/`while`; `louder` and `softer` verbs; a clerk with `life` (Ask through NextWord, Give swapping a
@@ -51,7 +51,7 @@ array<int>    stations   = {88, 94, 101};
 array<string> stationNames = {"Station One", "Station Two", "Station Three"};
 array<string> broadcasts = {"A voice reads the time.", "A tune plays.", "A voice reads the weather."};
 
-value class Volume {
+struct Volume {
     int _level = 0;
 
     int  operator ()          { return _level; }

@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, thirty-seventh pass: a linked node
-// registry walked with `?.` and `??` everywhere. A value class for a grid cell that declares its own
+// registry walked with `?.` and `??` everywhere. A struct for a grid cell that declares its own
 // `operator ?` (present when not at the origin), so cells take `?.`, `??` and postfix `?`; a named
 // accessor class for a counter with a getter, an int setter, its own `+=` and an `operator ?`; a node
 // class with links (`Next`, `Up`), a member `array<Node>`, a member `array<int>`, a member `array<Cell>`,
@@ -46,7 +46,7 @@ object roomA {
 
 //-- Cell: a value type with its own presence test -------------------------------------------------------------
 
-value class Cell {
+struct Cell {
     int X;
     int Y;
 
@@ -94,7 +94,7 @@ value class Cell {
 
 //-- Counter: a named accessor with a presence test ------------------------------------------------------------
 
-value class Counter {
+struct Counter {
     int _n;
     int _writes;
 

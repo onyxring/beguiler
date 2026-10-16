@@ -36,7 +36,7 @@ class Gate : object { bool open = true; eBool operator || (bool b) { return open
 Gate gateA { }
 class Shelf2 : object { Item operator [] (int i) { return key; } }
 Shelf2 rack { }
-value class Tens { int raw = 0; int operator () { return raw * 10; } void operator = (int v) { raw = v; } }
+struct Tens { int raw = 0; int operator () { return raw * 10; } void operator = (int v) { raw = v; } }
 class Slip[3] : object, bglAllocated { Tens count; }
 class Scaler : object { int score(int k) { return k * 4; } int via(int x) { return score(x); } }
 Scaler sc { }

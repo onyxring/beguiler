@@ -8,7 +8,7 @@
 */
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 
-value class Box {                                         // value class → owned instance
+struct Box {                                         // struct → owned instance
     int _val = 0;
     int  operator()        { return _val; }
     void operator = (int v){ _val = v; }

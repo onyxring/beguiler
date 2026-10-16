@@ -6,7 +6,7 @@
 // `#using` of an object namespace, carrying a conversion `operator ()`, `==`/`!=`/`<`, an emitter
 // `operator +=`, a `replace`d inherited emitter, and static methods (one recursive) that walk the chain
 // with postfix `?`, `?.` and `??`, fill an `array<Crate>`, sort and `popEnd()` an `array<int>`, sum an
-// array of arrays, bind a `ref` alias-typed value class with `:=`, use emitter-class and primitive
+// array of arrays, bind a `ref` alias-typed struct with `:=`, use emitter-class and primitive
 // locals, a `stringObj`, a tracked `array<char>` driven by `bgl.util.buf` under `#if`, and a cast
 // dispatch to a Beguile class's base method; an `extend extern class` that `replace`s the conversion,
 // adds `operator >`, and a static method taking an `array<int>` that maps it through a block lambda
@@ -14,7 +14,7 @@
 // the object tree, walks `children` and an `array<Crate>` with `for … in` and uses `has()`/`give()`;
 // an `extend class` of a class with two parents, under `#using`, adding a static array and counter,
 // `operator ()`/`[]`/`+`/`<`/`+=`, an emitter method, a `replace`d method, a recursive method, and a
-// method taking an `array<int>` and a `ref` alias-typed value class that throws and catches, fills an
+// method taking an `array<int>` and a `ref` alias-typed struct that throws and catches, fills an
 // `array<Chip>` with `new`, reads it with `??`, filters with `<linq>`, writes a buf, switches on an
 // alias-typed enum, narrows a named union with `typeof`, reads `owner?.parent` and calls both bases'
 // methods through a cast; and an object with an inline `auto { }` accessor writing its host through
@@ -44,7 +44,7 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 enum eShade { pale, mid, deep }
 
-value class Pair {
+struct Pair {
     int a;
     int b;
 

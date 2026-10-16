@@ -7,7 +7,7 @@
 // array<string>` of tags and a `static array<int>` of visit counts, and a recursive static walk that takes
 // a `func<>` step, holds an emitter-class scope guard and a pooled instance per level (falling back with
 // `??` when the pool is empty and reading it back with `?.`), picks a tag by range `switch` through a
-// `<linq>` chain with a `??` default, builds a `stringObj` trail, keeps a value-class band and a `var`,
+// `<linq>` chain with a `??` default, builds a `stringObj` trail, keeps a struct band and a `var`,
 // and performs a verb. And an object (like a C# singleton with a property) whose inline accessor reaches
 // its host through `outer`, throwing and catching a bad value, with an indexer, `==` / `<=>` overloads, a
 // `static array<int>`, an `array<string>` of labels read with `??`, an enum mode set by `switch`, a nested
@@ -49,7 +49,7 @@ int PingCount;
 
 //-- A closed interval, copied by value ---------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int Lo;
     int Hi;
     Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }

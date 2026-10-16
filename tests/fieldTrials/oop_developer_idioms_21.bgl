@@ -39,7 +39,7 @@ enum eTier { Standard, Student, Staff }
 
 //-- Money: a value type -------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     inline int Cents;
 
     Money operator = (Money o) { Cents = o.Cents; return self; }

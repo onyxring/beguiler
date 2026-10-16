@@ -4,7 +4,7 @@
 // Exercises: an Inform 6-style program on z5 whose names meet each other's: globals level, flow,
 // runs, pumped and marks shadowed by members, a static member, parameters, locals, loop and lambda
 // variables; an emitter gauge sharing its name with the object gauge (called from that object, from a
-// value class with a field gauge, through `::gauge(…)` from an object whose method Gauge hides it, and
+// struct with a field gauge, through `::gauge(…)` from an object whose method Gauge hides it, and
 // the object used bare as a value, in `cThe()` and `.parent`); enum values Low, Mid and High beside
 // members low, high and mid (`::High`, `::Low`, bare `Mid`, `case ::Low` in a switch) and locals named
 // like them; a program attribute primed beside a member primed (`give(::primed)`); an attribute with an
@@ -298,7 +298,7 @@ Valve valveA {
 
 // ---------------------------------------------------------------- a sample
 
-value class Sample {
+struct Sample {
     int gauge;                          // like the object and the emitter
     int level;                          // like the global
     int pumpA;                          // like the object

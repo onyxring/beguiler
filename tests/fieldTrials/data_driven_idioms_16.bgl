@@ -1,8 +1,8 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: dense declarations meeting in threes. A value class with two value parents chains both
-// copy operators by cast and declares operator [] / []= over four slots (each a switch), + * and %,
+// Exercises: dense declarations meeting in threes. A struct with two struct members chains both
+// copy operators by assignment and declares operator [] / []= over four slots (each a switch), + * and %,
 // fills its slots from a nested list table chosen by #if through a block lambda that captures a
 // parameter and self, names slots from string arrays into a stringObj, switches on typeof of a var and
 // perform()s a verb, and applies operators to self inside an interpolation; a reference class with
@@ -11,7 +11,7 @@
 // result; a replace of a global routine calling replaced() with a block lambda, a string switch on a
 // stringObj, a caught subscript throw and perform(); and an object with an inline accessor writing its
 // host through outer, its own operator [], an array-of-arrays member, and recursive methods threading a
-// ref stringObj, a ref value-class cell with a primitive newtype test, and a var by typeof.
+// ref stringObj, a ref struct cell with a primitive newtype test, and a var by typeof.
 
 #beguilerSettings {
     target = z5;
@@ -38,12 +38,12 @@ primitive class Weight {
     emitter bool heavy { ($val >= 10) }
 }
 
-value class Cell {
+struct Cell {
     int x;
     Cell operator = (Cell o) { x = o.x; return self; }
 }
 
-value class Tagged {
+struct Tagged {
     int tag;
     Tagged operator = (Tagged o) { tag = o.tag; return self; }
 }
@@ -52,17 +52,19 @@ union Item = string | object;
 
 array<string> bandNames = { "none", "low", "mid", "high" };
 
-//-- Boards: a value class with two value parents and four subscripted slots ---------------
+//-- Boards: a struct with two struct members and four subscripted slots ---------------
 
-value class Board : Cell, Tagged {
+struct Board {
+    Cell cell;
+    Tagged tagged;
     int r0;
     int r1;
     int r2;
     int r3;
 
     Board operator = (Board o) {
-        (Cell)self = o;
-        (Tagged)self = o;
+        cell = o.cell;
+        tagged = o.tagged;
         r0 = o.r0;
         r1 = o.r1;
         r2 = o.r2;
@@ -90,9 +92,9 @@ value class Board : Cell, Tagged {
         return v;
     }
 
-    int operator + (int v) { return r0 + r1 + r2 + r3 + x + v; }
+    int operator + (int v) { return r0 + r1 + r2 + r3 + cell.x + v; }
     int operator * (int k) { return (r0 + r1 + r2 + r3) * k; }
-    int operator % (int m) { return (x * 10 + tag) % m; }
+    int operator % (int m) { return (cell.x * 10 + tagged.tag) % m; }
 
     int band(int v) {
         switch (v) {
@@ -112,7 +114,7 @@ value class Board : Cell, Tagged {
 #endif
         func<int, int> step = (int v) => {
             if (v > 4) return v * scale;
-            if (v == 1) return v + tag;
+            if (v == 1) return v + tagged.tag;
             return v;
         };
         for (int i = 0; i < rows.length; i++) {
@@ -120,7 +122,7 @@ value class Board : Cell, Tagged {
             for (int v in rows[i]) sum += step(v);
             self[i] = sum;
         }
-        x = rows.length;
+        cell.x = rows.length;
     }
 
     // Prints each slot with its band, then where the board came from.
@@ -365,13 +367,13 @@ verb BoardTest {
     grammar = {.board};
     void handler() {
         Board b;
-        b.tag = 3;
+        b.tagged.tag = 3;
         b.load(2);
         b.show("text");
         print($"^sum {b + 0}, double {b * 2}, mod {b % 7}^");
         Board c = b;
         c[3] = 1;
-        c.tag = 0;
+        c.tagged.tag = 0;
         c.show(brassKey);
         print($"^{b[3]} {c[3]} {c + 1}^");
         c.show(0);

@@ -10,7 +10,7 @@
   - [8.2.4 `alias class`](#824-alias-class)
   - [8.2.5 Primitive Classes (`primitive class`)](#825-primitive-classes-primitive-class)
   - [8.2.6 Pooled Classes](#826-pooled-classes)
-  - [8.2.7 Value Classes (`value class`)](#827-value-classes-value-class)
+  - [8.2.7 Structs (`struct`)](#827-structs-struct)
   - [8.2.8 `typesealed` Members](#828-typesealed-members)
   - [8.2.9 Making a Reference Type Behave Like a Value Type](#829-making-a-reference-type-behave-like-a-value-type)
 - [8.3 Members](#83-members)
@@ -119,7 +119,7 @@ void main(){ int s = scores.second(); print(s); }   // 9
 | Form | Syntax | Instances | Members permitted |
 |---|---|---|---|
 | Normal | `class Foo` | Objects with their own storage, shared by reference | Variables (with or without initializers), methods, emitters |
-| Value | `value class Foo` | Objects each variable owns, copied on assignment | As normal class; a copy operator to be assigned |
+| Value | `struct Foo` | Objects each variable owns, copied on assignment | As normal class; a copy operator to be assigned |
 | Extern | `extern class Foo` | Defined outside Beguile (I6) | Variable declarations, emitters, `static` methods |
 | Emitter | `emitter class Foo` | None (type label only) | Emitters (`emitter` implied), `static` methods, alias members |
 | Alias | `alias class Foo for Parent` | Same as `Parent` | Variable declarations (no initializer), emitters, `static` methods |
@@ -146,9 +146,8 @@ with statement bodies, and emitters. Instances are objects with their own storag
 A normal class is a **reference class** (§2.10.3): a global, member or local of the type declared with
 no value has an object of its own; one declared with a value, and every parameter, refers to the
 instance it is given; assignment makes a slot refer to the assigned instance, and a `ref` slot is empty
-until bound (§3.7). A reference class may declare a copy operator, which makes `=` copy (§8.2.9). To make
-the instances values throughout — owned by every variable and parameter and copied — declare the class
-`value` (§8.2.7).
+until bound (§3.7). A reference class may declare a copy operator, which makes `=` copy (§8.2.9). For a value type —
+owned by every variable and parameter and copied — declare a `struct` (§8.2.7).
 
 A class that other classes list as a parent can write `selfType` (§2.11) in its members to mean the
 class each one is used on: a parameter, return type or field that is the subclass on a subclass.
@@ -378,44 +377,45 @@ A file-scope instance of a pooled type (`Name m { }` at file scope, not obtained
 of the pool. Passing such an instance to `delete`, or otherwise mixing file-scope and pooled instances
 of one type, is not detected at compile time and the behavior is undefined.
 
-### 8.2.7 Value Classes (`value class`)
+### 8.2.7 Structs (`struct`)
 
 **Syntax**
 
 ```syntax
-value class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
+struct ⟨name⟩ { ⟨member⟩ … }
+extend struct ⟨name⟩ { ⟨member⟩ … }
 ```
 
 **Description**
 
-A `value class` declares a **value type** (§2.10.3): a global, local, member or parameter of the type
-owns an instance of its own, whose members are zeroed (a local's at routine entry), and assignment and
-passing copy into that instance through the class's **copy operator** — `operator =` taking the class.
-A value class with no copy operator can't be assigned or passed; that is a compile-time error.
+A `struct` declares a **value type** (§2.10.3), as in C#: a global, local, member or parameter of the type
+owns an instance of its own, whose members are zeroed (a local's at routine entry). Assignment copies into
+that instance, a parameter receives a copy of its argument, and a function returns a copy. A struct is never
+`null`.
 
-- `value` is inherited: a subclass of a value class is a value class. A class can't have both a value
-  base and a reference base.
-- A subclass that adds members but declares no copy operator runs its ancestor's, which copies the
-  ancestor's members only. To copy its own too, a subclass declares a copy operator and chains to the
-  ancestor's with a cast: `(Base)self = o;` calls `Base`'s `operator =`.
-- A `ref` variable, parameter or member of a value class refers to an instance owned elsewhere instead:
-  it is bound with `:=`, and `=` through it copies into the referent (§3.7).
+A struct has fields, methods, operators and accessors as a class does, and `extend struct` adds more; a
+class is extended with `extend class`, and a struct with `extend struct`.
+
+Copying goes through the struct's **copy operator**, `operator =` taking the struct. A struct that declares
+none gets one that copies each field, as an assignment of that field would: a number is copied, a struct
+field through its own copy operator, a `stringObj` field's text, while a class or array field is a
+reference and the copy refers to the same object. It covers fields that `extend struct` adds. A struct
+declares its own copy operator to copy differently.
+
+- A struct doesn't inherit: it has no bases, and a class can't derive from it.
+- A `ref` variable, parameter or member of a struct refers to an instance owned elsewhere instead: it is
+  bound with `:=`, and `=` through it copies into the referent (§3.7).
 - Each slot of an `array<⟨name⟩>` owns an instance too, and a store into a slot copies (§12.10).
-- `value` cannot be combined with `extern`, `emitter`, `alias` or `primitive`, and belongs on the
-  original declaration, not on `extend`.
+- A struct can't be `extern`, `emitter`, `alias` or `primitive`.
 - An instance is an Inform 6 object and its members are properties, so a member can't take the name of
   an additive property such as `name` unless it is declared the way that property is (a `rawArray<T>`).
 
 **Example**
 
 ```bgl
-value class Vec2 {
-    int x; int y;
-    Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; }
-}
-value class Vec3 : Vec2 {
-    int z;
-    Vec3 operator = (Vec3 o){ z = o.z; (Vec2)self = o; return self; }   // copies z, then x and y
+struct Vec2 { int x; int y; }      // copied field by field
+extend struct Vec2 {
+    int sum() { return x + y; }
 }
 
 Vec2 a;                     // owns an instance
@@ -424,6 +424,9 @@ void nudge(Vec2 v){ v.x++; }
 nudge(a);                   // the function gets a copy: a.x unchanged
 ref Vec2 p := a;            // p refers to a's instance
 ```
+
+> **C++ readers.** In C++, `struct` is a class whose members are public by default. In Beguile, as in C#,
+> it is a value type.
 
 ### 8.2.8 `typesealed` Members
 
@@ -463,7 +466,7 @@ class ⟨name⟩ [ : ⟨parent⟩ … ] { … ⟨name⟩ operator = ( ⟨name⟩
 
 **Description**
 
-A reference class (§8.2.1) that declares a copy operator (§9.1) copies on `=`, as a value class does: `=` is
+A reference class (§8.2.1) that declares a copy operator (§9.1) copies on `=`, as a struct does: `=` is
 the type's assignment everywhere (§3.7), and this type's assignment is its copy operator.
 
 - A plain global, member or local owns an instance of its own, whether or not it is given a value. Given one,
@@ -474,7 +477,7 @@ the type's assignment everywhere (§3.7), and this type's assignment is its copy
   operator, and `=` through it copies into the instance it refers to. A `ref` that is still empty has
   nothing to copy into.
 - Parameters and loop variables stay references, as for any reference class: passing doesn't copy. This is
-  the difference from a value class, whose parameters are copies.
+  the difference from a struct, whose parameters are copies.
 
 > **Compared with C++.** A plain slot is like a C++ object with an `operator=`; a `ref` is like a pointer
 > whose `*p = x` copies and whose `p = &x` re-points (`:=`).
@@ -598,12 +601,12 @@ class Counter {
 **Syntax**
 
 ```syntax
-⟨value-class⟩ ⟨name⟩ [ = ⟨value-class⟩{ … } ] ;
+⟨struct⟩ ⟨name⟩ [ = ⟨struct⟩{ … } ] ;
 ```
 
 **Description**
 
-A class-typed member declared without `ref` is an **owned member** when its type is a value class
+A class-typed member declared without `ref` is an **owned member** when its type is a struct
 (§8.2.7) with stored members, declared without an initializer or with an inline-object initializer
 (§11.3), or when its type is a reference class and it is declared without an initializer. An owned
 member is a live instance of its own — every instance of the enclosing class has an independent
@@ -623,7 +626,7 @@ backing, reset to the starting value on `new` (§8.2.6). Owned members are not p
 **Example**
 
 ```bgl
-value class Box { int _val = 0; void set(int v){ _val = v; } }
+struct Box { int _val = 0; void set(int v){ _val = v; } }
 class thing : object { Box b; }         // b is owned: each thing has its own Box
 thing t1 {}
 thing t2 {}                              // t1.b and t2.b are distinct instances
@@ -786,7 +789,7 @@ to acquire and release it.
   A reference class has no `init` or `deinit` to fire: a local of one declared with no value has an
   object of its own, reset at routine entry, and one given a value refers to an instance it doesn't
   own, as a parameter does; a pooled instance is created and released with `new` and `delete` (§8.2.6).
-- **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
+- **Parameter.** A parameter that owns its instance (a struct, §8.2.7, or an emitter class with
   both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the
   routine's end and before every `return`. For an emitter class, `init` is what gives the parameter
@@ -893,7 +896,7 @@ extension can give them new storage. `extend class` on an `extern` class adds on
 `static` members; a variable declaration there is a compile-time error. `extend extern class`
 accepts what an `extern class` declaration does (§8.2.2): it gives the types of properties Inform 6
 already provides, as well as emitters and `static` members. `extend class` may not change a type parameter (§8.1.1), a pool size
-(§8.2.6) or the class's form (`value`, `primitive`, `superposed`). An `inline` member or
+(§8.2.6) or the class's form (`primitive`, `superposed`). A struct is extended with `extend struct`. An `inline` member or
 `inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
 member; a `replace` that names no existing member is a warning, and the member is added.
 
@@ -1017,7 +1020,7 @@ that does not hide it reaches it, whether by upcast or by passing the value to a
 **Example**
 
 ```bgl
-value class dim {                     // a getter and a setter (§9.9.1)
+struct dim {                     // a getter and a setter (§9.9.1)
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v; }

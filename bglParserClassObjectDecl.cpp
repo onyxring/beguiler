@@ -164,7 +164,7 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
         if(inner.is(token::bracketClose)){
             // `[]` empty marker form
             if(!isExternal)
-                parsingError(format("class '{0}': empty pool brackets '[]' are only valid on `extern class` (marker for an I6-defined pooled type)", (string)nameTok));
+                parsingError(format(kindWord(&newClass) + " '{0}': empty pool brackets '[]' are only valid on `extern class` (marker for an I6-defined pooled type)", (string)nameTok));
             if(isExtend)
                 parsingError(format("extend class '{0}': pool brackets cannot be added by extend — pool status is part of the original declaration", (string)nameTok));
             newClass.poolSize = -1; // extern marker
@@ -186,13 +186,13 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
             if(inner.is(eTokenType::integer)){
                 int n = stoi(inner.value);
                 if(n <= 0)
-                    parsingError(format("class '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
+                    parsingError(format(kindWord(&newClass) + " '{0}': pool size must be a positive integer (got {1})", (string)nameTok, n));
                 newClass.poolSize = n;
             } else if(auto d = definedSymbols.find(inner.value); d != definedSymbols.end()){
                 // A #define is its value here: Inform 6 never sees the symbol.
                 string v = d->second;
                 if(v.empty() || v.find_first_not_of("0123456789") != string::npos || stoi(v) <= 0)
-                    parsingError(format("class '{0}': pool size '{1}' must be a positive integer", (string)nameTok, inner.value));
+                    parsingError(format(kindWord(&newClass) + " '{0}': pool size '{1}' must be a positive integer", (string)nameTok, inner.value));
                 newClass.poolSize = stoi(v);
                 newClass.poolSizeExpr.clear();
             } else {
@@ -201,7 +201,7 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
             }
             file.getToken(token::bracketClose);
         } else {
-            parsingError(format("class '{0}': expected integer, identifier, or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
+            parsingError(format(kindWord(&newClass) + " '{0}': expected integer, identifier, or ']' after '[' in pool clause, got '{1}'", (string)nameTok, (string)inner));
         }
         tok = file.getToken();
     }
@@ -225,7 +225,7 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
         };
         set<classDef*> visited;
         if(reachesSelf(parent, visited))
-            parsingError(format("class '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
+            parsingError(format(kindWord(&newClass) + " '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
                                 newClass.dName(), parentDisplay));
     };
     // The pre-scan may already have linked these bases (drainDeferredClassBases); add each once.
@@ -250,7 +250,7 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
             else { checkInheritanceCycle(parent, parentTok.originalValue); addBase(parent); }
             if(parent && parent->isPrimitive && !newClass.isPrimitive && !newClass.isValue && !newClass.isEmitterClass
                && !newClass.isAlias && !newClass.isExternal)
-                parsingError(format("class '{0}' can't derive from '{1}': a class's variable holds a reference to an "
+                parsingError(format(kindWord(&newClass) + " '{0}' can't derive from '{1}': a class's variable holds a reference to an "
                                     "object, and '{1}' is a primitive value. For a new kind of '{1}', write "
                                     "`primitive class {0} : {1}`.", newClass.dName(), parent->dName()));
             tok = file.getToken();
@@ -375,7 +375,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         for(typeMember* m : newClass.members)
             if(auto* fd = dynamic_cast<functionDef*>(m))
                 if(fd->name == "auto" && !fd->isPrePassStub)
-                    parsingError(format("class '{0}' already has an operator auto()", newClass.dName()));
+                    parsingError(format(kindWord(&newClass) + " '{0}' already has an operator auto()", newClass.dName()));
         // Must be followed by ; (no body)
         token afterAuto = file.getToken();
         if(!afterAuto.is(token::endStatement))
@@ -577,7 +577,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                 if(auto* g = languageService.findGlobalAs<variableDeclaration>(funcDef.name); g && g->type.name == "property")
                     found = true;   // a library property the class gives its own routine
                 if(!found)
-                    parsingWarning(format("class '{0}': 'replace' specified but no base class has a member '{1}'; "
+                    parsingWarning(format(kindWord(&newClass) + " '{0}': 'replace' specified but no base class has a member '{1}'; "
                                           "treating as new definition", newClass.dName(), funcDef.dName()));
             }
             // Check base class hierarchy for shadowed methods — warn if 'replace' not specified.
@@ -603,7 +603,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                 };
                 for(classDef* base : newClass.baseClasses) searchBases(base);
                 if(!shadowedFrom.empty() && !shadowedIsDefault)
-                    parsingWarning(format("class '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
+                    parsingWarning(format(kindWord(&newClass) + " '{0}': method '{1}' shadows definition in base class '{2}'; use 'replace' to suppress this warning",
                         newClass.dName(),
                         funcDef.name == "operator()" ? string("operator ()")
                             : !funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_'
@@ -649,7 +649,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
                             replacedExisting = true;
                             break;
                         }
-                        parsingError(format("class '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
+                        parsingError(format(kindWord(&newClass) + " '{0}': method '{1}' with the same signature is already defined (originally at {2}:{3}); use 'replace' to override",
                             newClass.dName(), funcDef.dName(), fd->src.file, fd->src.line));
                     }
                 }
@@ -850,9 +850,9 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     // An I6 class can't place its instances, so a class-level value would be emitted as a plain
     // property that places nothing.
     if(name.value == "parent" && tok.is(token::assignment))
-        parsingError(format("class '{0}': a class can't set 'parent'; set it on each object", newClass.dName()));
+        parsingError(format(kindWord(&newClass) + " '{0}': a class can't set 'parent'; set it on each object", newClass.dName()));
     if(name.value == "instancename" && tok.is(token::assignment))
-        parsingError(format("class '{0}': a class can't set 'instanceName'; set it on each object", newClass.dName()));
+        parsingError(format(kindWord(&newClass) + " '{0}': a class can't set 'instanceName'; set it on each object", newClass.dName()));
     // Note: alias-class members may carry a default value (e.g. `int priority = 10;` on
     // `class verb`). The value is a compile-time default consulted by the emitter when
     // lifting the field from an instance body; it is not emitted as an I6 property.
@@ -873,7 +873,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     // A value class owns its members: one of its own type would own another, without end.
     if(!q.isRef && !isMemberStatic && varDef.type.name == newClass.name && !newClass.isExternal
        && (isValueClass(&newClass) || (plainSlotOwnsReferenceInstance(&newClass) && !tok.is(token::assignment))))
-        parsingError(format("class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
+        parsingError(format(kindWord(&newClass) + " '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
                             newClass.dName(), varDef.dName()));
     if(newClass.isExternal && !q.isRef && !isMemberStatic && !isWordArrayType(varDef.type.name))
         rejectPlainExternMember(varDef.type.name, varDef.dName());
@@ -1027,7 +1027,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
                         newClass.members[i] = (typeMember*)member;
                         replacedStub = true;
                     } else {
-                        parsingError(format("class '{0}': member '{1}' is already defined", newClass.dName(), varDef.dName()));
+                        parsingError(format(kindWord(&newClass) + " '{0}': member '{1}' is already defined", newClass.dName(), varDef.dName()));
                     }
                     break;
                 }
@@ -1106,10 +1106,10 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     if(q.isInline && (tok.is(eTokenType::identifier) || tok.is(eTokenType::dataType)) && file.peekToken().is(token::endStatement)){
         string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
         if(!newClass.findMember([&](typeMember* m){ return dynamic_cast<variableDeclaration*>(m) && m->name == tok.value; }))
-            parsingError(format("class '{0}': 'inline {1};' makes an existing member positional, but '{0}' has no member '{1}'",
+            parsingError(format(kindWord(&newClass) + " '{0}': 'inline {1};' makes an existing member positional, but '{0}' has no member '{1}'",
                                 newClass.dName(), shown));
         if(!notePositional(newClass, tok.value))
-            parsingError(format("class '{0}': '{1}' is already positional in '{0}'", newClass.dName(), shown));
+            parsingError(format(kindWord(&newClass) + " '{0}': '{1}' is already positional in '{0}'", newClass.dName(), shown));
         addInlineOrder(newClass, tok.value);
         file.getToken(token::endStatement);
         tok = file.getToken();
@@ -1157,7 +1157,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
                 string suggested = value.isString() ? "string" : value.is(eTokenType::floatLiteral) ? "float"
                                  : value.is(eTokenType::charLiteral) ? "char"
                                  : (value.is("true") || value.is("false")) ? "bool" : "int";
-                parsingError(format("class '{0}': '{1}' is set here but isn't a member of '{0}'{2}. {3}To declare "
+                parsingError(format(kindWord(&newClass) + " '{0}': '{1}' is set here but isn't a member of '{0}'{2}. {3}To declare "
                     "a new member, give it a type: `{4} {1} = …;`.", newClass.dName(), shown,
                     rootOnly ? "" : " or its bases",
                     rootOnly ? format("A class has no base unless it names one: `class {0} : object {{ … }}` "
@@ -1219,7 +1219,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
             });
             if(it != newClass.members.end()){
                 if(!q.isReplace)
-                    parsingError(format("class '{0}': emitter value '{1}' is already defined; use 'replace' to override",
+                    parsingError(format(kindWord(&newClass) + " '{0}': emitter value '{1}' is already defined; use 'replace' to override",
                                         newClass.dName(), funcDef.dName()));
                 *it = &funcDef;
             } else
@@ -1233,7 +1233,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     tok=file.getToken();
 }
 
-bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool allowNested, bool isSuperposed, bool isValue, bool isPrimitive){
+bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExtend, bool isEmitterClass, bool isAlias, token nameOverride, bool allowNested, bool isSuperposed, bool isValue, bool isPrimitive, bool isStruct){
     // `allowNested` = synthesizing an inline accessor's anonymous class from inside an object body
     // (`auto name = { … }`); the class is still registered globally, it's just parsed nested. All
     // other class declarations must be at global scope.
@@ -1249,6 +1249,12 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         if(classPtr->isPrePassStub)
             parsingError(format("extend class '{0}': '{0}' is declared later; a class must be declared before it is extended",
                                 nameTok.originalValue.empty() ? (string)nameTok : nameTok.originalValue));
+        // A struct is extended as a struct, and a class as a class.
+        string shown = nameTok.originalValue.empty() ? (string)nameTok : nameTok.originalValue;
+        if(isStruct && !classPtr->isValue)
+            parsingError(format("'{0}' is a class, not a struct; extend it with `extend class {0}`.", shown));
+        if(!isStruct && classPtr->isValue && !classPtr->isEmitterClass)
+            parsingError(format("'{0}' is a struct; extend it with `extend struct {0}`.", shown));
     } else {
         //create an empty class definition object and register it immediately, so that we can refer to this type within its own definition (e.g. comparison operators)
         classPtr = &languageService.registerClass((string)nameTok, isExternal, nameTok.originalValue);
@@ -1266,12 +1272,12 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         if(isValue)        newClass.isValue = true;
         if(isPrimitive)    newClass.isPrimitive = true;
     }
-    if((isValue || isPrimitive) && isExtend)
-        parsingError(format("'extend class {0}': '{1}' belongs on the original class declaration.", (string)nameTok, isValue ? "value" : "primitive"));
+    if(isPrimitive && isExtend)
+        parsingError(format("'extend class {0}': 'primitive' belongs on the original class declaration.", (string)nameTok));
     if(isValue && isPrimitive)
-        parsingError(format("class '{0}': 'value' and 'primitive' are exclusive — a primitive holds its value directly.", (string)nameTok));
+        parsingError(format("'{0}': a struct can't be primitive; a primitive holds its value directly.", (string)nameTok));
     if(isValue && (isExternal || isEmitterClass || isAlias))
-        parsingError(format("'value class {0}': a value class has instances of its own; it can't be extern, emitter or alias.", (string)nameTok));
+        parsingError(format("'struct {0}': a struct has instances of its own; it can't be extern, emitter or alias.", (string)nameTok));
     // `superposed` only makes sense for a class that emits a revivable `Class` directive.
     if(isSuperposed){
         if(isExtend)       parsingError(format("'extend class {0}': 'superposed' belongs on the original class declaration, not on extend.", (string)nameTok));
@@ -1289,25 +1295,20 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     // An extension adds members; the parent list belongs on the class's own declaration.
     if(isExtend && tok.is(":"))
         parsingError(format("'extend class {0}' can't add parents; list them on the class's own declaration.", newClass.dName()));
+    if(isStruct && !isExtend && tok.is(":"))
+        parsingError(format("struct '{0}' can't have bases: a struct doesn't inherit.", newClass.dName()));
     parseClassInheritance(newClass, tok, nameTok, isAlias);
     // Type parameters belong to `array` and `rawArray` alone (§8.1.1): array storage is keyed on those names.
     if(!newClass.typeParameters.empty() && !isExtend && newClass.name != "array" && newClass.name != "rawarray")
-        parsingError(format("class '{0}': Beguile has no generic classes; a type parameter belongs to "
+        parsingError(format(kindWord(&newClass) + " '{0}': Beguile has no generic classes; a type parameter belongs to "
             "`array<T>` and `rawArray<T>` only. Declare the member types directly; to give arrays "
             "a method that uses T, write it in `extend extern class array {{ … }}`.",
             newClass.dName()));
-    // `value` is inherited, and a class can't be both kinds: a value base and a reference base (one with
-    // instances that isn't a value class) don't mix.
-    if(!isExtend && !newClass.isEmitterClass && !newClass.isAlias){
-        bool anyValue = false, anyReference = false;
-        for(classDef* base : newClass.baseClasses){
-            if(isValueClass(base)) anyValue = true;
-            else if(!base->isEmitterClass && !base->isAlias) anyReference = true;
-        }
-        if(anyValue && anyReference)
-            parsingError(format("class '{0}': a value class and a reference class can't both be its bases.", newClass.dName()));
-        if(anyValue) newClass.isValue = true;
-    }
+    // A struct has no subclasses.
+    if(!isExtend && !newClass.isEmitterClass && !newClass.isAlias)
+        for(classDef* base : newClass.baseClasses)
+            if(isValueClass(base))
+                parsingError(format("class '{0}' can't derive from struct '{1}': a struct has no subclasses.", newClass.dName(), base->dName()));
     // Marker-form extern pool class (`extern class Foo[];`) allows no body — it's purely a
     // declaration that the type exists and is pooled in I6. Skip body parsing and return.
     if(isExternal && newClass.poolSize == -1 && tok.is(token::endStatement)){
@@ -1319,6 +1320,31 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     prebuildInlineAccessors(newClass);   // so a method above an accessor knows its type
     tok=file.getToken();
     while(tok.isNot(token::braceClose)) parseClassMember(newClass, tok, isExternal, isExtend);
+    // A struct that declares no copy operator gets one that copies each field. Its body is written once the
+    // parse is done, when `extend struct` has added every field; until then this one stands in for it.
+    bool declaresCopy = false;
+    for(typeMember* m : newClass.members)
+        if(auto* f = dynamic_cast<functionDef*>(m); f && f->name == "=" && !f->isPrePassStub && f->params.size() == 1
+           && (getDispatchClass(f->params[0]->type.name) == &newClass
+               || getDispatchClass(typeAliasTarget(f->params[0]->type.name)) == &newClass)) declaresCopy = true;
+    // The pre-scan's stand-in for an automatic copy operator goes once the struct turns out to declare its own.
+    if(isStruct && !isExtend && declaresCopy)
+        newClass.members.erase(remove_if(newClass.members.begin(), newClass.members.end(), [&](typeMember* m){
+            auto* f = dynamic_cast<functionDef*>(m);
+            return f && f->isPrePassStub && f->name == "=" && f->params.size() == 1 && f->params[0]->type.name == newClass.name; }),
+            newClass.members.end());
+    if(isStruct && !isExtend && !declaresCopy){
+        token close = tok;
+        string nm = newClass.dName();
+        file.openText(nm + " operator = (" + nm + " o) { return self; } }", nameTok.src.file, nameTok.src.line);
+        try {
+            tok = file.getToken();
+            while(tok.isNot(token::braceClose)) parseClassMember(newClass, tok, isExternal, isExtend);
+        } catch(...) { file.close(); throw; }
+        file.close();
+        tok = close;
+        autoCopyStructs.push_back(&newClass);
+    }
     //if...
     //file.getToken("emitter");
     //token retval=file.getToken(eTokenType::dataType);
@@ -1334,28 +1360,28 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             if(!fd) continue;
             if(fd->name == "create"){
                 if(createFn != nullptr)
-                    parsingError(format("class '{0}': only one 'create' method is allowed on a pooled class (I6's create veneer dispatches to a single property)", newClass.dName()));
+                    parsingError(format(kindWord(&newClass) + " '{0}': only one 'create' method is allowed on a pooled class (I6's create veneer dispatches to a single property)", newClass.dName()));
                 createFn = fd;
             } else if(fd->name == "destroy"){
                 if(destroyFn != nullptr)
-                    parsingError(format("class '{0}': only one 'destroy' method is allowed on a pooled class", newClass.dName()));
+                    parsingError(format(kindWord(&newClass) + " '{0}': only one 'destroy' method is allowed on a pooled class", newClass.dName()));
                 destroyFn = fd;
             }
         }
         if(createFn != nullptr){
             if(createFn->returnType.name != "void")
-                parsingError(format("class '{0}': 'create' must have void return type — I6 ignores the return value", newClass.dName()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'create' must have void return type — I6 ignores the return value", newClass.dName()));
             // Z-machine only. Z's CA__Pr hands Cl__Ms a fixed `(obj, id, y, a, b, c, d)` and its
             // create arm enumerates the cases up to three, erroring past that; Glulx's CA__Pr and
             // Cl__Ms both forward `_vararg_count` through to `create`, so there is no cap there.
             if(targetIsZcode() && createFn->params.size() > 3)
-                parsingError(format("class '{0}': 'create' is limited to 3 parameters on the Z-machine (I6's class-message veneer enumerates its arguments; Glulx passes them through, so this limit is Z-only). Got {1}.", newClass.dName(), createFn->params.size()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'create' is limited to 3 parameters on the Z-machine (I6's class-message veneer enumerates its arguments; Glulx passes them through, so this limit is Z-only). Got {1}.", newClass.dName(), createFn->params.size()));
         }
         if(destroyFn != nullptr){
             if(destroyFn->returnType.name != "void")
-                parsingError(format("class '{0}': 'destroy' must have void return type — I6 ignores the return value", newClass.dName()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'destroy' must have void return type — I6 ignores the return value", newClass.dName()));
             if(!destroyFn->params.empty())
-                parsingError(format("class '{0}': 'destroy' must take no parameters", newClass.dName()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'destroy' must take no parameters", newClass.dName()));
         }
     }
 
@@ -4526,9 +4552,33 @@ void bglParser::rejectMethodBesideField(classDef& cls, const string& name, const
                        return vd && (sameClass || !vd->isStatic) && !vd->isAlias && !vd->isValueAlias && !vd->isExternal; }()
                 : [&]{ auto* fd = dynamic_cast<functionDef*>(m); return fd && !fd->isEmitter && (sameClass || !fd->isStatic); }();
             if(clash)
-                parsingError(format("class '{0}': {1} '{2}' has the name of {3} '{4}'{5}; a class's member and "
+                parsingError(format(kindWord(&cls) + " '{0}': {1} '{2}' has the name of {3} '{4}'{5}; a class's member and "
                                     "method can't share a name, so rename one.", cls.dName(), addingMethod ? "method" : "member", shown,
                                     addingMethod ? "member" : "method", m->dName(),
                                     c == &cls ? string() : " of class '" + c->dName() + "'"));
         }
+}
+
+bool isHeaderMember(const string& name);
+
+// Each struct without a copy operator of its own gets one that copies every field: `=` for a field (which
+// copies a struct, re-points a class, shares an array), `:=` for a `ref` field.
+void bglParser::writeAutoCopyOperators(){
+    string text;
+    for(classDef* cls : autoCopyStructs){
+        string nm = cls->dName(), body;
+        for(typeMember* m : cls->members){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            if(vd == nullptr || vd->isStatic || vd->isConst || vd->isAlias || vd->isValueAlias || vd->isExternal
+               || vd->isPrePassStub || isHeaderMember(vd->name) || vd->type.name.rfind("_bglaccessor", 0) == 0) continue;
+            string f = vd->dName();
+            body += f + (vd->isRefLocal ? " := o." : " = o.") + f + "; ";
+        }
+        text += "extend struct " + nm + " { replace " + nm + " operator = (" + nm + " o) { " + body + "return self; } }\n";
+    }
+    autoCopyStructs.clear();
+    if(text.empty()) return;
+    file.openText(text, "<struct copy operators>", 1);
+    try { while(processNextStatement() == false){} } catch(...) { file.close(); throw; }
+    file.close();
 }

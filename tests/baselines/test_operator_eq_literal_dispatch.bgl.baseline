@@ -60,9 +60,13 @@ object bgl
 class _bglClass_clamped
   with
     _raw 0,
-    _opeq[v _bgl_tempL0;
+    _opeq_int[v _bgl_tempL0;
         if (v > 100) { _bgl_tempL0 = 100; } else { _bgl_tempL0 = v; }
         self._raw = (_bgl_tempL0);
+    ],
+    _opeq_clamped[o;
+        self._raw=o._raw;
+        return self;
     ]
 ;
 class _bglClass_widget
@@ -75,7 +79,7 @@ _bglClass_widget w
   with value _w_value
 ;
 [main v;
-    w.value._opeq(250);
+    w.value._opeq_int(250);
     v = 999;
-    w.value._opeq(v);
+    w.value._opeq_int(v);
 ];

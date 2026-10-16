@@ -9,8 +9,8 @@
 // machines (a number, a price, turns left, the owner of the load in it, methods that work out the
 // state and the cost, a before() for Examine and Open, an after() for Close), a subclass for washers
 // and one for dryers that replace the price and the run time (one still calls the class's through a
-// cast), a value class for a ticket (owner, machine number, cost) with a copy operator, kept in an
-// array of the value class, the bags kept as a queue (enqueue / dequeue / peek / peekEnd), a list of
+// cast), a struct for a ticket (owner, machine number, cost) with a copy operator, kept in an
+// array of the struct, the bags kept as a queue (enqueue / dequeue / peek / peekEnd), a list of
 // names done sorted with a comparator, an array of ints for the coins paid sorted with orderBy, a
 // wall clock with a daemon that runs the machines down, a change machine with a timer, helper
 // functions (one with a default argument, one called with a named argument, one with a ternary, one
@@ -61,7 +61,7 @@ enum MachineState { empty, running, finished }
 // ===== TICKETS =====
 
 // a ticket for one load put in a machine
-value class Ticket {
+struct Ticket {
     string owner;
     int machineNumber;
     int cost;

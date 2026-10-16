@@ -26,7 +26,7 @@ comes in an emitter form (§7) and a regular-method form. This chapter assumes �
 emitter and non-emitter forms, subscript, conversion, the special operators `?`, `switch`, `?=`, `<=>`
 and `!`, `static` operators, the fallbacks for compound assignment and increment, and the operators
 that must be emitters. §9.9 specifies property accessors, which are built from a conversion operator
-and an assignment operator declared on a value class.
+and an assignment operator declared on a struct.
 
 ## 9.1 Overloadable Operators
 
@@ -77,10 +77,10 @@ class*, so it applies only when `v` is one: the shared root doesn't make unrelat
 An `operator =` taking another type is a conversion (a setter's `operator = (int)`). One taking `var`
 would never be chosen, and declaring it is a compile-time error.
 
-An `operator =` taking the class itself (or an ancestor) is a **copy operator**. A value class (§8.2.7)
-never falls back to the root assignment: without a copy operator of its own or from a value ancestor, it
-can't be assigned. A reference class may declare one too, and then copies on `=` instead of re-pointing
-(§8.2.9). A subclass chains to its ancestor's copy operator with a cast, `(Base)self = o;`.
+An `operator =` taking the class itself (or an ancestor) is a **copy operator**. A struct (§8.2.7)
+that declares none gets one that copies each field. A reference class may declare one too, and then copies
+on `=` instead of re-pointing (§8.2.9). A subclass chains to its ancestor's copy operator with a cast,
+`(Base)self = o;`.
 
 **See also** §4.4 — binary operator resolution; Appendix C — the same table as a quick reference.
 
@@ -332,7 +332,7 @@ them as a regular method is a compile-time error:
 
 A **property accessor** is a member that reads and writes like a plain member but runs code on each
 access. It is built from a regular-method `operator ()` (the getter, §9.4) and an `operator =` (the
-setter) declared on a value class (§8.2.7), and that class is then used as an owned member
+setter) declared on a struct (§8.2.7), and that class is then used as an owned member
 (§8.3.4) of the host class or object. A read of the member dispatches the getter; a write dispatches
 the setter, never the getter.
 
@@ -351,7 +351,7 @@ through `outer` (§9.9.3).
 **Syntax**
 
 ```syntax
-value class ⟨accessor⟩ {
+struct ⟨accessor⟩ {
     [ ⟨type⟩ ⟨name⟩ [ = ⟨value⟩ ] ; … ]
     ⟨type⟩ operator ( ) { ⟨statement⟩ … }
     ⟨type⟩ operator = ( ⟨type⟩ ⟨value⟩ ) { ⟨statement⟩ … }
@@ -369,17 +369,17 @@ second form declares the accessor as an owned member of a host class or object.
   member reads as.
 - The setter is an `operator =` taking one parameter. It runs on every assignment to the member; the
   assigned value is its argument.
-- The accessor class must be a value class (§8.2.7) with at least one stored member, and the member
+- The accessor class must be a struct (§8.2.7) with at least one stored member, and the member
   must be declared without an initializer or `ref`, so that it is owned (§8.3.4); otherwise the member
   refers to an instance owned elsewhere and no accessor dispatch occurs. An in-place accessor (§9.9.2)
-  is a value class implicitly.
+  is a struct implicitly.
 - Inside either operator, `self` is the accessor instance and its backing members. A named accessor
   class has no access to its host; `outer` (§9.9.3) is available only to an inline accessor.
 
 **Example**
 
 ```bgl
-value class heightProxy {
+struct heightProxy {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v * 2; }

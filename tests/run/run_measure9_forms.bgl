@@ -4,7 +4,7 @@
 // EXPECT_OUTPUT: 10 1 0 box empty box none
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Fine {
+struct Fine {
     int _p = 0;
     int  operator ()         { return _p; }
     void operator = (int v)  { _p = v; }

@@ -6,7 +6,7 @@
 // static `array<int>` and a static counter, whose `operator <=>`/`==`/`!=` drive `sort()`/`indexOf()`
 // on a static `array<Gauge>`, whose `operator +` reads the accessor and whose method answers a static
 // string through `??`; an `extend class` adding a static `array<string>`; a primitive newtype whose
-// static `array<string>` is read by a static method with a local `array<string>`; a value class whose
+// static `array<string>` is read by a static method with a local `array<string>`; a struct whose
 // copy operator appends to its own static array; and a class written straight after `#using` whose
 // static arrays are typed through the imported aliases. Also: an emitter class with init/deinit and a
 // static method filling a `<buf>` buffer from a local `array<string>`; a pooled class over a
@@ -104,9 +104,9 @@ primitive class Grade
     }
 }
 
-//-- A value class that records its copies -----------------------------------------------------------
+//-- A struct that records its copies -----------------------------------------------------------
 
-value class Span
+struct Span
 {
     int lo ; int hi ;
     static array<int> widths[8] ;

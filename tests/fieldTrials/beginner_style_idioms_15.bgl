@@ -5,11 +5,11 @@
 // onto a few big declarations. A primitive class over int with emitter members; an emitter class
 // with init/deinit that counts how many are out through an I6 global; a pooled class with create and
 // destroy; an object with an emitter member, an inline accessor that reads its host through outer (a
-// stringObj made from a string array, a value-class member read with ?.), a method with block lambdas,
-// var/typeof and perform; a value class with == != <=> operators, a member array<char> worked with
+// stringObj made from a string array, a struct member read with ?.), a method with block lambdas,
+// var/typeof and perform; a struct with == != <=> operators, a member array<char> worked with
 // bgl.util.buf, an #i6 island with $i6Expr, new/delete of the pooled class, ?. and var; a class with
-// an inline accessor in its body, == != <=>, a value-class member, a buffer filled by capture, an #i6
-// island, new/delete, ?., var and perform; a value class with + - * operators, a primitive member, an
+// an inline accessor in its body, == != <=>, a struct member, a buffer filled by capture, an #i6
+// island, new/delete, ?., var and perform; a struct with + - * operators, a primitive member, an
 // array<char> parameter filled by capture, an emitter-class local, .parent walks, ?. and perform;
 // verbs whose handlers mix all of the above.
 
@@ -71,7 +71,7 @@ class Crate : object {
 }
 
 // ===== SPOT (a row and column; two spots are the same if the row and column are) =====
-value class Spot {
+struct Spot {
     int row;
     int col;
     ref object owner;
@@ -159,7 +159,7 @@ value class Spot {
 }
 
 // ===== PARCEL (a weight and a count, held by something) =====
-value class Parcel {
+struct Parcel {
     grams heft;
     int count;
     ref object holder;
@@ -471,7 +471,7 @@ verb LabelsVerb {
     }
 }
 
-// SPOTS - the spot value class
+// SPOTS - the spot struct
 verb SpotsVerb {
     meta = true;
     grammar = {.spots};
@@ -510,7 +510,7 @@ verb SpotsVerb {
     }
 }
 
-// PARCELS - the parcel value class
+// PARCELS - the parcel struct
 verb ParcelsVerb {
     meta = true;
     grammar = {.parcels};

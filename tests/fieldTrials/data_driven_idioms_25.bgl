@@ -2,9 +2,9 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a league table kept in tables. An enum of teams indexing parallel name and word tables;
-// an enum of outcomes indexing points and letter tables; a fixture list as an array of a value class
+// an enum of outcomes indexing points and letter tables; a fixture list as an array of a struct
 // written as bare { … } (int, enum, enum, int, int, bool), results written into its slots through
-// [i].member; standing rows as a local array of a value class appended as Row{ … } and sorted by
+// [i].member; standing rows as a local array of a struct appended as Row{ … } and sorted by
 // sort() through the class's instance operator <=>, which walks a table of tie-breakers held as an
 // array<func<int, Row, Row>> beside a name table, reordered at run time with swap(); a bnum of marks
 // (leader, unbeaten, winless, bottom) built with |= and listed by bit position; a general parsing
@@ -50,7 +50,7 @@ array<string> outcomeLetters = { "W", "D", "L" };
 
 array<string> markNames = { "leader", "unbeaten", "winless", "bottom" };
 
-value class Fixture {
+struct Fixture {
     inline int round;
     inline eTeam home;
     inline eTeam away;
@@ -72,7 +72,7 @@ array<Fixture> fixtures = {
     { 3, blues,  golds,  0, 0, false },
 };
 
-value class Row {
+struct Row {
     inline eTeam team;
     inline int played;
     inline int won;

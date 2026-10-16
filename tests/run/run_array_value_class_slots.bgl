@@ -1,4 +1,4 @@
-/*  run_array_value_class_slots — each slot of an array of a value class owns an instance.
+/*  run_array_value_class_slots — each slot of an array of a struct owns an instance.
 
     Storing into a slot (append, `[i] =`, push, a list initializer, `copyFrom`) copies into the
     slot's own instance through the class's copy operator, so later changes to the source don't reach
@@ -7,7 +7,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 
-value class Pt {
+struct Pt {
     int x;
     int y = 9;
     Pt operator = (Pt o){ x = o.x; y = o.y; return self; }

@@ -6,7 +6,7 @@
 // overrides them, calling the base `bake` through a cast; an enum stage reached both bare and through a
 // namespace object (`alias … for`); a kiln (container, openable, switchable) with an inline `auto { … }`
 // heat accessor whose setter clamps against `outer.maxHeat`, `before`/`after` rules and a daemon that
-// bakes the tiles inside and logs the heat; a value class tallied through a `ref` parameter; a routine
+// bakes the tiles inside and logs the heat; a struct tallied through a `ref` parameter; a routine
 // with default parameters called positionally and with named arguments; a `stringObj` label built from
 // char literals and `+=`, a three-digit pad built with `do … while`; an `array<Tile>` sorted with a
 // comparator lambda, an `array<int>` log kept with `append()`/`dequeue()` and read with <linq>
@@ -177,7 +177,7 @@ label
 
 /* ---- tallies --------------------------------------------------------------------------------- */
 
-value class Batch
+struct Batch
 {
     int total ;
     int fired ;

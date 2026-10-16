@@ -92,7 +92,7 @@ void ToggleAlarm() { Thermostat.Alarm = !Thermostat.Alarm; }
 
 //-- A named accessor: a reading clamped to a range --------------------------------------------------------
 
-value class Reading {
+struct Reading {
     int _v;
     int _lo;
     int _hi = 40;
@@ -142,7 +142,7 @@ value class Reading {
 
 //-- A named string accessor -------------------------------------------------------------------------------
 
-value class Caption {
+struct Caption {
     stringObj _text;
     int _edits;
 
@@ -168,7 +168,7 @@ value class Caption {
 
 //-- A named accessor holding a reference ------------------------------------------------------------------
 
-value class ZoneLink {
+struct ZoneLink {
     ref Zone _z;
     int _hops;
 

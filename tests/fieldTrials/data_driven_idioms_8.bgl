@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a price table as a file-scope array<Money> of inline value-class instances, where Money
+// Exercises: a price table as a file-scope array<Money> of inline struct instances, where Money
 // publishes an instance == and !=, a static <=> and a static ==(Money, int), so sort(), indexOf(),
 // contains() and -= use them, < and >= are derived from <=>, and the static operators are passed as
 // Money::operator <=> and Money::operator ==(int) to sort and to func<> locals; Money's arithmetic
@@ -14,10 +14,10 @@
 // (clamping, counting writes per instance and in a static) driven by =, +=, -=, *=, ++ and -- and read in comparisons
 // and as an argument, an owned Money member with an inline-object starting value reset by new, a const
 // member re-given by a pooled subclass that hides the accessor's operator = and is written again
-// through a cast, and drained lots collected in a local array and deleted; a value class whose owned
+// through a cast, and drained lots collected in a local array and deleted; a struct whose owned
 // Money member is copied with the line into array<Line> slots, summed through a ref parameter beside a
 // by-value parameter that does not reach the caller, and sorted by <=> on two method results; distinct
-// postfix ++ and prefix++ operators on a value class; a replace chain with replaced(); and address-of
+// postfix ++ and prefix++ operators on a struct; a replace chain with replaced(); and address-of
 // on an array.
 
 #beguilerSettings {
@@ -37,7 +37,7 @@ const int LINE_MAX = 6;
 
 //-- Money ---------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int cents;
     Money operator = (Money o) { cents = o.cents; return self; }
     Money operator = (int c) { cents = c; return self; }
@@ -81,7 +81,7 @@ replace int markdown(int cents) { int r = replaced(cents); return r - r % 5; }
 
 //-- Stock accessor ------------------------------------------------------------
 
-value class Stock {
+struct Stock {
     int _n;
     int writes = 0;
     static int total = 0;
@@ -146,7 +146,7 @@ void showLot(Lot l) {
 
 //-- Order lines ---------------------------------------------------------------
 
-value class Line {
+struct Line {
     int code;
     int qty;
     Money unit;
@@ -171,7 +171,7 @@ void accumulate(ref Money sum, Money add) {
 
 //-- Counters ------------------------------------------------------------------
 
-value class Tick {
+struct Tick {
     int n;
     Tick operator = (Tick o) { n = o.n; return self; }
     Tick operator ++ () { n = n + 1; return self; }

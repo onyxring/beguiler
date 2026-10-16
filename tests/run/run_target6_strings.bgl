@@ -1,11 +1,11 @@
 // run_target6_strings — ordering comparisons with a string literal or a #define on the left and a
-// stringObj on the right, and a char read from a stringObj member of a value-class array element.
+// stringObj on the right, and a char read from a stringObj member of a struct array element.
 // EXPECT_OUTPUT: y n y n y y y n y b c
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
 #include <array>
 #define DESK "desk"
-value class Stub {
+struct Stub {
     stringObj text;
     Stub operator = (Stub o) { text = o.text; return self; }
 }

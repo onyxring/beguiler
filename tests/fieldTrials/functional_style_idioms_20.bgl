@@ -7,7 +7,7 @@
 // global array and captured into typed locals; a hand-written fold that runs the effects in order
 // with a defaulted, named bool parameter; a budget plan chosen by takeWhile with a block lambda that
 // writes a captured local, priced by a sum over a func<> key; `?.` and `??` on a chain's first();
-// a value class of bounds returned by value from a fold and captured by a predicate lambda; grouping
+// a struct of bounds returned by value from a fold and captured by a predicate lambda; grouping
 // by enum with a loop variable captured by a filter; a block lambda that switches on the enum and
 // returns from each case; memoized recursion in a global array; tail-recursive helpers with
 // accumulators (collatz steps and peak, run-length encoding); a prime filter whose predicate runs a
@@ -54,9 +54,9 @@ Job jobE { "job E"; tag = "E"; kind = eKind.fix;   cost = 1; prio = 1; effect = 
 array<Job> jobs = {jobA, jobB, jobC, jobD, jobE};
 array<eKind> kinds = {eKind.fix, eKind.build, eKind.check};
 
-//-- Bounds (a value class) -----------------------------------------------------------------------
+//-- Bounds (a struct) -----------------------------------------------------------------------
 
-value class Bounds {
+struct Bounds {
     int lo = 0;
     int hi = 0;
     bool seen = false;

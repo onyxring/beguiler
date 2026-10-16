@@ -4,7 +4,7 @@
 #include <array>
 #include <linq>
 
-value class Reading { int day; int value; Reading operator = (Reading o) { day = o.day; value = o.value; return self; } }
+struct Reading { int day; int value; Reading operator = (Reading o) { day = o.day; value = o.value; return self; } }
 array<Reading> log[4];
 const int LIMIT = 100;
 

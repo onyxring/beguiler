@@ -1,9 +1,9 @@
-// run_accessor_right_operand_and_hook_arg — a value-class accessor read as a right operand
+// run_accessor_right_operand_and_hook_arg — a struct accessor read as a right operand
 // (`9 - fill`, `x - fill`, `2 * fill`, `9 > fill`) or passed through a func<> variable converts
 // through its getter, as it does as a left operand or a plain function's argument.
 // EXPECT_OUTPUT: 5 -1 8 1 4 4 8
 #beguilerSettings { target = z5; informName = "none"; }
-value class clampV {
+struct clampV {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int n) { _v = n; }

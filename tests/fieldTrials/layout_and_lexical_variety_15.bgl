@@ -3,18 +3,18 @@
 
 // Exercises: layout and lexical habits where up to seventeen language areas meet inside one declaration.
 // An emitter class with init/deinit and emitter `operator []`/`[]=` over an I6 word array, used as a
-// local in value-class methods and in a replaced routine; a value class that windows a global
+// local in struct methods and in a replaced routine; a struct that windows a global
 // `array<char>` with `operator []`, extended under `#IF` to `replace` its subscript and its `default`
 // method, add `operator []=`, read a member with `??`, load the buffer through `bgl.util.buf`, take a
-// `var` parameter told apart by `typeof`, test a `#if` symbol and perform a verb; a value class and a
-// value subclass whose copy operator chains with `(Span)self = o`; an I6 class bound as an extern
-// class and extended (twice) with a static array, static methods that cast a value-class local to its
-// base, run <linq> `filter`/`count`/`any` over the static array, walk `?.`, test `var` with `typeof`,
-// and (after `#using`) hold a `stringObj`, a local `array<char>`, a namespace-aliased value class, `??`,
+// `var` parameter told apart by `typeof`, test a `#if` symbol and perform a verb; a struct and a
+// struct holding it whose copy operator chains with `span = o.span`; an I6 class bound as an extern
+// class and extended (twice) with a static array, static methods that read a struct local's embedded
+// struct, run <linq> `filter`/`count`/`any` over the static array, walk `?.`, test `var` with `typeof`,
+// and (after `#using`) hold a `stringObj`, a local `array<char>`, a namespace-aliased struct, `??`,
 // `has()` and `perform()`; a named union extended with a static member; a class with a static
-// `array<Span>` of value-class slots, a static `array<int>` read with `orderBy().last()`, `operator []`,
+// `array<Span>` of struct slots, a static `array<int>` read with `orderBy().last()`, `operator []`,
 // a `default` method and a subclass and tab-indented instance that call the base through a cast; a
-// replaced routine taking a value class, calling `replaced()` under `#if`; an `extern object` with
+// replaced routine taking a struct, calling `replaced()` under `#if`; an `extern object` with
 // emitter subscripts; `extend` on a namespace object adding type aliases; a verb written after
 // `#using` and `#if` whose handler mixes all of these, then `extend`ed with `replace grammar =` under
 // `#IF`.
@@ -70,11 +70,11 @@ emitter class Frame
     void operator []= ( int i , int v ) { frameLog-->(($self % 4) * 4 + $i) = $v; }
 }
 
-//-- A tape: a value class that windows a global character buffer --------------------------------------
+//-- A tape: a struct that windows a global character buffer --------------------------------------
 
 array<char> tapeBuf[16] ;
 
-value class Tape
+struct Tape
 {
     int    head ;
     int    len ;
@@ -85,7 +85,7 @@ value class Tape
 }
 
 #IF LOUD
-extend class Tape
+extend struct Tape
 {
     replace char operator /* clamped */ [] ( int i )
     {
@@ -116,9 +116,9 @@ extend class Tape
 }
 #EndIf
 
-//-- Spans: a value class and a value subclass ---------------------------------------------------------
+//-- Spans: a struct and a struct holding one ----------------------------------------------------
 
-value class Span
+struct Span
 {
     int lo ;
     int hi ;
@@ -126,11 +126,12 @@ value class Span
     default int size () { return hi - lo ; }
 }
 
-value class Wide : Span
+struct Wide
 {
+    Span span ;
     int step ;
-    Wide operator = ( Wide o ) { step = o.step ; (Span)self = o ; return self ; }
-    int size () { return (hi - lo) / step ; }
+    Wide operator = ( Wide o ) { step = o.step ; span = o.span ; return self ; }
+    int size () { return span.size() / step ; }
 }
 
 //-- Crates: an I6 class bound with extern class --------------------------------------------------------
@@ -153,8 +154,8 @@ extend extern class CrateI6
     static int survey ( CrateI6 c , var extra )
     {
         Wide w ;
-        w.lo = 1 ; w.hi = 9 ; w.step = STEP ;
-        int whole = ((Span)w).size() ;
+        w.span.lo = 1 ; w.span.hi = 9 ; w.step = STEP ;
+        int whole = w.span.size() ;
         int part  = w.size() ;
         int heavy = CrateI6.loads.filter((int n) => n > c?.crate_weight).count() ;
         object up = c?.parent ;
@@ -206,7 +207,7 @@ extend Hint
     static bool isThing ( Hint h ) { return typeof(h) == eType.object ; }
 }
 
-//-- Shelves: static arrays of a value class, a subscript, and a subclass that calls its base ----------------
+//-- Shelves: static arrays of a struct, a subscript, and a subclass that calls its base ----------------
 
 class Shelf : object
 {
@@ -218,8 +219,8 @@ class Shelf : object
     int fill ( var lo )
     {
         Wide w ;
-        w.lo = lo ; w.hi = lo + REACH ; w.step = STEP ;
-        Shelf.spans[0] = w ;
+        w.span.lo = lo ; w.span.hi = lo + REACH ; w.step = STEP ;
+        Shelf.spans[0] = w.span ;
         Shelf.spans[1].lo = 2 ; Shelf.spans[1].hi = 3 ;
         int k = Shelf.marks.filter((int m) => m > 1).count() ;
         if (next?.next?) V_ping.perform() ;

@@ -4,7 +4,7 @@
 // Exercises: a board of countdown timers. A class Timer : object with a label, a letter char, a
 // length in turns, a held count, a ring count, an enum state and the library's timer properties
 // (time_left, a time_out() that rings), methods returning int, float, bool and stringObj, and a
-// before() that answers Examine and Push; a value class Span (turns shown as m:ss, copy operator,
+// before() that answers Examine and Push; a struct Span (turns shown as m:ss, copy operator,
 // += of an int, == of another span, a stringObj clock) used for a running total and a longest ring;
 // StartTimer/StopTimer driven by verbs taking NOUN and NOUN with NUMBER (wind, start, halt, pause,
 // resume); a text grid split above the main window with a border, redrawn from a replaced
@@ -94,7 +94,7 @@ stringObj percent(float f) {
 
 // ---- spans ---------------------------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int turns;
 
     Span operator = (Span o) {

@@ -2,17 +2,17 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/C++ developer writes it, fifteenth pass: nine features meeting
-// inside one declaration, three times. An object with `attributes =`, an owned value-class member and an
+// inside one declaration, three times. An object with `attributes =`, an owned struct member and an
 // `array<Span>` of them, its own comparison operators (`==`, `!=`, `<=>`), an inline accessor whose
 // setter throws, opens an emitter-class scope guard, queries a `<linq>` chain and reaches its host through
 // `outer` (gives attributes, calls host methods that `perform()` a verb), recursive methods (one nesting
 // scope guards, one throwing an index out of a recursive scan), and `try`/`catch` around the accessor; an
 // `extern class` with two I6 parents whose static methods take `array<int>` / `array<Box>` parameters,
 // move objects in the tree, recurse through children, branch on `#if` symbols, return and switch on an
-// enum, build a `stringObj`, use value-class locals and `perform()` a verb; an `extend class` of a class with
+// enum, build a `stringObj`, use struct locals and `perform()` a verb; an `extend class` of a class with
 // three parents (as a C# partial class) that adds a primitive-newtype member switched
 // through its `operator switch`, an emitter reaching another through `$i6Expr`, `<linq>` filters over a
-// value-class parameter, a `switch` on a `stringObj` and a verb run from a method; and a verb holding its
+// struct parameter, a `switch` on a `stringObj` and a verb run from a method; and a verb holding its
 // own state with an inline accessor reaching it through `outer` and a recursive tree walk.
 
 #beguilerSettings {
@@ -47,7 +47,7 @@ int PingCount;
 
 //-- A closed interval, copied by value ---------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int Lo;
     int Hi;
     Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }

@@ -6,7 +6,7 @@
 enum eLa5Fault { la5Empty = 1, la5Full, la5NoSlot }
 
 /// An amount in whole units; every holder owns its own copy.
-value class la5Amount {
+struct la5Amount {
     inline int units;
 
     la5Amount operator = (la5Amount o) { units = o.units; return self; }
@@ -29,11 +29,12 @@ value class la5Amount {
 }
 
 /// An amount with a tax part; copies both.
-value class la5Price : la5Amount {
+struct la5Price {
+    la5Amount amount;
     int tax;
     la5Price operator = (la5Price o) {
         tax = o.tax;
-        (la5Amount)self = o;
+        amount = o.amount;
         return self;
     }
 }

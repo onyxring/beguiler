@@ -44,7 +44,7 @@ extend extern class object {
 enum eLa26Coin { quarter, dime, nickel, penny }
 
 /// An amount of money in cents, copied on assignment.
-value class La26Cents {
+struct La26Cents {
     int c;
     La26Cents operator = (La26Cents o) { c = o.c; return self; }
     La26Cents operator = (int n) { c = n; return self; }

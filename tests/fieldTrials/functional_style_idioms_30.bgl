@@ -4,9 +4,9 @@
 // Exercises: a small league table written in a functional style on Glulx. Teams are scenery objects
 // of a class with an enum group, held in a global array; fixtures are a global array<array<int>> of
 // packed rounds (home, away and both scores per match) decoded by pure helpers; played matches are a
-// value class with a copy operator, appended to a sized global array<Result> from a named inline value
+// struct with a copy operator, appended to a sized global array<Result> from a named inline value
 // and walked by <linq> chains (filter, map, orderBy with comparators, skip, take, distinct, first,
-// last, any, all, count); a value class standing row with a copy operator, an instance `operator +`
+// last, any, all, count); a struct standing row with a copy operator, an instance `operator +`
 // and an instance `operator <=>` ranking order, folded per team through a generic fold that takes a
 // func<Row, Row, Result>, sorted with sort() and returned as a local array captured into a sized
 // typed local; derived `<` from `<=>`; float points per game; recursive helpers with accumulators
@@ -69,7 +69,7 @@ int nextRound = 0;
 
 //-- Results --------------------------------------------------------------------------------------
 
-value class Result {
+struct Result {
     int round = 0;
     Team home = null;
     Team away = null;
@@ -112,7 +112,7 @@ array<Result> matchesOf(Team t) {
 
 //-- Standing rows --------------------------------------------------------------------------------
 
-value class Row {
+struct Row {
     Team team = null;
     int played = 0;
     int won = 0;

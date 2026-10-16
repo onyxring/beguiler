@@ -2,8 +2,8 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: dense declarations over tables. An object whose body holds namespace aliases for a
-// primitive newtype and a value class, a jagged member grid (nested list initializer), a string
-// table, a stringObj, a var, a value-class member and a ref to it bound with :=, a chain of pooled
+// primitive newtype and a struct, a jagged member grid (nested list initializer), a string
+// table, a stringObj, a var, a struct member and a ref to it bound with :=, a chain of pooled
 // tokens, an inline accessor with a static counter and a static table of bands (an array of arrays)
 // that writes back through outer., reads the token chain with ?. and postfix ?, filters a row of the
 // host's grid with a block lambda capturing the setter's value, and reads the host through an #i6
@@ -44,7 +44,7 @@ primitive class Pts {
     emitter bool high { ($val >= 50) }
 }
 
-value class Span {
+struct Span {
     int lo;
     int hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }

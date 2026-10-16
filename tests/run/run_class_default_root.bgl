@@ -7,7 +7,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 
 class counter[2] { int n = 1; }               // no base: derives _bglObject; root assignment
-value class tally {                           // a value class: copies through operator = (tally)
+struct tally {                           // a struct: copies through operator = (tally)
     int n = 1;
     tally operator = (tally o){ n = o.n; return self; }
 }

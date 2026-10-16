@@ -63,8 +63,12 @@ class _bglClass_Box
     _opconv_int[;
         return self._val;
     ],
-    _opeq[v;
+    _opeq_int[v;
         self._val=v;
+    ],
+    _opeq_box[o;
+        self._val=o._val;
+        return self;
     ]
 ;
 _bglClass_Box _thing_b_0
@@ -93,8 +97,8 @@ self.b._val = 0;
 [main p q r;
     p = _bglClass_Thing.create();
     q = _bglClass_Thing.create();
-    p.b._opeq(11);
-    q.b._opeq(22);
+    p.b._opeq_int(11);
+    q.b._opeq_int(22);
     print p.b._opconv_int();
     print q.b._opconv_int();
     _bglClass_Thing.destroy(p);

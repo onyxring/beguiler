@@ -13,7 +13,7 @@ extend needs { inject { 2, 4 }; }
 array<dictionaryWord> words = { .rope };
 extend words { inject .nails; }
 
-value class Call { int from; Call operator = (Call o) { from = o.from; return self; } }
+struct Call { int from; Call operator = (Call o) { from = o.from; return self; } }
 Call g;
 
 void main() {

@@ -4,7 +4,7 @@
 // Exercises: `property` parameters read (`i.p`) and sent as messages (`i.m(k)`) inside loops and
 // inside <linq> lambdas that capture the property parameter alongside a func<> parameter; rule objects
 // whose positional `inline literal func<>` members are filled by bare `{ … }` array elements and by
-// inline `Rule{ … }` arguments with a run-time member; a value class whose positional members are a
+// inline `Rule{ … }` arguments with a run-time member; a struct whose positional members are a
 // literal func<> and a count, built inline (file-scope array elements, a local, an argument with a
 // run-time count) and walked by for-in; function values compared with == and found in an
 // array<func<>> by indexOf/contains/distinct and removed with -=; a class method named like a global
@@ -117,9 +117,9 @@ void applyRule(Rule r, array<Item> a) {
     print("^");
 }
 
-//-- Steps: a value class of a function and a count ----------------------------------------
+//-- Steps: a struct of a function and a count ----------------------------------------
 
-value class Step {
+struct Step {
     inline literal func<int, int> f;
     inline int times;
     Step operator = (Step o) { f = o.f; times = o.times; return self; }

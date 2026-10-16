@@ -27,7 +27,7 @@ emitter class Cell {
 }
 array<Cell> list = { 4, 5 };
 
-value class Shelf {
+struct Shelf {
     int a; int b;
     Shelf operator = (Shelf o) { a = o.a; b = o.b; return self; }
     int operator [] (int i) { if (i == 0) return a; return b; }
@@ -36,7 +36,7 @@ value class Shelf {
 class Gadget : object { Shelf rack; }
 Gadget widget { }
 
-value class Tally {
+struct Tally {
     int n;
     Tally operator = (Tally o) { n = o.n; return self; }
     Tally operator = (int v) { n = v; return self; }

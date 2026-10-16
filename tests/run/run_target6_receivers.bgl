@@ -1,15 +1,15 @@
 // run_target6_receivers — parenthesized receivers (ternary, `??`, cast, call) followed by member, call,
 // subscript and accessor steps in reads, stores, compound assignments and statements; casts over two
-// object-tree steps and over a `??`; a `ref` argument taken from a value-class member-array element of a
-// call result; and a local named like a value-class member beside a parenthesized-receiver statement.
+// object-tree steps and over a `??`; a `ref` argument taken from a struct member-array element of a
+// call result; and a local named like a struct member beside a parenthesized-receiver statement.
 // EXPECT_OUTPUT: 4 30 7 7 alpha 7 3 2 2 1 2 1 2 5 6 1 5 2 3 5 y 10 11 12 13 14 15 4 4
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Cell {
+struct Cell {
     int X;
     Cell operator = (Cell o) { X = o.X; return self; }
 }
-value class Size { int w; int h; Size operator = (Size o) { w = o.w; h = o.h; return self; } }
+struct Size { int w; int h; Size operator = (Size o) { w = o.w; h = o.h; return self; } }
 class Job : object {
     int N;
     Cell Pos;

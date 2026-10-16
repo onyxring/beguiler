@@ -1,6 +1,6 @@
 // run_target6_overloads — an operator reference picking a class's own static operator over the inherited
 // one, a program `print(Size)` beside library prints of ints, method overloads choosing the base-class
-// parameter over the implicit `operator ()` conversion, and a value-class compound operator choosing its
+// parameter over the implicit `operator ()` conversion, and a struct compound operator choosing its
 // object-class overload for a declared object.
 // EXPECT_OUTPUT: y n 3 5 7 part4 part4 part4 part4 part4 8 12 16 11
 #beguilerSettings { target = z5; informName = "none"; }
@@ -18,7 +18,7 @@ class Gear : Part {
 }
 Gear g { code = 4; weight = 60; teeth = 12; }
 Part gearA { weight = 40; }
-value class Size {
+struct Size {
     int mm;
     Size operator = (Size o) { mm = o.mm; return self; }
     Size operator = (int n)  { mm = n; return self; }

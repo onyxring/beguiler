@@ -5,13 +5,13 @@
 // everything into three big declarations. An object of a class that replaces the class's method and
 // still calls the class's version through a cast on self, with a type alias in its own body, an
 // array of arrays read and written through its own operator [] and []=, a primitive-class member, a
-// value-class member and a ref member bound with :=, a var member, an inline accessor that reads the
+// struct member and a ref member bound with :=, a var member, an inline accessor that reads the
 // host through outer (its rows, its [] and its primitive), a switch with guards and ranges, moves in
 // the object tree, a walk over its children, a linq chain on an inner array, func<> values, an #i6
 // island and perform. A class written straight after #using of a namespace object, with static
 // arrays, a replaced method, operator [] / []= that throw, try/catch, block lambdas with a switch
-// inside, ?., stringObj, a switch on strings, var/typeof, a value-class member (through its imported
-// alias) with its own operator [] / []=, and perform. A value class with operator [] / []= and a
+// inside, ?., stringObj, a switch on strings, var/typeof, a struct member (through its imported
+// alias) with its own operator [] / []=, and perform. A struct with operator [] / []= and a
 // switch. Global replace chains with replaced() that use lambdas, try and strings. Verbs that drive
 // all of it.
 
@@ -37,7 +37,7 @@ primitive class grams : int {
 }
 
 // ===== SPOT (a row and a column, and who it is for) =====
-value class Spot {
+struct Spot {
     int row;
     int col;
     ref object owner;
@@ -57,7 +57,7 @@ value class Spot {
 }
 
 // ===== TALLY (up to four numbers, read and written with []) =====
-value class Tally {
+struct Tally {
     int a;
     int b;
     int c;
@@ -539,7 +539,7 @@ verb MarksVerb {
     }
 }
 
-// TALLIES - the tally value class through its alias
+// TALLIES - the tally struct through its alias
 verb TalliesVerb {
     meta = true;
     grammar = {.tallies};

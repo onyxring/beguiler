@@ -9,9 +9,9 @@
 // for how far a plant has grown kept in a class member and switched on, a bnum of plant tags combined
 // with | and tested with &, a named getter/setter accessor class (the soil water, clamped by its setter)
 // used as a class member and given its starting value with an inline object, read, written, bumped with
-// += and -- and read inside interpolation, a static member counting sowings, a value class for a picked
+// += and -- and read inside interpolation, a static member counting sowings, a struct for a picked
 // crop with a copy operator, == and != and <=> (so the basket sorts and searches by content) kept in an
-// array of the value class sized by a const, a seed packet used as a stack with push / pop / peek /
+// array of the struct sized by a const, a seed packet used as a stack with push / pop / peek /
 // peekEnd / popEnd, prepend / insert / removeValue / -= / += with a list / swap / reverse / clear, a class
 // of plants (kind, tags, growth, water, days, a method for how fast it grows, a grow method, a before()
 // for Examine and Take) with a subclass that replaces the speed (still calling the class's through a
@@ -71,7 +71,7 @@ bnum Tag { leafy, climbs, smells }
 // ===== THE WATER IN THE SOIL =====
 
 // water that never goes below 0 or above SOIL_MAX
-value class SoilWater {
+struct SoilWater {
     int _level = 0;
     int operator () {
         return _level;
@@ -90,7 +90,7 @@ value class SoilWater {
 // ===== CROPS =====
 
 // one crop in the basket
-value class Crop {
+struct Crop {
     string kind;
     int size;
     int day;

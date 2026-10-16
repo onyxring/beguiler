@@ -1,6 +1,6 @@
 // run_target2_forward — uses above declarations: members, statics, arrays and accessors added by later
 // extends, `replace` in an extend written before its object, a later class's `<=>` operators, a later
-// value-class array, an object emitter value, and children loops through an auto alias and over `box`.
+// struct array, an object emitter value, and children loops through an auto alias and over `box`.
 // EXPECT_OUTPUT: 7 3 2 5 7 true false 7 26 2 104 replaced 5 5 true true true 3
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
@@ -42,7 +42,7 @@ void showChildren() {
 }
 extend chest { int resets = 7; }
 object chest { int count = 3; }
-value class Charge {
+struct Charge {
     int amps;
     Charge operator = (Charge o) { amps = o.amps; return self; }
     int operator <=> (Charge o) { return amps - o.amps; }
@@ -50,7 +50,7 @@ value class Charge {
 }
 class Lamp : object { int base = 1; }
 Lamp lampA { }
-value class Dial { int _v; int operator () { return _v; } void operator = (int v) { _v = v * 2; } }
+struct Dial { int _v; int operator () { return _v; } void operator = (int v) { _v = v * 2; } }
 extend class Lamp {
     array<int> slots[3];
     Dial boost;
@@ -61,7 +61,7 @@ extend box { replace string label() { return "replaced"; } replace int n = 5; }
 object box { string label() { return "plain"; } int n = 1; }
 object pin { parent = box; }
 array<Span> spans[3];
-value class Span {
+struct Span {
     int count;
     Span operator = (Span o) { count = o.count; return self; }
     Span operator += (int v) { count += v; return self; }

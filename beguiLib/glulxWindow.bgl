@@ -42,7 +42,7 @@ array<int> _glkWinSizeBuf[2];
 // split along is resizable — Left/Right → width, Above/Below → height — because the cross axis is
 // dictated by the sibling window. A write to the cross axis is a no-op (with a debug-only diagnostic),
 // rather than a compile error, keeping the uniform `.width`/`.height` API on all window types.
-value class _winDim {
+struct _winDim {
     int _id = 0;
     int _axis = 0;      // 0 = width, 1 = height
     int _method = 0;    // the owning window's split method (placement|scale|border)
@@ -323,7 +323,7 @@ enum eGlulxStyleHint {
 // Copied on assignment (its `operator =`), used as `win.setStyle(styleType, style{ backColor = $111111; italics = true; })`.
 // Each member emits under a `_bglStyle_` name: I6 properties share one global namespace, and plain
 // words such as `italics` or `reverse` are routine names in other libraries (orLibrary has `italics`).
-value class style {
+struct style {
     inline int justify asI6 _bglStyle_justify                    = styleUnset;   // an eGlulxJustify value (cast to int)
     inline int indentation asI6 _bglStyle_indentation            = styleUnset;   // left-margin indent
     inline int paragraphIndentation asI6 _bglStyle_paragraphIndentation = styleUnset;   // first-line extra indent
@@ -351,7 +351,7 @@ value class style {
 }
 
 /// A look for every style type at once. A style left unset leaves that style type alone.
-value class styleSheet {
+struct styleSheet {
     style normal asI6 _bglSheet_normal;           /// Plain text.
     style emphasized asI6 _bglSheet_emphasized;   /// Emphasized text.
     style fixed asI6 _bglSheet_fixed;             /// Fixed-width text.

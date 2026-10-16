@@ -1,9 +1,9 @@
 // run_target2_local_named_like_method — a local named like a method, beside a compound assignment on a
-// value-class member that uses it, takes another emitted name, so `x.cost()` still calls the method.
+// struct member that uses it, takes another emitted name, so `x.cost()` still calls the method.
 // EXPECT_OUTPUT: 12 24
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
-value class Money {
+struct Money {
     int p;
     Money operator = (Money o) { p = o.p; return self; }
     void operator += (Money o) { p += o.p; }

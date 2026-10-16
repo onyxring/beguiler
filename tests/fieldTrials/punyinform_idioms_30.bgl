@@ -8,7 +8,7 @@
 // by an enum cast; a gear train whose `before` takes `Receive` (gears only, not worn, one of each
 // size) and whose `after` takes `Receive` and `LetGo` to count fitted gears over `children`; a
 // pendulum whose `before` takes `Push` and `Pull` and starts or stops the clock's daemon; a clock
-// owning a value class `Spring` (`operator ()`, `=` from int, `+=`, `-=`, a method) and an inline
+// owning a struct `Spring` (`operator ()`, `=` from int, `+=`, `-=`, a method) and an inline
 // `auto` hour accessor that wraps and counts sets through `outer`; a `wind NOUN` verb and a `set
 // NOUN to NUMBER` verb that checks the hour with `throw` and `try`/`catch`; a lantern whose daemon
 // burns oil, giving and taking `light`; a clockmaker with `life` (Ask through NextWord, Give of a
@@ -55,7 +55,7 @@ const int SPRING_MAX     = 8;
 const int TICKS_PER_HOUR = 2;
 const int LANTERN_OIL    = 40;
 
-value class Spring {
+struct Spring {
     int _turns = 0;
 
     int  operator ()        { return _turns; }

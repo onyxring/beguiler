@@ -6,7 +6,7 @@
 // table of line records written as bare { … } (string, dictionary word, times, enum zones); a
 // departure search computed from first/every/last; a clock band chosen by a switch with ranges and
 // guards; a table of concession rules as an array<func<int, int>> picked by a word table; parallel
-// coin, label and till tables walked for greedy change with a limited till; a value-class sale
+// coin, label and till tables walked for greedy change with a limited till; a struct sale
 // record appended to an array of the class, sorted by a comparator lambda and removed by position;
 // <linq> filter/count/any/all over sales with lambdas capturing a local; a local index table sorted
 // by a lambda reading a global table; stringObj cells padded to columns and clock text built with
@@ -79,7 +79,7 @@ array<string> coinLabels = { "2.00", "1.00", "0.50", "0.20", "0.10", "0.05" };
 array<int> till = { 1, 2, 3, 4, 5, 6 };
 array<int> handed[COIN_KINDS];
 
-value class Sale {
+struct Sale {
     inline int line;
     inline int card;
     inline int fare;

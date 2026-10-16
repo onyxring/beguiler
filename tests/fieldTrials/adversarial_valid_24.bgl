@@ -3,23 +3,23 @@
 
 // Exercises: valid but unusual code in a small survey-stake program, on the Z-machine, leaning on value
 // classes used from above their declarations.
-// Routines, globals, arrays and every verb come before the value classes, the classes that own them and
-// the objects they reach: value-class parameters, `ref` parameters (array elements, owned members, loop
+// Routines, globals, arrays and every verb come before the structs, the classes that own them and
+// the objects they reach: struct parameters, `ref` parameters (array elements, owned members, loop
 // variables, `self`), returns of locals, of `ref` locals and of inline objects, defaults from a later
 // `const` and an inline-object default given by name with bare braces; operators added by a later
-// `extend class` (`*`, `++`, `?=`, a static `make`, a `selfType` method and an emitter value) used on
-// globals, members, elements, call results and through a subclass; a value subclass chaining its copy
-// operator by cast, upcast copies, overloads picked by value class, and a static `<=>` driving derived
+// `extend struct` (`*`, `++`, `?=`, a static `make`, a `selfType` method and an emitter value) used on
+// globals, members, elements and call results; a tagged point with an explicit conversion to `Pt`,
+// converted copies, overloads picked by struct, and a static `<=>` driving derived
 // `<`/`>`, `orderBy` by operator reference and lambda, `sort`, `distinct`, `indexOf`, `contains`, `-=`
 // and `removeValue`; a global array holding a later named instance (shared) beside a global (copied),
 // an `extend` injecting an inline object; nested value members (`Seg` of two `Pt`s, a `Path` owning a
-// member array of them), a value class with a `ref` member to its own class walked recursively and by a
+// member array of them), a struct with a `ref` member to its own class walked recursively and by a
 // rebound `ref` local; owned, positional, `ref` and member-array members on a class extended after its
 // objects; an `extend` above an object adding a value member and a method; an inline `auto` accessor
-// whose getter returns and whose setter takes a value class, compound-assigned; a verb owning a value
+// whose getter returns and whose setter takes a struct, compound-assigned; a verb owning a value
 // member; a pooled class whose owned member resets on `new`; static value members; `func<Pt, Pt>`
-// globals bound to a later function and to a lambda, a value-class local captured by <linq> lambdas,
-// a for-in over an inline list of values, `?:` choosing values, and value classes in interpolation.
+// globals bound to a later function and to a lambda, a struct local captured by <linq> lambdas,
+// a for-in over an inline list of values, `?:` choosing values, and structs in interpolation.
 
 #beguilerSettings {
     target = z8;
@@ -301,7 +301,7 @@ verb Tags {
     void handler() {
         print("Flags:");
         for (Tagged f in flags) print($" {f}");
-        Pt plain = flags[1];
+        Pt plain = (Pt)flags[1];
         Tagged t = flags[0];
         t.tag = 'z';
         flags[2] = t;
@@ -437,7 +437,7 @@ verb Tally {
     void handler() {
         array<Pt> trio = { home, cornerFar, { 0, 2 } };
         int farCount = stakes.filter(isFar).count();
-        bool flagFar = isFar(flagA);
+        bool flagFar = isFar((Pt)flagA);
         board.focus = home;
         board.focus += Pt{ 1, 1 };
         bool focusHome = board.focus == home;
@@ -496,7 +496,7 @@ verb Record {
 
 const int STEP = 2;
 
-value class Pt {
+struct Pt {
     inline int x;
     inline int y;
     Pt operator = (Pt o) { x = o.x; y = o.y; return self; }
@@ -515,7 +515,7 @@ value class Pt {
     default void print() { ::print($"({x},{y})"); }
 }
 
-extend class Pt {
+extend struct Pt {
     Pt operator * (int k) {
         Pt r;
         r.x = x * k;
@@ -541,11 +541,15 @@ extend class Pt {
     }
 }
 
-value class Tagged : Pt {
+struct Tagged {
     inline char tag;
-    Tagged operator = (Tagged o) {
-        tag = o.tag;
-        (Pt)self = o;
+    inline int x;
+    inline int y;
+    explicit Pt operator () { return Pt{ x, y }; }
+    selfType swapped() {
+        int t = x;
+        x = y;
+        y = t;
         return self;
     }
     void print() {
@@ -554,7 +558,7 @@ value class Tagged : Pt {
     }
 }
 
-value class Seg {
+struct Seg {
     inline Pt a;
     inline Pt b;
     Seg operator = (Seg o) {
@@ -585,7 +589,7 @@ extend class Post {
     inline int weight = 1;
 }
 
-value class Path {
+struct Path {
     array<Pt> legs[3];
     Path operator = (Path o) {
         legs.copyFrom(o.legs);
@@ -604,7 +608,7 @@ value class Path {
     }
 }
 
-value class Chain {
+struct Chain {
     Pt at;
     ref Chain next;
     Chain operator = (Chain o) {
@@ -662,7 +666,7 @@ class Census {
     static int checks = 0;
 }
 
-value class Gap {
+struct Gap {
     int dx;
     int dy;
     Gap operator = (Gap o) {

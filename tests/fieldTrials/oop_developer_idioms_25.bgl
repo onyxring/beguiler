@@ -2,12 +2,12 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-fifth pass: a stock room.
-// A value class for a price in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
+// A struct for a price in cents with a copy operator, `+`, `*` by a count, `==`/`!=` and a `<=>` that
 // `>` comes from, a static factory and a formatter returning a `stringObj`; a named property accessor
-// (a value class whose setter clamps at zero) owned by a pooled item class, read, assigned and changed
+// (a struct whose setter clamps at zero) owned by a pooled item class, read, assigned and changed
 // with `+=`/`-=`; the pooled item class with `create()`/`destroy()` keeping a static count, a `default`
 // `Kind`/`Summary` pair, and a pooled subclass overriding them and calling the base `Summary` through a
-// cast; a fluent builder object whose methods return `self`, building either class; a value class for a
+// cast; a fluent builder object whose methods return `self`, building either class; a struct for a
 // stock movement kept in a member `array<Movement>` used as a bounded history; a warehouse service with
 // a string-keyed `operator []` lookup and an `operator []=` adjustment, an observer list of
 // `func<void, Item, int>` listeners (a named function and a lambda), a remove-where taking a predicate
@@ -62,7 +62,7 @@ string MoveName(eMove m) {
 
 //-- Price: a value type ---------------------------------------------------------------------------------------
 
-value class Price {
+struct Price {
     int Cents;
 
     Price operator = (Price o) {
@@ -103,7 +103,7 @@ value class Price {
 
 //-- A property that never goes below zero ----------------------------------------------------------------------
 
-value class NonNegative {
+struct NonNegative {
     int _value;
 
     int operator () { return _value; }
@@ -234,7 +234,7 @@ ItemBuilder builder { }
 
 //-- Stock movements -------------------------------------------------------------------------------------------
 
-value class Movement {
+struct Movement {
     string Sku;
     eMove Kind;
     int Quantity;

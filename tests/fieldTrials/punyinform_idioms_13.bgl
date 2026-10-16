@@ -2,13 +2,13 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a thirteenth PunyInform program, built on area triples: an `extend class` that adds
-// static arrays (an array of arrays, an `array<char>`, an array of a value class, an array of
+// static arrays (an array of arrays, an `array<char>`, an array of a struct, an array of
 // strings), an inline `auto { }` accessor whose body reads and writes those statics and owns a
-// value-class member, and `operator []`/`[]=` over a member array; a class with a static array read
+// struct member, and `operator []`/`[]=` over a member array; a class with a static array read
 // by a block-bodied lambda with postfix `?`, an `operator []` returning an object queried with `?`,
-// an accessor beside a member array of a value class filled from an array parameter, and a block
-// lambda summing the rows of a local array of arrays into a value-class local; a namespace object
-// with `alias … for` a value class and a class, an `auto { }` accessor using `outer.` to read the
+// an accessor beside a member array of a struct filled from an array parameter, and a block
+// lambda summing the rows of a local array of arrays into a struct local; a namespace object
+// with `alias … for` a struct and a class, an `auto { }` accessor using `outer.` to read the
 // host's array of arrays, array of strings and array of aliased class instances, an `operator []`,
 // array parameters typed through the aliases, and a block lambda over them; and an `extend` of that
 // object adding an alias for an enum, a second `outer.` accessor and an array parameter method.
@@ -28,11 +28,11 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 #includeI6 "puny"
 
-// --- enums and a value class ------------------------------------------------------------------------
+// --- enums and a struct ------------------------------------------------------------------------
 
 enum eSide { left = 1, right }
 
-value class Coin {
+struct Coin {
     int worth;
     eSide side = eSide.left;
 

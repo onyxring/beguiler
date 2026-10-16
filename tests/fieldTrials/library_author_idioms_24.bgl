@@ -43,7 +43,7 @@ extend extern class object {
 enum eLa24Liquid { dry, water, oil, wine }
 
 /// An amount of liquid in millilitres, copied on assignment.
-value class La24Volume {
+struct La24Volume {
     int ml;
     La24Volume operator = (La24Volume o) { ml = o.ml; return self; }
     La24Volume operator = (int m) { ml = m; return self; }

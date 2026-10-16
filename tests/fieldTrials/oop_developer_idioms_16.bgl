@@ -6,13 +6,13 @@
 // / `operator []=` front an `array<string>`, the setter throwing an out-of-range index that a method
 // catches under an emitter-class scope guard; `replace` overrides of its base's methods, one switching a
 // `<linq>` count into an enum; a local nested-literal table (`array<array<int>>`) classifying counts; a
-// named union (string | object) returned and narrowed with `typeof` through a `var`; a value-class member
+// named union (string | object) returned and narrowed with `typeof` through a `var`; a struct member
 // band; and a verb performed from a method. An `extern class` over an I6 class with emitter `operator []`,
 // `[]=`, `+` and `-`, whose recursive static method holds a pooled instance per level (so the deepest
 // level finds the pool empty), writes into a `<buf>` parameter by range `switch`, reads a nested-array
-// table, keeps a value-class local, gives an attribute and performs a verb. And an `extend class` of a
+// table, keeps a struct local, gives an attribute and performs a verb. And an `extend class` of a
 // class with three parents (like a C# partial class) that adds an inline accessor, an indexer, a
-// `ref` value-class parameter widened in place, an enum member set by `switch`, a union-returning
+// `ref` struct parameter widened in place, an enum member set by `switch`, a union-returning
 // method narrowed through `var`/`typeof`, and a `stringObj` label.
 
 #beguilerSettings {
@@ -48,7 +48,7 @@ int PingCount;
 
 //-- A closed interval, copied by value ---------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int Lo;
     int Hi;
     Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }

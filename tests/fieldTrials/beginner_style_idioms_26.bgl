@@ -6,8 +6,8 @@
 // wallet, and a ticket machine sells cheap tickets, written the way a beginner writes it after
 // reading the spec once. Counts kept in int globals with consts for the fares and the wallet, bool
 // flags, a bnum of rider needs combined with | and tested with &, an enum for a bus's state returned
-// from a method and switched on, a value class for a rider (name and needs) with a copy operator kept
-// in an array of the value class used as a queue (enqueue / dequeue / peek / remove / insert), a
+// from a method and switched on, a struct for a rider (name and needs) with a copy operator kept
+// in an array of the struct used as a queue (enqueue / dequeue / peek / remove / insert), a
 // class of buses (number, seats, riders on board, turns until it comes, turns left at the stop,
 // methods for the state, the fare and the wait, a before() for Examine and Enter) with a subclass that
 // replaces the wait and the fare (one still calls the class's through a cast), buses moved in and
@@ -64,7 +64,7 @@ enum BusState { away, coming, atStop }
 // ===== RIDERS =====
 
 // one rider waiting in the line
-value class Rider {
+struct Rider {
     string who;
     int needs;
     Rider operator = (Rider o) {

@@ -59,7 +59,7 @@ class Boxy : object { int count = 2; emitter int operator [] (int i) { ($val.cou
 Boxy box { }
 
 // D1172, D1183: a pooled class's ref member and array-of-arrays member.
-value class Slot { int n; Slot operator = (Slot o) { n = o.n; return self; } }
+struct Slot { int n; Slot operator = (Slot o) { n = o.n; return self; } }
 Slot shared;
 class Lease[2] : object {
     ref Slot spot;

@@ -1,7 +1,7 @@
 /*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
 
 // The grid: forty pooled rooms made with `new` at start-up, wired north/south/east/west by loops, with
-// a short_name, a description routine, per-room counters and walks over the grid with a value-class
+// a short_name, a description routine, per-room counters and walks over the grid with a struct
 // coordinate.
 
 #once

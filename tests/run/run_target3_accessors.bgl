@@ -1,4 +1,4 @@
-// run_target3_accessors — a call result's value-class member passed to a `ref` parameter, compared,
+// run_target3_accessors — a call result's struct member passed to a `ref` parameter, compared,
 // and assigned through, `ref` locals bound to members of a call result and of an accessor's getter
 // result, such a member passed as a `ref` argument, and a routine whose loop body ends the scope before
 // its final return.
@@ -6,7 +6,7 @@
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
 #include <string>
-value class Level {
+struct Level {
     int _v = 0;
     static int copies = 0;
     int operator () { return _v; }
@@ -15,7 +15,7 @@ value class Level {
     Level operator += (int n) { _v = _v + n; return self; }
     int operator <=> (int n) { return _v - n; }
 }
-value class Focus {
+struct Focus {
     Channel _c = null;
     Channel operator () { return _c; }
     void operator = (Channel c) { _c = c; }

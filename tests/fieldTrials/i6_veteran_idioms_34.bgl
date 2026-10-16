@@ -2,12 +2,12 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: an Inform 6-style program on z5 whose routines, methods and operators are overloaded
-// almost everywhere. Global overload sets chosen by argument type (int, string, enum, a value class,
+// almost everywhere. Global overload sets chosen by argument type (int, string, enum, a struct,
 // a class, its subclass, object, stringObj against string, var as the last resort, a class with an
 // implicit conversion to int), by arity with defaults (`Weigh(c)`, `Weigh(c, d)`, `Weigh(c, 2,
 // round: true)`) and by a named argument only one overload has (`Mark(label: …)` against
 // `Mark(amount: …)`); a `replace` of one member of an overload set calling `replaced()`; overloads
-// taking `ref` value-class parameters, given globals and global array elements; overloaded methods on
+// taking `ref` struct parameters, given globals and global array elements; overloaded methods on
 // a class hierarchy (inherited overloads still callable on the subclass, a subclass adding one and
 // replacing one, ancestor dispatch through a cast), static overloaded methods chosen by type and
 // arity, an `extend class` adding an overload and replacing another; overloaded object methods
@@ -613,9 +613,9 @@ extend class Coin {
     }
 }
 
-// ---------------------------------------------------------------- value class
+// ---------------------------------------------------------------- struct
 
-value class Pence {
+struct Pence {
     int d;
     Pence operator = (Pence o) { d = o.d; return self; }
     Pence operator = (int n)   { d = n; return self; }

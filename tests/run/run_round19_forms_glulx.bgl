@@ -10,7 +10,7 @@ class Tank : object {
     Tank operator + (float v) { level = level + v; return self; }
 }
 Tank tankA { }
-value class Meter {
+struct Meter {
     float v;
     Meter operator = (Meter o) { v = o.v; return self; }
     Meter operator -= (float d) { v = v - d; return self; }

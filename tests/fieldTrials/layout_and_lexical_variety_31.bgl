@@ -7,7 +7,7 @@
 // members, parameters, named arguments, a default parameter value, lambda parameters, locals and loop
 // variables, and are reached from inside methods with `::`; a member initializer in an object body
 // reads a `#define` that a member of the same class is named after; consts and globals (`count`,
-// `Total`, `HEAVY`) share names with instance members, a static member and value-class members, read
+// `Total`, `HEAVY`) share names with instance members, a static member and struct members, read
 // bare, through `self.`, through `Type.` and through `::`; a member named like its own type
 // (`Crate crate` in a bin), parameters and locals named like classes with `::Crate` in `is()`;
 // methods named like global functions (`report`, `heft`) and like a verb (`weigh` beside `verb
@@ -212,7 +212,7 @@ object scale
 
 // ---- a reading -----------------------------------------------------------------------------------
 
-value class Reading
+struct Reading
 {
     int count ;                         // like the global
     int total ;                         // like the global Total

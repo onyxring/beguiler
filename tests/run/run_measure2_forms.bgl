@@ -12,10 +12,10 @@ Node n2 { key = 3; }
 class Widget : object { int width; selfType wide(int n) { width = n; return self; } }
 Widget wid { }
 
-// D1275: a value class deriving from one with an owned value member.
-value class Inner { int n; Inner operator = (Inner o) { n = o.n; return self; } }
-value class Base { Inner part; Base operator = (Base o) { part = o.part; return self; } }
-value class Derived : Base { int extra = 2; Derived operator = (Derived o) { part = o.part; extra = o.extra; return self; } }
+// D1275: a struct with an owned value member and a field of its own.
+struct Inner { int n; Inner operator = (Inner o) { n = o.n; return self; } }
+struct Base { Inner part; Base operator = (Base o) { part = o.part; return self; } }
+struct Derived { Inner part; int extra = 2; Derived operator = (Derived o) { part = o.part; extra = o.extra; return self; } }
 
 // D1276, D1277: a member named like a global const; its initializer names the const.
 const int COUNT = 9;

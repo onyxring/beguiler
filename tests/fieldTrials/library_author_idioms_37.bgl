@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a bin-and-rack kit whose public surface hands back bins, and a consumer that reaches
-// every member through a computed receiver. The kit has a value class of counts (copy operator, ==,
+// every member through a computed receiver. The kit has a struct of counts (copy operator, ==,
 // methods returning new counts), a named accessor class of fill levels counting its writes, a bin
 // class (required positional number, enum load, member arrays of ints and of bins, owned counts, a
 // fill accessor, a link, a static counter, a default kind(), a fluent link(), an operator [] over its
@@ -18,13 +18,13 @@
 // (`binA.link(binB).next.link(trayC)`), operator [] chained (`binA[0][0].tag()`), member-array
 // elements of member-array elements (`binA.links[0].links[0].id`), the cursor accessor's result
 // (`la37.cursor.marks[0]`, `la37.cursor.fill += 1`), static calls, func<> call results, <linq> results (`orderBy(…)[0]`,
-// `first()?.tag()`), ternaries, `new` with fluent steps, value-class method chains off elements
+// `first()?.tag()`), ternaries, `new` with fluent steps, struct method chains off elements
 // (`la37.rack[1].more(3).swapped().a`), `ref` locals and `ref` arguments bound to members of computed
 // receivers, for-in over member arrays of call results and casts, switch subjects, do/while conditions,
 // interpolation, `?.` statements and expressions on call results, elements, casts and the accessor,
 // `??` results as receivers of compound assignment and `ref` arguments, ternaries as receivers of
 // method calls, an array of arrays of bins (elements' members, element stores through a cast, an
-// ancestor cast of a downcast element), value-class member arrays reached through static-call results,
+// ancestor cast of a downcast element), struct member arrays reached through static-call results,
 // prefix and postfix ++/-- through call results and casts, and `?.` inside a <linq> predicate.
 
 #beguilerSettings {
@@ -50,7 +50,7 @@ extend extern class object {
 enum eLa37Load { loose, boxed, sealed }
 
 /// Two counts: on hand and on order.
-value class La37Pair {
+struct La37Pair {
     int a;
     int b;
     La37Pair operator = (La37Pair o) { a = o.a; b = o.b; return self; }
@@ -80,7 +80,7 @@ value class La37Pair {
 }
 
 /// A fill level, never below none, that counts how often it is written.
-value class La37Meter {
+struct La37Meter {
     int raw;
     int writes;
     int operator () { return raw; }

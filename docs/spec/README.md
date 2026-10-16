@@ -150,7 +150,7 @@ appendices are for lookup.
     - [8.2.4 `alias class`](08-classes.md#824-alias-class)
     - [8.2.5 Primitive Classes (`primitive class`)](08-classes.md#825-primitive-classes-primitive-class)
     - [8.2.6 Pooled Classes](08-classes.md#826-pooled-classes)
-    - [8.2.7 Value Classes (`value class`)](08-classes.md#827-value-classes-value-class)
+    - [8.2.7 Structs (`struct`)](08-classes.md#827-structs-struct)
     - [8.2.8 `typesealed` Members](08-classes.md#828-typesealed-members)
     - [8.2.9 Making a Reference Type Behave Like a Value Type](08-classes.md#829-making-a-reference-type-behave-like-a-value-type)
   - [8.3 Members](08-classes.md#83-members)

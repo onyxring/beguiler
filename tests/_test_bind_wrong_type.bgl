@@ -6,8 +6,8 @@
 */
 #beguilerSettings { informName = "none"; }
 
-value class inventory { int gold = 0; }
-value class other     { int x = 0; }
+struct inventory { int gold = 0; }
+struct other     { int x = 0; }
 object od : other {}
 object holder { ref inventory pack; }
 

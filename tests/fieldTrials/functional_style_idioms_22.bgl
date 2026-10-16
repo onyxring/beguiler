@@ -6,7 +6,7 @@
 // edge weights read through a helper; neighbour lists returned as local arrays and captured into
 // typed locals; recursive depth-first reachability marking a global array; breadth-first hop counts
 // with enqueue/dequeue; shortest paths by repeated relaxation with the next node picked by a
-// hand-written fold over a func<bool, int> filter; a value class route returned by value; the path
+// hand-written fold over a func<bool, int> filter; a struct route returned by value; the path
 // written into a `ref stringObj` parameter by recursion; an edge list packed as ints, ordered by
 // <linq> orderBy with a comparator that decodes it, and a spanning tree built from it with a
 // recursive union-find; predicates as named functions, a global func<> and lambdas, combined by a
@@ -62,9 +62,9 @@ array<array<int>> weights = {
     {0, 0, 0, 0, 0, 0}
 };
 
-//-- Route (a value class) ------------------------------------------------------------------------
+//-- Route (a struct) ------------------------------------------------------------------------
 
-value class Route {
+struct Route {
     int cost = 0;
     int hops = 0;
     bool found = false;

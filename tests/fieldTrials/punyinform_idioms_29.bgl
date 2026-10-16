@@ -6,7 +6,7 @@
 // OPTIONAL_SCORED; a `Coin` class with an enum denomination and its value read from an `array<int>`
 // indexed by an enum cast; a `Snack` class with a slot, a price, a flavor string and an eaten flag,
 // its description a routine with a `switch` over the flavor string, and an `after` taking `Eat`; a
-// vending machine whose `before` takes `Receive` (coins only) and adds to a value class `Credit`
+// vending machine whose `before` takes `Receive` (coins only) and adds to a struct `Credit`
 // (`operator ()`, `=` from int, `+=`, `-=`, two methods) changed through a `ref` parameter; a `press
 // NUMBER` verb with a `switch` holding a range and a guard case that drops a snack from an
 // `array<object>` of slots into the tray; a `refund` verb paying change greedily from the cash box
@@ -55,7 +55,7 @@ const int SLOT_COUNT   = 4;
 const int RESTOCK_WAIT = 3;
 const int CREDIT_MAX   = 50;
 
-value class Credit {
+struct Credit {
     int _cents = 0;
 
     int  operator ()        { return _cents; }

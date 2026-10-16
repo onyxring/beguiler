@@ -10,7 +10,7 @@
 // once); call results of a static method, an object method and a class method
 // (`Panel.ByCode(c).Sample().v`, `switchboard.At(i).Sample().lit`, `switchboard.Current().uses += 1`
 // with the call counted once, `switchboard.Current()?.Toggle(1)`); chains of call results
-// (`p.Peer().Peer().Me().code`); a member array of a value class stored from a call result and
+// (`p.Peer().Peer().Me().code`); a member array of a struct stored from a call result and
 // compared by element with `==`, `!=`, `>` and `<` through a cast receiver; `<array>` methods (`+=`,
 // `length`, `contains`, `indexOf`) on member arrays reached through casts, elements and call results;
 // a named accessor and an inline `auto` accessor (with `outer`) read, written, `++`d and `+=`d through
@@ -508,9 +508,9 @@ class Panel : Device {
     attributes = {static};
 }
 
-// ---------------------------------------------------------------- value classes
+// ---------------------------------------------------------------- structs
 
-value class Volts {
+struct Volts {
     int _v;
     int operator () { return _v; }
     void operator = (int n) {
@@ -520,7 +520,7 @@ value class Volts {
     }
 }
 
-value class Reading {
+struct Reading {
     int v;
     int lit;
     Reading operator = (Reading o) { v = o.v; lit = o.lit; return self; }

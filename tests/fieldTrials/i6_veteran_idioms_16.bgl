@@ -2,15 +2,15 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: Inform 6 habits on z5, three declarations each packing one area cluster into a single unit.
-// A value class (ledger) with operator + returning a value copy, operator [] and []= over a member
+// A struct (ledger) with operator + returning a value copy, operator [] and []= over a member
 // array, a primitive-class parameter, a ref member bound with :=, a ?? fallback on an object argument,
 // an attribute test and give, a <linq> filter/any over its cells, a stringObj built up and printed, a
 // switch with ranges and guards, a var argument discriminated with typeof, and a perform; an extend of
 // an object adding an inline accessor that reads outer. and declares its own operator == and [] (used
-// through self), plus methods taking a ref value-class parameter and a var, casting to an ancestor,
+// through self), plus methods taking a ref struct parameter and a var, casting to an ancestor,
 // switching, filtering an array and guarded by #if; a pooled class with two parents, written after
 // #using a namespace object, with operator += and [] / []=, an emitter-class local with init/deinit,
-// try/catch/throw, moves in the object tree, a switch, a var argument, an owned value-class member and
+// try/catch/throw, moves in the object tree, a switch, a var argument, an owned struct member and
 // a perform. Verbs drive each declaration.
 
 #beguilerSettings {
@@ -56,13 +56,13 @@ primitive class grams {
     emitter int operator () { ($val) }
 }
 
-value class Line {
+struct Line {
     int qty;
     int posts;
     Line operator = (Line o) { qty = o.qty; posts = o.posts; return self; }
 }
 
-value class Ledger {
+struct Ledger {
     array<int> cells[6];
     int total;
     Line last;
@@ -148,7 +148,7 @@ class DeepProbe : Probe {
 
 DeepProbe probeA { "probe"; depth = 3; }
 
-value class Pair {
+struct Pair {
     int a;
     int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
@@ -220,7 +220,7 @@ emitter class Ticket {
 
 enum eKind { plain, heavy, fragile }
 
-value class Tally {
+struct Tally {
     int n;
     Tally operator = (Tally o) { n = o.n; return self; }
 }

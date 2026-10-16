@@ -5,7 +5,7 @@
 // class with an enum kind, a weight, a worth and a float ratio method, held in a global array and
 // moved about the object tree by the library's own take/drop/put; packs are objects of a container
 // class whose before() turns away a Receive through a literal func<bool, Pack, Item> admission rule
-// (a lambda in one pack's definition, null in another) and a load limit; a value class plan (a bit
+// (a lambda in one pack's definition, null in another) and a load limit; a struct plan (a bit
 // mask of chosen indices with its weight and worth) with a copy operator, returned by value from a
 // recursive 0/1 best-subset search and from a greedy fill whose order is a <linq> orderBy over indices
 // with a float comparator capturing a parameter; plans compared across a range of capacities with
@@ -173,7 +173,7 @@ void showInts(array<int> xs) {
 
 //-- Plans ----------------------------------------------------------------------------------------
 
-value class Plan {
+struct Plan {
     int mask = 0;
     int weight = 0;
     int worth = 0;

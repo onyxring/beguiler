@@ -18,7 +18,7 @@
 
 #beguilerSettings { target = z5; informName = "none"; }
 
-value class Color { int r; }        // makes `color` lex as a dataType
+struct Color { int r; }        // makes `color` lex as a dataType
 class Draw  { int n; }        // makes `draw` lex as a dataType
 
 class Thing {

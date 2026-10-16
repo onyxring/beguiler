@@ -1,10 +1,10 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a kit split over types and store parts; a value class with copy, conversion-setter,
+// Exercises: a kit split over types and store parts; a struct with copy, conversion-setter,
 // comparison, + and explicit conversion operators, a method returning a copy of self, += and ++ on
-// it, and a value subclass chaining its copy through a cast; ref and by-copy value parameters; a ref
-// member bound with := to a local and assigned through; a value class written as an inline object;
+// it, and a struct holding one that chains its copy through it; ref and by-copy value parameters; a ref
+// member bound with := to a local and assigned through; a struct written as an inline object;
 // a pooled class with an owned value member, create/destroy, a static count and an instance <=>
 // used by sort() and derived <, and a pooled subclass with its own pool; a primitive class with
 // operator switch, an emitter value and a static <=> used by sort() and by Type::operator; a named
@@ -101,11 +101,11 @@ verb Amounts {
         la5Amount d = la5Amount{ 12 };
         print(d); print(" "); print(c); print("^");
         la5Price p;
-        p.units = 7;
+        p.amount.units = 7;
         p.tax = 1;
         la5Price q = p;
         p.tax = 9;
-        print($"q {(int)q} tax {q.tax}, p tax {p.tax}.^");
+        print($"q {(int)q.amount} tax {q.tax}, p tax {p.tax}.^");
     }
 }
 

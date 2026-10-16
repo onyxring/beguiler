@@ -6,7 +6,7 @@
 // answered/missed counts, methods returning char, bool, int and stringObj, and a before() that
 // answers Examine and Push; a board object whose daemon() takes queued calls from an <array> queue
 // (append, dequeue, contains), rings lines, counts the wait and drops a call left too long; a
-// value class Ledger (answered, missed, longest wait, copy operator, += of a Line, a float rate and a
+// struct Ledger (answered, missed, longest wait, copy operator, += of a Line, a float rate and a
 // stringObj summary); a text grid split above the main window with a border and a styleSheet, made
 // taller and shorter through its height, redrawn from a replaced DrawStatusLine; a text-buffer log
 // split below with its own styleSheet, cleared through ?.; a call history in an <array> (append,
@@ -110,7 +110,7 @@ void logEvent(string what, char letter) {
 
 // ---- the ledger ----------------------------------------------------------------------------------
 
-value class Ledger {
+struct Ledger {
     int answered;
     int missed;
     int longest;

@@ -7,7 +7,7 @@
 // and makes everything one. A named accessor class for a tank level (clamping int setter, a copy
 // operator, == and != against an int, <=> against an int and against another level so the
 // orderings come from it, its own + by an int, methods of its own) used as a class member, as a
-// member of a value class kept in an array, as a member of a pooled class made with `new`, as a
+// member of a struct kept in an array, as a member of a pooled class made with `new`, as a
 // global variable and as a `ref` local; a subclass that hides the level's setter; an inline `auto`
 // accessor in a class body with a static of its own and a method of its own; an object whose inline
 // accessors have int, enum, bool, char and stringObj getters, overloaded setters (enum and int) and
@@ -78,7 +78,7 @@ string fullWord(int n) {
 // ===== A TANK LEVEL =====
 
 // a level that never goes below 0 or above TANK_MAX
-value class Level {
+struct Level {
     int _val = 0;
     int operator () {
         levelReads++;
@@ -229,7 +229,7 @@ class SealedTank : Tank {
 // ===== READINGS =====
 
 // a reading taken from a tank
-value class Reading {
+struct Reading {
     char letter;
     Level lvl;
     int turn;

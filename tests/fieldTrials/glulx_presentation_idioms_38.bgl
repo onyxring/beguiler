@@ -8,9 +8,9 @@
 // bool and stringObj; a lift object whose daemon() moves the car one floor a turn toward the front
 // of an <array> queue of floor numbers (enqueue, dequeue, contains, peek, length), opens its doors
 // on arrival, records a Trip and stops itself when the queue is empty; an enum eMotion switched on
-// for names and arrows; a value class Trip (from, to, turns, copy operator, ==, a stringObj text)
+// for names and arrows; a struct Trip (from, to, turns, copy operator, ==, a stringObj text)
 // kept in a global array<Trip> history ring and reported with <linq> filter, count, orderBy with a
-// comparator, any, all, first and last; a value class Tally with += of a Trip and a float mean;
+// comparator, any, all, first and last; a struct Tally with += of a Trip and a float mean;
 // bgl.util.math abs, min and max; verbs taking NUMBER (call, send), NOUN (examine a floor button)
 // and none (hide/unhide the shaft by close() and a fresh split, taller/shorter through the panel's
 // height clamped to a range, a meta report, a style report through checkStyle and distinguishes);
@@ -105,7 +105,7 @@ void note(stringObj text, bool loud = false) {
 
 // ---- trips ---------------------------------------------------------------------------------------
 
-value class Trip {
+struct Trip {
     int from;
     int to;
     int turns;
@@ -129,7 +129,7 @@ value class Trip {
     }
 }
 
-value class Tally {
+struct Tally {
     int count;
     int floorsMoved;
     int longest;

@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a lock-and-key kit and its consumer. The kit declares an enum of grades; a value class
+// Exercises: a lock-and-key kit and its consumer. The kit declares an enum of grades; a struct
 // of key cuts with two copy operators, == and !=, + that files in a notch with <<, a counting method
 // and a show method; a keyed base class with an owned cut, a grade, a turn count and a default
 // metal(); a pooled blank class over it with name words in the class body, a short_name set in
@@ -46,7 +46,7 @@ extend extern class object {
 enum eLa22Grade { tin, brass, iron }
 
 /// The notches on a key, or the ones a lock needs: one bit each, copied on assignment.
-value class La22Cut {
+struct La22Cut {
     int bits;
     La22Cut operator = (La22Cut o) { bits = o.bits; return self; }
     La22Cut operator = (int v) { bits = v; return self; }

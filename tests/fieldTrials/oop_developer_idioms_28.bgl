@@ -2,10 +2,10 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-eighth pass: a package planner.
-// A value class for a version number with a copy operator, `==`/`!=` and a `<=>` that `<`/`>=` come
+// A struct for a version number with a copy operator, `==`/`!=` and a `<=>` that `<`/`>=` come
 // from, a static factory with default arguments, a `Bumped()` returning a new value and a formatter
-// returning a `stringObj`; a requirement value class owning a `Version` member, held in a member
-// `array<Requirement>`; a named property accessor (a value class clamping at zero) as a package's user
+// returning a `stringObj`; a requirement struct owning a `Version` member, held in a member
+// `array<Requirement>`; a named property accessor (a struct clamping at zero) as a package's user
 // count, changed with `++`, `--` and `-=`; the Visitor pattern with double dispatch: `default` `Accept()`
 // on a package base overridden by a native-package subclass, and visitor subclasses overriding `default`
 // visit methods, one of them owning a `stringObj` member; a catalogue with an `operator []` indexer; a
@@ -54,7 +54,7 @@ string KindName(eKind k) {
 
 //-- Version: a value type -------------------------------------------------------------------------------------
 
-value class Version {
+struct Version {
     int Major;
     int Minor;
     int Patch;
@@ -99,7 +99,7 @@ value class Version {
 
 //-- A clamped counter: a property accessor --------------------------------------------------------------------
 
-value class NonNegative {
+struct NonNegative {
     int _value;
     int operator () { return _value; }
     void operator = (int v) {
@@ -110,7 +110,7 @@ value class NonNegative {
 
 //-- Packages --------------------------------------------------------------------------------------------------
 
-value class Requirement {
+struct Requirement {
     ref Package Target;
     Version Minimum;
 

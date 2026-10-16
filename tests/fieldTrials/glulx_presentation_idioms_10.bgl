@@ -5,7 +5,7 @@
 // window calls. An author's emitter class with init/deinit used as a scoped indent (an outline drawn
 // recursively with continue, break and an early return inside nested scopes; scopes in a lambda link
 // target, a switch case left by break, a do/until with continue, a nested block, before rtrue/rfalse
-// and around a return value), the depth checked after each; a value-class theme with a static counter
+// and around a return value), the depth checked after each; a struct theme with a static counter
 // and static method, held in an object's ref member, rebound with := (from a ternary), written
 // through, passed by ref and by copy, and stored in an array<theme> whose slot is bound by a ref
 // local; a primitive class packing a grid cell (col, line) with emitter accessors, an emitter
@@ -156,7 +156,7 @@ int countDown(int from) {
 
 // ---- themes --------------------------------------------------------------------------------------
 
-value class theme {
+struct theme {
     string bullet;
     string ruleMark;
     int    width;

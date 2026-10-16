@@ -266,7 +266,7 @@ int n = keep[0];                // → 1
 > possible reference. An integer that happens to equal an array's address keeps that array until the
 > next collection; a live array is never freed.
 
-> **Element instances.** An array of a value class owns its slots' instances (§12.10), and freeing the
+> **Element instances.** An array of a struct owns its slots' instances (§12.10), and freeing the
 > array releases them. A function can return such an array; the instances go with it.
 
 ## 12.7 Member Arrays
@@ -499,7 +499,7 @@ which copies the incoming value into the buffer the slot owns. That store is `<a
 element write into an array of an owning type without `#include <array>` is a compile-time error. Passing an already-allocated value
 allocates a second time; the original is not released.
 
-**Arrays of a value class.** Each slot of an array of a value class (§8.2.7) owns an instance, as a
+**Arrays of a struct.** Each slot of an array of a struct (§8.2.7) owns an instance, as a
 variable of the class does. The compiler supplies the store and the release: a slot takes its
 instance from the class's pool the first time it is stored into or one of its members is reached
 (`a[0].n = 7` on a slot never stored into), starting from the class's defaults; a store copies the
@@ -510,12 +510,12 @@ once; a local array's slots count once, so a recursive routine whose calls all h
 can run out, which is a run-time error. An element store into such an array is a compile-time error
 when the class has no copy operator.
 
-- A local array of a value class needs a capacity (`[n]`), a list initializer or a value to refer to.
+- A local array of a struct needs a capacity (`[n]`), a list initializer or a value to refer to.
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
   instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
   gives its slot a copy of its initial value.
-- A member array of a value class declared in a class can't have initial elements, since every
+- A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance without returning it to the pool.
 - An element store into a member array of a class that manages its own storage (`stringObj`) reads

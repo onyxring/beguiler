@@ -9,7 +9,7 @@
 // capture into a static buf; an I6 class bound with `extern class` (members, static arrays of strings
 // and chars, emitter operators taking another instance, static methods), its extern instances, and an
 // `extend extern class` adding a static array, a `replace`d emitter operator and a `replace`d static
-// method; a value class with arithmetic operators returning the class, a static history array filled
+// method; a struct with arithmetic operators returning the class, a static history array filled
 // under try/catch and a static method summing it; a class with `default` methods, an `operator +` that
 // records into a static array and shows into a static buf, a subclass `replace`-ing a default method
 // with one that throws, and an `extend class` replacing the other default and adding `operator *` that
@@ -137,9 +137,9 @@ extend extern class Crate {
     }
 }
 
-// --- a value class with operators and a static history ---------------------------------------------
+// --- a struct with operators and a static history ---------------------------------------------
 
-value class Reading {
+struct Reading {
     grams g;
     static array<grams> history[4];
     static int logged = 0;

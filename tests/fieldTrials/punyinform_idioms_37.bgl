@@ -1,28 +1,28 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a thirty-seventh PunyInform program that leans on value classes: two rooms (Room A with
-// two carts, Room B with a scale); a `Price` value class (an `inline` member, a copy operator, `+`, `-`,
+// Exercises: a thirty-seventh PunyInform program that leans on structs: two rooms (Room A with
+// two carts, Room B with a scale); a `Price` struct (an `inline` member, a copy operator, `+`, `-`,
 // `*`, `+=` overloaded on `Price` and `int`, `++`, static `==`/`!=` beside instance `==`/`!=` taking an
 // int, an instance `<=>` with the derived orderings, `operator switch`, a static factory, methods
-// returning `Price` and `stringObj`, and a method added by a later `extend class`); a `Coord` value class
-// with instance `==`/`!=`/`+` and a `Span` subclass whose copy operator chains with `(Coord)self = o`; a
-// `Tag` value class owning a `stringObj`; a `Line` value class owning a `Price`, with a `ref Line` link,
+// returning `Price` and `stringObj`, and a method added by a later `extend struct`); a `Coord` struct
+// with instance `==`/`!=`/`+` and a `Span` struct with a length and an explicit conversion to `Coord`; a
+// `Tag` struct owning a `stringObj`; a `Line` struct owning a `Price`, with a `ref Line` link,
 // a static counter and static operators; a `Cart` class with owned members (one with an inline-object
 // initializer), a static `Price`, a `ref Price` member bound to member-array slots and a member
 // `array<Price>`; a pooled `Ticket` class whose owned members are reset by `new`; an object with an owned
 // member given as a bare `{ … }`, a `ref Price` member and an `array<Price>` of inline objects; global
-// value-class variables, a global `array<Price>` of inline objects, a bare `{ … }`, a named instance and
+// struct variables, a global `array<Price>` of inline objects, a bare `{ … }`, a named instance and
 // a global variable, an `array<Coord>`, an `array<Span>`, an `array<Line>` with nested inline objects and
-// an `array<array<Price>>`; routines taking value classes by copy and by `ref` (array elements, members
-// and nested members as `ref` arguments), with value-class defaults, returning them through `?:`,
-// operators and recursion; `ref` locals bound to slots and members and rebound; value-class locals in
+// an `array<array<Price>>`; routines taking structs by copy and by `ref` (array elements, members
+// and nested members as `ref` arguments), with struct defaults, returning them through `?:`,
+// operators and recursion; `ref` locals bound to slots and members and rebound; struct locals in
 // `for` heads, `while`, `switch`, ternaries and interpolation; operators on call results; <linq> chains
-// over value-class arrays (`filter` with a func value, a capturing lambda and a nested chain, `orderBy`
+// over struct arrays (`filter` with a func value, a capturing lambda and a nested chain, `orderBy`
 // with and without a comparator, `take`, `skip`, `takeWhile`, `skipWhile`, `distinct`, `map`, `first`,
 // `last`, `count`, `any`, `all`) captured into local arrays; `<array>` operations (`indexOf`, `contains`,
 // `sort` with a lambda and an operator reference, `remove`, `removeValue`, `-=`, `+=`, `insert`, `swap`,
-// `reverse`, `pop`, `clear`); `func<>` values taking and returning value classes; and verbs add, unload,
+// `reverse`, `pop`, `clear`); `func<>` values taking and returning structs; and verbs add, unload,
 // swap, mix, issue, void, plus meta verbs menu, sorted, carts, spots, grid, tags, churn, weigh, deals,
 // calc and more.
 
@@ -53,7 +53,7 @@ extend extern class object {
 
 // --- values -----------------------------------------------------------------------------------------
 
-value class Price {
+struct Price {
     inline int cents;
     int marks;
 
@@ -121,7 +121,7 @@ value class Price {
     }
 }
 
-value class Coord {
+struct Coord {
     inline int x;
     inline int y;
 
@@ -151,21 +151,19 @@ value class Coord {
     }
 }
 
-value class Span : Coord {
+struct Span {
     inline int len;
+    inline int x;
+    inline int y;
 
-    Span operator = (Span o) {
-        len = o.len;
-        (Coord)self = o;
-        return self;
-    }
+    explicit Coord operator () { return Coord{ x, y }; }
 
     Coord tip() {
-        return moved(len);
+        return ((Coord)self).moved(len);
     }
 }
 
-value class Tag {
+struct Tag {
     stringObj text;
     int uses;
 
@@ -176,7 +174,7 @@ value class Tag {
     }
 }
 
-value class Line {
+struct Line {
     inline Price unit;
     inline int qty;
     ref Line next;
@@ -560,11 +558,11 @@ verb ShowSpots {
             print($"[{sp.x},{sp.y}+{sp.len}={t.x},{t.y}]");
         }
         printLine("");
-        Coord base = spans[1];
+        Coord base = (Coord)spans[1];
         Span copy = spans[2];
         copy.x = 99;
         printLine($"Base {base.x},{base.y}; copy {copy.x}/{spans[2].x}; ruler tip {ruler.tip().x}; moved {home.moved(2, 3).x},{home.moved(dy: 5, dx: 1).y}.");
-        printLine($"Spans 1 and 2 at one spot: {(sameSpot(spans[1], spans[2])) ? "yes" : "no"}; spot 1 is at span 1: {(spots[1] == spans[1]) ? "yes" : "no"}.");
+        printLine($"Spans 1 and 2 at one spot: {(sameSpot((Coord)spans[1], (Coord)spans[2])) ? "yes" : "no"}; spot 1 is at span 1: {(spots[1] == (Coord)spans[1]) ? "yes" : "no"}.");
     }
 }
 
@@ -664,7 +662,7 @@ verb Weigh {
     }
 }
 
-extend class Price {
+extend struct Price {
     Price capped(Price top) {
         if (self > top) return top;
         return self;
@@ -809,10 +807,10 @@ verb More {
         for (Price p in cartY.lines) print($" {p.cents}");
         printLine($"; Y total by sum {cartY.sum().cents}.");
         array<Coord> pts[4];
-        pts += ruler;
+        pts += (Coord)ruler;
         pts += spots[2];
         pts.append(home.moved(n));
-        printLine($"Points {pts[0].x},{pts[0].y} {pts[1].x},{pts[1].y} {pts[2].x},{pts[2].y}; ruler is point 0: {(ruler == pts[0]) ? "yes" : "no"}; index of home moved {pts.indexOf(Coord{ n, 0 })}.");
+        printLine($"Points {pts[0].x},{pts[0].y} {pts[1].x},{pts[1].y} {pts[2].x},{pts[2].y}; ruler is point 0: {((Coord)ruler == pts[0]) ? "yes" : "no"}; index of home moved {pts.indexOf(Coord{ n, 0 })}.");
     }
 }
 

@@ -30,7 +30,7 @@ return type the library expects: `bool describe()`, returning true only when it 
 
 <!-- doctest: skip -->
 ```bgl
-value class Tally {
+struct Tally {
     array<int> items[4];
     int hits;
     Tally operator = (Tally o) { items = o.items; hits = o.hits; return self; }
@@ -43,7 +43,7 @@ b.items += 7;
 
 `a.items` gains the 7 as well: after `b = a`, the two tallies are separate instances that share one array.
 
-A value class is copied through its own copy operator (§8.2.7), and each line of that operator is an ordinary
+A struct is copied through its own copy operator (§8.2.7), and each line of that operator is an ordinary
 assignment. An array is a reference type (§12.5), so `items = o.items` makes `b.items` refer to `a.items`'s array,
 just as copying a pointer member in a C++ copy constructor makes a shallow copy. `hits` is copied because `int` is a
 value type.

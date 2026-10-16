@@ -6,7 +6,7 @@
 // listed by bit position), an enum state machine driven by a transition table read with [state][event]
 // from a NUMBER token, switch on the enum with several values in one case and a default, const ints and
 // a #define sizing an array, records as objects in an array<Part> and lookups returning an index, -1 or
-// null, a value-class tally accumulated through a ref parameter, array<dictionaryWord> matched against
+// null, a struct tally accumulated through a ref parameter, array<dictionaryWord> matched against
 // the words of a TOPIC, a member array on a class read and walked per instance, an index array
 // insertion-sorted by hand with a while loop, array.sort with a named comparator, range for-in loops,
 // break and continue in nested loops, and tallies counted from the data.
@@ -88,7 +88,7 @@ Kit kitA { "kit A"; needs = { bolt, spring, washer }; qty = { 4, 2, 4 }; }
 Kit kitB { "kit B"; needs = { gear, bolt };           qty = { 2, 8 };    }
 Kit kitC { "kit C"; needs = { valve, gear, washer };  qty = { 1, 1, 2 }; }
 
-value class Tally {
+struct Tally {
     int items;
     int total;
     int best;

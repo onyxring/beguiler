@@ -2,12 +2,12 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a palette of colors drawn in a text grid split above the main window, with a text-buffer
-// log split below, where nearly every value is a value class. A value class Rgb (positional inline
+// log split below, where nearly every value is a struct. A struct Rgb (positional inline
 // members, copy operator, instance and static `==`, `!=`, a static `<=>` with derived `<` and `>`,
 // `+` of an Rgb, `-` of an int, `+=` overloaded on Rgb and int, methods returning int, stringObj and
-// Rgb, a method copying `self` into a local); a value subclass Tint adding an alpha, chaining its copy
-// operator through `(Rgb)self = o`, positional order subclass first, passed where an Rgb is wanted; a
-// value class Swatch owning an Rgb, holding a `ref Rgb` member bound with `:=`, tested unbound with `!`,
+// Rgb, a method copying `self` into a local); a struct Tint of an alpha then r, g, b, converting to
+// an Rgb through `operator ()` where an Rgb is wanted and by cast for its color methods; a
+// struct Swatch owning an Rgb, holding a `ref Rgb` member bound with `:=`, tested unbound with `!`,
 // and a member array of Rgb copied whole by its copy operator. Rgb as globals (inline and bare-brace
 // initializers), a global array with explicit, bare-brace and named-member elements, a sized array, an
 // array of arrays (a table, iterated by row and written by `[i][j]`), an array of Swatch; as owned
@@ -24,7 +24,7 @@
 // list assignment; a func<Rgb, Rgb> and a func<bool, Rgb> lambda. An Rgb global declared in object form
 // and one by `=`, stored into and searched for in a sized array given elements by `extend … inject`
 // (bare-brace and typed); `ref` locals bound to array elements and rebound; recursion through a `ref`
-// parameter and through a value-class accumulator; element member writes through `[i][j]`, an object's
+// parameter and through a struct accumulator; element member writes through `[i][j]`, an object's
 // member array and a reference-class member array. A replaced DrawStatusLine redraws the grid.
 
 #beguilerSettings {
@@ -66,9 +66,9 @@ char hexDigit(int n) {
     return 'A' + (n - 10);
 }
 
-// ---- the value classes ----------------------------------------------------------------------------------
+// ---- the structs ----------------------------------------------------------------------------------
 
-value class Rgb {
+struct Rgb {
     inline int r;
     inline int g;
     inline int b;
@@ -127,14 +127,18 @@ value class Rgb {
     }
 }
 
-value class Tint : Rgb {
+struct Tint {
     inline int alpha;
+    inline int r;
+    inline int g;
+    inline int b;
 
-    Tint operator = (Tint o) {
-        alpha = o.alpha;
-        (Rgb)self = o;
-        return self;
-    }
+    Rgb operator () { return Rgb{ r, g, b }; }
+
+    bool operator == (Tint o) { return r == o.r && g == o.g && b == o.b; }
+    static int operator <=> (Tint x, Tint y) { return ((Rgb)x).lum() - ((Rgb)y).lum(); }
+
+    stringObj hex() { return ((Rgb)self).hex(); }
 
     Rgb over(Rgb back) {
         Rgb out;
@@ -145,7 +149,7 @@ value class Tint : Rgb {
     }
 }
 
-value class Swatch {
+struct Swatch {
     string label = "card";
     Rgb base;
     ref Rgb against;

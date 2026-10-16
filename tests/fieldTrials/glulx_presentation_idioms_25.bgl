@@ -3,7 +3,7 @@
 
 // Exercises: a letter tray sorted into folders. A class Letter : object with a sender, a subject,
 // a body, a day, an enum folder and a seen flag, whose before() opens it in a reader on Examine and
-// answers Burn, and a method returning a stringObj built with format(); a value class FolderCounts
+// answers Burn, and a method returning a stringObj built with format(); a struct FolderCounts
 // (one int per folder, copy operator, add() switching on the enum, total and a per-folder lookup)
 // copied as a snapshot before each move; a text grid split above the main window with a border, and
 // a second grid split to the left of it with a styleSheet, both redrawn from a replaced
@@ -109,7 +109,7 @@ void remember(stringObj what) {
 
 // ---- counts --------------------------------------------------------------------------------------
 
-value class FolderCounts {
+struct FolderCounts {
     int inbox;
     int keep;
     int bin;

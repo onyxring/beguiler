@@ -6,12 +6,12 @@
 // types imported with #using and used bare in a class holding static member arrays (of strings, of
 // char, of ints, of aliased class instances), a member array of class instances, a member array of
 // arrays, an inline auto accessor, operator [] / []= over a static array of strings (with self[i]),
-// array<T> parameters (of ints, of strings, of class instances), a value-class parameter copied in,
+// array<T> parameters (of ints, of strings, of class instances), a struct parameter copied in,
 // a block lambda capturing a parameter, and postfix ?; an extend class adding a static array of objects
 // tested with ?; an object with its own alias … for types whose inline accessor reaches the host through
 // outer (an array<char>, an array of strings, an array of aliased class instances) and has its own
 // operator [], with an array<char> parameter copied into a member, a block lambda stored in a func<>
-// local, and a value-class member; an extend of that object adding a type alias, a nested array of
+// local, and a struct member; an extend of that object adding a type alias, a nested array of
 // aliased class instances, an array of class instances and an accessor whose setter uses a block lambda
 // that reads outer.
 
@@ -28,7 +28,7 @@
 #include <string>
 
 // ===== SIZES (width and height, copied when you assign) =====
-value class Size {
+struct Size {
     int w;
     int h;
 
@@ -481,7 +481,7 @@ verb ShelfVerb {
     }
 }
 
-// FITS - the size value class
+// FITS - the size struct
 verb FitsVerb {
     meta = true;
     grammar = {.fits};

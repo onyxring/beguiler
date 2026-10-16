@@ -5,9 +5,9 @@
 // reorder-level, reorder-quantity, capacity and supplier tables; an enum of suppliers indexing name
 // and lead-time tables; a price table as an array of arrays read [item][tier] beside a tier-floor
 // table searched from the top; a bnum of stock states built with |= and listed by bit position; open
-// orders as an array of a value class appended as Order{ … }, delivered and cancelled by position
+// orders as an array of a struct appended as Order{ … }, delivered and cancelled by position
 // and copied into a local array ordered by a comparator lambda; a movement log as an array of a
-// value class trimmed from the front when full; a table of measures as an array<func<int, eItem>> of
+// struct trimmed from the front when full; a table of measures as an array<func<int, eItem>> of
 // named routines beside a name table; a general parsing routine over the word table; <linq>
 // filter/map/distinct/orderBy/count/any/all/first/last/skip with lambdas capturing parameters and
 // locals; a fill level banded by a switch with guards and ranges; stringObj rows padded to columns
@@ -64,7 +64,7 @@ array<array<int>> unitPrice = {
 
 array<string> stateNames = { "low", "empty", "ordered", "full" };
 
-value class Order {
+struct Order {
     inline int no;
     inline eItem item;
     inline int qty;
@@ -76,7 +76,7 @@ value class Order {
     }
 }
 
-value class Move {
+struct Move {
     inline int day;
     inline eItem item;
     inline int delta;

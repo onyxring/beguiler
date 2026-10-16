@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual code in a small valve-board program, on Glulx, leaning on names that meet.
-// Globals `count`, `total` and `level` beside class members, a static `Total`, value-class members, object
+// Globals `count`, `total` and `level` beside class members, a static `Total`, struct members, object
 // members, parameters, locals, loop variables and lambda parameters of the same names (several differing
 // only in case), told apart by bare names, `self.`, `Type.` and `::`; a `#define` (RATE, TAG) and a const
 // (LIMIT) beside members, parameters and named arguments of their names, read by member initializers,
@@ -239,9 +239,9 @@ object board {
 
 #using board
 
-// ---- a value class whose members are named like globals --------------------------------------------------
+// ---- a struct whose members are named like globals --------------------------------------------------
 
-value class Reading {
+struct Reading {
     int level;
     int count;
     Reading operator = (Reading r) { level = r.level; count = r.count; return self; }

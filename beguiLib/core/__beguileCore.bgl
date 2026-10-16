@@ -68,7 +68,7 @@ emitter class _bglObject{
     /// With a library, an object's `short_name` takes its place.
     inline const string instanceName;
 
-    /// Assignment: the variable refers to the assigned instance. A value class copies instead.
+    /// Assignment: the variable refers to the assigned instance. A struct copies instead.
     emitter _bglObject operator = (_bglObject v){ $target = $v }
 
     default emitter eBool operator ?() { $val ~= nothing }               /// True unless the reference is null.
@@ -117,7 +117,7 @@ union eAssets = eImages | eSounds | eUnknownAsset;   /// Any packaged asset.
 
 //-- Utility types -------------------------------------------------------------
 /// A width and a height.
-superposed value class bglSize{
+superposed struct bglSize{
     inline int width=0;    /// The width.
     inline int height=0;   /// The height.
     /// Copy another size.

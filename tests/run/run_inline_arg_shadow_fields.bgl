@@ -8,7 +8,7 @@
 // EXPECT_OUTPUT: got: 11 22
 #beguilerSettings { target = z5; }
 
-value class mySize {
+struct mySize {
     inline int width = 0;
     inline int height = 0;
     mySize operator = (mySize s){ self.width = s.width; self.height = s.height; return self; }

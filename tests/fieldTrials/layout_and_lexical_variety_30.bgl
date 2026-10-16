@@ -4,7 +4,7 @@
 // Exercises: layout and lexical habits in an ordinary small program with two rooms, three clocks on a
 // bench, an oil can, a duster and a spike of repair tickets. A clock class with positional members
 // (`inline instanceName` re-listed, `inline int` hour and minute), a bnum of faults set with `|`,
-// tested with `&` and cleared with `^`, a named accessor value class spring that clamps its tension
+// tested with `&` and cleared with `^`, a named accessor struct spring that clamps its tension
 // and is driven by `=` and `+=`, a `default` method overridden by a cuckoo subclass, and a class-wide
 // static counter; a pooled ticket class with `create`/`destroy`, obtained with `new` and released with
 // `delete`, kept in a global `array<Ticket>` searched with a lambda and removed from; a regulator
@@ -13,7 +13,7 @@
 // and switched on (with a range and a guard case) in the verb handler; a `stringObj` time padded with
 // `prepend` in a `do … until` and assembled with `format`; <linq> `orderBy` with a comparator,
 // `filter`, `count`, `all`, `last` and `map` over a global `array<Clock>`; `?.` and `??` on a lookup
-// that can be null; a value class tally filled through a `ref` parameter; `NUMBER` grammar with
+// that can be null; a struct tally filled through a `ref` parameter; `NUMBER` grammar with
 // alternation; `#define` values tested by `#if`/`#else`; hex and binary literals; a raw string;
 // mixed-case keywords, Allman, K&R and one-line braces, tab indentation in one routine, comments
 // between tokens and in argument lists, and declarations split over lines.
@@ -66,7 +66,7 @@ Room roomB {
 // ---- the spring accessor -------------------------------------------------------------------------
 
 /// Spring tension, held between 0 and FULL_WIND.
-value class Spring
+struct Spring
 {
     int _t = 0 ;
     int  operator () { return _t ; }
@@ -230,7 +230,7 @@ void check ( Clock c , int need = 1 )
     if (c.spring < need)                 throw 10 + c.spring ;
 }
 
-value class Tally
+struct Tally
 {
     int running ; int faulty ; int ticketed ;
     Tally operator = ( Tally o ) { running = o.running ; faulty = o.faulty ; ticketed = o.ticketed ; return self ; }

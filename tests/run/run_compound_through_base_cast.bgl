@@ -2,7 +2,7 @@
 // the subclass hides (§8.7.4): the rewrite keeps the cast.
 // EXPECT_OUTPUT: 5 35 34 35
 #beguilerSettings { target = z5; informName = "none"; }
-value class Clamped {
+struct Clamped {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

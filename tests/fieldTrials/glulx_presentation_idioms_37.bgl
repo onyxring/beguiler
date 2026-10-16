@@ -4,7 +4,7 @@
 // Exercises: a label press that prints labels for three crates, shown in a text grid split above the
 // main window, with a text-buffer log split below. Text is held as a global stringObj, a static
 // stringObj of a class, a stringObj member of each Crate, a stringObj member and a member array of
-// stringObj on the press object, a stringObj field of a value class Tag (copied, returned from a
+// stringObj on the press object, a stringObj field of a struct Tag (copied, returned from a
 // function, passed by value and by ref), and global and local array<stringObj>. Routines overloaded
 // on string, stringObj and char; defaults and named arguments of char, int and bool picking the
 // padding; string | stringObj narrowed with typeof; ref stringObj accumulators filled by recursion;
@@ -16,13 +16,13 @@
 // status bar, program emitters taking one or two interpolated strings beside a char, expression-bodied
 // lambdas and link lambdas, and into stringObj by declaration, assignment and += on a local, a global,
 // a class static, an instance member, an object member, a member array element (variable index), a
-// value-class field and a ref parameter; their spans hold nested ternaries, ??, ?., char elements,
+// struct field and a ref parameter; their spans hold nested ternaries, ??, ?., char elements,
 // casts, named-argument calls, recursive calls and article rules. Loops: for with a stringObj
 // condition and += step, while on a comparison, do/until on length, for-in over array<stringObj>
 // with break and continue; switch on a stringObj result with string cases. <linq> filter, orderBy
 // (by text and by comparator), distinct, takeWhile, skip, any, all, first and last over an
 // array<stringObj>; a func<stringObj, stringObj> held in a local and called in a loop, and a block-bodied
-// func<stringObj, int> lambda capturing a stringObj. A value class Sheet with `+=` overloaded on
+// func<stringObj, int> lambda capturing a stringObj. A struct Sheet with `+=` overloaded on
 // stringObj and char, `+` and `==` taking stringObj; a static method returning stringObj with char and
 // int defaults called by name; nested capture/release inside a routine returning the captured text;
 // ref stringObj bound to a member array element; characters written into an instance member stringObj.
@@ -178,9 +178,9 @@ stringObj framed(stringObj inner) {
     return shot;
 }
 
-// ---- tags (a value class) ------------------------------------------------------------------------
+// ---- tags (a struct) ------------------------------------------------------------------------
 
-value class Tag {
+struct Tag {
     stringObj text;
     char mark = '*';
     int width = 8;
@@ -216,9 +216,9 @@ stringObj tagLine(Tag t) {
     return t.shown();
 }
 
-// ---- a sheet (a value class with string operators) ----------------------------------------------
+// ---- a sheet (a struct with string operators) ----------------------------------------------
 
-value class Sheet {
+struct Sheet {
     stringObj body;
     int adds = 0;
 

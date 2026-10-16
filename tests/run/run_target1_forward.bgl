@@ -4,7 +4,7 @@
 // EXPECT_OUTPUT: 1200 3 2 5 20 24 2 104 303 3 9 heavy 2001 3
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
-value class Grams {
+struct Grams {
     int g;
     Grams operator = (Grams o) { g = o.g; return self; }
     Grams operator = (int n) { g = n; return self; }
@@ -40,7 +40,7 @@ void showRack() { rack.stamped = 4; int n = rack.stamped; print(n); print(" "); 
 void bump() { shelf.stamped++; shelf.stamped += 2; int n = shelf.stamped; print(n); print(" "); }
 object rack { Tally stamped; }
 object shelf { Tally stamped; }
-value class Tally {
+struct Tally {
     int _n;
     int operator () { return _n + 100; }
     void operator = (int v) { _n = v; }

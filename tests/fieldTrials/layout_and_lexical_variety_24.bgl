@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: layout and lexical habits in an ordinary small program with two rooms, a clock wound by a
-// crank, three bells in a frame, and alarm times that are set, listed, sorted and cleared. A value class
+// crank, three bells in a frame, and alarm times that are set, listed, sorted and cleared. A struct
 // of clock times with a copy operator, `operator +` returning a new time, `<=>` (with `<`/`>=` derived
 // from it), `==`/`!=`, and a method returning a `stringObj` that pads minutes with a char literal; a
 // global time and a global `array<ClockTime>` of alarms appended to, sorted, searched with `indexOf`
@@ -49,7 +49,7 @@ enum eNote
 //:: clock times :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 /// A time of day, hours and minutes.
-value class ClockTime
+struct ClockTime
 {
     int h ;
     int m ;

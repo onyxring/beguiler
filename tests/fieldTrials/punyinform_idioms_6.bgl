@@ -5,7 +5,7 @@
 // `attribute` (give/has/hasnt) and a free-standing `property` tested with provides(); computed property
 // access through a `property` parameter; a namespace object with `alias … for` an enum and a class, used
 // as global, parameter and switch types; a `bnum` combined with `|`, `^`, `&`, `<<`, `>>` and cast back;
-// a value class with a `ref` member, `ref` locals and parameters bound with `:=`, copies by value; a class
+// a struct with a `ref` member, `ref` locals and parameters bound with `:=`, copies by value; a class
 // with `static` `<=>`, `==` and `!=` driving sort(), indexOf() and a derived `<`, and an operator
 // reference `Crate::operator <=>`; an array of inline objects (`Type{…}`, bare `{…}`, named members)
 // and a bare `{…}` argument with run-time members; `operator []`/`[]=` on a world object with a member
@@ -84,7 +84,7 @@ object counter {
     }
 }
 
-value class Meter {
+struct Meter {
     int amount;
     ref Meter next;
     Meter operator = (Meter o) { amount = o.amount; return self; }

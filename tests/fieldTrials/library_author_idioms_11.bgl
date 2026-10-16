@@ -2,18 +2,18 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a kit part whose namespace object aliases a primitive code type, two part classes, a
-// piece with both as parents, an enum of faults and a value class, and holds helpers that walk
+// piece with both as parents, an enum of faults and a struct, and holds helpers that walk
 // arrays of arrays, throw and catch the faults, recurse over a code list, fall back with ?? and ?.,
 // dispatch to each ancestor by cast, take a union, a var and a ref parameter; extend class of the
 // primitive with value emitters, an emitter method, an emitter [] and an explicit bool conversion;
-// #using the namespace before a value class written with the aliased types: inline codes, [] and []=
+// #using the namespace before a struct written with the aliased types: inline codes, [] and []=
 // that throw through an aliased enum path, == and !=, an explicit conversion and a print method;
 // extend of the namespace object with a further type alias and a helper taking a ref row; the
-// consumer's extend class of the board with a ref value-class member, a part member read through ?.
+// consumer's extend class of the board with a ref struct member, a part member read through ?.
 // and ??, a recursive sum through the board's [], a guarded read that catches, and a local array of
 // arrays; extend class of a pooled class with a static recursive take and an issue that throws when
 // the pool is empty; dotted type paths for locals, parameters and globals; inline objects of the
-// value class; a ref local bound to a ref member and written through.
+// struct; a ref local bound to a ref member and written through.
 
 #beguilerSettings {
     target = z5;

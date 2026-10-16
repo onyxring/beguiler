@@ -6,8 +6,8 @@
 // a cooler and are sold at a shop, written the way a beginner writes it after reading the spec once.
 // Counts kept in int globals with consts for the cooler size, the bait price and the coins, bool
 // flags, two enums (a rod's state kept in a class member, a fish's size returned from a function with
-// switch ranges) switched on, a value class for a fish (kind and weight) with a copy operator kept in
-// an array of the value class sized by a const, the next fish taken from two parallel arrays (kinds
+// switch ranges) switched on, a struct for a fish (kind and weight) with a copy operator kept in
+// an array of the struct sized by a const, the next fish taken from two parallel arrays (kinds
 // and weights), a class of rods (number, strength, state, turns, methods for the bite and hold times,
 // a reel method that throws when the line breaks, a before() for Examine and Take) with a subclass
 // that replaces both times (one still calls the class's through a cast), a pier object with a daemon
@@ -66,7 +66,7 @@ enum FishSize { small, medium, big }
 // ===== FISH =====
 
 // one fish in the cooler
-value class Fish {
+struct Fish {
     string kind;
     int weight;
     Fish operator = (Fish o) {

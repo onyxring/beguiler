@@ -3,8 +3,8 @@
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
 
-// D1127, D1134: a static array of a value class draws a slot's instance; accessor members read it.
-value class Coin {
+// D1127, D1134: a static array of a struct draws a slot's instance; accessor members read it.
+struct Coin {
     int worth;
     auto weight = { int _w; int operator () { return _w; } void operator = (int v) { _w = v; } }
     Coin operator = (Coin o) { worth = o.worth; return self; }
@@ -56,13 +56,13 @@ object deck {
     auto ready = { int _r; int operator () { return _r; } void operator = (int v) { _r = 0; if (outer.one.peer?) _r = v; } }
 }
 
-// D1143: an object method copies a value-class parameter.
-value class Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
+// D1143: an object method copies a struct parameter.
+struct Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
 object scale { int weigh(Pair p) { int r = p.a; p.a = 0; return r; } }
 Pair g;
 
-// D1146: a `ref` local of a value-class array.
-value class Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } }
+// D1146: a `ref` local of a struct array.
+struct Span { int hi; Span operator = (Span o) { hi = o.hi; return self; } }
 array<Span> spans[2];
 
 // D1147, D1148: arrays and accessors imported by #using, named bare.

@@ -3,9 +3,9 @@
 
 // Exercises: a reading log kept in tables. An enum of sensors indexing parallel string, word and
 // unit tables; a band table as an array of arrays of limits read [sensor][band] beside a band-name
-// table of the same shape; a table of alert rules as an array of a value class written as bare { … }
+// table of the same shape; a table of alert rules as an array of a struct written as bare { … }
 // (enum, int, bool, bnum, string); a bnum of alert flags combined with |= per day and listed by bit
-// position; readings as an array of a value class appended as Reading{ … }, removed by position and
+// position; readings as an array of a struct appended as Reading{ … }, removed by position and
 // copied into a local array sorted by a comparator lambda; a table of statistics as an
 // array<func<int, eSensor>> of named routines walked beside a name table; a general parsing routine
 // reading a signed number (an optional literal word then TryNumber); <linq> filter/map/distinct/
@@ -60,7 +60,7 @@ array<array<string>> bandNames = {
 
 array<string> alertNames = { "frost", "gale", "flood" };
 
-value class AlertRule {
+struct AlertRule {
     inline eSensor sensor;
     inline int limit;
     inline bool above;
@@ -79,7 +79,7 @@ array<AlertRule> rules = {
     { rain,  25, true,  flood, "flood watch" },
 };
 
-value class Reading {
+struct Reading {
     inline int day;
     inline eSensor sensor;
     inline int value;

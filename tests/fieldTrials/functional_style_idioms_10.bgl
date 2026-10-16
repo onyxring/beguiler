@@ -15,8 +15,8 @@
 // appended to inside a hand-written forEach; a for loop whose condition and step are func<> calls; a
 // class method with a func<> default parameter called with named arguments in both orders; an
 // array<literal func<>> of a class's static methods, subscripted and mapped by <linq>; <linq> over the
-// bytes of an array<char> (filter, distinct, orderBy, map, any); <linq> over an array of a value class
-// (filter, any, orderBy with a comparator, map) with value-class lambda parameters; typeof on func<>
+// bytes of an array<char> (filter, distinct, orderBy, map, any); <linq> over an array of a struct
+// (filter, any, orderBy with a comparator, map) with struct lambda parameters; typeof on func<>
 // values.
 
 #beguilerSettings {
@@ -211,9 +211,9 @@ class Calc {
     static array<literal func<int, int>> table = {dbl, neg, inc};
 }
 
-//-- A value class ---------------------------------------------------------------------------
+//-- A struct ---------------------------------------------------------------------------
 
-value class Vec {
+struct Vec {
     inline int x;
     inline int y;
     Vec operator = (Vec o) { x = o.x; y = o.y; return self; }

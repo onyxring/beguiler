@@ -4,8 +4,8 @@
 // Exercises: a thirty-fifth PunyInform program that leans on members reached through computed
 // receivers: two rooms (Room A with a rack of three trays and a brass token, Room B with a scale and a
 // sealed tray); a `Tray` class with a member `array<int>`, a member `array<string>`, a member
-// `array<array<int>>`, a `stringObj` note, a `Gauge` accessor (named value class with a clamping
-// setter, a copy operator, `+=`, methods and a backing counter), an owned value class `Pair`, `link`
+// `array<array<int>>`, a `stringObj` note, a `Gauge` accessor (named struct with a clamping
+// setter, a copy operator, `+=`, methods and a backing counter), an owned struct `Pair`, `link`
 // and `spare` trays, `operator []`/`[]=` and an `operator +` that walks the ring, fluent methods
 // returning `self`, a method returning `stringObj`, a static finder over `bgl.world.instances`, and a
 // `default` report overridden by `SealedTray`, which calls the base through `((Tray)self)`; members,
@@ -60,7 +60,7 @@ extern bool scope_modified;
 const int GAUGE_MAX  = 9;
 const int SLOT_COUNT = 4;
 
-value class Gauge {
+struct Gauge {
     int _v   = 0;
     int sets = 0;
 
@@ -85,7 +85,7 @@ value class Gauge {
     int  room() { return GAUGE_MAX - _v; }
 }
 
-value class Pair {
+struct Pair {
     int a = 0;
     int b = 0;
 
@@ -245,7 +245,7 @@ SealedTray grayTray() {
     return trayD;
 }
 
-value class Batch {
+struct Batch {
     array<int> vals[3];
 
     Batch operator = (Batch o) {

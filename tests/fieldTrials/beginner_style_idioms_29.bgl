@@ -9,8 +9,8 @@
 // kept in a class member and switched on, a bnum of bike extras combined with | and tested with &, a
 // named getter/setter accessor class (the air, clamped by its setter) used as a class member, given
 // its starting value with an inline object in each bike's body, read, written, bumped with += and --
-// and read inside interpolation, a value class for a hire (rider, bike, turns, paid) with a copy
-// operator kept in an array of the value class sized by a const, riders waiting in an array used as
+// and read inside interpolation, a struct for a hire (rider, bike, turns, paid) with a copy
+// operator kept in an array of the struct sized by a const, riders waiting in an array used as
 // a queue with enqueue / dequeue / peek / remove, arrivals taken from two parallel arrays, a class of
 // bikes (label, number, state, air, extras, rider, turns, a method for the rate, a pump method that
 // throws when the tires are hard, a before() for Examine and Take) with a subclass that replaces the
@@ -78,7 +78,7 @@ bnum Extra { bell, basket, lamp }
 // ===== THE AIR IN A TIRE =====
 
 // air that never goes below 0 or above AIR_MAX
-value class Air {
+struct Air {
     int _amount = 0;
     int operator () {
         return _amount;
@@ -97,7 +97,7 @@ value class Air {
 // ===== HIRES =====
 
 // one line in the log book
-value class Hire {
+struct Hire {
     string rider;
     int bike;
     int turns;

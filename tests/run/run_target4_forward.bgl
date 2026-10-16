@@ -1,7 +1,7 @@
 // run_target4_forward — a named union's static methods and emitters (in its body or an `extend`) used
 // above the union, `func<>` members (static, object, lambda) used above their declarations, positional
 // values in objects declared above their class (slots named like a library global and a program
-// routine), and reads of never-stored slots of a value-class member array.
+// routine), and reads of never-stored slots of a struct member array.
 // EXPECT_OUTPUT: obj text obj text obj text 5 5 5 5 5 10 12 14 7 0 0
 #beguilerSettings { target = z5; informName = "none"; }
 object box { "box"; }
@@ -43,6 +43,6 @@ int halve(int n) { return n / 2; }
 class Jar : object { inline int cap; }
 class Jug : object { inline int turns; }
 class Pot : object { inline int halve; }
-value class W { int g; W operator = (W o) { g = o.g; return self; } }
+struct W { int g; W operator = (W o) { g = o.g; return self; } }
 class Bin : object { array<W> past[3]; W cur; }
 Bin crate { }

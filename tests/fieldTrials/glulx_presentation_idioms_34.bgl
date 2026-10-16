@@ -12,7 +12,7 @@
 // objects, enum values, attributes, classes and members, differing only in case (`COUNT`, `Dial DIAL`),
 // reached around with `self.` and `::`; a global variable named like a library property (number) read
 // beside the property; a global emitter function sharing its name with a variable (tick); a member
-// with `asI6`; a value class Mark beside a verb Mark (and a local mark); an object imported with
+// with `asI6`; a struct Mark beside a verb Mark (and a local mark); an object imported with
 // #using whose member names meet a parameter and a global; `obj.provides(capacity)` beside the
 // #define and `provides()` of members named like globals and classes; global functions named like
 // library methods (first, any, append, clear) used beside those methods; a method named like a
@@ -117,7 +117,7 @@ object fmt {
 
 // ---- the mark ------------------------------------------------------------------------------------
 
-value class Mark {
+struct Mark {
     char letter;
     int count;
     int turn;

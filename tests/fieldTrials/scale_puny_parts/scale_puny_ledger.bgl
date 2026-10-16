@@ -2,7 +2,7 @@
 
 // The ledger: a stringObj journal trimmed to a bounded length, string switches, a table of operations
 // held as func<> values, try/catch over checked arithmetic and lookups, recursion over strings and
-// numbers, and an order book of value-class entries.
+// numbers, and an order book of struct entries.
 
 #once
 #include <array>
@@ -198,7 +198,7 @@ int gcd(int a, int b) {
 
 // --- an order book ----------------------------------------------------------------------------------
 
-value class Order {
+struct Order {
     int crate;
     int qty;
     eTier wanted;

@@ -6,8 +6,8 @@
 // shared through a helper, overloaded setters (int, enum, copy), an implicit int getter beside an
 // explicit string one, its own + and += and ++ (and no - or -- or -=, so those fall back to
 // getter-then-setter), == and != against an int and against another dial, a static <=> that gives
-// the orderings, and overloaded nudge() methods; a subclass accessor that replaces the int setter
-// and inherits everything else. A caption accessor with a string getter, string and int setters and
+// the orderings, and overloaded nudge() methods; a stepped accessor with its own rounding int setter,
+// set from a dial. A caption accessor with a string getter, string and int setters and
 // an `operator ?` so it takes `?.` and `??`; a link accessor whose getter returns a panel, reached
 // with `?.` and `??` on the panel it reads. A panel class owning a dial, a caption, a link, an inline
 // accessor with its own static count, and an array of dials; a meter subclass that hides the dial's
@@ -320,7 +320,7 @@ const int LA34_STEP = 3;
 enum eLa34Notch { low, mid, high }
 
 /// A dial reading kept between zero and the top, counting how often it was set.
-value class La34Dial {
+struct La34Dial {
     int _raw;
     int _sets;
 
@@ -369,12 +369,19 @@ value class La34Dial {
 }
 
 /// A dial that stops only on even readings.
-value class La34Step : La34Dial {
-    replace void operator = (int v) { put(v - v % 2); }
+struct La34Step {
+    int _raw;
+
+    /// Stores a reading, clamped.
+    void put(int v) { _raw = v < 0 ? 0 : (v > LA34_MAX ? LA34_MAX : v); }
+
+    int operator () { return _raw; }
+    default void operator = (int v) { put(v - v % 2); }
+    void operator += (int n) { put(_raw + n); }
 }
 
 /// A panel's caption: text, or absent.
-value class La34Caption {
+struct La34Caption {
     string _s;
     int _marks;
 
@@ -400,7 +407,7 @@ value class La34Caption {
 }
 
 /// The panel a panel leads to, counting how often it was changed.
-value class La34Link {
+struct La34Link {
     ref La34Panel _to;
     int _hops;
 

@@ -1,13 +1,13 @@
-// run_target6_values — bare `{ … }` for an owned value-class member in an object body, a local named like
-// a member array beside reads of that member through receivers, value-class globals in object form and
+// run_target6_values — bare `{ … }` for an owned struct member in an object body, a local named like
+// a member array beside reads of that member through receivers, struct globals in object form and
 // initialized form as elements of a file-scope array initializer, and bare `{ … }` arguments to array
-// methods for a value class and an object-backed class.
+// methods for a struct and an object-backed class.
 // EXPECT_OUTPUT: 200 5 99 2 8 2 8 1 2 3 2 2 5 1 99 9 4 8 2 5
 #beguilerSettings { target = glulx; informName = "none"; }
 #include "glulxConsole.bgl"
 #include <array>
 #include <string>
-value class Rgb {
+struct Rgb {
     inline int r; inline int g; inline int b;
     Rgb operator = (Rgb o) { r = o.r; g = o.g; b = o.b; return self; }
 }

@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a kit configured by #define symbols the consumer sets first; a value class of
+// Exercises: a kit configured by #define symbols the consumer sets first; a struct of
 // quantities with copy operators and + over ints; a kit verb that reports a shared note and is run from
 // code through perform(). A pooled crate class over a plain box base, then an extend class of the crate
 // that adds a byte array mark, a nested-literal array of arrays, an owned quantity and a var member,
@@ -55,7 +55,7 @@ verb La16Ping {
 }
 
 /// A quantity that copies on assignment.
-value class La16Qty {
+struct La16Qty {
     int n;
     La16Qty operator = (La16Qty o) { n = o.n; return self; }
     La16Qty operator = (int v) { n = v; return self; }

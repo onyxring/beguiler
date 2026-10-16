@@ -7,7 +7,7 @@
 // replaced method, operators + - [] and []=, and a survey method that holds an emitter-class local
 // with init/deinit, an array<char> line captured and upper-cased, a string table, an array of class
 // instances gathered from the parent's children, a stringObj trail, a var tag switched on typeof, a
-// ref value-class parameter rebound through a ref local, a postfix ? query on the parent, has/give,
+// ref struct parameter rebound through a ref local, a postfix ? query on the parent, has/give,
 // an enum grade, #if around a print and perform() of a verb; a replace of a global rating routine
 // calling replaced() with a nested band table under #if, an array of crates, a ref cell and a
 // postfix query; an extend of an object replacing its method with the same mix; and verb handlers
@@ -36,7 +36,7 @@ enum eGrade { none = 0, low, mid, high }
 
 union Tag = string | object;
 
-value class Cell {
+struct Cell {
     int x;
     Cell operator = (Cell o) { x = o.x; return self; }
 }

@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-fourth pass: a help desk.
-// A value class for a time of day with a copy operator, `+` taking minutes, `==`/`!=` and a `<=>` that
+// A struct for a time of day with a copy operator, `+` taking minutes, `==`/`!=` and a `<=>` that
 // `<`/`>=` come from, a static factory and a formatter returning a `stringObj`; a pooled ticket class whose
 // `create()` takes a title, a priority and a `Clock`, numbering itself from a static counter, with an
 // owned `Clock` for when it opened and when it falls due; the Chain of Responsibility: a handler base
@@ -64,7 +64,7 @@ string StatusName(eStatus s) {
 
 //-- Clock: a value type ---------------------------------------------------------------------------------------
 
-value class Clock {
+struct Clock {
     int Minutes;
 
     const int MinutesPerDay = 1440;

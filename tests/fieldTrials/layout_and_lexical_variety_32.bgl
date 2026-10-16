@@ -3,16 +3,16 @@
 
 // Exercises: layout and lexical habits in a small program written top-down, two rooms, four lamps, a
 // meter and a panel, so that nearly every name is used above its declaration. Globals typed by a class,
-// a value class (one with an inline-object initializer), an alias type path, an enum and `func<bool,
+// a struct (one with an inline-object initializer), an alias type path, an enum and `func<bool,
 // Lamp>` declared or typed at the foot of the file, one initialized with an object declared below and
 // one with an enum value through an alias path; `array<kit.lamp>` (an alias path as the element type);
 // a global array of objects that an `extend` at the foot injects a lamp into, itself declared after the
-// `extend`; a global array of the value class sized by a `const` declared below and sorted by `<=>`; a
+// `extend`; a global array of the struct sized by a `const` declared below and sorted by `<=>`; a
 // member array sized by a const declared below, written and read by subscript from above; routines
-// returning the value class, taking it by `ref` (an owned member as the argument) with a default value
+// returning the struct, taking it by `ref` (an owned member as the argument) with a default value
 // that is a const declared below, a default object declared below and a default enum value through an
 // alias path (also given by name), and a `ref` local bound to a member reached through a cast; the
-// value class's copy, `+`, two `+=` overloads, `==`, `!=` and an ordering derived from `<=>`; a named
+// struct's copy, `+`, two `+=` overloads, `==`, `!=` and an ordering derived from `<=>`; a named
 // accessor class clamped by a global emitter value declared below, as a member of every lamp, read,
 // assigned, `+=`d through a cast, `++`d, `--`d, passed, switched on, compared and read through `?.`;
 // inline `auto` accessors on the panel (its setter reaching through `outer` a member declared after it)
@@ -382,7 +382,7 @@ class Fixture : object
 }
 
 /// A level held between 0 and MaxGlow.
-value class Dial
+struct Dial
 {
     int _v = 0 ;
     int  operator () { return _v ; }
@@ -394,7 +394,7 @@ value class Dial
     }
 }
 
-value class Charge
+struct Charge
 {
     int amps ;
     Charge operator =   ( Charge o ) { amps = o.amps ; return self ; }

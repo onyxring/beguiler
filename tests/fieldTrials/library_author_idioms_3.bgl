@@ -7,7 +7,7 @@
 // objects bound through extern; global emitter overloads, a var-forwarding emitter, void emitter
 // values, ##if in an emitter body; an emitter class used as a proxy member through $host; an enum
 // with an emitter member; $i6Name on an overloaded static method; a static superposed method; a
-// value-class accessor, with hide on its setter in a subclass; required and default members; extend
+// struct accessor, with hide on its setter in a subclass; required and default members; extend
 // class with replace; _bglGlobalDeclaration and $selfsub; a stub library routine defined by the kit;
 // type aliases on a namespace object and emitter-class alias members with #using; consumer objects
 // declared before the kit, extended after; ::name; hooks filled with lambdas and named functions.

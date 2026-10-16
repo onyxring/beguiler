@@ -75,6 +75,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `static` | qualifier | §8.3.3 |
 | `string` | type, I6 | §2.2 |
 | `stringLiteral` | type | §2.4 |
+| `struct` | declaration (soft: before a name) | §8.2.7 |
 | `superposed` | qualifier | §3.12 |
 | `switch` | control | §5.12 |
 | `synonyms` | qualifier (soft: inside a verb body or `extend` of a verb) | §13.5.4 |
@@ -86,7 +87,6 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `uint` | type | §2.2, §21.6.1 |
 | `union` | type (soft) | §2.8.2 |
 | `until` | control | §5.11 |
-| `value` | qualifier (soft: before `class`) | §8.2.7 |
 | `var` | type | §2.6 |
 | `verb` | type, I6 | §13.2 |
 | `void` | type | §2.2, §6.2 |

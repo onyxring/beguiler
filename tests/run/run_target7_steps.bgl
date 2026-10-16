@@ -15,7 +15,7 @@ class Node {
 Node nodeA { }
 Node pick() { return nodeA; }
 
-value class Price {
+struct Price {
     int c;
     Price operator = (Price o) { c = o.c; return self; }
     int operator <=> (Price o) { return c - o.c; }

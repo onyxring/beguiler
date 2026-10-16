@@ -5,7 +5,7 @@
 // with two parents (Shade, Tagged) whose methods use arithmetic operators, an enum-typed member,
 // func<> parameters, array<array<int>> parameters and locals, ?. over a Swatch link, #if over
 // #define'd symbols and perform(); an `extend class Swatch` adding more operators and methods that
-// allocate and delete slots with the same mix of areas. A value class Tint with a copy operator; a
+// allocate and delete slots with the same mix of areas. A struct Tint with a copy operator; a
 // Panel/SidePanel pair dispatched to the base with a cast; a union reading of float or string. An
 // object mixer with an inline float accessor that reaches its host through outer, binds a ref Tint
 // with := and throws an enum fault, an object `operator +`, and a method using a block lambda, var,
@@ -197,7 +197,7 @@ extend class Swatch {
 
 // ---- tints and panels ----------------------------------------------------------------------------
 
-value class Tint {
+struct Tint {
     float r = 0.0;
     float g = 0.0;
     void operator = (Tint o) {

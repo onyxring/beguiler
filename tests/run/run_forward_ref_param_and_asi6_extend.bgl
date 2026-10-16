@@ -3,7 +3,7 @@
 // object (it swallowed the next declaration).
 // EXPECT_OUTPUT: 3 7 2
 #beguilerSettings { target = z5; informName = "none"; }
-value class box { int v = 3; box operator = (box b){ self.v = b.v; return self; } }
+struct box { int v = 3; box operator = (box b){ self.v = b.v; return self; } }
 box b1;
 void main(){ bglInit(); show(b1); o.move(7); eAfter x = eAfter.b; print($" {(int)x}"); }
 void show(ref box b){ print(b.v); }

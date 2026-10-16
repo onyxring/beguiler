@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, nineteenth pass: a small job scheduler.
-// A value class for durations with arithmetic, ordering through `<=>` (and the derived `<`/`>`), `==`/`!=`,
+// A struct for durations with arithmetic, ordering through `<=>` (and the derived `<`/`>`), `==`/`!=`,
 // a static factory and positional inline-object values; a clamping property accessor class used as an
 // owned member; a template-method base class whose `default` methods are overridden by three subclasses,
 // one of them mixing in an "interface" base through multiple inheritance with a `const` member and a
@@ -10,7 +10,7 @@
 // typed `catch`, with `is` tests and casts to the mixin; a scheduler class holding an `array<Job>` queue
 // (append, sort with a comparator lambda, dequeue, enqueue, clear) and an observer list of `func<>`
 // listeners; a `ref stringObj` journal threaded through the calls; static counters and a static method; enum
-// switches and a name-lookup helper; a summary value class returned from a method; `?.` and `??`.
+// switches and a name-lookup helper; a summary struct returned from a method; `?.` and `??`.
 
 #beguilerSettings {
     target = z5;
@@ -38,7 +38,7 @@ enum eOutcome { Done, Retry, Failed }
 
 //-- Duration: a value type with arithmetic and ordering ---------------------------------------------------
 
-value class Duration {
+struct Duration {
     inline int Ticks;
 
     Duration operator = (Duration o) { Ticks = o.Ticks; return self; }
@@ -55,7 +55,7 @@ value class Duration {
 
 //-- Percent: a clamping property accessor -------------------------------------------------------------------
 
-value class Percent {
+struct Percent {
     int _value;
     int operator () { return _value; }
     void operator = (int v) {
@@ -172,7 +172,7 @@ class StrictJob : Job, Retryable {
 
 //-- A summary returned by value ---------------------------------------------------------------------------
 
-value class Summary {
+struct Summary {
     int Count;
     Duration Total;
     Duration Longest;

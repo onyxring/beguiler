@@ -60,7 +60,12 @@ object bgl
 class _bglClass_Payload
   with
     a,
-    b
+    b,
+    _opeq[o;
+        self.a=o.a;
+        self.b=o.b;
+        return self;
+    ]
 ;
 class _bglClass_Node
   with
@@ -73,6 +78,12 @@ class _bglClass_Node
     ],
     nextId[;
         return self.next.id;
+    ],
+    _opeq[o;
+        self.id=o.id;
+        self.next = o.next;
+        self.load = o.load;
+        return self;
     ]
 ;
 _bglClass_Node n1

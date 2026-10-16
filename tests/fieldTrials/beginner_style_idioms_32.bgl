@@ -3,21 +3,21 @@
 
 // Exercises: a thirty-second first-time-programmer program, a weighing stall where crates are
 // weighed on a scale, priced by weight, paid for from a purse with change given from a till of
-// coins, and written on a receipt, written by a beginner who has just found value classes and uses
-// them for everything. A value class for money (inline pounds and pence, a copy operator, ==, !=,
+// coins, and written on a receipt, written by a beginner who has just found structs and uses
+// them for everything. A struct for money (inline pounds and pence, a copy operator, ==, !=,
 // <=>, +, -, * by an int, += and methods) and one for a weight (inline grams, a copy operator, static
-// == and <=>), a value subclass for a price that chains to its base's copy operator with a cast, and
-// a value class for a receipt line that owns a weight and a money member of its own and holds a ref
-// to another line. Value classes as globals, locals, parameters (copies and ref), return values of
+// == and <=>), a struct for a price that holds a money member and copies it in its copy operator, and
+// a struct for a receipt line that owns a weight and a money member of its own and holds a ref
+// to another line. Structs as globals, locals, parameters (copies and ref), return values of
 // functions and methods (members read straight off the call result), owned members of a class and
 // of objects given starting values with inline objects (positional, named and both), a static member
 // of a class, an object's member array of money with initial inline elements, file-scope arrays of
-// the value classes (one with initial elements, sized ones filled with append / += / insert /
+// the structs (one with initial elements, sized ones filled with append / += / insert /
 // prepend), ref locals bound to globals, members and array elements and rebound with :=, ref members
 // bound with :=, copies checked to be independent, comparisons with inline objects, ?: picking
-// between two values, value classes as for-in loop variables, sort / indexOf / contains / removeValue
+// between two values, structs as for-in loop variables, sort / indexOf / contains / removeValue
 // / -= / remove / clear on arrays of them, and <linq> filter / count / any / all / first / last /
-// orderBy / map / take / skip with lambdas taking value classes and capturing value-class locals,
+// orderBy / map / take / skip with lambdas taking structs and capturing struct locals,
 // helper functions overloaded on money, weight and line, try / catch / throw when the purse is
 // short, and verbs (weigh, buy, receipt, till, change, swap, copies, stall) that drive it.
 
@@ -47,7 +47,7 @@ bool everShort = false;
 // ===== MONEY =====
 
 // an amount of money in pounds and pence
-value class Money {
+struct Money {
     inline int pounds;
     inline int pence;
 
@@ -109,11 +109,12 @@ value class Money {
 }
 
 // a price: an amount of money for so many grams
-value class Price : Money {
+struct Price {
+    Money money;
     int per = 100;
     Price operator = (Price o) {
         per = o.per;
-        (Money)self = o;
+        money = o.money;
         return self;
     }
 }
@@ -121,7 +122,7 @@ value class Price : Money {
 // ===== WEIGHT =====
 
 // a weight in grams
-value class Weight {
+struct Weight {
     inline int grams;
     Weight operator = (Weight o) {
         grams = o.grams;
@@ -141,7 +142,7 @@ value class Weight {
 // ===== RECEIPT LINES =====
 
 // one line on the receipt
-value class Line {
+struct Line {
     inline string what;
     Weight w;
     Money cost;
@@ -208,7 +209,7 @@ void say(Line l) {
 // how much a weight costs at a price
 Money priceFor(Price p, Weight w) {
     Money m;
-    m.setPence(p.inPence() * w.grams / p.per);
+    m.setPence(p.money.inPence() * w.grams / p.per);
     return m;
 }
 
@@ -366,7 +367,7 @@ class Crate : object {
             print($"Crate of {what}: ");
             say(w);
             print(" at ");
-            say(price);
+            say(price.money);
             print($" per {price.per}g, costs ");
             say(cost());
             print(". Last paid ");
@@ -419,7 +420,7 @@ Crate crateA {
     name = {.apple, .crate};
     what = "apples";
     w = Weight{ 400 };
-    price = Price{ 0, 30; per = 100; };
+    price = Price{ money = Money{ 0, 30 }; per = 100; };
     description = "A crate.";
     attributes = {static};
 }
@@ -430,7 +431,7 @@ Crate crateB {
     name = {.bean, .crate};
     what = "beans";
     w = Weight{ grams = 250; };
-    price = Price{ pounds = 1; pence = 20; per = 500; };
+    price = Price{ money = Money{ pounds = 1; pence = 20; }; per = 500; };
     description = "A crate.";
     attributes = {static};
 }
@@ -441,7 +442,7 @@ Crate crateC {
     name = {.corn, .crate};
     what = "corn";
     w = Weight{ 1000 };
-    price = Price{ 0, 15 };
+    price = Price{ money = Money{ 0, 15 }; };
     description = "A crate.";
     attributes = {static};
 }
@@ -794,7 +795,7 @@ verb ShowSums {
         if (crateC.cost() > Money{ 1, 0 } && crateA.w > crateB.w) {
             print("Corn costs over a pound and apples outweigh beans.^");
         }
-        Money base = (Money)crateB.price;
+        Money base = crateB.price.money;
         print("Bean price without its weight: ");
         say(base);
         print($". Fifties in it: {coinsFor(base, Money{ 0, 50 })}. Twenties in 1.00: {coinsFor(Money{ 1, 0 }, stall.coins[2])}.^");
@@ -928,11 +929,11 @@ verb ShowExtras {
         print("Purse, plus a penny, less the fee: ");
         say(purse.held);
         print(".^");
-        if (crateA.price == Money{ 0, 30 } && crateB.price != crateA.price) {
+        if (crateA.price.money == Money{ 0, 30 } && crateB.price.money != crateA.price.money) {
             print("Apples are 30p a time and beans are not.^");
         }
         array<Money> mixed[3];
-        mixed += crateB.price;
+        mixed += crateB.price.money;
         mixed += Crate.fee;
         mixed.append(floatCash);
         print("Bean price, fee and float:");
@@ -942,11 +943,11 @@ verb ShowExtras {
         }
         print("^");
         Price dearer = crateA.price;
-        addTo(dearer, Money{ 0, 5 });
+        addTo(dearer.money, Money{ 0, 5 });
         print("Apple price plus 5p: ");
-        say(dearer);
+        say(dearer.money);
         print($" per {dearer.per}g; the crate still asks ");
-        say(crateA.price);
+        say(crateA.price.money);
         print(".^");
         Money nothingYet;
         if (nothingYet == Money{ 0, 0 }) {

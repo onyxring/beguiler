@@ -1,8 +1,8 @@
 // run_target6_namespaces — `alias class X for` a path, a type path through an object's own `auto` member,
 // a value alias whose target is a path, static methods through an `auto` member and a class alias, a
-// global array whose element type is a path, `?.` then `??` on a value class with an emitter `operator ?`,
+// global array whose element type is a path, `?.` then `??` on a struct with an emitter `operator ?`,
 // a bare inline-accessor name then a member (through #using and in its own object), and an accessor
-// setter fed a value-class accessor member.
+// setter fed a struct accessor member.
 // EXPECT_OUTPUT: hex 4 4 5 6 20 7 4 9 3 3 107 105
 #beguilerSettings { target = z5; informName = "none"; }
 #include <array>
@@ -26,7 +26,7 @@ object hub { auto ns = _ns; }
 class Gauge : object { int n = 7; }
 array<hub.ns.gauge> gauges = { gA };
 Gauge gA { }
-value class Level {
+struct Level {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) { _v = v; }

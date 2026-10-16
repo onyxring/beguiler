@@ -43,7 +43,7 @@ ValidationError ErrBinFull    { Message = "bin is full"; }
 ValidationError ErrNotFound   { Message = "part not found"; }
 
 // A percentage that refuses anything outside 0..100.
-value class Percent {
+struct Percent {
     int _value;
     int operator () { return _value; }
     void operator = (int v) {

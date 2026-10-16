@@ -4,7 +4,7 @@
 // Exercises: a small loan desk written in a functional style on Glulx. Books and members are scenery
 // objects of classes with an enum genre, a page count, a holder reference and a due day, held in
 // global arrays. Fine rules are func<int, int> values returned from a switch over the enum (named
-// functions and non-capturing lambdas) and called straight off the call; a value class tally with
+// functions and non-capturing lambdas) and called straight off the call; a struct tally with
 // a copy operator and an `operator +`, folded over a filtered array and returned by value; float
 // averages and ratios; <linq> filter/count/any/all/orderBy/take/skip/distinct/map over global and
 // returned local arrays, with two-key comparators and a chain inside a predicate; a recursive join
@@ -160,7 +160,7 @@ stringObj joinLabels(array<Book> xs, string empty = "none") {
 
 //-- Tallies --------------------------------------------------------------------------------------
 
-value class Tally {
+struct Tally {
     int count = 0;
     int pages = 0;
     int fines = 0;

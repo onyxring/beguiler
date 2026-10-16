@@ -2,18 +2,18 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: Inform 6 habits on z5, three classes each packing one area cluster into a single
-// declaration. A value class over a value-class tally whose inline accessor throws from its setter, whose
+// declaration. A struct holding a struct tally whose inline accessor throws from its setter, whose
 // operator + returns a value copy and operator - compares two hosts, whose operator [] and []= guard a
-// member array and throw, whose replaced default method builds a stringObj, whose method subscripts
+// member array and throw, whose show method builds a stringObj, whose method subscripts
 // self inside try/catch, restores a value copy and records state through #i6 lines, and which performs
-// a verb; a value class with two value parents and a copy operator chaining to both, an implicit
-// conversion operator (), operator += and ++, static array<int> and array<char> members, a replaced
-// default method, a local array<char> bar, a named union parameter discriminated with typeof, a var
-// local, and a perform; a value class written straight after #using a namespace object, typed through the
+// a verb; a struct with the automatic copy and a method converting it to a second struct, an implicit
+// conversion operator (), operator += and ++, static array<int> and array<char> members, a method
+// shadowing the second struct's, a local array<char> bar, a named union parameter discriminated with typeof, a var
+// local, and a perform; a struct written straight after #using a namespace object, typed through the
 // imported aliases, with an inline accessor guarded by #if that throws, static members and a static
-// method reached through $i6Expr, an owned value-class member, a var parameter tested with typeof
-// inside try/catch, and a perform. Verbs drive each class from handlers that copy, subscript, convert,
-// cast to an ancestor and catch.
+// method reached through $i6Expr, an owned struct member, a var parameter tested with typeof
+// inside try/catch, and a perform. Verbs drive each class from handlers that copy, subscript, convert
+// and catch.
 
 #beguilerSettings {
     target = z5;
@@ -49,16 +49,12 @@ object roomA { "Room A"; string description = "Room A."; attributes = {light}; }
 
 // ---------------------------------------------------------------- cluster 1: purse
 
-value class Tally {
+struct Tally {
     int coins;
     Tally operator = (Tally o) { coins = o.coins; return self; }
 }
 
-value class PurseBase {
-    default void show() { print("purse"); }
-}
-
-value class Purse : PurseBase {
+struct Purse {
     Tally t;
     array<int> slots[PURSE_SLOTS];
     auto cap = {
@@ -90,7 +86,7 @@ value class Purse : PurseBase {
         return v;
     }
 
-    replace void show() {
+    void show() {
         stringObj s = $"purse {t.coins}/{cap} [";
         for (int i = 0; i < slots.length; i++) {
             stringObj n = $"{slots[i]}";
@@ -128,25 +124,22 @@ Purse spare;
 
 union Mark = string | object;
 
-value class Dial {
+struct Dial {
     int level;
     default int weight() { return level; }
     Dial operator = (Dial o) { level = o.level; return self; }
 }
 
-value class Notch {
+struct Gauge {
+    int level;
     int notches;
-    Notch operator = (Notch o) { notches = o.notches; return self; }
-}
-
-value class Gauge : Dial, Notch {
     static array<int> history[4];
     static array<char> marks = "-+*#";
 
-    Gauge operator = (Gauge o) {
-        (Dial)self = o;
-        (Notch)self = o;
-        return self;
+    Dial toDial() {
+        Dial d;
+        d.level = level;
+        return d;
     }
 
     int operator () { return level * 10 + notches; }
@@ -164,7 +157,7 @@ value class Gauge : Dial, Notch {
         return self;
     }
 
-    replace int weight() { return level * 2 + notches; }
+    int weight() { return level * 2 + notches; }
 
     void bar() {
         array<char> row[10];
@@ -198,7 +191,7 @@ Gauge gaugeA;
 
 enum eMode { idle, live, fault }
 
-value class Snap {
+struct Snap {
     int raw;
     eMode m;
     Snap operator = (Snap o) { raw = o.raw; m = o.m; return self; }
@@ -210,7 +203,7 @@ object kit {
 }
 
 #using kit
-value class Meter {
+struct Meter {
     static int made = 0;
     static int faults = 0;
     int raw;
@@ -338,7 +331,7 @@ verb GaugeShow {
         int n = gaugeA;
         print(" |");
         gaugeA.bar();
-        print($"| {gaugeA.level}/{gaugeA.notches} as {n}, weight {gaugeA.weight()}, base {((Dial)gaugeA).weight()}.^");
+        print($"| {gaugeA.level}/{gaugeA.notches} as {n}, weight {gaugeA.weight()}, base {gaugeA.toDial().weight()}.^");
     }
 }
 

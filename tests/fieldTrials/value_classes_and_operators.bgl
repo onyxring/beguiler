@@ -1,10 +1,10 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a value class with a copy operator, copy semantics on assignment and on passing, `+`,
+// Exercises: a struct with a copy operator, copy semantics on assignment and on passing, `+`,
 // `==` and `<=>` declared on it with `<` `>` `<=` `>=` derived from `<=>`, a routine that returns one,
-// two returned values combined in one expression, a value-class member on a class of objects, a
-// recursive routine with value-class locals, and casts on a receiver and on a member's value.
+// two returned values combined in one expression, a struct member on a class of objects, a
+// recursive routine with struct locals, and casts on a receiver and on a member's value.
 
 #beguilerSettings {
     target = z5;
@@ -21,7 +21,7 @@ extend extern class object {
 }
 
 // A grid position.
-value class Pos {
+struct Pos {
     int x;
     int y;
     Pos operator = (Pos o) { x = o.x; y = o.y; return self; }

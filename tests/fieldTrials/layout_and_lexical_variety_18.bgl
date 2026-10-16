@@ -3,7 +3,7 @@
 
 // Exercises: layout and lexical habits where up to twenty-seven language areas meet inside one
 // declaration. A namespace object with positional members of its own class, type aliases (`alias … for`)
-// for a value class and a primitive newtype, an `array<string>`, an `array<array<int>>` from a nested
+// for a struct and a primitive newtype, an `array<string>`, an `array<array<int>>` from a nested
 // list initializer, an `operator []`, an inline accessor whose setter reads and writes the host through
 // `outer` and runs a <linq> chain, a `replace` of a `default` method, and a recursive method that switches
 // on `typeof` of a `var` holding a named union, tests `?.` and postfix `?`, takes a `ref` parameter typed
@@ -14,8 +14,8 @@
 // members, a static `array<string>`, a static `array<array<int>>`, `[]`/`[]=` over it, a `replace` of an
 // inherited method, a member of a primitive newtype switched on through its emitter `operator switch`, and
 // one recursive method holding all of the above (recursing through new pool slots and, once the pool is
-// exhausted, through itself). A value subclass with statics, a static `array<string>` and
-// `array<array<int>>`, `[]`/`[]=`, a `replace`, an emitter calling a static method through `$i6Name`, and
+// exhausted, through itself). A struct with statics, a static `array<string>` and
+// `array<array<int>>`, `[]`/`[]=`, an emitter calling a static method through `$i6Name`, and
 // a recursive method over a `ref array<Tile>` holding an inline value object, a local nested array, a
 // block lambda in `any()`, ranged/guarded switches and `$i6Expr` of that emitter. An object (also a
 // namespace) whose inline accessor setter holds a `var` from a ternary, a primitive newtype switch, an
@@ -72,7 +72,7 @@ loudVerb V_ping { grammar = { .ping } ; }
 
 union Key = string | object ;
 
-value class Span
+struct Span
 {
     inline int lo ;
     inline int hi ;
@@ -236,17 +236,18 @@ class Ledger[3] : Book
 	}
 }
 
-//-- Cluster 3: a value subclass with statics, an $i6Name emitter and a dense recursive method -------------
+//-- Cluster 3: a struct with statics, an $i6Name emitter and a dense recursive method ---------------------
 
-value class Tile : Span
+struct Tile
 {
+    inline int lo ;
+    inline int hi ;
     int mark ;
     Static int made = 0 ;
     static array<string>     kinds = { "flat" , "rough" , "steep" } ;
     STATIC array<array<int>> masks = { { 1 , 0 , 1 } , { 0 , 1 } } ;
 
-    Tile operator = ( Tile o ) { lo = o.lo ; hi = o.hi ; mark = o.mark ; return self ; }
-    Replace int width () { return (hi - lo) * 2 + mark ; }
+    int width () { return (hi - lo) * 2 + mark ; }
     int  operator [] ( int i ) { return Tile.masks[i % 2][0] + mark ; }
     void operator []= ( int i , int v ) { Tile.masks[i % 2][0] = v ; }
     static int score ( int a , int b ) { Tile.made++ ; return a * 10 + b ; }

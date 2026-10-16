@@ -18,7 +18,7 @@ extend extern class object {
 }
 
 // An amount of money in cents; every variable and member holds its own copy.
-value class Coins {
+struct Coins {
     int cents;
     Coins operator =  (Coins o)  { cents = o.cents; return self; }
     Coins operator =  (int c)    { cents = c; return self; }
@@ -35,7 +35,7 @@ value class Coins {
 }
 
 // Uses left on a tool; never goes below zero.
-value class WearLevel {
+struct WearLevel {
     int _left;
     int  operator ()        { return _left; }
     void operator = (int v) { if (v < 0) v = 0; _left = v; }

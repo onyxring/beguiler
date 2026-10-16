@@ -86,13 +86,13 @@ a required parameter.
 
 - a primitive value is copied;
 - a reference-class parameter refers to the argument's instance;
-- a value-class parameter owns an instance of its own, into which the argument is copied through the
+- a struct parameter owns an instance of its own, into which the argument is copied through the
   class's copy operator; the class's `init` and `deinit`, if it has them, run at entry and exit (§8.5);
 - a parameter of a class that manages its own storage (`stringObj`) is given its own copy the same way
   (§8.5);
-- a `ref` parameter of a value class or storage-managing class is bound to the argument itself (§3.7).
+- a `ref` parameter of a struct or storage-managing class is bound to the argument itself (§3.7).
 
-So changes a function makes to a value-class or `stringObj` parameter don't reach the caller, and
+So changes a function makes to a struct or `stringObj` parameter don't reach the caller, and
 changes through a reference-class or `ref` parameter do.
 
 Parameter names may be omitted in non-emitter declarations inside an `extern class` (§15.4.3).

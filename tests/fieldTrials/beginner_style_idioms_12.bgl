@@ -5,13 +5,13 @@
 // chapters together in single classes. A class with two parents holding static member arrays (of
 // objects and of strings) that it fills with append and tests with contains, throwing and catching
 // codes, testing things with postfix ? and has/give, reading with ?? and var/typeof, and performing
-// Examine; a value class with + - == != operators, ref parameters, a ref local rebound with :=, a
+// Examine; a struct with + - == != operators, ref parameters, a ref local rebound with :=, a
 // func<> parameter and an #i6 island, extended with += and ++ operators that use ?.; a class with a
 // tracked array<char> member worked through bgl.util.buf, a conversion operator () and a block lambda
 // passed as a predicate, extended with a member array of strings; an object with an auto accessor
 // whose setter and operator + reach the host through outer (a number, an array of strings), and a
 // nested-list member array walked with for-in; a class of static members over a static nested array;
-// an object with alias … for a value class and ref locals bound with :=; an I6 class bound as an extern
+// an object with alias … for a struct and ref locals bound with :=; an I6 class bound as an extern
 // class with two extern parents, with static methods over an array of its instances and ??; an emitter class with init/deinit
 // counting depth in a recursive walk printed from an #i6 island; postfix ? with an #i6 island; a
 // local array of strings with a union parameter told apart by typeof.
@@ -92,7 +92,7 @@ class Sorter : Counted, Tagged {
 }
 
 // ===== COINS (an amount you can add up) =====
-value class Coins {
+struct Coins {
     int cents;
     string label;
 
@@ -156,7 +156,7 @@ value class Coins {
     }
 }
 
-extend class Coins {
+extend struct Coins {
     ref object holder;
 
     Coins operator += (int n) {
@@ -488,7 +488,7 @@ verb SortVerb {
     }
 }
 
-// COINS - the coins value class
+// COINS - the coins struct
 verb CoinsVerb {
     meta = true;
     grammar = {.coins};

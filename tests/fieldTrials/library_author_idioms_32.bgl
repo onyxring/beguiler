@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a packing kit whose public surface is built from overloads. A value class of quantities
+// Exercises: a packing kit whose public surface is built from overloads. A struct of quantities
 // with copy operators from itself, an int and an enum unit; + and - by quantity, int and unit; += by
 // quantity and int; distinct postfix ++ and prefix++; == and != by quantity and by int; a logical !;
 // static == overloads selected by operator reference; a static <=> giving < and > and passed to sort;
@@ -50,7 +50,7 @@ enum eLa32Unit { each, pair, dozen }
 bnum eLa32Flag { fragile, heavy, sealed }
 
 /// A count of things, copied on assignment.
-value class La32Qty {
+struct La32Qty {
     int n;
 
     La32Qty operator = (La32Qty o) { n = o.n; return self; }

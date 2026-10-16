@@ -115,7 +115,7 @@ int distinctPrices() {
 
 // --- tools: a hierarchy -----------------------------------------------------------------------------
 
-value class Charge {
+struct Charge {
     int _level = 0;
     int operator () { return _level; }
     void operator = (int v) {

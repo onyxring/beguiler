@@ -3,17 +3,17 @@
 
 // Exercises: tables of readings meeting in threes. An I6 island declares a two-parent class and its
 // globals; an extern class over it with two parents (object and an extern marker class) carries
-// static methods that narrow a var to the class, copy a value-class span, call a func<> scale,
+// static methods that narrow a var to the class, copy a struct span, call a func<> scale,
 // throw out-of-span readings to a caller's catch, switch with values and ranges, capture text into a
-// <buf> line, perform() a verb, rate windows through a func taking a value class by value (with a
+// <buf> line, perform() a verb, rate windows through a func taking a struct by value (with a
 // block lambda), hide a method behind #if, and pick from a named union through a func<bool, object>;
-// a value class with two value parents chains both copy operators by cast and declares an emitter
-// operator switch; a value class holding a func<> value applied inside a capture that a throw leaves
-// open, released by the catch; a value class tally with a primitive newtype member, a conversion
+// a struct with a span and a code, converted to a span by an explicit operator, declares an emitter
+// operator switch; a struct holding a func<> value applied inside a capture that a throw leaves
+// open, released by the catch; a struct tally with a primitive newtype member, a conversion
 // operator, a switch on typeof of a var, #if inside a case and around a method, an #i6 line, array
 // append / sort / clear and a perform() of a verb; an array of the primitive sorted, appended and cut
 // with `length =`; and a dial subclass with inline accessors declaring operator += and ++ (one backed
-// by a string array), an owned value-class range, a string table, ancestor dispatch by cast, a switch
+// by a string array), an owned struct range, a string table, ancestor dispatch by cast, a switch
 // with ranges and a guard, an emitter class with init/deinit as a local, and perform() of a verb.
 
 #beguilerSettings {
@@ -52,7 +52,7 @@ extend extern class object {
 
 //-- Shared value rows -------------------------------------------------------------
 
-value class Span {
+struct Span {
     int lo;
     int hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
@@ -60,9 +60,18 @@ value class Span {
     int width() { return hi - lo; }
 }
 
-value class Coded {
+// A span with a code.
+struct Window {
+    int lo;
+    int hi;
     int code;
-    Coded operator = (Coded o) { code = o.code; return self; }
+    int seen;
+    explicit Span operator () {
+        Span s;
+        s.lo = lo;
+        s.hi = hi;
+        return s;
+    }
     emitter eBool operator switch (int v) { ($self.code == $v) }
     string codeName() {
         switch (code) {
@@ -70,17 +79,6 @@ value class Coded {
             case 2, 3: return "blue";
         }
         return "plain";
-    }
-}
-
-// A span with a code: copies both parents' members through their copy operators.
-value class Window : Span, Coded {
-    int seen;
-    Window operator = (Window o) {
-        (Span)self = o;
-        (Coded)self = o;
-        seen = o.seen;
-        return self;
     }
     void show() { print($"{codeName()} {lo}..{hi}"); }
 }
@@ -192,9 +190,9 @@ extern class Probe : object, Marker {
     }
 }
 
-//-- Rules: a value class holding a func, applied inside a capture ------------------------
+//-- Rules: a struct holding a func, applied inside a capture ------------------------
 
-value class Rule {
+struct Rule {
     func<int, int> step;
     int bias;
     Rule operator = (Rule o) { step = o.step; bias = o.bias; return self; }
@@ -228,7 +226,7 @@ int runRule(Rule r, int cap) {
     return -1;
 }
 
-//-- Tallies: a value class with a primitive member ----------------------------------
+//-- Tallies: a struct with a primitive member ----------------------------------
 
 primitive class Count {
     emitter void operator = (int v) { $target = $v; }
@@ -248,7 +246,7 @@ int countSpread() {
 }
 array<object> tallySeen[8];
 
-value class Tally {
+struct Tally {
     Count hits;
     int misses;
     Tally operator = (Tally o) { hits = o.hits; misses = o.misses; return self; }
@@ -502,7 +500,7 @@ verb WindowTest {
         Window b = a;
         b.code = 1;
         b.hi = 4;
-        Span plain = b;
+        Span plain = (Span)b;
         a.show();
         print($" seen {a.seen}; ");
         b.show();

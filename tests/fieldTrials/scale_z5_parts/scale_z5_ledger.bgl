@@ -1,7 +1,7 @@
 /*  Field trial part — included by scale_z5.bgl. Not a trial on its own.  */
 
 // The ledger: an object with an inline accessor that keeps a history through outer, a named accessor
-// class, value-class positions, packed pairs through an emitter class, callbacks over the crates, and
+// class, struct positions, packed pairs through an emitter class, callbacks over the crates, and
 // text built with the <string> methods; the churn the long run repeats, taking and returning every
 // kind of pooled and owned thing so that a leak shows as a failure.
 

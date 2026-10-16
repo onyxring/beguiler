@@ -1,5 +1,5 @@
 // run_target3_forward — uses above declarations: an overload added by a later extend, `int +=` a value
-// class with an int conversion, an accessor `+=` and a static `<=>` against an int on value classes
+// class with an int conversion, an accessor `+=` and a static `<=>` against an int on structs
 // declared later, a union declared below its parameter use, a later extend's static operators used by
 // an operator reference and by array sort/indexOf/contains, a subclass operator beside its base's, and
 // a verb of a verb class declared below it.
@@ -69,20 +69,20 @@ object ns {
 extend ns {
     void note(int t) { print(t); }
 }
-value class Tally {
+struct Tally {
     int n;
     Tally operator = (Tally o) { n = o.n; return self; }
     int operator () { return n; }
 }
 class Bin : object { Gauge level; }
 Bin binA { }
-value class Gauge {
+struct Gauge {
     int _raw = 0;
     int operator () { return _raw; }
     void operator = (int v) { _raw = v; }
     int operator + (ref Gauge o) { return _raw + o._raw; }
 }
-value class Count {
+struct Count {
     int n;
     Count operator = (Count o) { n = o.n; return self; }
     Count operator = (int v) { n = v; return self; }
@@ -98,11 +98,11 @@ Box b3 { w = 4; }
 extend class Box {
     static int operator <=> (Box x, Box y) { return x.w - y.w; }
 }
-value class Mass {
+struct Mass {
     int g;
     Mass operator = (Mass o) { g = o.g; return self; }
 }
-extend class Mass {
+extend struct Mass {
     static bool operator == (Mass x, Mass y) { return x.g == y.g; }
     static bool operator != (Mass x, Mass y) { return x.g != y.g; }
     emitter eBool operator ? () { ($self ~= 0 && $self.g ~= 0) }

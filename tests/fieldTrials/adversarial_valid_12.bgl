@@ -4,7 +4,7 @@
 // Exercises: valid but unusual code in a small letter-tile rack program, on the Z-machine.
 // An emitter class with init/deinit that keeps scope counters in Beguile globals, used as locals
 // inside loop bodies left by `continue`, `break` and `return`, inside a switch case block, in a
-// catch block and in a lambda body, and incremented through its own `operator ++`; a value class
+// catch block and in a lambda body, and incremented through its own `operator ++`; a struct
 // of tiles with a copy operator, static `<=>`, `==` and `!=`, its own print() reaching the global
 // one through `::`, filled through a `ref` parameter, held in a local array sorted bare, by an
 // operator reference and by a reversing lambda, then searched; a tile class whose two `inline`
@@ -64,9 +64,9 @@ void tallyReport(stringObj label) {
     printLine($"{label}: live {tallyLive} opened {tallyOpened} closed {tallyClosed}.");
 }
 
-// ---- a tile value: a value class ---------------------------------------------------------------
+// ---- a tile value: a struct ---------------------------------------------------------------
 
-value class Tile {
+struct Tile {
     char letter;
     int points;
 

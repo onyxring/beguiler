@@ -1,0 +1,6 @@
+// Negative test: a class is extended with `extend class`.
+// EXPECT_ERROR: extend it with `extend class Box`
+#beguilerSettings { target = z5; informName = "none"; }
+class Box { int size; }
+extend struct Box { int twice() { return size * 2; } }
+void main() { }

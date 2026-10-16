@@ -60,7 +60,7 @@ extend bnum la7Packing {
 }
 
 /// A count kept in units and read back in tens; never below zero.
-value class la7Tens {
+struct la7Tens {
     int raw = 0;
     int operator ()         { return raw * 10; }
     void operator = (int v) { raw = v < 0 ? 0 : v; }

@@ -129,7 +129,7 @@ object ledger {
     }
 }
 
-value class Weighted {
+struct Weighted {
     int scale = 1;
     int base = 0;
     int operator () {

@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual combinations, twelve or more areas in one declaration, on the
-// Z-machine. A value class with `+=`, `++`, `[]`, `[]=` and an emitter `operator switch`, a ref
+// Z-machine. A struct with `+=`, `++`, `[]`, `[]=` and an emitter `operator switch`, a ref
 // member of its own type rebound with `:=` inside a loop and reached through `?.` (bound and
 // unbound, as a statement and in an expression), $i6Expr and $i6Name emitters (an overloaded static
 // picked by type, an instance method called by property), a nested list initializer walked with
@@ -13,7 +13,7 @@
 // `[]=`, and reach elements of an array<array<object>> through `?.`; an object namespace (`alias …
 // for`, then `#using`) whose inline accessors hold static array<string>, array<int> and
 // array<func<int, int>> members, declare `+`, `-`, `*` and `[]`, call through a function-array
-// element, switch on ranges and typeof, write the host's stringObj, value-class and var members
+// element, switch on ranges and typeof, write the host's stringObj, struct and var members
 // through outer, and perform a verb on outer.
 
 #beguilerSettings {
@@ -75,9 +75,9 @@ void print(mark m) {
     else print((object)m);
 }
 
-// ---- cluster 1: a value class with compound, subscript and switch operators ----------------------
+// ---- cluster 1: a struct with compound, subscript and switch operators ----------------------
 
-value class Ledger {
+struct Ledger {
     int total;
     array<int> slots[4];
     ref Ledger peer;
@@ -162,7 +162,7 @@ value class Ledger {
 class Labeled : object { string label = "plain"; }
 class Counted : object { int hits = 0; }
 
-value class Cell {
+struct Cell {
     int v;
     Cell operator = (Cell o) { v = o.v; return self; }
 }
@@ -248,7 +248,7 @@ Shelf shelfA { "shelf A"; parent = roomB; }
 
 // ---- cluster 3: an object namespace whose inline accessor holds static arrays --------------------
 
-value class Coin {
+struct Coin {
     int n;
     Coin operator = (Coin o) { n = o.n; return self; }
     int operator + (int k) { return n + k; }

@@ -4,9 +4,9 @@
 // Exercises: a weekly shift roster kept in tables. Enums of staff and days indexing parallel name,
 // word, limit and skill tables, read by two general parsing routines on one grammar line; a
 // roster grid as an array of arrays read [day][slot] with NONE for an empty slot, rows exchanged
-// with swap(); a slot table of a value class written as bare { … } (start, end, length) that
+// with swap(); a slot table of a struct written as bare { … } (start, end, length) that
 // formats itself into a stringObj; a verb class carrying a slot member shared by two verbs; an
-// array<func<bool, int>> of day checks beside a check-name table; a Tally value class with a copy
+// array<func<bool, int>> of day checks beside a check-name table; a Tally struct with a copy
 // operator, += and a three-way <=>, kept in a local array<Tally> and sorted with sort() and a
 // comparator; a bnum of skills OR-ed across a day and listed by bit position; a change log packed
 // into ints, fed with enqueue and trimmed with dequeue; switch with ranges and a multi-value case;
@@ -54,7 +54,7 @@ array<string> skillNames = { "first aid", "till", "keys" };
 array<string> dayNames         = { "mon", "tue", "wed", "thu", "fri" };
 array<dictionaryWord> dayWords = { .mon,  .tue,  .wed,  .thu,  .fri };
 
-value class Span {
+struct Span {
     inline int start;     // hhmm
     inline int end;       // hhmm
     inline int length;    // hours
@@ -93,7 +93,7 @@ array<int> changeLog[LOG_MAX];
 
 //-- Tally ---------------------------------------------------------------------
 
-value class Tally {
+struct Tally {
     inline int who;
     inline int shifts;
     inline int hours;

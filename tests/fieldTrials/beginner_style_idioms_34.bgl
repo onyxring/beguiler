@@ -11,8 +11,8 @@
 // calls with default and named arguments in any order (`ahead(wrap: true, steps: 4)`,
 // `path(sep: ">")`, `isHeavy(over: 2)`); recursion through `?.` and `??` (`last()`, `first()`,
 // `ahead()`, `count()`, `path()`, `totalWeight()`, `depth()`); `??` with class, object, string and
-// value-class operands, three deep, as a receiver in parentheses, in returns, default-argument
-// bodies, arguments, `for` initializers and interpolation; a value class with `operator ?` reached
+// struct operands, three deep, as a receiver in parentheses, in returns, default-argument
+// bodies, arguments, `for` initializers and interpolation; a struct with `operator ?` reached
 // through `?.` (`k?.tag?.text(sep: ":")`, `k?.tagOr(blankTag)?.number`) and coalesced
 // (`k?.tag ?? blankTag`); stringObj results through `?.` (`?.path()?.toUpper()`, `?.path()?.length`);
 // postfix `?` on chains and its negation in `if`, `while`, `do`/`while`, `for` headers, `&&`/`||` and
@@ -45,9 +45,9 @@ int hookups = 0;
 // how many tickets were punched
 int punches = 0;
 
-// ===== A TAG: A VALUE CLASS THAT CAN BE BLANK =====
+// ===== A TAG: A STRUCT THAT CAN BE BLANK =====
 
-value class Tag {
+struct Tag {
     int number;
     stringObj word;
 

@@ -4,13 +4,13 @@
 // Exercises: code written the way a C#/Java developer writes it, twentieth pass: an order workflow.
 // The State pattern: a state base class whose `default` transition methods throw a pooled error, with one
 // singleton state object per subclass overriding the transitions it allows and returning the next state;
-// an order entity deriving from an "auditable" base and a mixin, holding an `array<LineItem>` of a value
-// class that owns a `Money` value member, extended by a discounted line (copy operators all the way down), a fluent
-// `selfType` builder method, a computed total through value-class arithmetic and a `<=>`-derived compare;
+// an order entity deriving from an "auditable" base and a mixin, holding an `array<LineItem>` of a struct
+// that owns a `Money` value member, beside a discounted line struct, a fluent
+// `selfType` builder method, a computed total through struct arithmetic and a `<=>`-derived compare;
 // a string-keyed `switch` dispatching commands to the current state inside `try`/`catch`; an inventory
 // repository with parallel arrays and `indexOf` on `array<string>`; a static event bus of `func<>`
 // handlers published to on every transition; static counters; `<linq>` queries (`filter`, `count`,
-// `any`, `all`, `map`) over the orders with lambdas; `sort` of the value-class line array with comparator
+// `any`, `all`, `map`) over the orders with lambdas; `sort` of the struct line array with comparator
 // lambdas comparing two method results through `<=>`; `?.`/`??` on a lookup that may fail; `stringObj`
 // building with interpolation; named and default arguments.
 
@@ -39,7 +39,7 @@ enum eStatus { Pending, Paid, Shipped, Delivered, Cancelled }
 
 //-- Money: a value type ---------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     inline int Cents;
 
     Money operator = (Money o) { Cents = o.Cents; return self; }
@@ -65,7 +65,7 @@ value class Money {
 
 //-- Line items ------------------------------------------------------------------------------------------------
 
-value class LineItem {
+struct LineItem {
     string Sku;
     int Qty;
     Money UnitPrice;
@@ -80,16 +80,13 @@ value class LineItem {
     Money Subtotal() { return UnitPrice * Qty; }
 }
 
-value class DiscountedLine : LineItem {
+struct DiscountedLine {
+    string Sku;
+    int Qty;
+    Money UnitPrice;
     int PercentOff;
 
-    DiscountedLine operator = (DiscountedLine o) {
-        Sku = o.Sku;
-        Qty = o.Qty;
-        UnitPrice = o.UnitPrice;
-        PercentOff = o.PercentOff;
-        return self;
-    }
+    Money Subtotal() { return UnitPrice * Qty; }
 
     Money Discounted() {
         Money full = Subtotal();

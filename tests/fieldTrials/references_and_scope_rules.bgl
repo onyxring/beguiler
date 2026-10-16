@@ -21,8 +21,8 @@ object roomA {
     attributes = {light};
 }
 
-// A value class: every variable of it owns an instance, and `=` copies.
-value class Gauge {
+// A struct: every variable of it owns an instance, and `=` copies.
+struct Gauge {
     int level;
     const string unit = "units";
     Gauge operator = (Gauge o) { level = o.level; return self; }

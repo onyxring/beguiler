@@ -6,13 +6,13 @@
 // cell count, an attribute tested on self, an ancestor-cast call to the overridden span(), a float
 // read through ?. and an object fallback through ??, and an #i6 island reading a member through
 // $i6Expr; an extend class adding tree methods (depth through .parent, adopting a child); an owned
-// value-class state (float level, enum mode, tick count) bound by ref locals while walking the
+// struct state (float level, enum mode, tick count) bound by ref locals while walking the
 // children recursively and stepped through a ref parameter; a level bank with float operator [] and
 // []= (clamping, += on a subscript); a nested array<array<float>> of curves plotted into the grid; an
 // emitter class with init/deinit counting style scopes, held around float averaging and around a
 // try/catch whose callee throws; a label class naming an array<char> buffer, with ==, != and <=> on
 // buffer contents (and the derived <) and += appending another buffer; a named union string | object captured into a buf and
-// discriminated with typeof, its first character read into a var; a value class whose implicit
+// discriminated with typeof, its first character read into a var; a struct whose implicit
 // conversion reads a caption through ?. and ??; a primitive color word whose operator + expands a
 // routine call through $i6Expr; a verb with an inline float accessor (auto { }) reaching its host
 // through outer; an object namespace aliasing the gauge class and the mode enum beside emitter
@@ -67,7 +67,7 @@ emitter class emphasis {
 
 // ---- gauge state ---------------------------------------------------------------------------------
 
-value class meterState {
+struct meterState {
     float level;
     eMode mode;
     int   ticks;
@@ -297,7 +297,7 @@ void fillFrom(array<char> dst, cellText t) {
 
 // ---- captions ------------------------------------------------------------------------------------
 
-value class captionOf {
+struct captionOf {
     ref gaugePanel owner;
     string operator () { return owner?.caption ?? "(none)"; }
     captionOf operator = (captionOf o) {

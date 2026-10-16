@@ -9,7 +9,7 @@ class Chip[NSLOTS] : object { int n; }
 object boxA { int tag = 'A'; }
 object boxB { int tag = 'B'; }
 array<object> boxes = {boxA, boxB};
-value class Pair { object who = null; int n = 0; Pair operator = (Pair o) { who = o.who; n = o.n; return self; } }
+struct Pair { object who = null; int n = 0; Pair operator = (Pair o) { who = o.who; n = o.n; return self; } }
 array<Pair> pairs[4];
 void probe() {
     crate.Items.append(7);

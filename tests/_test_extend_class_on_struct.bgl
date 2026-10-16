@@ -1,0 +1,6 @@
+// Negative test: a struct is extended with `extend struct`.
+// EXPECT_ERROR: extend it with `extend struct Pos`
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pos { int row; Pos operator = (Pos o) { row = o.row; return self; } }
+extend class Pos { int twice() { return row * 2; } }
+void main() { }

@@ -4,7 +4,7 @@
 // Exercises: an eighteenth first-time-programmer program, with nearly everything in two big
 // declarations. A pooled class (tokens), written straight after #using of a namespace object, with a
 // static array of strings, a static counter, a static method that calls new and tests the result with
-// a postfix ?, a primitive-class member, a value-class member and one through the imported alias, a ref
+// a postfix ?, a primitive-class member, a struct member and one through the imported alias, a ref
 // member bound with :=, a var member, an enum member, a member array, operator [] / []= over it, a
 // replaced method that still calls the base class's version through a cast and follows ?. up the
 // tree, a local array of arrays built from a nested list, linq chains on its inner arrays with a
@@ -43,7 +43,7 @@ primitive class grams : int {
 enum eBand { low, mid, high }
 
 // ===== SPOT (a row and a column) =====
-value class Spot {
+struct Spot {
     int row;
     int col;
 

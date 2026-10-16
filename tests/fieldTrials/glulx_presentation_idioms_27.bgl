@@ -3,10 +3,10 @@
 
 // Exercises: a sorting bench of three bins shown in a text grid. A class Bin : object (an open,
 // static container through a class attributeList) with a label, a letter char, a capacity, an enum
-// kind it accepts and a drop count, methods that walk its children and fill a ref value-class
+// kind it accepts and a drop count, methods that walk its children and fill a ref struct
 // argument, return float and stringObj, and a before()/after() on the Receive fake action that
 // refuses an overload and counts a drop; a class Item : object with a label, a weight, an enum kind
-// and a move count, whose after() logs Take and Insert; a value class Load (count and weight, copy
+// and a move count, whose after() logs Take and Insert; a struct Load (count and weight, copy
 // operator, += of an Item, ==, a float average and a stringObj summary) for a running total and per
 // bin tallies; a text grid split above the main window with a border, redrawn from a replaced
 // DrawStatusLine, one row per bin with a fill bar scaled from a float; a text-buffer log split to the
@@ -89,7 +89,7 @@ stringObj oneDecimal(float f) {
 
 // ---- loads ---------------------------------------------------------------------------------------
 
-value class Load {
+struct Load {
     int count;
     int weight;
 

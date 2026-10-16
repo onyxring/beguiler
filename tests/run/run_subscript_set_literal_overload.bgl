@@ -2,13 +2,13 @@
 // `operator []=` declared against its literal pseudo-type (charLiteral, intLiteral).
 // EXPECT_OUTPUT: 74 lit5 9
 #beguilerSettings { target = z5; informName = "none"; }
-value class box {
+struct box {
     int v;
     box operator = (box o){ v = o.v; return self; }
     emitter char operator[](int pos) { $self.v }
     emitter char operator[]=(int pos, charLiteral c) { $self.v = $c }
 }
-value class slots {
+struct slots {
     int v;
     slots operator = (slots o){ v = o.v; return self; }
     emitter int operator[](int pos) { $self.v }

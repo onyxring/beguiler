@@ -2,13 +2,13 @@
 // use, casts to a path type of a `.child` read (member read and call chain), an `extend class` member
 // typed by a #using-imported alias used above the extend, `alias X for` an imported alias, an alias added
 // by a later `extend` used as a type in the object's own body, static members through a class alias
-// path, and a for-in over a value-class array whose last slot was never filled.
+// path, and a for-in over a struct array whose last slot was never filled.
 // EXPECT_OUTPUT: 3 0 5 2 2 4 4 4 6 3 2 0
 #beguilerSettings { target = z5; informName = "none"; }
 enum eKind { bolt, nut }
-value class PLen { inline int mm; PLen operator = (PLen o) { mm = o.mm; return self; } }
-value class Counter { int hits; Counter operator = (Counter o) { hits = o.hits; return self; } void bump() { hits++; } }
-value class Tally { int hits; Tally operator = (Tally o) { hits = o.hits; return self; } }
+struct PLen { inline int mm; PLen operator = (PLen o) { mm = o.mm; return self; } }
+struct Counter { int hits; Counter operator = (Counter o) { hits = o.hits; return self; } void bump() { hits++; } }
+struct Tally { int hits; Tally operator = (Tally o) { hits = o.hits; return self; } }
 class Part : object {
     int count;
     static int made;

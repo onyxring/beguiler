@@ -57,7 +57,7 @@ eLa30Edge la30NextEdge(eLa30Edge e) {
 }
 
 /// An amount of wear, copied on assignment.
-value class La30Wear {
+struct La30Wear {
     int w;
     La30Wear operator = (La30Wear o) { w = o.w; return self; }
     La30Wear operator = (int n) { w = n; return self; }

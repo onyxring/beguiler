@@ -3,7 +3,7 @@
 
 // Exercises: a node graph written in a functional style on z5, leaning on members reached through
 // computed receivers. Nodes are a class with a peer link, a member array of links and one of loads,
-// an owned value class position whose `ref` next member chains to another node's position, a named
+// an owned struct position whose `ref` next member chains to another node's position, a named
 // accessor class `Gauge`, a named accessor class `Peer` whose getter returns a node (so members are
 // reached through the getter: `n.buddy.links[0].label`), an inline `auto` accessor, a `ref` member
 // array bound to a shared global log, a func<Node, Node> member, an `operator >>` returning a node,
@@ -14,9 +14,9 @@
 // static method results `Node.nth(3).links[1].links[0].label`, func-member call results
 // `n.hop(n).hop(m).label`, func-parameter call results, accessor getter results, casts of noun, of
 // elements and of `.child`/`.sibling` (`((Node)shelf.child).links.length`), instance casts
-// `((nodeA)x).boost`, explicit-conversion casts of a value class `((Node)handles[i]).label`, ancestor
+// `((nodeA)x).boost`, explicit-conversion casts of a struct `((Node)handles[i]).label`, ancestor
 // casts, <linq> chain results `nodes.filter(f).orderBy(g).first().links[0].label`, array-of-array
-// elements, value class operator and method results `(a.at + b.at).moved(dy: 2).dist()`, `ref`
+// elements, struct operator and method results `(a.at + b.at).moved(dy: 2).dist()`, `ref`
 // chains `n.at.next.x`, `new` results and pooled tokens; receivers appear in for-in collections,
 // `while`/`do`/`for`/`switch` heads, returns, ternaries, `??`, lambdas, <linq> predicates, member
 // array copies and appends, and interpolation; verbs read noun, second and parsed_number.
@@ -42,7 +42,7 @@ const int MAXLINKS = 4;
 
 //-- Values -----------------------------------------------------------------------------------------
 
-value class Pt {
+struct Pt {
     int x;
     int y;
     ref Pt next;
@@ -81,21 +81,21 @@ value class Pt {
 }
 
 // Read as an int; writes are kept within 0..20.
-value class Gauge {
+struct Gauge {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v < 0 ? 0 : (v > 20 ? 20 : v); }
 }
 
 // Reads as the node it holds.
-value class Peer {
+struct Peer {
     ref Node _p;
     Node operator ()         { return _p; }
     void operator = (Node n) { _p = n; }
 }
 
 // An index into the node list, converted to the node only on request.
-value class Handle {
+struct Handle {
     int idx;
 
     Handle operator = (Handle o) {

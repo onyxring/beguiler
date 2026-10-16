@@ -5,7 +5,7 @@
 // with an enum zone, an index into a global array of arrays of readings and a literal func<bool, int>
 // alarm given by lambdas and a named function in their definitions; hand-written fold, scan, zipWith
 // and moving-window helpers over func<> parameters, returning local arrays captured into typed locals;
-// a value class of running statistics with a copy operator, a float mean and a fold into it returned
+// a struct of running statistics with a copy operator, a float mean and a fold into it returned
 // by value; an array of func<int, int> stages run as a pipeline by a recursive helper, with a stage
 // chosen by a ternary between named functions; <linq> chains (filter, map, orderBy with comparators,
 // take, skip, distinct, any, all, first, last, count) over array<Probe> and array<int>, including a
@@ -60,9 +60,9 @@ Probe probeS { "probe S"; tag = "S"; zone = eZone.north; idx = 3; alarm = (int v
 
 array<Probe> probeList = {probeP, probeQ, probeR, probeS};
 
-//-- Running statistics (a value class) -----------------------------------------------------------
+//-- Running statistics (a struct) -----------------------------------------------------------
 
-value class Stats {
+struct Stats {
     int n = 0;
     int sum = 0;
     int lo = 0;

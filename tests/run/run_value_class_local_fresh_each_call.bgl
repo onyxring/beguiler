@@ -1,8 +1,8 @@
-// run_value_class_local_fresh_each_call — a value-class local starts from its fields' declared
+// run_value_class_local_fresh_each_call — a struct local starts from its fields' declared
 // values on every call, not from what the previous call left.
 // EXPECT_OUTPUT: 0,4 0,4
 #beguilerSettings { target = z5; informName = "none"; }
-value class Vec2 {
+struct Vec2 {
     int x; int y = 4;
     Vec2 operator = (Vec2 o){ x = o.x; y = o.y; return self; }
 }

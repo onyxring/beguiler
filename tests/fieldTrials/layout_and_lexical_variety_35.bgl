@@ -2,19 +2,19 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: layout and lexical habits in a small program with two rooms, two purses, a till, a desk
-// and a pooled chit, written so that value classes are everywhere. A value class `Coins` with a
+// and a pooled chit, written so that structs are everywhere. A struct `Coins` with a
 // positional member, a copy operator, `+`, `-`, `*` by int, two `+=` overloads, `==`, `!=`, an
 // instance and a static `<=>` (the orderings derived from it), a method returning a copy and one
-// returning `selfType`, chained; a value subclass `Bonus` that chains its copy operator with
-// `(Coins)self = o`, assigned to and compared with its base; a value class `Span` that owns two
+// returning `selfType`, chained; a struct `Bonus` with an explicit conversion to `Coins`,
+// assigned to and compared with a `Coins` through it; a struct `Span` that owns two
 // `Coins` members, built with nested inline objects, positional and named; a named accessor value
-// class that clamps, as a member; a value class holding a `ref Coins` bound with `:=`; globals,
+// class that clamps, as a member; a struct holding a `ref Coins` bound with `:=`; globals,
 // locals, parameters, `ref` parameters and `ref` locals of these, bound to globals, members and array
 // elements, rebound, and written through; a routine returning `Coins` called recursively, as an
 // argument, inside interpolation and as a `?:` branch; copies proved independent after `=`, after
 // passing and after a for-in; owned members of a reference class and of objects (with inline-object
 // starting values), a member array of `Coins` written by subscript, and a `static` member; a pooled
-// class whose owned member resets on `new`; a value class `Note` holding a `stringObj` and a `Coins`,
+// class whose owned member resets on `new`; a struct `Note` holding a `stringObj` and a `Coins`,
 // copied, compared and kept in an array sorted by a lambda; a default parameter that is an inline
 // object; `ref` arguments that are array elements, nested-array elements, member-array elements, a
 // static member and a bound `ref` member; call results of `Coins` as both operands of operators and
@@ -43,9 +43,9 @@
 
 #using bgl.printRules ;
 
-// ---- value classes --------------------------------------------------------------------------------
+// ---- structs --------------------------------------------------------------------------------
 
-value class Coins
+struct Coins
 {
     inline int cents ;
     Coins operator =   ( Coins o ) { cents = o.cents ; return self ; }
@@ -63,13 +63,15 @@ value class Coins
     static Coins of ( int n ) { Coins r ; r.cents = n ; return r ; }
 }
 
-VALUE CLASS Bonus : Coins
+STRUCT Bonus
 {
+    int cents ;
     int extra ;
-    Bonus operator = ( Bonus o ) { extra = o.extra ; ( Coins ) self = o ; return self ; }
+    Bonus operator += ( int c ) { cents += c ; return self ; }
+    explicit Coins operator () { return Coins{ cents } ; }
 }
 
-value class Span {
+struct Span {
     Coins lo ;
     Coins hi ;
     Span operator = ( Span o ) { lo = o.lo ; hi = o.hi ; return self ; }
@@ -78,7 +80,7 @@ value class Span {
 }
 
 /// A count held between 0 and 9.
-value class Gauge
+struct Gauge
 {
 	int _g = 0 ;
 	int  operator () { return _g ; }
@@ -90,14 +92,14 @@ value class Gauge
 	}
 }
 
-value class Pointer
+struct Pointer
 {
     int  hops ;
     ref Coins at ;
     Pointer operator = ( Pointer o ) { hops = o.hops ; at := o.at ; return self ; }
 }
 
-value class Note
+struct Note
 {
     stringObj text ;
     Coins     worth ;
@@ -316,8 +318,8 @@ verb Probe
         Bonus copy = gBonus ;
         copy.extra = 7 ;
         copy += 1 ;
-        Coins plain = copy ;
-        printLine( $"bonus copy {copy.cents} {copy.extra} {gBonus.extra} plain {plain.cents} same {plain == copy}" ) ;
+        Coins plain = ( Coins ) copy ;
+        printLine( $"bonus copy {copy.cents} {copy.extra} {gBonus.extra} plain {plain.cents} same {plain == ( Coins ) copy}" ) ;
         printLine( $"ptr {gPtr.hops} {gPtr.at.cents}" ) ;
         gPtr.at += 3 ;
         printLine( $"ptr after {gFloat.cents}" ) ;
@@ -403,7 +405,7 @@ verb Mint
     {
         Chit k = new Chit( 2 ) ;
         if ( k == null ) { printLine( "No chit is left." ) ; return ; }
-        k.face += gBonus ;
+        k.face += ( Coins ) gBonus ;
         Coins f = k.face ;
         topUp( desk.fee , 1 ) ;
         printLine( $"Chit {k.serial} shows {f.cents}; made {Chit.made}; fee {desk.fee.cents}." ) ;

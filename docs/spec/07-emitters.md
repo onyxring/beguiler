@@ -446,7 +446,7 @@ An emitter namespace groups emitters under one name without declaring a class. I
 
 An `emitter class` (§8.2.3) differs in that it *is* a type — its purpose is to declare variables of
 it — whereas an emitter namespace exists only to be called by name. `style` is a built-in emitter
-namespace; it coexists with the `style` value class of `<glulxWindow>` (§22.7.7), because a call
+namespace; it coexists with the `style` struct of `<glulxWindow>` (§22.7.7), because a call
 `style.member(…)` reaches the namespace while the inline-object form `style { … }` builds a value of
 the class.
 

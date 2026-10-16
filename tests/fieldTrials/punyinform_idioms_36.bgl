@@ -4,15 +4,15 @@
 // Exercises: a thirty-sixth PunyInform program that leans on `?.`, `??` and postfix `?`: two rooms
 // (Room A with three crates and a pallet, Room B with a barrel); a `Crate` class whose crates stack
 // (`under`) and nest (`inner`) through class-typed members, carry a pooled `Tag` (obtained with `new`,
-// falling back through `??` when the pool is empty), an owned value class `Mark` with its own
+// falling back through `??` when the pool is empty), an owned struct `Mark` with its own
 // `operator ?` and methods returning `Mark` and `stringObj`, a `Load` accessor class with an
 // `operator ?` of its own, a member `array<int>` and a `stringObj` log; a `Barrel` subclass overriding
 // the fluent `default` method `stamp()`; a static finder reached with `?.`; `?.` chains through fluent
-// returns, overloads, default and named arguments (out of order), value-class results (`?.bumped()?.code`),
+// returns, overloads, default and named arguments (out of order), struct results (`?.bumped()?.code`),
 // stringObj results (`?.tagText(upper: true)?.length`), accessor members (`c?.load += n`, `c?.load?`),
 // member-array elements (`c?.weights[i] = n`, `c?.weights[i]`), library routines (`?.has()`,
 // `?.give()`), an inline `auto` accessor on an object (`pallet?.top = …`), a `func<>` value and lambdas
-// whose bodies chain; `??` on objects, strings, value classes and call results in declarations,
+// whose bodies chain; `??` on objects, strings, structs and call results in declarations,
 // arguments, returns, `throw`, interpolation and `switch`; postfix `?` and `?.` in `if`, `while`, `for`,
 // `do`/`while`, ternaries and <linq> predicates; and verbs stack, unstack, nest, tag, untag, stamp,
 // load, slide, plus meta verbs probe, path, crates and marks.
@@ -45,7 +45,7 @@ extend extern class object {
 
 const int LOAD_MAX = 12;
 
-value class Load {
+struct Load {
     int _kg = 0;
 
     int  operator ()        { return _kg; }
@@ -57,7 +57,7 @@ value class Load {
     emitter eBool operator ? () { ($self ~= 0 && $self._kg ~= 0) }
 }
 
-value class Mark {
+struct Mark {
     int code;
     int hits;
 

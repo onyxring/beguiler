@@ -10,7 +10,7 @@
 // (objects declared before it use the extended order) and an inherited member re-listed first by a
 // subclass, hide on a subclass method reached again through a cast, the object tree as the table (rows
 // found through children, moved with children += and parent =, counted with bgl.world.instances and a
-// capturing predicate), a value class whose owned value-class members are copied inside array<Spec>
+// capturing predicate), a struct whose owned struct members are copied inside array<Spec>
 // slots, a ref local bound to an array slot and a ref parameter given a slot, both written through to
 // nested owned members, sort and remove on that array, a builder taking named and defaulted arguments,
 // a static func<> member set from static methods and a lambda, an array<literal func<bool, Part>> rule
@@ -143,14 +143,14 @@ object reg {
 
 //-- Specs ---------------------------------------------------------------------
 
-value class Span {
+struct Span {
     int lo;
     int hi;
     Span operator = (Span o) { lo = o.lo; hi = o.hi; return self; }
     bool holds(int v) { return v >= lo && v <= hi; }
 }
 
-value class Spec {
+struct Spec {
     int partRow = NONE;
     Span size;
     Span price;

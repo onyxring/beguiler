@@ -9,8 +9,8 @@
 // path and bare name: as owned members of classes, objects and the namespace objects themselves, as `ref`
 // parameters and locals (defaults from a const, named arguments), returns, casts, a setter parameter and a
 // static path (`_panel.meter.limit()`). Inline `auto` accessors in namespace object bodies (getters
-// returning a type alias named bare, an object of an aliased class, an enum and the value class; setters
-// taking alias types, an object and the value class; `outer` reading and compound-assigning other
+// returning a type alias named bare, an object of an aliased class, an enum and the struct; setters
+// taking alias types, an object and the struct; `outer` reading and compound-assigning other
 // accessors of the host), some added by `extend` blocks written above the namespace object and after the
 // imports that reach them; a root `hub` reaching one namespace through a runtime `auto` member and others
 // through compile-time `alias`es (an object and a class's statics), extended above and below its
@@ -60,7 +60,7 @@ const int STEP = 2;
 
 enum eTone { low, mid, high }
 
-value class Meter {
+struct Meter {
     static int made = 0;
     int _v = 0;
     int _sets = 0;
@@ -81,7 +81,7 @@ value class Meter {
     static int limit() { return TOP; }
 }
 
-value class ToneBox {
+struct ToneBox {
     eTone _t = eTone.low;
     eTone operator () { return _t; }
     void operator = (hub.panel.tone t) { _t = t; }

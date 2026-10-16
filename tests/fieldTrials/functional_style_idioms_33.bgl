@@ -1,12 +1,12 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a grid survey written in a functional style on z5, leaning on value classes. A value
+// Exercises: a grid survey written in a functional style on z5, leaning on structs. A value
 // class `Pos` with positional `inline` members, a copy operator, instance `+`, `-`, `*` (by int), `==`,
 // `!=` and `<=>` (orderings derived), a `default` method, methods that copy `self` and return a new
-// value, a stringObj text and a static factory; a subclass `Pos3` chaining its copy operator with
-// `(Pos)self = o` and overriding the default method (sliced when copied, dispatched through `ref`);
-// a value class `Span` owning two `Pos` members, with methods returning `Span` and `Pos`; a value
+// value, a stringObj text and a static factory; a struct `Pos3` holding a `Pos` member, copying it in
+// its copy operator and giving its own `dist` (its `pos` read out by copy and through `ref`);
+// a struct `Span` owning two `Pos` members, with methods returning `Span` and `Pos`; a value
 // class `Coins` with an int conversion assignment, `+=`, and `operator ?` coalesced with `??`.
 // Marker objects own `Pos` and `Coins` members given inline values and a `ref Pos` member bound at
 // run time; owned members are passed to `ref` parameters and swapped. Values sit in a file-scope
@@ -17,9 +17,9 @@
 // members and array elements; values are compared in `if`/`while`/`for` conditions and switch-free
 // ternaries; <linq> filter/count/any/all/orderBy (with and without comparator)/first/last/distinct/map
 // and <array> indexOf/contains/sort/remove/removeValue/-= run over arrays of values, with lambdas
-// capturing value locals and a `ref` local; value-class default arguments (a global and an inline
+// capturing value locals and a `ref` local; struct default arguments (a global and an inline
 // value) with named arguments; a file-scope array of Span written with nested positional and named
-// inline values; an array<Pos3> read through `ref Pos3` and `ref Pos`; for-in over arrays of values;
+// inline values; an array<Pos3> read through `ref Pos3`; for-in over arrays of values;
 // verbs read noun, second and parsed_number.
 
 #beguilerSettings {
@@ -47,7 +47,7 @@ int sign(int n) { return n < 0 ? -1 : n > 0 ? 1 : 0; }
 
 //-- Positions --------------------------------------------------------------------------------------
 
-value class Pos {
+struct Pos {
     inline int col;
     inline int row;
 
@@ -119,19 +119,23 @@ value class Pos {
     }
 }
 
-value class Pos3 : Pos {
+struct Pos3 {
+    Pos pos;
     int lvl;
 
     Pos3 operator = (Pos3 o) {
         lvl = o.lvl;
-        (Pos)self = o;
+        pos = o.pos;
         return self;
     }
 
-    int dist() { return mag(col) + mag(row) + mag(lvl); }
+    bool operator == (Pos3 o) { return pos == o.pos; }
+    int operator <=> (Pos3 o) { return pos <=> o.pos; }
+
+    int dist() { return mag(pos.col) + mag(pos.row) + mag(lvl); }
 }
 
-value class Span {
+struct Span {
     inline Pos lo;
     inline Pos hi;
 
@@ -158,7 +162,7 @@ value class Span {
     }
 }
 
-value class Coins {
+struct Coins {
     int cents;
 
     Coins operator = (Coins o) {
@@ -224,7 +228,7 @@ array<Pos> path[MAXPATH];
 array<Span> zones[3];
 Pos home = Pos{1, 1};
 Pos cursor;
-Pos3 peak = Pos3{ col = 2; row = 3; lvl = 5; };
+Pos3 peak = Pos3{ pos = Pos{2, 3}; lvl = 5; };
 Coins purse;
 
 Pos north(Pos p) { return p + Pos{0, -1}; }
@@ -232,7 +236,7 @@ Pos east(Pos p) { return p + Pos{1, 0}; }
 Pos south(Pos p) { return p + Pos{0, 1}; }
 
 array<Span> presets = {Span{Pos{0, 0}, Pos{2, 2}}, Span{ lo = Pos{1, 1}; hi = Pos{3, 4}; }, Span{Pos{2, 0}, Pos{EDGE, 1}}};
-array<Pos3> highs = {Pos3{ col = 1; row = 1; lvl = 4; }, Pos3{ col = 2; row = 0; lvl = 1; }, Pos3{ col = 0; row = 3; lvl = 2; }};
+array<Pos3> highs = {Pos3{ pos = Pos{1, 1}; lvl = 4; }, Pos3{ pos = Pos{2, 0}; lvl = 1; }, Pos3{ pos = Pos{0, 3}; lvl = 2; }};
 
 array<func<Pos, Pos>> moves = {north, east, south, (Pos p) => p - Pos{1, 0}};
 
@@ -453,16 +457,16 @@ verb SwapVerb {
 verb LevelVerb {
     grammar = {{.level}};
     void handler() {
-        Pos flat = peak;
+        Pos flat = peak.pos;
         print($"peak dist {peak.dist()}, flat copy {flat.text()} dist {flat.dist()}^");
-        ref Pos rp := peak;
-        print($"through ref dist {rp.dist()}, col {rp.col}^");
+        ref Pos3 rp := peak;
+        print($"through ref dist {rp.dist()}, col {rp.pos.col}^");
         Pos3 copy = peak;
         copy.lvl -= 2;
-        copy.col++;
-        print($"copy {copy.text()} lvl {copy.lvl} dist {copy.dist()}; peak lvl {peak.lvl} col {peak.col}^");
+        copy.pos.col++;
+        print($"copy {copy.pos.text()} lvl {copy.lvl} dist {copy.dist()}; peak lvl {peak.lvl} col {peak.pos.col}^");
         peak = copy;
-        print($"peak now lvl {peak.lvl} {peak.text()}, equal flat {peak == flat}, after flat {peak > flat}^");
+        print($"peak now lvl {peak.lvl} {peak.pos.text()}, equal flat {peak.pos == flat}, after flat {peak.pos > flat}^");
     }
 }
 
@@ -565,11 +569,11 @@ verb StackVerb {
         Span tight = presets.orderBy((Span a, Span b) => a.area() - b.area()).first();
         print($"wide {wide.area()}, tight {tight.lo.text()}-{tight.hi.text()}, middle of wide {wide.middle().text()}^");
         ref Pos3 top := highs[0];
-        ref Pos asPos := highs[2];
-        print($"highs: top dist {top.dist()}, third as pos {asPos.dist()} {asPos.text()}, ");
+        ref Pos3 third := highs[2];
+        print($"highs: top dist {top.dist()}, third as pos {third.dist()} {third.pos.text()}, ");
         print($"first by order lvl {highs.orderBy().first().lvl}, index of third {highs.indexOf(highs[2])}^");
         top.lvl += 10;
-        Pos sliced = highs[0];
+        Pos sliced = highs[0].pos;
         print($"top lvl {highs[0].lvl} dist {highs[0].dist()}, sliced dist {sliced.dist()}^");
         print($"from home: {fromHome()} {fromHome(Pos{3, 3})} {fromHome(p: cursor)}; from origin {fromOrigin()} {fromOrigin(scale: 3, p: home)}^");
         print($"markers below row 2: {markers.filter((Marker m) => m.at.row < 2).count()}, first in order {markers.orderBy((Marker a, Marker b) => a.at <=> b.at).first().label}^");

@@ -1,6 +1,6 @@
 /*  Field trial part — included by scale_puny.bgl. Not a trial on its own.  */
 
-// Shared types: sizes, enums with emitter members, bnums, value classes and the `sp` namespace object
+// Shared types: sizes, enums with emitter members, bnums, structs and the `sp` namespace object
 // every other part opens with `#using sp`.
 
 #once
@@ -46,9 +46,9 @@ bnum eDoorFlags { }
 bnum eDoorSide : eDoorFlags { inner = 1, outer = 2 }
 bnum eDoorState : eDoorFlags { shut = 4, barred = 8, warded = 16 }
 
-// --- value classes ----------------------------------------------------------------------------------
+// --- structs ----------------------------------------------------------------------------------
 
-value class Coord {
+struct Coord {
     int row;
     int col;
 
@@ -88,7 +88,7 @@ value class Coord {
     }
 }
 
-value class Tally {
+struct Tally {
     int count;
     int total;
     int peak;
@@ -123,17 +123,18 @@ value class Tally {
     }
 }
 
-value class Span : Coord {
+struct Span {
+    Coord at;
     int width;
 
     Span operator = (Span o) {
         width = o.width;
-        (Coord)self = o;
+        at = o.at;
         return self;
     }
 
     bool covers(Coord c) {
-        return c.row == row && c.col >= col && c.col < col + width;
+        return c.row == at.row && c.col >= at.col && c.col < at.col + width;
     }
 }
 

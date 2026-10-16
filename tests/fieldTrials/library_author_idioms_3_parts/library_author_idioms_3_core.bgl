@@ -66,7 +66,7 @@ class la3Num {
 emitter int la3Scale3(int a, int b) { $i6Name(la3Num.scale(int, int))($a, $b) }
 
 // An accessor that keeps its value between 0 and 9.
-value class la3Clamp {
+struct la3Clamp {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int n) {

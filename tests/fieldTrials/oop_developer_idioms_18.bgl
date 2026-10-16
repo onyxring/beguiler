@@ -4,18 +4,18 @@
 // Exercises: code written the way a C#/C++ developer writes it, eighteenth pass: as many features as fit
 // meeting inside one declaration, three times. A derived class (a shelf), written after `#using` of a
 // namespace object, that keeps static counters and `static array<string>` / `static array<int>` tables,
-// a value-class member and a primitive-newtype member through the imported aliases, a `ref stringObj`
+// a struct member and a primitive-newtype member through the imported aliases, a `ref stringObj`
 // member bound to a shared journal, an indexer, a `replace` override of its base's method that calls the
 // base's version through a cast, a recursive static depth walk over the object tree through `?.` and a
 // postfix `?`, an `#i6` island with `$i6Expr`, and a stocking method that walks its children with a
 // nested-literal band table (`array<array<int>>`), a range and guard `switch`, a pooled token per child
-// read back through `?.`, `<linq>` chains with expression and block lambdas, a positional value-class
+// read back through `?.`, `<linq>` chains with expression and block lambdas, a positional struct
 // instance, a named union narrowed through `var` / `typeof`, interpolated strings and a verb performed.
 // An object of that class, declared positionally, that adds an inline accessor reaching its host through
 // `outer`, an `operator []=`, its own `alias`, a per-instance `replace`, a recursive method and a report
 // method taking a `ref stringObj` (linq, block lambda, nested literal, pooled token, `#i6`, union). A
 // verb, also after `#using`, with a recursive helper method and a handler that moves children between
-// shelves (nested arrays, a `ref` local, linq, a positional value class, `#i6`, union, switch). And a
+// shelves (nested arrays, a `ref` local, linq, a positional struct, `#i6`, union, switch). And a
 // replaced global routine that recurses through its replacement.
 
 #beguilerSettings {
@@ -48,7 +48,7 @@ int PingCount;
 
 //-- A closed interval, copied by value, written positionally ------------------------------------------------
 
-value class Span {
+struct Span {
     inline int Lo;
     inline int Hi;
     Span operator = (Span o) { Lo = o.Lo; Hi = o.Hi; return self; }

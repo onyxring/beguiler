@@ -7,7 +7,7 @@
 // class with a rating and a blown flag; a fuse box whose `before` takes `Receive` (only good fuses,
 // two at most) and whose `after` takes `Receive` and `LetGo` to recompute the power; an enum power
 // level from a function summing the box's children, with a `switch` over it; a wall switch whose
-// `after` lights or darkens Room B by giving and taking `light`; a value class `Charge` with
+// `after` lights or darkens Room B by giving and taking `light`; a struct `Charge` with
 // `operator ()`, `=`, `+=`, `-=` and a method, owned by a torch whose daemon drains it; a `charge
 // NOUN` verb that needs full power; a `type NUMBER` verb checking a code and keeping recent attempts
 // in an `array<int>` used as a queue (`enqueue`, `dequeue`, `peekEnd`); a robot with `life` (Ask
@@ -51,7 +51,7 @@ array<string> powerNames = {"off", "low", "full"};
 
 const int DOOR_CODE = 472;
 
-value class Charge {
+struct Charge {
     int _units = 0;
 
     int  operator ()          { return _units; }

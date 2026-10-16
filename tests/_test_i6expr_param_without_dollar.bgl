@@ -1,7 +1,7 @@
 /* an emitter parameter named in $i6Expr without its $ */
 // EXPECT_ERROR: 'l' is this emitter's parameter; name it as `$l`
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-value class Length {
+struct Length {
     inline int cm;
     Length operator = (Length o) { cm = o.cm; return self; }
 }

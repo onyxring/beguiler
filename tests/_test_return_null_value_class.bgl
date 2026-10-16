@@ -1,6 +1,6 @@
-// Negative test: a value class is copied out by value, so a routine returning one can't return null.
+// Negative test: a struct is copied out by value, so a routine returning one can't return null.
 // EXPECT_ERROR: so it can't return null
 #beguilerSettings { target = z5; informName = "none"; }
-value class Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
+struct Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
 Pair pick(int n) { Pair p; if (n > 0) return p; return null; }
 void main(){ Pair q; q = pick(1); }

@@ -10,7 +10,7 @@
 // lambdas, with a `ref` array rebound by `:=`; an inline accessor on an object, with a static
 // counter, reading and writing its host through `outer` with a <linq> chain; a class with two parents
 // whose member array<char> is bound by a `ref` and worked by <buf> inside a switch, then extended; a
-// value class owning a buf with a copy operator; an emitter class with init/deinit beside `??` and <buf> capture; a replaced function over array<char>;
+// struct owning a buf with a copy operator; an emitter class with init/deinit beside `??` and <buf> capture; a replaced function over array<char>;
 // an emitter function and static methods over array<string>; a float mean over strings tested with
 // postfix `?`; an extern I6 class with comparison emitters and a static method that casts.
 
@@ -248,8 +248,8 @@ extend class Badge {
 
 Badge badgeA { "badge a"; }
 
-//-- A value class owning a buffer -----------------------------------------------------------
-value class Word {
+//-- A struct owning a buffer -----------------------------------------------------------
+struct Word {
     array<char> text[12];
     int uses;
     Word operator = (Word o) { text = o.text; uses = o.uses + 1; return self; }

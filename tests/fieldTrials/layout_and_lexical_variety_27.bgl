@@ -6,7 +6,7 @@
 // with positional members (`inline instanceName` re-listed, an `inline string` author and an
 // `inline int` page count), an enum section, a bnum of wear marks set with `|` and toggled with `^`,
 // `default` methods overridden by a reference-book subclass, and a class-wide static counter; books
-// placed with `children = { … }` and walked with `for (object o in player.children)`; a value class
+// placed with `children = { … }` and walked with `for (object o in player.children)`; a struct
 // loan with a copy operator kept in a global `array<Loan>` that is appended to, searched, removed from
 // and counted; a lending routine with a default parameter that `throw`s a string caught in the verb
 // handler; a calendar daemon started in `Initialise`; a returns box whose `before` takes a book and
@@ -183,7 +183,7 @@ object calendar
 // ---- the ledger ------------------------------------------------------------------------------------
 
 /// One line of the ledger.
-value class Loan
+struct Loan
 {
     ref Book book ;
     int  due ;

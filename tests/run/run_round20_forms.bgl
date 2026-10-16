@@ -34,19 +34,19 @@ int showCol() { int col = 2; int m = 0; #i6 { m = $i6Expr(spotA.col) * 10 + col;
 // D1222: an empty statement as a case body.
 string middle = "mid";
 
-// D1223: a value class's stringObj member, in a local and in array slots.
-value class Word { stringObj text; Word operator = (Word o) { text = o.text; return self; } }
+// D1223: a struct's stringObj member, in a local and in array slots.
+struct Word { stringObj text; Word operator = (Word o) { text = o.text; return self; } }
 array<Word> words[2];
 
-// D1224, D1225, D1226: value-class array slots — a converting store, a method `+=`, an ancestor call.
-value class Num {
+// D1224, D1225, D1226: struct array slots — a converting store, a method `+=`, a member struct's call.
+struct Num {
     int n;
     Num operator = (Num o) { n = o.n; return self; }
     Num operator = (int v) { n = v * 10; return self; }
     Num operator += (Num o) { n = n + o.n; return self; }
 }
-value class Base { int k; Base operator = (Base o) { k = o.k; return self; } int size() { return 3; } }
-value class Wide : Base { Wide operator = (Wide o) { k = o.k; return self; } int size() { return 4; } }
+struct Base { int k; Base operator = (Base o) { k = o.k; return self; } int size() { return 3; } }
+struct Wide { Base base; int size() { return 4; } }
 
 // D1227: a block-local array read in a nested if.
 int blockLocal() { int z = 0; { array<int> row = {3, 4}; if (z == 0) z = row[1]; } return z; }
@@ -75,7 +75,7 @@ void main() {
     print($"{w.n + 10} {list[0].n} {list[1].n + 10} | ");
     array<Num> row[2]; row[0] = 2; row[1] = 1; row[0] += row[1]; print($"{row[0].n + 1} {row[1].n + 33} | ");
     array<Wide> wides[1]; Wide wd; wides[0] = wd;
-    print($"{((Base)wides[0]).size()} {wides[0].size()} | ");
+    print($"{wides[0].base.size()} {wides[0].size()} | ");
     print(blockLocal()); print(" | ");
     print(localMode()); print(" | ");
     print(spotA.col); print(" | ");

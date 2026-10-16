@@ -4,7 +4,7 @@
 // Exercises: a carried-load panel. A class Item : object with a float weight, an enum kind, a
 // turn stamp and a description, whose before() refuses a Take over the load limit, whose after()
 // logs Take and Drop into a text-buffer panel, and whose invent() adds the weight after the name in
-// the inventory listing; a value class Tally (count and float weight, copy operator, += of an Item,
+// the inventory listing; a struct Tally (count and float weight, copy operator, += of an Item,
 // a method returning stringObj); a text grid split to the right of the main window with a border
 // and a styleSheet, redrawn from a replaced DrawStatusLine with the carried items sorted three ways
 // (<linq> orderBy with comparators, one of them block-bodied comparing stringObj names with <=>);
@@ -161,7 +161,7 @@ class Item : object {
     bool isHeavy() { return weight >= 2.0; }
 }
 
-value class Tally {
+struct Tally {
     int   count = 0;
     float weight = 0.0;
 

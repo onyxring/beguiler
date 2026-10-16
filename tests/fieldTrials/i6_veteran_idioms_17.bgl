@@ -3,7 +3,7 @@
 
 // Exercises: Inform 6 habits on z5, two dense declarations each packing one area cluster into a single unit.
 // An extend of an object adding an inline accessor that reads and writes outer., keeps a static write
-// count, and declares operator == and []; beside it a method taking a ref value-class parameter and a
+// count, and declares operator == and []; beside it a method taking a ref struct parameter and a
 // var, holding a local array<string> and array<Probe>, switching with ranges, casting to an ancestor,
 // using ?. and postfix ?, building a stringObj, throwing and catching, an #i6 statement with $i6Expr,
 // and a perform. An extern class with two extern parents (classes made in an #i6 island) declaring a
@@ -59,7 +59,7 @@ class DeepProbe : Probe {
 Probe probeA { "probe A"; depth = 1; }
 DeepProbe probeB { "probe B"; depth = 2; }
 
-value class Pair {
+struct Pair {
     int a;
     int b;
     Pair operator = (Pair o) { a = o.a; b = o.b; return self; }
@@ -148,7 +148,7 @@ primitive class grams {
     emitter int operator () { ($val) }
 }
 
-value class Tally {
+struct Tally {
     int n;
     int sum;
     Tally operator = (Tally o) { n = o.n; sum = o.sum; return self; }

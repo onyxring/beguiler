@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/Java developer writes it, twenty-third pass: a bank ledger with undo.
-// A value class for an amount of money with a copy operator, `+`/`-`, `==`/`!=` and a `<=>` that the
+// A struct for an amount of money with a copy operator, `+`/`-`, `==`/`!=` and a `<=>` that the
 // orderings `<`/`<=`/`>` come from, static factories with a default argument, and a formatter returning a
 // `stringObj`; an account base deriving from an "auditable" mixin with `default` virtual hooks
 // (`Kind`, `Available`, `CheckWithdraw`, `OnWithdrawn`, `RefundWithdrawal`), an owned `Money` balance given
@@ -46,7 +46,7 @@ enum eErrorCode { None, InvalidAmount, InsufficientFunds, LimitReached, SameAcco
 
 //-- Money: a value type ---------------------------------------------------------------------------------------
 
-value class Money {
+struct Money {
     int Cents;
 
     Money operator = (Money o) {

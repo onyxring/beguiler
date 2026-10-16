@@ -4,16 +4,16 @@
 // Exercises: three dense declarations on Glulx, written functionally. An I6 class declared in an `#i6`
 // island and bound with `extern class`: emitter `+`, `-`, `<`, `>` operators and a static fold that
 // imports a type alias with `#using`, walks a nested literal table of bands, reads a meter through
-// `?.`, holds a value-class local, switches with ranges and guards on `meter + n`, adjusts a local in
+// `?.`, holds a struct local, switches with ranges and guards on `meter + n`, adjusts a local in
 // an `#i6` island and runs a verb with `perform`. An `extend extern class` of it adding `==` and `!=`,
 // a `replace` of a static label routine, and a static profile that folds an array of float arrays
-// through a block lambda into a value-class local, stamps an array<char> code from an enum, builds a
+// through a block lambda into a struct local, stamps an array<char> code from an enum, builds a
 // stringObj and runs a verb. A dial object whose inline float accessor keeps a static array of marks
 // and writes its host through `outer`, with a `#if`-guarded trace, an `operator []` / `[]=` over a
-// member float array, a `ref` value-class member bound with `:=`, an enum mode, an emitter-class
+// member float array, a `ref` struct member bound with `:=`, an enum mode, an emitter-class
 // local and a `var` tag switched on `typeof`, then a `perform`; an `extend` of the dial with a member
 // array<char>, a member array of float arrays and a block lambda reading `self[i]`. A verb with its own
-// members: a nested array, a block-lambda func<> member, a `ref` value-class member bound with `:=`, an
+// members: a nested array, a block-lambda func<> member, a `ref` struct member bound with `:=`, an
 // inline accessor over a static array writing its host through `outer` under `#if`, a `var` switched on
 // `typeof` and `?.` over an extern-class member that may be null.
 
@@ -40,7 +40,7 @@ object roomA { "Room A"; description = "Room A."; attributes = {light}; }
 //-- Shared types ---------------------------------------------------------------------------------
 enum eMode { idle, low, high }
 
-value class Spot {
+struct Spot {
     float x;
     float y;
     Spot operator = (Spot o) { x = o.x; y = o.y; return self; }

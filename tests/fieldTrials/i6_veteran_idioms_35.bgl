@@ -17,7 +17,7 @@
 // daemon; a tracker whose members location, turns, score, buffer, dial (like the class) and second
 // (added by `extend` below its use) meet library globals, with a timer (time_left, time_out); a
 // ledger imported with #using; a verb Step named like a #define, a verb with a member named like a
-// global; a value class whose fields are named like library globals and the property number;
+// global; a struct whose fields are named like library globals and the property number;
 // parameters with defaults and named arguments named like library globals and the #define
 // (`turns = ::turns`, `score:`, `by: STEP`); locals named like library globals, an attribute
 // (general), a verb (spin), a class (`Dial dial`), the print rules a and the, a library object
@@ -252,7 +252,7 @@ array<Dial> dials = {dialA, dialB, dialC};
 
 // ---------------------------------------------------------------- a reading
 
-value class Reading {
+struct Reading {
     int number;                         // like the property and eParserError.number
     int score;                          // like the library global
     int turns;                          // like the library global

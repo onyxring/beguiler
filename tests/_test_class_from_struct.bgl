@@ -1,0 +1,6 @@
+// Negative test: a class can't derive from a struct.
+// EXPECT_ERROR: can't derive from struct
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pos { int row; Pos operator = (Pos o) { row = o.row; return self; } }
+class Marker : Pos { int id; }
+void main() { }

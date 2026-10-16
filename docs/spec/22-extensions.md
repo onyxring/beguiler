@@ -338,7 +338,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | Method | Returns | Description |
 |---|---|---|
 | `filter(pred)` | `array<T>` | The elements for which `pred(elem)` is true. `pred` is `func<bool, T>`. |
-| `map(f)` | `array<var>` | `f(elem)` for each element. `f` is `func<var, T>`; the result is `array<var>` because the mapper's result type is not tracked. A mapper returning a value class with fields is a compile-time error: the elements would share one instance. |
+| `map(f)` | `array<var>` | `f(elem)` for each element. `f` is `func<var, T>`; the result is `array<var>` because the mapper's result type is not tracked. A mapper returning a struct with fields is a compile-time error: the elements would share one instance. |
 | `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length`. |
 | `takeWhile(pred)` / `skipWhile(pred)` | `array<T>` | Elements up to the first for which `pred` is false / from that element on. |
 | `distinct()` | `array<T>` | The first occurrence of each value. |
@@ -351,7 +351,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 
 **Chain results.** Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given, so a result assigned back (`held = held.filter(…)`) has the room `held` had. A step's input that was itself a step's result is freed as soon as the step has read it, so only the chain's final result remains; it is freed like any other array once nothing refers to it.
 
-**Value-class elements.** A variable that takes a result over a value class (or another element type that owns its instances, such as `stringObj`) gets copies of the elements, as an assignment of one value-class variable to another does: changing or removing them leaves the source alone. The steps inside a chain read the source's elements without copying them.
+**Value-class elements.** A variable that takes a result over a struct (or another element type that owns its instances, such as `stringObj`) gets copies of the elements, as an assignment of one struct variable to another does: changing or removing them leaves the source alone. The steps inside a chain read the source's elements without copying them.
 
 **Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to any depth.
 
@@ -590,7 +590,7 @@ hud.close();                                // hud is gone; its slot is free for
 
 Glk styles are hints set per window kind and style type; a hint affects windows of that kind created *after* it is set. A style applied after a split does not affect windows already created. ⟨target⟩ is `bgl.ui.screen` (both text kinds at once), `bgl.ui.mainWin` or a `textBufferWindow` (the text-buffer kind), or `bgl.ui.statusBar` or a `textGridWindow` (the text-grid kind). ⟨styleType⟩ is an `eGlulxStyleType` (§22.7.10).
 
-`style` is a value class whose members default to "leave the interpreter's setting". Build one with the named inline-object form (§11.3.1) giving only the members to change; `clearStyle()` resets every hint of that style type to the interpreter's default.
+`style` is a struct whose members default to "leave the interpreter's setting". Build one with the named inline-object form (§11.3.1) giving only the members to change; `clearStyle()` resets every hint of that style type to the interpreter's default.
 
 | `style` member | Type | Meaning |
 |---|---|---|
@@ -617,7 +617,7 @@ hud.clearStyle(eGlulxStyleType.alert);
 
 **A look for one window**
 
-`setStyle()` changes a style type for every later window of that kind. To give one window its own look, describe it as a `styleSheet` — a value class with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`) — and pass it to the split as `styles:`. The sheet's hints are set just before the window opens and the previous hints are put back just after, so no other window is affected. A style left unset in the sheet leaves that style type as it was.
+`setStyle()` changes a style type for every later window of that kind. To give one window its own look, describe it as a `styleSheet` — a struct with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`) — and pass it to the split as `styles:`. The sheet's hints are set just before the window opens and the previous hints are put back just after, so no other window is affected. A style left unset in the sheet leaves that style type as it was.
 
 A window's `childStyles` is a sheet that every window split *directly* from it gets. It refers to the sheet, so changing the sheet later changes what the next split gets; assigning `null` removes it. A sheet passed to the split takes precedence over the parent's `childStyles`, style type by style type, and both take precedence over `setStyle()`. To give a window's children the same look as its parent's children, assign the parent's sheet: `notes.childStyles = bgl.ui.mainWin.childStyles;`.
 

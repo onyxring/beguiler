@@ -6,10 +6,10 @@
 // `extend` bodies above their targets: the rail object given a member array sized by a const declared
 // below, a func<void, Lamp> member initialized with a function declared at the very end and called
 // from a method, and methods walking a global array declared below; a namespace object given type
-// aliases (a class, an enum, a bnum, a value class) and a value alias of a class whose statics are
+// aliases (a class, an enum, a bnum, a struct) and a value alias of a class whose statics are
 // reached through it (a static func<int, int> member holding a function declared at the end, and a
 // const member read through instances). The lamp array is given an element declared below with `inject`.
-// Globals typed through those aliases and by a value class, a named union and a bnum declared below,
+// Globals typed through those aliases and by a struct, a named union and a bnum declared below,
 // initialized with values read through alias paths; a global func<int, Lamp> holding a function
 // declared at the end; an array<func<void>> of functions that `perform()` verbs declared below them.
 // A class Lamp (instances declared above it, base class Fixture below it, subclass Strobe overriding a
@@ -17,7 +17,7 @@
 // as its level, a member array of past levels, a bnum flags member, an enum member, a static counter
 // and static method, a class emitter value, an instance `<=>` used directly, derived (`>`) and by a
 // no-argument <linq> orderBy; an `extend class` after the class adding a field the instances above set,
-// a method and `operator +=` used above as `lamp += n`. A value class Watt (copy, `+=` of an int, `==`,
+// a method and `operator +=` used above as `lamp += n`. A struct Watt (copy, `+=` of an int, `==`,
 // `!=`, a static `<=>` passed as `Watt::operator <=>` to orderBy and derived to `<`) in a global, a
 // global array, a returned copy compared with another, and a `ref` parameter typed through an alias. A
 // pooled class Spark sized by a const below, made with `new` and freed with `delete`. Overloads (Lamp,
@@ -541,7 +541,7 @@ class Fixture : object {
     char mark = '*';
 }
 
-value class Glow {
+struct Glow {
     int _g = 0;
     int operator () { return _g; }
     void operator = (int v) {
@@ -554,7 +554,7 @@ value class Glow {
     int operator <=> (int n) { return _g - n; }
 }
 
-value class Watt {
+struct Watt {
     int lo;
     int hi;
     int sum;

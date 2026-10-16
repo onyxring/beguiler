@@ -163,8 +163,8 @@ verb Measure {
     grammar = {.measure};
 }
 
-// A value class whose lifetime hooks print when a variable of it is created or released.
-value class tracer {
+// A struct whose lifetime hooks print when a variable of it is created or released.
+struct tracer {
     int id;
     tracer operator = (tracer o) {
         id = o.id;

@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from spec_doctest import try_program  # noqa: E402
 
 FIXTURE = '''#include <array>
-value class doubler {
+struct doubler {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v * 2; }

@@ -21,9 +21,9 @@
 // methods that use it; `extend class` methods called from above.
 // Accessor reads, `+=`, `++`, `-=` and comparisons through casts `((Meter)noun).level`, alias-path
 // casts, call results `pick(i).level` and array elements `meters[i].level`; member arrays read and
-// written through the same receivers. A value class Span (copy, `+=` of an int, `==`, `!=`, `<=>`)
+// written through the same receivers. A struct Span (copy, `+=` of an int, `==`, `!=`, `<=>`)
 // in globals, a global array, an alias-typed local, a `ref` local and an alias-typed `ref`
-// parameter; overloads chosen between a class and a value class both declared below, with a defaulted and a named argument. An inline `auto`
+// parameter; overloads chosen between a class and a struct both declared below, with a defaulted and a named argument. An inline `auto`
 // accessor on the panel whose setter reaches `outer` members declared after it and resizes the grid
 // through `height`. Hyperlinks to a function and to enum values declared below, handled in a
 // HandleGlkEvent above the enum; a replaced DrawStatusLine; a for over an enum list; verbs taking
@@ -541,7 +541,7 @@ class Device : object {
     char mark = '*';
 }
 
-value class Clamp {
+struct Clamp {
     int _v = 0;
     int operator () { return _v; }
     void operator = (int v) {
@@ -555,7 +555,7 @@ value class Clamp {
     int operator - (int n) { return _v - n; }
 }
 
-value class Span {
+struct Span {
     int low;
     int high;
     int count;

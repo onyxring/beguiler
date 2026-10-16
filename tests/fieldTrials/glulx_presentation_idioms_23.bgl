@@ -3,7 +3,7 @@
 
 // Exercises: a board of four dials shown in a text grid. A class Dial : object with a setting, a
 // target, a letter char and a change count, methods returning bool, int and stringObj, a describe
-// routine for EXAMINE and a before() that answers Turn and Push; a value class Stats (low, high, sum
+// routine for EXAMINE and a before() that answers Turn and Push; a struct Stats (low, high, sum
 // and count, copy operator, += of an int, a float mean and a stringObj summary) built over the dials
 // and copied to keep the previous reading; an enum eView switched on to draw the board three ways and
 // cycled by a verb through a cast from int; a text grid split above the main window with a border
@@ -98,7 +98,7 @@ void logEvent(stringObj text) {
 
 // ---- stats ---------------------------------------------------------------------------------------
 
-value class Stats {
+struct Stats {
     int lo = 0;
     int hi = 0;
     int sum = 0;

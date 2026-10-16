@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a stock-keeping kit published only through namespaces, and a consumer that reaches it
-// by every path. A kit object holds type aliases for two enums, a value class of pieces, an item
+// by every path. A kit object holds type aliases for two enums, a struct of pieces, an item
 // class, a crate subclass based through the alias path, an alias class over the item path, an alias
 // class over object, a pooled slip class and a pooled fault class that is thrown and caught as the
 // alias type; its helpers name the aliases bare, with a default argument through a bare enum alias.
@@ -15,7 +15,7 @@
 // imports the tally's statics inside its body. A later `extend` of the kit adds an enum alias that the
 // slip class and an `extend class` of the item use above it; `extend` of the root adds an issuing
 // method. Paths appear as base classes, object declaration types (full, partial, imported), inline
-// value-class initializers `kit.qty{ … }` in object bodies, member and global arrays, for-in
+// struct initializers `kit.qty{ … }` in object bodies, member and global arrays, for-in
 // variables, parameters with path-typed defaults, `ref` locals bound to members, returns, casts on
 // `?.` chains, is(), `new` through three different paths with named arguments, catch types, func<>
 // generic arguments and lambda parameters in <linq> chains, enum values through a type alias of a
@@ -46,7 +46,7 @@ enum eLa36Grade { low, mid, top }
 enum eLa36Side { fore, aft }
 
 /// A count of pieces, copied on assignment.
-value class La36Qty {
+struct La36Qty {
     int n;
     La36Qty operator = (La36Qty o) { n = o.n; return self; }
     La36Qty operator = (int v) { n = v; return self; }

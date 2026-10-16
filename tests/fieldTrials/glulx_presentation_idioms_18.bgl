@@ -3,7 +3,7 @@
 
 // Exercises: a light board, swatches, gauges and cells drawn into a text grid. A primitive class
 // level over int (a clamped 0..9 step) with emitter =, a conversion, postfix ? and a float view; a
-// value class Tint with positional members and a copy operator; an emitter class holdScope with
+// struct Tint with positional members and a copy operator; an emitter class holdScope with
 // init/deinit; a union reading of float or string. An `extend board` (a Lamp object) adding an inline
 // accessor over a level that reaches its host through outer and throws, object operators + < > +=
 // and [], an array<Chip> of pooled chips, a recursive chain walk and a `replace` tally that
@@ -102,7 +102,7 @@ primitive class level {
     emitter float frac()              { levelFrac($val) }
 }
 
-value class Tint {
+struct Tint {
     inline float r = 0.0;
     inline float g = 0.0;
     Tint operator = (Tint o) {

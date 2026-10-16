@@ -39,7 +39,7 @@ object level {
         int value = 1;
     #endif
 }
-value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+struct Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
 class Purse[1] : object { Coins price = Coins{ cents = 3; }; int plain = 3; }
 void main(){
     bglInit();

@@ -5,7 +5,7 @@
 // through computed receivers. Bins are container objects of a class with a member array of parts, a
 // member log array too large for one property (separate storage), a named accessor class, an inline
 // `auto` accessor declared in the class body, a neighbour reference, a func<bool, Part> member and
-// methods that return self (chained), a part, or a value class tally. Parts are a class with a
+// methods that return self (chained), a part, or a struct tally. Parts are a class with a
 // `default` method overridden by a subclass. Members are read, written, compound-assigned and called
 // through casts `((Bin)x.parent).m`, nested casts with ancestor dispatch `((Part)(Bolt)x).worth()`,
 // call results `binOf(p).held[0].label`, array elements `bins[i].held[j].mass`, chain results
@@ -37,13 +37,13 @@ const int LOGSIZE = 40;
 //-- Value types ----------------------------------------------------------------------------------
 
 // Read as an int; a negative write is stored as zero.
-value class Gauge {
+struct Gauge {
     int _v = 0;
     int  operator ()        { return _v; }
     void operator = (int v) { _v = v < 0 ? 0 : v; }
 }
 
-value class Tally {
+struct Tally {
     int n = 0;
     int mass = 0;
     int worth = 0;

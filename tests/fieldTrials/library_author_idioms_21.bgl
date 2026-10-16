@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a timers-and-daemons kit and its consumer. The kit declares an enum of fuse stages; a
-// value class of turn counts with two copy operators, + over ints, <=>, == and != against an int and a
+// struct of turn counts with two copy operators, + over ints, <=>, == and != against an int and a
 // show method; a fuse class with a required positional length, a time_left the library's timer runs
 // down, a time_out routine, a before() that stops Take while it burns, a default sound(), static
 // counters, an owned turn count and a switch giving a stage letter; it starts and stops its timer with
@@ -47,7 +47,7 @@ object roomA {
 enum eLa21Phase { idle, burning, spent }
 
 /// A count of turns, copied on assignment.
-value class La21Turns {
+struct La21Turns {
     int n;
     La21Turns operator = (La21Turns o) { n = o.n; return self; }
     La21Turns operator = (int v) { n = v; return self; }

@@ -38,7 +38,7 @@ object kit {
     alias row for rowV;
     void bump(ref row r, int i) { code c = r[i]; r[i] = (int)c + 1; }
 }
-value class rowV {
+struct rowV {
     inline codeT a; inline codeT b;
     rowV operator = (rowV o) { a = o.a; b = o.b; return self; }
     codeT operator [] (int i) { if (i == 0) return a; return b; }

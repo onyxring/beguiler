@@ -7,7 +7,7 @@
 // flag, its description a routine reading a genre name from an `array<string>`, and an `after` taking
 // `PutOn`; a `Shelf` class whose `before` takes `Receive` (books only, stamped, the right genre); a
 // returns bin whose daemon drops books from a queue (`array<object>` with `dequeue`) every few turns;
-// a value class `Fine` (`operator ()`, `=` from int and from itself, `+=`, `-=`, a method) owned by
+// a struct `Fine` (`operator ()`, `=` from int and from itself, `+=`, `-=`, a method) owned by
 // the desk, and a global one changed through a `ref` parameter; a `stamp NOUN` verb charging fines; a `shelve NOUN`
 // verb finding a shelf by genre and running `PutOn.perform`; a clerk with `life` (Ask through
 // NextWord, Give of the coin) and `orders`; `<linq>` chains (`filter`, `count`, `orderBy` with a
@@ -50,7 +50,7 @@ array<string> genreNames = {"fiction", "history", "science"};
 const int FINE_PER_DAY = 5;
 const int COIN_VALUE   = 20;
 
-value class Fine {
+struct Fine {
     int _pence = 0;
 
     int  operator ()          { return _pence; }

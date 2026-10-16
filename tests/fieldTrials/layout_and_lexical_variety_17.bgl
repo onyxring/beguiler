@@ -5,14 +5,14 @@
 // A class with two parents holding static members, a static array<string> and static array<int>, an
 // inline `auto` accessor, a `replace` of an inherited method, `+=`, `[]`/`[]=` over the static array, an
 // `explicit` conversion and a static method; its dense method holds an emitter-class local, a
-// `stringObj`, a local array<Cell> of a value class, a block-bodied lambda that throws (caught by the
+// `stringObj`, a local array<Cell> of a struct, a block-bodied lambda that throws (caught by the
 // caller), compound assignment through the accessor and the static array, a ranged/guarded switch, a
 // `var` told apart by `typeof` and a performed verb; a second static method walks an array<Panel> with a
 // block lambda. A pooled class (create/destroy) with static members, a static array<string> and
 // static array<int>, an emitter member, a `replace` calling the ancestor through a cast, a `[]`, and a
 // static method taking a `ref stringObj` and a `var` that does `new`/`delete`, `??`, a <linq> chain with
 // a capturing lambda, an `#if`/`#else` inside the body, an in-routine `#i6` block reading a local, a ref
-// bound with `:=` to a value-class global, a switch on `typeof` and a performed verb; a `replace`d global
+// bound with `:=` to a struct global, a switch on `typeof` and a performed verb; a `replace`d global
 // routine calling `replaced()` with `??` and `#if`; verbs that drive them.
 // Lexically: `#Define`/`#IF`/`#ELSE`/`#endif` in mixed case, `$` hex and `$$` binary literals in
 // directives and code, keywords in odd case (`STATIC`, `Static`, `TRY`, `Catch`, `THROW`, `Switch`,
@@ -69,13 +69,13 @@ emitter class Tally
     int  operator () { ($val) }
 }
 
-value class Cell
+struct Cell
 {
     int v ;
     Cell operator = ( Cell o ) { v = o.v ; return self ; }
 }
 
-value class Gauge
+struct Gauge
 {
     int lo ;
     int hi ;

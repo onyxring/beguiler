@@ -3,11 +3,11 @@
 
 // Exercises: garden beds kept in tables. An enum of crops indexing parallel name, word, ripening,
 // thirst and yield tables; a companion table as jagged array<array<eCrop>> read with contains();
-// a bed table as an array of a value class written as bare { … } (bool, enum, int, int), changed
+// a bed table as an array of a struct written as bare { … } (bool, enum, int, int), changed
 // through [i].member; a bed layout as jagged array<array<int>> neighbour lists; a note table as an
 // array<string | func<void>> discriminated with typeof and narrowed with casts; a day pipeline as an
 // array<func<void, int>> of named routines grown with extend … inject; a bnum of bed flags built with
-// |= and listed by bit position; harvests as an array of a value class appended as Harvest{ … } and
+// |= and listed by bit position; harvests as an array of a struct appended as Harvest{ … } and
 // read back through <linq> orderBy/filter/map/distinct/count/any/all/first/takeWhile with lambdas
 // capturing parameters and locals; a general parsing routine over the crop word table; a water word
 // picked by a switch with ranges and guards and a crop habit by a switch on the enum; stringObj rows
@@ -61,7 +61,7 @@ array<string> flagNames = { "dry", "ripe", "crowded", "spoiled" };
 
 //-- Bed tables ----------------------------------------------------------------
 
-value class Bed {
+struct Bed {
     inline bool sown;
     inline eCrop crop;
     inline int age;
@@ -91,7 +91,7 @@ array<array<int>> neighbours = {
     { 2, 4 }
 };
 
-value class Harvest {
+struct Harvest {
     inline int day;
     inline eCrop crop;
     inline int bed;

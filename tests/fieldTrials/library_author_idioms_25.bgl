@@ -45,7 +45,7 @@ extend extern class object {
 enum eLa25Flame { none, low, steady, bright }
 
 /// An amount of fuel in units, copied on assignment.
-value class La25Fuel {
+struct La25Fuel {
     int units;
     La25Fuel operator = (La25Fuel o) { units = o.units; return self; }
     La25Fuel operator = (int u) { units = u; return self; }

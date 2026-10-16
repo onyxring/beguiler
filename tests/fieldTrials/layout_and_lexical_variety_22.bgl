@@ -7,7 +7,7 @@
 // tested with `&`, a class-wide static counter and a method returning a `stringObj` code padded with
 // char literals; a shutter door whose `door_to`/`door_dir` are routines and whose `before` refuses
 // Open/Close; a lever whose `before` on Pull/Push toggles the shutter; a scale (supporter) read into a
-// value class returned from a routine; an `array<func<bool, Parcel>>` of named check routines walked
+// struct returned from a routine; an `array<func<bool, Parcel>>` of named check routines walked
 // beside an `array<string>` of their names; a chute whose `before` on `Receive` ships or rejects; a log
 // of readings kept with `append()`/`dequeue()` and summarised with <linq> (`filter`, `count`, `orderBy`,
 // `last`, `any`); shipped parcels sorted with a comparator lambda and listed into a `stringObj`; a
@@ -191,7 +191,7 @@ Parcel grayParcel
     color  = eHue.gray ;
 }
 
-value class Reading
+struct Reading
 {
     int count ;
     int total ;

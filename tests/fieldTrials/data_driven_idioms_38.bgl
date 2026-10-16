@@ -4,7 +4,7 @@
 // Exercises: a workshop recipe book kept in tables. Parallel item tables (name, dictionary word,
 // held count, worth) indexed by position and read by a general parsing routine; parallel recipe
 // tables (name, made item, yield, station enum) beside two arrays of arrays holding each recipe's
-// needed items and counts, walked with nested for-in loops and by index; a Need value class with a
+// needed items and counts, walked with nested for-in loops and by index; a Need struct with a
 // copy operator, a static factory and a `<=>` used by sort(), collected into a local array of
 // shortfalls with append; a Station class with an enum kind, a use counter and a method, three
 // station objects in an array<Station> searched with filter/first; a table of named checks as
@@ -65,9 +65,9 @@ extend recipeAt { inject eStation.forge; }
 
 array<string> stationName = { "by hand", "at the bench", "at the forge" };
 
-//-- Value classes ---------------------------------------------------------------
+//-- Structs ---------------------------------------------------------------
 
-value class Need {
+struct Need {
     inline int item;
     inline int qty;
     Need operator = (Need o) { item = o.item; qty = o.qty; return self; }

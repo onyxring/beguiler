@@ -8,7 +8,7 @@
 // EXPECT_OUTPUT: copy 1, shared 999, ref 999, method 5, op 7
 #beguilerSettings { target = z5; informName = "none"; }
 
-value class Vec {
+struct Vec {
     int x;
     Vec operator = (Vec v){ self.x = v.x; return self; }     // copies
 }

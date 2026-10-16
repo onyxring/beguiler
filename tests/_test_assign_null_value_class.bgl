@@ -1,5 +1,5 @@
-// Negative test: a value-class variable owns its instance, so null can't be stored in it.
+// Negative test: a struct variable owns its instance, so null can't be stored in it.
 // EXPECT_ERROR: owns its instance, so null can't be stored in it
 #beguilerSettings { target = z5; informName = "none"; }
-value class Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
+struct Pair { int a; Pair operator = (Pair o) { a = o.a; return self; } }
 void main(){ Pair p; p = null; }

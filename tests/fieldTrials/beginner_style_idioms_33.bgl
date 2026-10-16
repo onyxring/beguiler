@@ -178,9 +178,9 @@ void kindOf(stringObj s) {
     print("a stringObj");
 }
 
-// ===== A TAG: A VALUE CLASS WITH TEXT IN IT =====
+// ===== A TAG: A STRUCT WITH TEXT IN IT =====
 
-value class Tag {
+struct Tag {
     stringObj text;
     int uses;
 

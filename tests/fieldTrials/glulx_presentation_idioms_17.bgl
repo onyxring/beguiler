@@ -2,9 +2,9 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: tiles on a board drawn into a text grid. A primitive class level over int (a clamped
-// 0..9 step) with emitter =, a conversion, postfix ?, ?? and a float view; a value class Tint with a
+// 0..9 step) with emitter =, a conversion, postfix ?, ?? and a float view; a struct Tint with a
 // copy operator; an emitter class holdScope with init/deinit; a namespace object kit aliasing an enum,
-// the value class and the primitive, imported with #using ahead of a pooled class Tile[4] with four
+// the struct and the primitive, imported with #using ahead of a pooled class Tile[4] with four
 // parents (Shade, Tagged, Edged, Lit) whose members use those aliases: static array<Tile>, array<level> and
 // array<float> members kept by create()/destroy(), <=> over tiles, == over int, emitter members,
 // operator += and operator switch over the band, and a method taking an array<int> that opens a
@@ -87,7 +87,7 @@ primitive class level {
     emitter float frac()              { levelFrac($val) }
 }
 
-value class Tint {
+struct Tint {
     float r = 0.0;
     float g = 0.0;
     Tint operator = (Tint o) {

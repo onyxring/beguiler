@@ -3,7 +3,7 @@
 
 // Exercises: layout and lexical habits applied to the declaration forms the first four trials left
 // alone. Operator declarations with no spaces, with spaces inside the symbol's parentheses, split over
-// lines and in mixed case (`OPERATOR`, `prefix++`, `[]=`, `<=>`, `!`, `()`); a value class with a copy
+// lines and in mixed case (`OPERATOR`, `prefix++`, `[]=`, `<=>`, `!`, `()`); a struct with a copy
 // operator, `ref` locals bound with `:=` written tight and loose, `ref` and copied parameters; a named
 // accessor class driven by `+=` and `++`, and an inline `auto` accessor broken across lines that reaches
 // its host through `OUTER`; `hide` written with spaces around `.` and inside its parentheses; global
@@ -30,9 +30,9 @@ extend extern class object { string description; }
 
 Object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
 
-//-- A value class whose operators are declared in every layout ------------------------------------
+//-- A struct whose operators are declared in every layout ------------------------------------
 
-VALUE CLASS Vec
+STRUCT Vec
 {
     int x; int y;
 
@@ -63,7 +63,7 @@ Vec vb;
 
 //-- Accessors: a named one and an inline one -------------------------------------------------------
 
-value class Clamp {
+struct Clamp {
     int _v;
     int operator () { return _v; }
     void operator = (int n) { if (n > 10) _v = 10; else if (n < 0) _v = 0; else _v = n; }

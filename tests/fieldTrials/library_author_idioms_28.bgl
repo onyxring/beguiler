@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: a letters-and-mailboxes kit and its consumer. The kit declares an enum of services; a
-// value class of cents with two copy operators, + over ints and over cents, - over cents, <=> (giving
+// struct of cents with two copy operators, + over ints and over cents, - over cents, <=> (giving
 // < and >), == and != against an int and a show method that prints dollars; a price routine that
 // switches on the enum and reads an accessor of the post object; a plural helper. A mailbox class with
 // attributes in the class body, a required positional capacity, received and refused counts, static
@@ -48,7 +48,7 @@ extend extern class object {
 enum eLa28Service { standard, express, recorded }
 
 /// An amount of postage in cents, copied on assignment.
-value class La28Cents {
+struct La28Cents {
     int c;
     La28Cents operator = (La28Cents o) { c = o.c; return self; }
     La28Cents operator = (int n) { c = n; return self; }

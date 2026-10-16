@@ -3,7 +3,7 @@
 // base's, and an overload returning a call to its sibling with a `?:` argument.
 // EXPECT_OUTPUT: 7 1 base btag dtag bop dop 8
 #beguilerSettings { target = z5; informName = "none"; }
-value class Amt {
+struct Amt {
     int C;
     Amt operator = (Amt o) { C = o.C; return self; }
     Amt operator = (int c) { C = c; return self; }

@@ -4,8 +4,8 @@
 // EXPECT_OUTPUT: 5 6 | 0 0 | A A b | 1 1
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
-value class Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
-value class Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
+struct Coins { int cents; Coins operator = (Coins o) { cents = o.cents; return self; } }
+struct Label { Coins price; int code; Label operator = (Label o) { price = o.price; code = o.code; return self; } }
 class crate[3] : object, bglAllocated { Label label; stringObj mark; }
 class bigCrate[2] : crate { Label extra; }
 void main(){

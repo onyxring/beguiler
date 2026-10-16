@@ -35,7 +35,7 @@ array<int> queue[8];
 array<string> fruitNames = {"plum", "apple", "cherry", "banana"};
 
 // ===== ACCESSOR CLASS (copied from the spec) =====
-value class heightProxy {
+struct heightProxy {
     int _val = 0;
     int  operator ()        { return _val; }
     void operator = (int v) { _val = v * 2; }

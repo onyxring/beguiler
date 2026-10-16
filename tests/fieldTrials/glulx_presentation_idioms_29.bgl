@@ -5,7 +5,7 @@
 // through a class attributeList) with a label, a letter char, a pitch, an enum tone and a ring count,
 // methods returning string, char, bool and stringObj, a ring() that prints, marks the roll, records
 // and logs, and a before() that answers Examine and Attack; a striker object whose daemon() plays a
-// recorded tune back one bell per turn and stops itself; a value class Tally (count, low, high, sum,
+// recorded tune back one bell per turn and stops itself; a struct Tally (count, low, high, sum,
 // copy operator, += of a Bell, a float mean and a stringObj range) over the tune and over the bells;
 // an <array> roll of recent bells (enqueue, dequeue, peekEnd) drawn in a text grid split above the
 // main window with a border and a styleSheet, redrawn from a replaced DrawStatusLine; a text-buffer
@@ -124,7 +124,7 @@ void logLine(stringObj text) {
 
 // ---- tallies -------------------------------------------------------------------------------------
 
-value class Tally {
+struct Tally {
     int n;
     int low;
     int high;

@@ -4,7 +4,7 @@
 // Exercises: a paged reader for notices. A class Notice : object with a title, a body, an enum topic,
 // a read count and a pinned flag, whose before() opens it in the reader on Examine and answers Take;
 // a word wrapper that fills a tracked array<stringObj> of lines to a width, character by character
-// over a string; a value class Pager (page, pages, copy operator, ==, next/prev returning bool, a
+// over a string; a struct Pager (page, pages, copy operator, ==, next/prev returning bool, a
 // stringObj label) saved and restored around a reread; a text-buffer reader split to the right with
 // a styleSheet, cleared and redrawn page by page, resized through width and rewrapped, closed and
 // reopened, written through ?.; a text grid split above the main window drawn from a replaced
@@ -124,7 +124,7 @@ void wrapInto(string text, int width) {
 
 // ---- place ---------------------------------------------------------------------------------------
 
-value class Pager {
+struct Pager {
     int page = 0;
     int pages = 1;
 

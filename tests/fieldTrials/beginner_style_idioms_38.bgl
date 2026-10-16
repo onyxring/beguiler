@@ -9,8 +9,8 @@
 // desk number, a first name, a member array of marks kept as a queue with enqueue / dequeue, stars,
 // a kept-in flag, methods that add a mark, work out a best mark and a total, print a line about
 // themselves, a before() for Examine) with a subclass for the class monitor that replaces how a mark
-// is added (still calling the class's through a cast), a value class for a piece of homework with a
-// copy operator, ==, != and <=> kept in an array of the value class sized by a const and used as a
+// is added (still calling the class's through a cast), a struct for a piece of homework with a
+// copy operator, ==, != and <=> kept in an array of the struct sized by a const and used as a
 // queue (enqueue / peek / [0] / remove / contains, copied into a local array and sorted),
 // a static member counting marked homework, a teacher object with a daemon that rings the bell,
 // helper functions (one with a default argument, one called with named arguments, one overloaded for
@@ -125,7 +125,7 @@ int markFor(int pages, int neat, int bonus = 0) {
 // ===== HOMEWORK =====
 
 // one piece of homework on the pile
-value class Homework {
+struct Homework {
     string subject;
     int desk;
     int pages;

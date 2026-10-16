@@ -8,7 +8,7 @@
 // &, operator !, operator ? driving postfix ? and ??, and |= through the fallback; both held as
 // members of a pooled class, as locals, parameters and array elements; a pooled class whose
 // create() takes three arguments (z5's limit) with an owned value member reset on new, a static
-// live count kept by create/destroy, pool exhaustion and slot reuse; a value class with distinct
+// live count kept by create/destroy, pool exhaustion and slot reuse; a struct with distinct
 // postfix ++ and prefix++ and an explicit regular-method conversion; a class with non-emitter
 // operator [] and []= over a member array, with ?. and ?? on the subscript result; an alias class
 // for object with a typed member, an emitter and a static method; extend extern class int and
@@ -17,7 +17,7 @@
 // with bgl.wordsize; an I6 routine with a #bgl island calling a Beguile routine; uint ordering,
 // division and printing; bgl.util.math helpers; += and |= on primitive members of a pooled instance;
 // a primitive parameter with a default, a const primitive global and an array<cell> literal; a
-// value-class member passed by value and by ref in one call; a ternary of primitives; a lambda
+// struct member passed by value and by ref in one call; a ternary of primitives; a lambda
 // capturing a primitive local and using ?= as a bgl.world.instances predicate.
 
 #beguilerSettings {
@@ -109,7 +109,7 @@ void showFlags(flagWord f) {
 
 // ---------------------------------------------------------------- a counter value
 
-value class Tally {
+struct Tally {
     int n;
     int bumps;
     Tally operator = (Tally o)  { n = o.n; bumps = o.bumps; return self; }

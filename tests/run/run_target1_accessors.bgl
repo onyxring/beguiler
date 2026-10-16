@@ -5,7 +5,7 @@
 #beguilerSettings { target = z5; informName = "none"; }
 void show() { print(panel.dial.turnCount()); print(" "); print(panel.dial.atZero() ? "zero" : "set"); print(" "); }
 bool anyLabeled(Box b) { return b.label.sets() > 0; }
-value class Level {
+struct Level {
     int _v = 0;
     int  operator ()          { return _v; }
     void operator = (int v)   { _v = v + 10; }

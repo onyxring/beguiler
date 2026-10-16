@@ -44,11 +44,11 @@ class Pair[2] : object { int a = 0; int b = 0; }
 int pairB() { Pair b = new Pair(); b.b = 4; int v = b.b; delete b; return v; }
 
 // D1258: static members of owning types.
-value class Cell { int n; Cell operator = (Cell o) { n = o.n; return self; } }
+struct Cell { int n; Cell operator = (Cell o) { n = o.n; return self; } }
 class Crate : object { static Cell kept; static stringObj journal; }
 
 // D1259: a reused pool slot empties an owned member's array.
-value class Stack { int pushes = 0; array<int> items[3]; Stack operator = (Stack o) { pushes = o.pushes; return self; } }
+struct Stack { int pushes = 0; array<int> items[3]; Stack operator = (Stack o) { pushes = o.pushes; return self; } }
 class Slot[1] : object { Stack st; }
 int reused() { Slot s = new Slot(); s.st.items.append(4); delete s; Slot r = new Slot(); int n = r.st.items.length; delete r; return n; }
 

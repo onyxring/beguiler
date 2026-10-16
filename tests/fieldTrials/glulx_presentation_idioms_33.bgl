@@ -5,14 +5,14 @@
 // a text-buffer log split to the right, where nearly every value is a property accessor. A named
 // accessor class Level (setter clamping, copy operator, declared `==`, `!=`, `<=>`, `+`, `-`, `+=`,
 // static counters, methods) as the gain of a class Channel, of a pooled class Cue made with `new`, of
-// a value class Strip held in globals, and as a global of its own; a named accessor Caption whose
+// a struct Strip held in globals, and as a global of its own; a named accessor Caption whose
 // getter returns a string (read with `??`, postfix `?` and interpolation, set from its own `??`, cleared through a method)
 // and a named accessor Focus whose getter returns a Channel (read through `?.`, `?.` chained into the
 // next accessor, `??` and as a `?.` statement). Inline `auto` accessors in the Channel class body (no
 // outer) and on a desk object declared below everything that uses it: rows (resizes the grid through
 // `outer`), a cursor used as an array subscript, a pan with a static counter reached through a method
 // of the accessor, a bool used in conditions and a string title. Accessors read above their object
-// and class; passed to `ref Level` parameters (through casts, array elements, value-class array elements and a
+// and class; passed to `ref Level` parameters (through casts, array elements, struct array elements and a
 // pooled instance's member) and bound with `:=`; compared with the accessor class's own and
 // derived operators against ints and other accessors; `+=`, `-=`, `*=`, `/=`, `%=`, `++`, prefix `--` (declared
 // and fallback); in `while`/`for`/`if` conditions, `?:`, `switch`, returns, emitter arguments, <linq>
@@ -486,7 +486,7 @@ class Cue[3] {
     void create(int g) { gain = g; }
 }
 
-value class Strip {
+struct Strip {
     Level gain;
     int hits;
     Strip operator = (Strip o) {
@@ -496,7 +496,7 @@ value class Strip {
     }
 }
 
-value class Level {
+struct Level {
     int _v = 0;
     static int sets = 0;
     static int copies = 0;
@@ -528,7 +528,7 @@ value class Level {
     bool atTop() { return _v == LEVEL_MAX; }
 }
 
-value class Caption {
+struct Caption {
     string _s = null;
     static int edits = 0;
     string operator () { return _s; }
@@ -539,7 +539,7 @@ value class Caption {
     void clear() { _s = null; }
 }
 
-value class Focus {
+struct Focus {
     Channel _c = null;
     static int switches = 0;
     Channel operator () { return _c; }

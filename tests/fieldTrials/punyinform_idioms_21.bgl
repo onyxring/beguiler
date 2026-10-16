@@ -6,7 +6,7 @@
 // OPTIONAL_SCORED; a `Letter` class with an enum zone, a weight and a stamped flag, its description a
 // routine with a `switch` over the zone; a `Hole` class whose `before` takes `Receive`, refusing what
 // is not a stamped letter of its zone; a `Coin` class with a value read by the machine's `Receive`,
-// which moves the coin out of play with `parent = null`; a value class `Credit` with `operator ()`,
+// which moves the coin out of play with `parent = null`; a struct `Credit` with `operator ()`,
 // `+=` and a `spend` method; a price function using a `switch` with a range case and a guard case; a
 // van on a `StartTimer`/`time_out` that collects sorted letters from an `array<Hole>` while moving
 // them out of `children`; a clock with `found_in` as a list and a `daemon` counting turns, read by
@@ -48,7 +48,7 @@ enum eZone { north, south, east }
 
 array<string> zoneNames = {"north", "south", "east"};
 
-value class Credit {
+struct Credit {
     int _coins = 0;
 
     int  operator ()         { return _coins; }

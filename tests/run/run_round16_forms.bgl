@@ -75,10 +75,10 @@ object dial {
 }
 
 // D1119, D1122: an alias as a base class and in a copy-chaining cast.
-value class Base1 { int n; Base1 operator = (Base1 o) { n = o.n; return self; } }
+class Base1 : object { int n; Base1 operator = (Base1 o) { n = o.n; return self; } }
 object ns { alias base for Base1; }
 #using ns
-value class Kid : base {
+class Kid : base {
     int m;
     Kid operator = (Kid o) { m = o.m; (base)self = o; return self; }
 }

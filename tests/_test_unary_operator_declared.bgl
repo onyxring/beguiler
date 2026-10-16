@@ -1,5 +1,5 @@
 // Negative test: Beguile has no unary operators to declare; a zero-operand `operator -` was ignored.
 // EXPECT_ERROR: needs an operand: Beguile has no unary 'operator -'
 #beguilerSettings { target = z5; informName = "none"; }
-value class Vec { int x; Vec operator = (Vec o) { x = o.x; return self; } Vec operator - () { Vec r; r.x = -x; return r; } }
+struct Vec { int x; Vec operator = (Vec o) { x = o.x; return self; } Vec operator - () { Vec r; r.x = -x; return r; } }
 void main() { Vec v; }

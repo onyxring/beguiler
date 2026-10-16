@@ -4,9 +4,9 @@
 // Exercises: a knot tree written in a functional style, leaning on `?.` and `??`. Knots are a class
 // with nullable `left`, `right` and `up` links, a label that may be unset, a char sign, an inline
 // `auto` grade accessor, a member array of extras with empty slots, a stringObj trail and recursive
-// methods reached through `?.` that return a knot, an int, a bool, a stringObj or a value class
+// methods reached through `?.` that return a knot, an int, a bool, a stringObj or a struct
 // (`total()`, `height()`, `leftmost()`, `step(dir:, n:)`, `find(pred)`, `show(open:, close:)`,
-// `span()`, `root()`). A value class `Span` defines `operator ?` (absent when empty), `==` and `+`, and
+// `span()`, `root()`). A struct `Span` defines `operator ?` (absent when empty), `==` and `+`, and
 // is coalesced with `??`, chained with `?.` into `widen(by:, left:)` and compared after parenthesized
 // `??`. A pooled class `Twig` is made with `new`, chained with `?.` and linked through `chain()`. `?.` appears as a
 // statement on locals, globals, `ref` parameters, elements of global and member arrays, static method
@@ -38,10 +38,10 @@ extend extern class object {
 
 const int MAXEXTRAS = 3;
 
-//-- A value class with a presence test ------------------------------------------------------------
+//-- A struct with a presence test ------------------------------------------------------------
 
 // A span is absent when it is empty.
-value class Span {
+struct Span {
     int lo;
     int hi;
 
