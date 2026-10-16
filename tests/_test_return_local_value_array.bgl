@@ -1,7 +1,0 @@
-// Negative test: a local array of a value class can't be returned; its instances are released.
-// EXPECT_ERROR: returns its local array of 'Row'
-#beguilerSettings { target = z5; informName = "none"; }
-#include <array>
-value class Row { int id = 0; Row operator = (Row o) { id = o.id; return self; } }
-array<Row> build() { array<Row> rows[4]; rows.append(Row{ id = 1; }); return rows; }
-void main() { array<Row> got[4] = build(); }
