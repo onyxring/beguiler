@@ -1,0 +1,20 @@
+// run_copy_class_owned_member — an instance of a class with a copy operator that owns a stringObj member gets the
+// member's storage whatever its declaration: a global given a value (copied at startup), a local declared from a
+// call, and a local assigned later.
+// EXPECT_OUTPUT: c alpha | q beta | w beta
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+class Note : object {
+    int n; stringObj text;
+    Note operator = (Note o) { n = o.n; text = o.text; return self; }
+}
+Note noteA { n = 1; }
+Note noteC = noteA;
+Note Same(Note p) { return p; }
+void main(){
+    bglInit();
+    print($"c {noteC.text}alpha | ");
+    noteA.text = "beta";
+    Note q = Same(noteA);  print($"q {q.text} | ");
+    Note w; w = noteA;     print($"w {w.text}");
+}

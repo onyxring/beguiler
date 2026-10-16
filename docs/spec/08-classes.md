@@ -403,6 +403,9 @@ reference and the copy refers to the same object. It covers fields that `extend 
 declares its own copy operator to copy differently.
 
 - A struct doesn't inherit: it has no bases, and a class can't derive from it.
+- A function's result is a copy. Assigning to a field of one (`getPos().x = 5;`) would change nothing, so it is a
+  compile-time error; store the result in a variable first. Calling a method on one (`getPos().move()`) runs on the
+  copy.
 - A `ref` variable, parameter or member of a struct refers to an instance owned elsewhere instead: it is
   bound with `:=`, and `=` through it copies into the referent (§3.7).
 - Each slot of an `array<⟨name⟩>` owns an instance too, and a store into a slot copies (§12.10).

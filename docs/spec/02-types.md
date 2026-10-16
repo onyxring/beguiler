@@ -676,32 +676,33 @@ string u = (string)t;   // explicit cast
 **Description**
 
 Every type can have methods (`3.print()` is valid); what differs is what a variable of the type holds.
-There are three kinds:
+There are four kinds:
 
-| Declaration | Kind | A variable holds | `=` and passing | `ref` |
-|---|---|---|---|---|
-| `primitive class int` | primitive | the value itself | copies the value | compile-time error |
-| `class Room` | reference (the default) | its own object when declared with no value; else the instance it is given | refers to the same instance | a reference, empty until bound |
-| `struct Vec2` | value | its own instance | copies into its own instance | shares one instance |
+| Declaration | Kind | A variable holds | `=` | Passing and returning | `ref` |
+|---|---|---|---|---|---|
+| `primitive class int` | primitive | the value itself | copies the value | copies the value | compile-time error |
+| `class Room` | object (reference) | its own object when declared with no value; else the instance it is given | refers to the same instance | shares the instance | a reference, empty until bound |
+| `class Note` with `operator = (Note o)` | object that copies | as an object | copies into its own instance | shares the instance | a reference, empty until bound |
+| `struct Vec2` | struct (value) | its own instance | copies into its own instance | copies | shares one instance |
 
 - **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
   fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
   every enum. A variable holds the value; there is no instance,
   so nothing is allocated and there is nothing for `ref` to refer to.
-- **Reference classes** — every class. A global, member or local declared with
+- **Objects** — instances of a class. A global, member or local declared with
   no value has an object of its own: at file scope the declaration is that object (`Room hall;` is
   `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry. One
   declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
   parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
   through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
-  declared `ref` (§3.7). A reference class that declares a copy operator copies on `=` instead
-  (§8.2.9).
+  declared `ref` (§3.7).
+- **Objects that copy** — a class that declares a copy operator copies on `=` into the slot's own
+  instance; parameters and returns still share (§8.2.9).
 - **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
-  members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
-  through the class's copy operator, `operator =` taking the class; a struct that has none can't
-  be assigned or passed. A `ref` variable of a struct shares an instance instead (§3.7). A
-  routine that calls itself keeps each call's locals and parameters its own across the inner call,
-  and returns a struct as any routine does.
+  members are zeroed (a local's at routine entry). Assignment, passing and returning copy, through
+  the struct's copy operator, which it gets automatically when it declares none. A struct is never
+  null and has no subclasses. A `ref` variable of a struct shares an instance instead (§3.7). A
+  routine that calls itself keeps each call's locals and parameters its own across the inner call.
 
 Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
 follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
@@ -710,10 +711,7 @@ parameter is given its own copy (§8.5), and a `ref` variable aliases storage ow
 **Example**
 
 ```bgl
-struct Vec2 {                   // copies: operator = (Vec2)
-    int x = 0; int y = 0;
-    Vec2 operator = (Vec2 v) { x = v.x; y = v.y; return self; }
-}
+struct Vec2 { int x = 0; int y = 0; }   // copies field by field
 class Marker : object { int x = 0; } // a reference class
 Marker home { }
 Vec2 unit;

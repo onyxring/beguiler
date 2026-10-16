@@ -72,7 +72,8 @@ _bglClass_Box boxSrc
 [mkBox _l_x _l_y;
     boxsrc.x=_l_x;
     boxsrc.y=_l_y;
-    return boxsrc;
+    _bglRet_mkbox._opeq(boxsrc);
+    return _bglRet_mkbox;
 ];
 class _bglClass_Window
   with
@@ -89,7 +90,8 @@ _bglClass_Window winSrc
 [mkWin _l_w _l_h;
     winsrc.w=_l_w;
     winsrc.h=_l_h;
-    return winsrc;
+    _bglRet_mkwin._opeq(winsrc);
+    return _bglRet_mkwin;
 ];
 [main br bx br2 wr wH wv wvW;
     wv = _bglLocal_main_wv;
@@ -105,4 +107,6 @@ _bglClass_Window winSrc
     wv._opeq(mkwin(100,200));
     wvW=wv.w;
 ];
+_bglClass_Box _bglRet_mkbox;
+_bglClass_Window _bglRet_mkwin;
 _bglClass_Window _bglLocal_main_wv;

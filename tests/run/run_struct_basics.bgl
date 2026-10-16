@@ -1,8 +1,8 @@
 // run_struct_basics — a struct is a value type: a parameter gets a copy, a return copies out, and `=` copies.
 // Its methods and operators are routines of its own, and `extend struct` adds more. A cast of `self` to a type it
 // converts to calls that type's method on the converted value, and a struct with an `operator =` taking another type
-// still copies its own parameters.
-// EXPECT_OUTPUT: 2 3 6 12 false true | 9 2 | k(5) 51 | 7
+// still copies its own parameters. A function returning a global struct returns a copy of it.
+// EXPECT_OUTPUT: 2 3 6 12 false true | 9 2 | k(5) 51 | 7 | 2
 #beguilerSettings { target = z5; informName = "none"; }
 struct Pos {
     int row; int col;
@@ -24,6 +24,7 @@ struct Tagged {
 struct L { int cm; }
 struct G { int cm; string side = "x"; G operator = (L o) { cm = o.cm; return self; } int sum(G o) { return cm + o.cm; } }
 Pos home;
+Pos homeCopy() { return home; }
 Pos shift(Pos p) { p.row = p.row + 1; return p; }
 void main(){
     bglInit();
@@ -40,4 +41,7 @@ void main(){
     G a; a.cm = 3;
     G b; b.cm = 4;
     print(a.sum(b));
+    Pos hc = homeCopy();
+    hc.row = 40;
+    print($" | {home.row}");
 }

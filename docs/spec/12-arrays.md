@@ -507,8 +507,7 @@ value in through the class's copy operator, `operator = (T o)`.
 `remove`, `removeValue`, `-=`, `clear` and a local array's scope exit return instances to the pool.
 The pool holds one instance per slot of every array of the class, so every slot can be filled at
 once; a local array's slots count once, so a recursive routine whose calls all hold filled slots
-can run out, which is a run-time error. An element store into such an array is a compile-time error
-when the class has no copy operator.
+can run out, which is a run-time error.
 
 - A local array of a struct needs a capacity (`[n]`), a list initializer or a value to refer to.
 - The initial elements of a file-scope or object member array are the slots' instances, as static

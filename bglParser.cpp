@@ -1013,6 +1013,9 @@ void bglParser::checkTypedPropertyMemberTypes(){
 }
 
 void bglParser::recordObjectMemberInits(){
+    // Storage for members runs before every other startup initializer: a global given a value copies into
+    // its members, which needs their storage.
+    size_t initsBefore = languageService.globalInits.size();
     auto trim = [](string v){
         size_t a = v.find_first_not_of(" \t\n\r"); if(a == string::npos) return string();
         size_t b = v.find_last_not_of(" \t\n\r");
@@ -1113,13 +1116,13 @@ void bglParser::recordObjectMemberInits(){
         sweepMembers(candidates, objectI6Name(obj->name), onPath);   // an object renamed for I6 (`box`) by that name
         curObj = nullptr;
     }
-    // A value-class variable's instance (a global's, a local's or a parameter's backing): its members
+    // A struct's or copying class's variable instance (a global's, a local's or a parameter's backing): its members
     // need the same once-only init (a local's per-call reset leaves a stringObj member's buffer alone).
     set<string> backingsDone;
     auto sweepBacking = [&](variableDeclaration* vd){
         if(vd == nullptr || vd->isExternal || vd->isRefLocal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) return;
         classDef* cls = languageService.findClass(vd->type.name);
-        if(cls == nullptr || !isValueClass(cls) || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;
+        if(cls == nullptr || !(isValueClass(cls) || cls->copiesOnAssign) || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;
         // A file-scope variable of a value class owns `_bglGlobal_<name>`, which the emitter makes.
         string inst = vd->isInstanceBacking ? (vd->i6name.empty() ? vd->dName() : vd->i6name)
                                             : "_bglGlobal_" + (vd->i6name.empty() ? vd->dName() : vd->i6name);
@@ -1134,6 +1137,8 @@ void bglParser::recordObjectMemberInits(){
     };
     for(typeDef* g : languageService.globals) sweepBacking(dynamic_cast<variableDeclaration*>(g));
     for(typeDef* g : languageService.objectInstances) sweepBacking(dynamic_cast<variableDeclaration*>(g));
+    auto& inits = languageService.globalInits;
+    std::rotate(inits.begin(), inits.begin() + initsBefore, inits.end());
 }
 
 // Global functions overload the same way methods do — resolveGlobalCall already picks the

@@ -308,6 +308,61 @@ bool bglParser::processReturnExpr(vector<token>& t, Qualifiers&, abstractObject&
     returnStatement& rs = *(new returnStatement());
     rs.src = file.currentLocation();
     rs.returnExpression = retExpr ? retExpr->text() : "";
+    // A struct is returned as a copy: the value is copied into the routine's own result instance, which the
+    // caller reads, so changes through the result don't reach what was returned. (A copy operator returns
+    // its own instance.)
+    // Only a value something else keeps needs the copy: a global, a member or `self` (a method's, not an operator's).
+    // The routine's own locals and
+    // parameters, and what a call or an operator produced, are already instances of its own.
+    auto keptElsewhere = [&](const string& src){
+        string head = src.substr(0, src.find('.'));
+        if(src.find_first_of("([") != string::npos) return false;
+        // An operator returning `self` (`+=`) hands back the receiver itself.
+        if(head == "self") return src != "self" || isalpha((unsigned char)currentFunc->name[0]);
+        if(func != nullptr && (qualifyFromParams(head, func) || qualifyFromBodyLocals(head, body) || qualifyFromAncestorBlocks(head, body)))
+            return src.find('.') != string::npos;   // a local's own instance, unless the value is a member reached through it
+        return true;
+    };
+    if(retExpr && currentFunc && body != nullptr && !currentFunc->isEmitter && currentFunc->name != "="
+       && retExpr->resolvedType != "nullliteral" && keptElsewhere(retExpr->text()))
+        if(classDef* rc = languageService.findClass(currentFunc->returnType.name);
+           rc && isValueClass(rc) && !rc->isEmitterClass && !rc->isAlias)
+            if(functionDef* op = findAssignOperator(rc, retExpr->resolvedType.empty() ? rc->name : retExpr->resolvedType,
+                                                    [](functionDef*){ return true; }, true)){
+                string& result = returnInstances[currentFunc];
+                if(result.empty()){
+                    string ctx = currentClass ? currentClass->dName() : currentObject ? currentObject->dName() : "";
+                    string fn = !currentFunc->i6name.empty() ? currentFunc->i6name
+                              : isalpha((unsigned char)currentFunc->name[0]) ? currentFunc->name : mangleOperatorName(currentFunc->name);
+                    for(char& c : fn) if(!isalnum((unsigned char)c) && c != '_') c = '_';
+                    result = "_bglRet_" + (ctx.empty() ? "" : ctx + "_") + fn;
+                    if(!paramBackingNames.insert(result).second){
+                        int n = 2;
+                        while(!paramBackingNames.insert(result + "_" + to_string(n)).second) n++;
+                        result += "_" + to_string(n);
+                    }
+                    auto* inst = new variableDeclaration();
+                    inst->name = inst->displayName = result;
+                    inst->type = languageService.getType(rc->name);
+                    inst->src = currentFunc->src;
+                    inst->isInstanceBacking = true;
+                    languageService.registerInstance(*inst);
+                }
+                mangleOverloadSetForReceiver(rc->name, op->name);
+                if(!op->isEmitter && op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
+                auto* copy = new i6RawNode(); copy->cooked = true;
+                if(op->isEmitter){
+                    emitterBindings cb; cb.self = result; cb.val = result; cb.fn = op; cb.args.push_back(retExpr->text());
+                    cb.trim = emitterTrim::wsSemi;
+                    string text = expandEmitterBody(dynamic_cast<i6Block*>(op->body), cb);
+                    for(size_t at = text.find("$target"); at != string::npos; at = text.find("$target", at + result.size()))
+                        text.replace(at, 7, result);
+                    copy->text = text + ";";
+                } else
+                    copy->text = format("{0}.{1}({2});", result, op->i6name, retExpr->text());
+                pendingInjections.push_back(copy);
+                rs.returnExpression = result;
+            }
     // Drain any pre-statements the expression created (e.g. ternary lowering into _bgl_temp)
     // BEFORE appending the return, so they execute in the current function rather than leaking
     // into the next one parsed.
@@ -2998,6 +3053,20 @@ bool bglParser::rewriteComputedReceiverStatement(const string& head, int depth, 
         file.close();
         pendingInjections = savedPending; postInjections = savedPost;
     }
+    // A struct a call returns is a copy: storing into one of its fields would change nothing.
+    if(writes && member.find('(') == string::npos && !recv.empty() && recv.back() == ')'){
+        int dd = 0; size_t open = string::npos;
+        for(size_t i = recv.size(); i-- > 0; ){
+            if(recv[i] == ')') dd++;
+            else if(recv[i] == '(' && --dd == 0){ open = i; break; }
+        }
+        bool isCall = open != string::npos && open > 0 && (isalnum((unsigned char)recv[open - 1]) || recv[open - 1] == '_');
+        if(classDef* rc = getDispatchClass(recvType); isCall && rc != nullptr && isValueClass(rc) && !rc->isEmitterClass){
+            file.rewind(at);
+            parsingError(format("'{0}' returns a copy of a '{1}', so assigning to its '{2}' changes nothing; store the "
+                                "result in a variable first.", recv, rc->dName(), member));
+        }
+    }
     // A receiver typed as an object is that object.
     if(objectDef* od = languageService.findObjectType(recvType); od != nullptr && languageService.findClass(recvType) == nullptr){
         string self = od->dName();
@@ -4987,6 +5056,11 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
                 for(size_t i = 0; i < callStmt.args.size(); i++) recvText += (i ? ", " : "") + callStmt.args[i]->text();
                 recvText += ")";
             }
+            // A struct result is a copy: storing into it would change nothing.
+            if(classDef* rc = getDispatchClass(chainReturnType); rc != nullptr && isValueClass(rc) && !rc->isEmitterClass)
+                parsingError(format("'{0}()' returns a copy of a '{1}', so assigning to its '{2}' changes nothing; store the "
+                                    "result in a variable first.", callStmt.displayName.empty() ? callStmt.functionName : callStmt.displayName,
+                                    rc->dName(), chainMember.value));
             dispatchWriteThroughReceiver(recvText, chainReturnType, chainMember, sc);
             return true;
         }

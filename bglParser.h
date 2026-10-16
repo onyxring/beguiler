@@ -691,7 +691,8 @@ class bglParser {
         // The declaration a statement's assignment target names (local, member, global), or nullptr.
         class variableDeclaration* findAssignedDeclaration(const string& path, class functionDef* func, class statementBlock* body);
         void giveOwner(class arrayDeclaration& ad);
-        vector<classDef*> autoCopyStructs;   // structs whose copy operator is written for them, once every field is known
+        vector<classDef*> autoCopyStructs;
+        map<functionDef*, string> returnInstances;   // a routine returning a struct: the instance its result is copied into   // structs whose copy operator is written for them, once every field is known
         void writeAutoCopyOperators();
         void declareOwner(class functionDef* func, class arrayDeclaration& ad);
         // Errors when `value`, stored into a slot of type `slotType` whose `literalMembers` apply, is not

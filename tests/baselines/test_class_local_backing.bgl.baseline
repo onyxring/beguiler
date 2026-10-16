@@ -72,7 +72,8 @@ _bglClass_Window source
 [mkWin w h;
     source.width=w;
     source.height=h;
-    return source;
+    _bglRet_mkwin._opeq(source);
+    return _bglRet_mkwin;
 ];
 class _bglClass_Tag
   with
@@ -82,7 +83,8 @@ _bglClass_Tag tagSrc
 ;
 [mkTag _l_n;
     tagsrc.n=_l_n;
-    return tagsrc;
+    _bglRet_mktag.n = tagsrc.n;
+    return _bglRet_mktag;
 ];
 class _bglClass_Room
   class object
@@ -120,6 +122,8 @@ _bglClass_Room r2
     here = r2;
     there = r1;
 ];
+_bglClass_Window _bglRet_mkwin;
+_bglClass_Tag _bglRet_mktag;
 _bglClass_Window _bglLocal_main_boxa;
 _bglClass_Window _bglLocal_main_boxb;
 _bglClass_Window _bglLocal_main_boxc;

@@ -1,0 +1,7 @@
+// Negative test: a struct a function returns is a copy, so assigning to one of its fields changes nothing.
+// EXPECT_ERROR: returns a copy of a 'Pt', so assigning to its 'x' changes nothing
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pt { int x; }
+Pt g;
+Pt getG() { return g; }
+void main() { getG().x = 5; }
