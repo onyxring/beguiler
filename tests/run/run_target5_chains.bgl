@@ -22,7 +22,7 @@ int gsum() {
     for (node s = ns.head; s != null; s = s.next) t += s.v;
     return t;
 }
-class Nd : object { Nd next; ref object thing; int v; Nd self2() { return self; } void bump() { v++; } }
+class Nd : object { ref Nd next; ref object thing; int v; Nd self2() { return self; } void bump() { v++; } }
 object crate { }
 Nd n1 { v = 3; parent = crate; }
 object box { }

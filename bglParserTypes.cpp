@@ -2802,6 +2802,12 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
 // elsewhere, so every operation addresses it as a value (obj.prop, 0) rather than as inline
 // property data (obj, prop). Addressing it the member way indexes the slot the pointer lives
 // in. Same resolution shape as memberArrayIsTracked, including `self` inside a body.
+// Whether a plain slot of this class, given no value, owns an instance of its own when its class is a reference
+// class (a value class's slots already do): any class but a primitive, emitter, alias or value class.
+bool bglParser::plainSlotOwnsReferenceInstance(classDef* cls){
+    return cls != nullptr && !cls->isPrimitive && !cls->isEmitterClass && !cls->isAlias && !isValueClass(cls) && !cls->isUnion();
+}
+
 // Whether a member array's property holds a pointer (`ref`, or promoted), including one known so far
 // only by its pre-pass stub, which hasn't been promoted yet.
 bool bglParser::heldByPointer(const arrayDeclaration* ad){

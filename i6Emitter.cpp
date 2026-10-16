@@ -829,7 +829,7 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
     {
         set<classDef*> visited;
         function<void(classDef*, const string&)> resetFields = [&](classDef* c, const string& inst){
-            if(!c) return;
+            if(!c || c->isExternal) return;   // an extern class's members are the library's properties
             for(classDef* base : c->baseClasses) resetFields(base, inst);
             for(typeMember* m : c->members){
                 auto* fm = dynamic_cast<variableDeclaration*>(m);
@@ -3885,12 +3885,13 @@ classDef* i6Emitter::ownedFieldClass(variableDeclaration* vd, const set<classDef
         if(vd->type.name == "grammarrulelist" || vd->type.name == "grammarrule") return nullptr;
         // Field type must be a real, statically-instantiable class
         classDef* fieldCls = languageService.findClass(vd->type.name);
-        if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isExternal) return nullptr;
-        // A member of a reference class refers to an instance owned elsewhere (§8.3.4).
-        if(!isValueClass(fieldCls)) return nullptr;
+        if(!fieldCls || fieldCls->isEmitterClass || fieldCls->isAlias || fieldCls->isPrimitive || fieldCls->isUnion()) return nullptr;
         // Skip if already on the instantiation path — same-class fields and any indirect cycles
         // are deliberately left at default (references owned elsewhere).
         if(visited.count(fieldCls)) return nullptr;
+        // A plain member of a reference class owns an object of its own, unless it is given one to refer to.
+        if(!isValueClass(fieldCls)) return vd->declaredExpressionValue == nullptr ? fieldCls : nullptr;
+        if(fieldCls->isExternal) return nullptr;
         // Skip if the field's class manages its own allocation via init emitter (e.g. string).
         bool hasInitEmitter = false;
         for(typeMember* fm : fieldCls->members)
@@ -3930,7 +3931,7 @@ string i6Emitter::synthesizeFieldBackings(classDef* cls, const string& instanceN
     vector<typeMember*> members;
     set<string> seenNames;
     std::function<void(classDef*)> gather = [&](classDef* c){
-        if(c == nullptr) return;
+        if(c == nullptr || c->isExternal) return;   // an extern class's members are the library's properties
         for(typeMember* m : c->members) if(seenNames.insert(m->name).second) members.push_back(m);
         for(classDef* b : c->baseClasses) gather(b);
     };
@@ -4328,13 +4329,17 @@ auto consider = [&](variableDeclaration* vd){
     // from a bound one. Matches synthesizeFieldBackings, which already skips them.
     if(vd->isRefLocal) return;
     auto* cls = languageService.findClass(vd->type.name);
-    if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal) return;   // nothing to instantiate
-    if(!isValueClass(cls)) return;                          // a reference: refers to an instance owned elsewhere
+    if(!cls || cls->isEmitterClass || cls->isAlias || cls->isPrimitive || cls->isUnion()) return;   // nothing to instantiate
+    bool referenceClass = !isValueClass(cls);
+    // A plain member of a reference class owns an object of its own, unless it is given one to refer to.
+    if(referenceClass && vd->declaredExpressionValue != nullptr) return;
+    if(!referenceClass && cls->isExternal) return;
     // Bake a backing instance when the member needs one to be a live object: it has stored
     // state, OR it has a non-emitter method/operator that dispatches ON an instance (e.g. a
     // fieldless getter/setter accessor whose bodies reach the host through `outer`). A class
-    // with only emitter members and no fields needs no instance (emitters inline).
-    bool needsInstance = false;
+    // with only emitter members and no fields needs no instance (emitters inline). An object
+    // of a reference class is always one.
+    bool needsInstance = referenceClass;
     for(typeMember* cm : cls->members){
         if(auto* cvd = dynamic_cast<variableDeclaration*>(cm))
             if(!cvd->isExternal && !cvd->isStatic){ needsInstance = true; break; }
@@ -4364,7 +4369,11 @@ auto consider = [&](variableDeclaration* vd){
 // object's class chain — so `class Thing { Box b; }` gives every `Thing` instance its own Box.
 for(typeMember* m : obj->members) consider(dynamic_cast<variableDeclaration*>(m));
 if(obj->objectClass)
-    obj->objectClass->forEachMember([&](typeMember* m){ consider(dynamic_cast<variableDeclaration*>(m)); });
+    obj->objectClass->forEachMember([&](typeMember* m){
+        // An extern class's members are the library's own properties, which own nothing.
+        if(classDef* dc = obj->objectClass->declaringClass(m); dc != nullptr && dc->isExternal) return;
+        consider(dynamic_cast<variableDeclaration*>(m));
+    });
 }
 
 // Collects `with` wirings for owned/promoted members inherited from the class chain, not redeclared here.

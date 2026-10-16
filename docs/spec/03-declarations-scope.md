@@ -68,7 +68,7 @@ the construct it modifies.
 | `primitive` | A class whose variables hold the value itself (`primitive class`). | §8.2.5 |
 | `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
-| `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
+| `ref` | A variable, member or parameter that refers to an instance owned elsewhere, empty until bound. | §3.7 |
 | `required` | A class member every object must get a value for. | §8.3.6 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
 | `literal` | A parameter, variable, member or array element type that holds only values known at compile time. | §6.3 |
@@ -248,9 +248,11 @@ ref ⟨type⟩ ⟨name⟩ ;                    // starts empty
 
 **Description**
 
-A slot of a value class (§8.2.7) is either an **owning slot** or a **reference slot**. A slot of a
-reference class refers to an instance, as a `ref` slot does. A slot of a primitive type holds the value
-itself (§2.10.3) and can't take `ref`.
+A class-typed slot is either an **owning slot** or a **reference slot**. A global, member or local
+declared without `ref` and with no value owns an instance: always for a value class (§8.2.7), and for a
+reference class as its own object (§2.10.3). A reference-class slot declared with a value refers to that
+instance, as do parameters of a reference class and loop variables. A slot of a primitive type holds the
+value itself (§2.10.3) and can't take `ref`.
 
 **Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
 holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
@@ -264,16 +266,16 @@ type; on a primitive type, or on an `extern` or `const` declaration, it is a com
 `ref` parameter is bound to its argument. A slot that may be empty is declared `ref`. A member of a value class whose type is that class must be
 `ref`: owning one would own another without end.
 
-**Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches
-`operator =`. Both sides must be the same class, or the right side a subclass; binding an unrelated
-class or a non-instance value is a compile-time error. `:=` is not overloadable. A plain `=` on a
-bound reference assigns *through* it, copying into the referent through the class's copy operator,
-exactly as on an owning slot; a class with no copy operator can't be assigned this way ("use `:=`").
-Reads and member writes through a reference chain normally (`node.next.id`).
+**Binding and assignment.** `:=` binds a `ref` slot: it stores the reference and never dispatches
+`operator =`, so it is the way to re-point a reference whose class overloads `=`. Both sides must be the
+same class, or the right side a subclass; binding an unrelated class or a non-instance value is a
+compile-time error. `:=` is not overloadable, and on a slot not declared `ref` it is a compile-time
+error. `=` is the assignment of the slot's type, the same in a declaration and a statement and on a plain
+or a `ref` slot: a reference class's re-points, and a value class's copies, into the referent when the
+slot is a bound reference. Reads and member writes through a reference chain normally (`node.next.id`).
 
-**Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
-compile-time error, and so is `:=` on a slot that is not `ref`, except an array's: an array is a
-reference type, and `:=` re-points it as `=` does (§12.5).
+**Declaration pairing.** A `ref` declaration, a member's included, binds with `:=`, whatever its type;
+`=` on a `ref` declaration is a compile-time error, and so is `:=` on a declaration that is not `ref`.
 
 **Example**
 

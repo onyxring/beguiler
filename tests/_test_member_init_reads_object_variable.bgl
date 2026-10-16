@@ -1,6 +1,6 @@
 /* An object member's initializer can't read a global object variable: it is fixed at compile time. */
 // EXPECT_ERROR: member 'other' is fixed when the program is compiled, so it can't read the variable 'holder'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-object holder;
+ref object holder;
 object marker { object other = holder; }
 void main(){ }

@@ -54,7 +54,7 @@ section with the full treatment.
 - **property accessor** — A member that reads and writes like a plain member but runs code on each access: a value class declaring a getter `operator ()` and a setter `operator =`, used as an owned member of the host class or object. See §9.9.
 - **proxy member** — A member that represents a relation over its owner rather than storing a value, such as `children` on `object`; it has no slot of its own, and its emitter methods act on the owner through `$host`. See §7.3, §11.5.
 - **pseudo-type** — The compile-time type of a literal (`intLiteral`, `stringLiteral`, …), inferred by the compiler and never written by the author; it takes part in overload and operator resolution separately from the runtime type it corresponds to. See §2.4.
-- **reference class** — A class not declared `value` (the default): its variables refer to instances owned elsewhere, are empty until assigned, and share on assignment and passing. See §2.10.3, §8.2.1.
+- **reference class** — A class not declared `value` (the default): a variable declared with no value has an object of its own, one given a value refers to it, and assignment and passing share. See §2.10.3, §8.2.1.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **required** — A class-member qualifier: every object of the class must get a value for the member, from itself or from a class between it and the declaring class. See §8.3.6.

@@ -501,7 +501,7 @@ class bglParser {
         // Gives a qualifying class-typed local a global backing instance for value-semantics
         // operator= to dispatch against, pointing varDecl.i6name at it.
         void synthesizeClassLocalBacking(class variableDeclaration& varDecl, bool isExternal, bool isConst,
-                                         bool isRef, class functionDef* func, class statementBlock* body);
+                                         bool isRef, class functionDef* func, class statementBlock* body, bool hasValue);
         // Places the declaration in the enclosing body or the global registry; for a local also injects
         // the type's init emitter ahead of it and registers its deinit emitter as a cleanup.
         void registerVariableDeclaration(class variableDeclaration& varDecl, bool isConst, class functionDef* func, class statementBlock* body);
@@ -594,6 +594,9 @@ class bglParser {
         void promoteMemberArray(arrayDeclaration& arrDecl);
         bool memberArrayPromotes(const arrayDeclaration& arrDecl);
         bool heldByPointer(const arrayDeclaration* ad);
+        bool plainSlotOwnsReferenceInstance(classDef* cls);
+        bool preScanInheritsValue(classDef* cls);
+        void rejectMemberBindingMismatch(bool isRef, token sym, const token& typeTok, const token& nameTok);
         void addInlineOrder(classDef& cls, const string& name);
         bool notePositional(classDef& cls, const string& name);
         map<classDef*, set<string>> positionalNoted;
@@ -673,6 +676,7 @@ class bglParser {
         map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey
         bool preScanIsConst = false;                // the pre-scanned declaration carries `const`
         bool preScanIsReplace = false;              // the pre-scanned declaration carries `replace`
+        bool preScanIsRef = false;                  // the pre-scanned declaration carries `ref`
         static string emitterSignatureKey(const functionDef& fd);
         void noteMethodRecursion(functionDef* called);   // the routine being parsed, past any lambdas it encloses
         string pendingStatementCast;   // a `((T)a.b).m…` statement's cast, carried into its re-read

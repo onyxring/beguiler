@@ -1,0 +1,5 @@
+/* A plain member of its own class would own another of itself, and that one another, without end. */
+// EXPECT_ERROR: class 'Node': member 'next' is a 'Node', which would own another 'Node' without end; declare it 'ref'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Node : object { int n; Node next; }
+void main(){ }

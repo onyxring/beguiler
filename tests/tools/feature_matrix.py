@@ -37,7 +37,7 @@ class Box : object {
     int scaled(int by = 1, int plus = 0) { return n * by + plus; }
     int operator + (int k) { return n + k; }
 }
-class Holder : object { Box item; Holder inner; }
+class Holder : object { ref Box item; ref Holder inner; }
 Box gb { }
 Holder gh { item = gb; }
 Holder gh2 { inner = gh; }

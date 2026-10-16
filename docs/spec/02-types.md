@@ -681,18 +681,20 @@ There are three kinds:
 | Declaration | Kind | A variable holds | `=` and passing | `ref` |
 |---|---|---|---|---|
 | `primitive class int` | primitive | the value itself | copies the value | compile-time error |
-| `class Room` | reference (the default) | a reference to an instance | refers to the same instance | compile-time error |
+| `class Room` | reference (the default) | its own object when declared with no value; else the instance it is given | refers to the same instance | a reference, empty until bound |
 | `value class Vec2` | value | its own instance | copies into its own instance | shares one instance |
 
 - **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
   fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
   every enum. A variable holds the value; there is no instance,
   so nothing is allocated and there is nothing for `ref` to refer to.
-- **Reference classes** — every class not declared `value`. A global, local, member or parameter
-  refers to an instance owned elsewhere: it is empty (`nothing`) until assigned, and nothing is
-  allocated for it. Assignment and passing make it refer to the assigned instance, through the root
-  assignment that `_bglObject` declares (§21.5.8). A reference class may not declare a copy operator
-  (§9.1).
+- **Reference classes** — every class not declared `value`. A global, member or local declared with
+  no value has an object of its own: at file scope the declaration is that object (`Room hall;` is
+  `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry. One
+  declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
+  parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
+  through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
+  declared `ref` (§3.7). A reference class may not declare a copy operator (§9.1).
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't

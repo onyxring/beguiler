@@ -1,0 +1,35 @@
+// run_plain_declarations_own — a plain declaration of a class with no value gives the slot an object of its own: at
+// file scope, as a member and as a local (fresh on each call). Given a value with '=', a slot refers to it and
+// creates nothing. A 'ref' is null until bound with ':='; '=' re-points it as the class's '=' does.
+// EXPECT_OUTPUT: 3 0 | 5 7 true | 2 2 | 9 | true 1 4
+#beguilerSettings { target = z5; informName = "none"; }
+class Note : object { int n; }
+class Holder : object { Note own; ref Note link; }
+Note gN1;                       // an object
+Note gN2 { n = 2; }
+ref Note rN;                    // null
+Holder h1;
+Holder h2;
+object obj { Note iN1; Note iN2 = gN2; }
+int bump(int k) {
+    Note mN1;                   // its own Note, fresh on each call
+    mN1.n = mN1.n + k;
+    return mN1.n;
+}
+void main() {
+    gN1.n = 3;
+    print($"{gN1.n} {bump(4) - bump(4)} | ");
+    h1.own.n = 5; h2.own.n = 7;
+    print($"{h1.own.n} {h2.own.n} {h1.link == null} | ");
+    print($"{obj.iN2.n} {gN2.n} | ");
+    Note mN2 = gN2;             // refers to gN2: no Note of its own
+    mN2.n = 9;
+    print($"{gN2.n} | ");
+    print($"{rN == null} ");
+    rN := gN1;
+    rN.n = 1;
+    print($"{gN1.n} ");
+    rN = h1.own;                // Note's '=' re-points
+    rN.n = 4;
+    print($"{h1.own.n}");
+}

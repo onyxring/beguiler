@@ -1723,18 +1723,20 @@ There are three kinds:
 | Declaration | Kind | A variable holds | `=` and passing | `ref` |
 |---|---|---|---|---|
 | `primitive class int` | primitive | the value itself | copies the value | compile-time error |
-| `class Room` | reference (the default) | a reference to an instance | refers to the same instance | compile-time error |
+| `class Room` | reference (the default) | its own object when declared with no value; else the instance it is given | refers to the same instance | a reference, empty until bound |
 | `value class Vec2` | value | its own instance | copies into its own instance | shares one instance |
 
 - **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
   fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
   every enum. A variable holds the value; there is no instance,
   so nothing is allocated and there is nothing for `ref` to refer to.
-- **Reference classes** — every class not declared `value`. A global, local, member or parameter
-  refers to an instance owned elsewhere: it is empty (`nothing`) until assigned, and nothing is
-  allocated for it. Assignment and passing make it refer to the assigned instance, through the root
-  assignment that `_bglObject` declares (§21.5.8). A reference class may not declare a copy operator
-  (§9.1).
+- **Reference classes** — every class not declared `value`. A global, member or local declared with
+  no value has an object of its own: at file scope the declaration is that object (`Room hall;` is
+  `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry. One
+  declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
+  parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
+  through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
+  declared `ref` (§3.7). A reference class may not declare a copy operator (§9.1).
 - **Value classes** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
   members are zeroed (a local's at routine entry). Assignment and passing copy into that instance
   through the class's copy operator, `operator =` taking the class; a value class that has none can't
@@ -1868,7 +1870,7 @@ the construct it modifies.
 | `primitive` | A class whose variables hold the value itself (`primitive class`). | §8.2.5 |
 | `value` | A class whose instances are owned by each variable and copied (`value class`). | §8.2.7 |
 | `inline` | A member variable that is a positional slot for inline object construction. | §8.3.5, §11.3.1 |
-| `ref` | A local or member that references an instance owned elsewhere. | §3.7 |
+| `ref` | A variable, member or parameter that refers to an instance owned elsewhere, empty until bound. | §3.7 |
 | `required` | A class member every object must get a value for. | §8.3.6 |
 | `additive` | A property whose values accumulate along the class chain. | §11.7.2 |
 | `literal` | A parameter, variable, member or array element type that holds only values known at compile time. | §6.3 |
@@ -2048,9 +2050,11 @@ ref ⟨type⟩ ⟨name⟩ ;                    // starts empty
 
 **Description**
 
-A slot of a value class (§8.2.7) is either an **owning slot** or a **reference slot**. A slot of a
-reference class refers to an instance, as a `ref` slot does. A slot of a primitive type holds the value
-itself (§2.10.3) and can't take `ref`.
+A class-typed slot is either an **owning slot** or a **reference slot**. A global, member or local
+declared without `ref` and with no value owns an instance: always for a value class (§8.2.7), and for a
+reference class as its own object (§2.10.3). A reference-class slot declared with a value refers to that
+instance, as do parameters of a reference class and loop variables. A slot of a primitive type holds the
+value itself (§2.10.3) and can't take `ref`.
 
 **Owning slots.** A global, local, member or parameter of a value class owns an instance: it starts out
 holding an instance of its own, whose members are zero-initialized (a local's at routine entry), and a
@@ -2064,16 +2068,16 @@ type; on a primitive type, or on an `extern` or `const` declaration, it is a com
 `ref` parameter is bound to its argument. A slot that may be empty is declared `ref`. A member of a value class whose type is that class must be
 `ref`: owning one would own another without end.
 
-**Binding and assignment.** `:=` binds a reference: it stores the reference and never dispatches
-`operator =`. Both sides must be the same class, or the right side a subclass; binding an unrelated
-class or a non-instance value is a compile-time error. `:=` is not overloadable. A plain `=` on a
-bound reference assigns *through* it, copying into the referent through the class's copy operator,
-exactly as on an owning slot; a class with no copy operator can't be assigned this way ("use `:=`").
-Reads and member writes through a reference chain normally (`node.next.id`).
+**Binding and assignment.** `:=` binds a `ref` slot: it stores the reference and never dispatches
+`operator =`, so it is the way to re-point a reference whose class overloads `=`. Both sides must be the
+same class, or the right side a subclass; binding an unrelated class or a non-instance value is a
+compile-time error. `:=` is not overloadable, and on a slot not declared `ref` it is a compile-time
+error. `=` is the assignment of the slot's type, the same in a declaration and a statement and on a plain
+or a `ref` slot: a reference class's re-points, and a value class's copies, into the referent when the
+slot is a bound reference. Reads and member writes through a reference chain normally (`node.next.id`).
 
-**Declaration pairing.** A `ref` declaration binds with `:=`; `=` on a `ref` declaration is a
-compile-time error, and so is `:=` on a slot that is not `ref`, except an array's: an array is a
-reference type, and `:=` re-points it as `=` does (§12.5).
+**Declaration pairing.** A `ref` declaration, a member's included, binds with `:=`, whatever its type;
+`=` on a `ref` declaration is a compile-time error, and so is `:=` on a declaration that is not `ref`.
 
 **Example**
 
@@ -4156,9 +4160,10 @@ class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 A class with no form qualifier supports the full member set: variables with initializers, methods
 with statement bodies, and emitters. Instances are objects with their own storage.
 
-A normal class is a **reference class** (§2.10.3): a global, local, member or parameter of the type
-refers to an instance owned elsewhere, is empty until assigned, and assignment makes it refer to the
-assigned instance. A reference class may not declare a copy operator (§9.1). To make the instances
+A normal class is a **reference class** (§2.10.3): a global, member or local of the type declared with
+no value has an object of its own; one declared with a value, and every parameter, refers to the
+instance it is given; assignment makes a slot refer to the assigned instance, and a `ref` slot is empty
+until bound (§3.7). A reference class may not declare a copy operator (§9.1). To make the instances
 values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
 
 A class that other classes list as a parent can write `selfType` (§2.11) in its members to mean the
@@ -4570,13 +4575,14 @@ class Counter {
 
 **Description**
 
-A class-typed member is an **owned member** when its type is a value class (§8.2.7) with stored
-members and the member is declared without `ref`, and either without an initializer or with an
-inline-object initializer (§11.3). An owned member is a
-live instance of its own — every instance of the enclosing class has an independent backing — rather
-than a bare reference slot, so methods and operators may be called on it. A member of a reference class
-refers to an instance owned elsewhere and is empty until assigned; so is a `ref` member of a value
-class.
+A class-typed member declared without `ref` is an **owned member** when its type is a value class
+(§8.2.7) with stored members, declared without an initializer or with an inline-object initializer
+(§11.3), or when its type is a reference class and it is declared without an initializer. An owned
+member is a live instance of its own — every instance of the enclosing class has an independent
+backing — rather than a bare reference slot, so methods and operators may be called on it. A member of
+a reference class given a value refers to that instance; a `ref` member is empty until bound (§3.7). A
+member whose type is its own class would own another of itself without end, so it must be `ref`. The
+members of an `extern` class are the library's own properties and own nothing.
 
 An inline-object initializer gives the owned member its starting value
 (`Coins price = Coins{ cents = 3; };`); every instance starts with that value, including a pooled
@@ -4748,8 +4754,9 @@ to acquire and release it.
   it leaves within its own routine, as far as the `try` there that catches it, or all of the routine's
   when nothing in the routine catches it; the routines it passes through on its way out to a `catch`
   further up don't release theirs (§5.16). Releases run in reverse declaration order.
-  A local of a reference class refers to an instance it doesn't own, so neither fires, as for a
-  parameter; a pooled instance is created and released with `new` and `delete` (§8.2.6).
+  A reference class has no `init` or `deinit` to fire: a local of one declared with no value has an
+  object of its own, reset at routine entry, and one given a value refers to an instance it doesn't
+  own, as a parameter does; a pooled instance is created and released with `new` and `delete` (§8.2.6).
 - **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
   both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the
@@ -5716,11 +5723,15 @@ the two declaration forms is used (§11.2).
 object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 ⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+object ⟨name⟩ ;
+⟨class⟩ ⟨name⟩ ;
 ```
 
 **Description**
 
-An object is declared at global scope. The name becomes a globally visible identifier usable wherever
+An object is declared at global scope. Without a body, `object ⟨name⟩;` and `⟨class⟩ ⟨name⟩;` (of a
+reference class) declare an object exactly as an empty body does, as `Object j;` does in Inform 6; a
+global that refers to an object instead is declared `ref` (§3.7). The name becomes a globally visible identifier usable wherever
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
 with no initializer defaults to `0`, `false` or `null` according to its type. The one exception is
@@ -6748,14 +6759,14 @@ print(code);                    // → 104
 
 ```syntax
 ⟨destination⟩ = ⟨source⟩ ;
-⟨destination⟩ := ⟨source⟩ ;
+⟨ref destination⟩ := ⟨source⟩ ;
 ⟨destination⟩ . copyFrom ( ⟨source⟩ ) ;
 ```
 
 **Description**
 
 An array is a reference type (§2.7). `dst = src` makes `dst` refer to `src`'s array, so a change made
-through either name is seen through the other; `:=` does the same. A declaration from another array
+through either name is seen through the other; on a `ref array` (§3.7), `:=` does the same. A declaration from another array
 (`array<int> b = a;`) refers to it in the same way, and `a == b` is true when they are the same array.
 
 `dst.copyFrom(src)` copies the elements and the length of `src` into `dst`'s own storage, up to its
@@ -12685,7 +12696,7 @@ section with the full treatment.
 - **property accessor** — A member that reads and writes like a plain member but runs code on each access: a value class declaring a getter `operator ()` and a setter `operator =`, used as an owned member of the host class or object. See §9.9.
 - **proxy member** — A member that represents a relation over its owner rather than storing a value, such as `children` on `object`; it has no slot of its own, and its emitter methods act on the owner through `$host`. See §7.3, §11.5.
 - **pseudo-type** — The compile-time type of a literal (`intLiteral`, `stringLiteral`, …), inferred by the compiler and never written by the author; it takes part in overload and operator resolution separately from the runtime type it corresponds to. See §2.4.
-- **reference class** — A class not declared `value` (the default): its variables refer to instances owned elsewhere, are empty until assigned, and share on assignment and passing. See §2.10.3, §8.2.1.
+- **reference class** — A class not declared `value` (the default): a variable declared with no value has an object of its own, one given a value refers to it, and assignment and passing share. See §2.10.3, §8.2.1.
 - **resolved type** — The static type the compiler assigns to an expression, which drives operator resolution, type checking and emitter dispatch. See §4.1.
 - **re-list** — `inline name;` in a class body or `extend`: makes an existing member positional at that point in the class's order, without redeclaring it. See §8.3.5.
 - **required** — A class-member qualifier: every object of the class must get a value for the member, from itself or from a class between it and the declaring class. See §8.3.6.

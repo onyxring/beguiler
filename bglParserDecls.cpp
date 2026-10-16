@@ -1102,7 +1102,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
 // A class-typed function local needs a global backing instance for value-semantics operator= to
 // dispatch against; synthesizes one and points varDecl.i6name at it when the class qualifies.
 void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool isExternal, bool isConst,
-                                            bool isRef, functionDef* func, statementBlock* body){
+                                            bool isRef, functionDef* func, statementBlock* body, bool hasValue){
     // Class-typed function locals need backing storage for value-semantics assignment to
     // dispatch correctly. A bare int local slot can't be the target of `operator=` —
     // `localA._opeq(rhs)` would dispatch against the slot's int contents (initially 0 =
@@ -1119,8 +1119,10 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
     // operator= exists and the user expects per-local independent state.
     if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
         classDef* cls = languageService.findClass(varDecl.type.name);
-        if(cls && !cls->isEmitterClass && !cls->isAlias && !cls->isExternal
-                 && classHasStoredFields(cls) && !isReferenceBacked(cls)){
+        // A plain local of a reference class with no value owns an object of its own as well.
+        bool ownsReference = plainSlotOwnsReferenceInstance(cls) && !hasValue;
+        if(cls && (ownsReference || (!cls->isEmitterClass && !cls->isAlias && !cls->isExternal
+                 && classHasStoredFields(cls) && !isReferenceBacked(cls)))){
             // Named like a parameter backing: the class context keeps same-named methods of two
             // classes apart, and an operator goes by its mangled name (`+` is no I6 identifier).
             bool isOperator = func->name == "operator()"
@@ -1336,6 +1338,10 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // reach here as a plain variable declaration.
     if(dataType.value == "array")
         parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
+    // A plain file-scope declaration of a reference class with no value is that class's object, as with `{ }`.
+    if(symbol.is(token::endStatement) && !isRef && !isExternal && !isConst && !isSuperposed && !isAdditive
+       && getCurrentCompileContext() == eCompileContext::global && plainSlotOwnsReferenceInstance(getDispatchClass((string)dataType)))
+        return processObjectDeclaration(dataType, variableName, false, "", i6alias, false, false);
     variableDeclaration& varDecl = *new variableDeclaration();
     varDecl.src = file.currentLocation();
     varDecl.name=(string) variableName;
@@ -1461,7 +1467,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         for(statement* inj : pendingInjections) if(auto* raw = dynamic_cast<i6RawNode*>(inj)) globalInitSetUp += raw->text + " ";
     pendingInjections.clear();
 
-    synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body);
+    synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body, !symbol.is(token::endStatement));
 
     registerVariableDeclaration(varDecl, isConst, func, body);
     declInjectionStart = -1;

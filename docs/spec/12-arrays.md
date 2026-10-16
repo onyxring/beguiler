@@ -185,14 +185,14 @@ print(code);                    // → 104
 
 ```syntax
 ⟨destination⟩ = ⟨source⟩ ;
-⟨destination⟩ := ⟨source⟩ ;
+⟨ref destination⟩ := ⟨source⟩ ;
 ⟨destination⟩ . copyFrom ( ⟨source⟩ ) ;
 ```
 
 **Description**
 
 An array is a reference type (§2.7). `dst = src` makes `dst` refer to `src`'s array, so a change made
-through either name is seen through the other; `:=` does the same. A declaration from another array
+through either name is seen through the other; on a `ref array` (§3.7), `:=` does the same. A declaration from another array
 (`array<int> b = a;`) refers to it in the same way, and `a == b` is true when they are the same array.
 
 `dst.copyFrom(src)` copies the elements and the length of `src` into `dst`'s own storage, up to its

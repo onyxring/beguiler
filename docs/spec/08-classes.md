@@ -141,9 +141,10 @@ class ⟨name⟩ [ : ⟨parent⟩ [ , ⟨parent⟩ … ] ] { ⟨member⟩ … }
 A class with no form qualifier supports the full member set: variables with initializers, methods
 with statement bodies, and emitters. Instances are objects with their own storage.
 
-A normal class is a **reference class** (§2.10.3): a global, local, member or parameter of the type
-refers to an instance owned elsewhere, is empty until assigned, and assignment makes it refer to the
-assigned instance. A reference class may not declare a copy operator (§9.1). To make the instances
+A normal class is a **reference class** (§2.10.3): a global, member or local of the type declared with
+no value has an object of its own; one declared with a value, and every parameter, refers to the
+instance it is given; assignment makes a slot refer to the assigned instance, and a `ref` slot is empty
+until bound (§3.7). A reference class may not declare a copy operator (§9.1). To make the instances
 values instead — owned by each variable and copied — declare the class `value` (§8.2.7).
 
 A class that other classes list as a parent can write `selfType` (§2.11) in its members to mean the
@@ -555,13 +556,14 @@ class Counter {
 
 **Description**
 
-A class-typed member is an **owned member** when its type is a value class (§8.2.7) with stored
-members and the member is declared without `ref`, and either without an initializer or with an
-inline-object initializer (§11.3). An owned member is a
-live instance of its own — every instance of the enclosing class has an independent backing — rather
-than a bare reference slot, so methods and operators may be called on it. A member of a reference class
-refers to an instance owned elsewhere and is empty until assigned; so is a `ref` member of a value
-class.
+A class-typed member declared without `ref` is an **owned member** when its type is a value class
+(§8.2.7) with stored members, declared without an initializer or with an inline-object initializer
+(§11.3), or when its type is a reference class and it is declared without an initializer. An owned
+member is a live instance of its own — every instance of the enclosing class has an independent
+backing — rather than a bare reference slot, so methods and operators may be called on it. A member of
+a reference class given a value refers to that instance; a `ref` member is empty until bound (§3.7). A
+member whose type is its own class would own another of itself without end, so it must be `ref`. The
+members of an `extern` class are the library's own properties and own nothing.
 
 An inline-object initializer gives the owned member its starting value
 (`Coins price = Coins{ cents = 3; };`); every instance starts with that value, including a pooled
@@ -733,8 +735,9 @@ to acquire and release it.
   it leaves within its own routine, as far as the `try` there that catches it, or all of the routine's
   when nothing in the routine catches it; the routines it passes through on its way out to a `catch`
   further up don't release theirs (§5.16). Releases run in reverse declaration order.
-  A local of a reference class refers to an instance it doesn't own, so neither fires, as for a
-  parameter; a pooled instance is created and released with `new` and `delete` (§8.2.6).
+  A reference class has no `init` or `deinit` to fire: a local of one declared with no value has an
+  object of its own, reset at routine entry, and one given a value refers to an instance it doesn't
+  own, as a parameter does; a pooled instance is created and released with `new` and `delete` (§8.2.6).
 - **Parameter.** A parameter that owns its instance (a value class, §8.2.7, or an emitter class with
   both `init` and `deinit`) runs them as a local does: `init` fires at entry, before the argument is
   copied in through the class's `operator =` taking its own type, and `deinit` fires at the

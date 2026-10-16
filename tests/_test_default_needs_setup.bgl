@@ -1,8 +1,8 @@
 /* a parameter default that needs statements before it (a ?. chain) */
 // EXPECT_ERROR: The default of 'n' needs statements to run before it
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-class N : object { N next; }
+class N : object { ref N next; }
 N a { }
-N x;
+ref N x;
 int f(N n = x?.next) { return n == null ? 0 : 1; }
 void main() { x = a; print(f()); }

@@ -438,7 +438,7 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
     // A variable whose class owns its value (stringObj, a value class) is set by its operator =, as a
     // statement of its own ahead of the loop.
     classDef* varCls = !loopVarName.empty() && func != nullptr ? getDispatchClass(resolveIdentifierType(loopVarName, func, body)) : nullptr;
-    if(varCls != nullptr && !varCls->isPrimitive && refNotApplicable(varCls, varCls->name).empty()
+    if(varCls != nullptr && !varCls->isPrimitive && !plainSlotOwnsReferenceInstance(varCls)
        && tt.is(token::assignment) && !file.hasPendingToken){
         string text = loopVarName + " = " + file.getRawTextToStatementEnd() + ";";
         file.openText(text, stmtLoc.file, stmtLoc.line);
@@ -498,7 +498,7 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         size_t afterTarget = a == string::npos ? string::npos : stepText.find_first_not_of(" \t\r\n", a + target.size());
         bool memberStep = !target.empty() && afterTarget != string::npos && stepText[afterTarget] == '.' && func != nullptr;
         if(memberStep || (!target.empty() && stepCls != nullptr && !stepCls->isPrimitive && !isWordArrayType(stepCls->name)
-           && refNotApplicable(stepCls, stepCls->name).empty()))
+           && !plainSlotOwnsReferenceInstance(stepCls)))
             deferredStep = stepText;
         else {
             file.openText(stepText + ")", stmtLoc.file, stmtLoc.line);
@@ -1194,7 +1194,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         }
             classDef* varCls = getDispatchClass(typeTok.value);
             if(!alreadyDeclared && func != nullptr && varCls != nullptr && !varCls->isPrimitive
-               && refNotApplicable(varCls, typeTok.value).empty()){
+               && !plainSlotOwnsReferenceInstance(varCls)){
                 // Declared as any local is, so it takes its buffer or instance and gives it back.
                 file.openText((typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue) + " "
                               + (nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue) + ";", stmtLoc.file, stmtLoc.line);
@@ -3911,16 +3911,23 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
             parsingError(format("the reference binding operator ':=' needs a class-typed left "
                                 "side; '{0}' is not one. Use '=' for ordinary assignment.",
                                 lhsOriginal));
-        // A value-class slot that isn't `ref` owns its instance; binding it to another is an error (§3.7).
-        if(isValueClass(lhsCls) && !lhsCls->isEmitterClass && classHasStoredFields(lhsCls)){
-            bool refSlot = false;
+        // `:=` binds a `ref` slot; any other slot takes `=`, its type's assignment (§3.7).
+        {
+            bool refSlot = false, known = false;
             if(func != nullptr && lhsOriginal.find('.') == string::npos)
-                for(paramDef* p : func->params) if(p->name == lhsOriginal && p->isRef) refSlot = true;
-            if(!refSlot)
-                if(auto* vd = findAssignedDeclaration(lhsOriginal, func, body); vd != nullptr && vd->isRefLocal) refSlot = true;
-            if(!refSlot && findAssignedDeclaration(lhsOriginal, func, body) != nullptr)
-                parsingError(format("'{0}' owns its {1}, so ':=' can't bind it to another; declare it `ref {1}` to "
-                                    "bind it, or use '=' to copy the value.", lhsOriginal, lhsCls->dName()));
+                for(paramDef* p : func->params) if(p->name == lhsOriginal){ known = true; refSlot = p->isRef; }
+            if(!known)
+                if(auto* vd = findAssignedDeclaration(lhsOriginal, func, body); vd != nullptr){
+                    known = true;
+                    refSlot = vd->isRefLocal;
+                    // A plain array has storage; one declared without any is a `ref array`.
+                    if(auto* ad = dynamic_cast<arrayDeclaration*>(vd); ad != nullptr && ad->arraySize <= 0
+                       && dynamic_cast<initializerList*>(ad->declaredExpressionValue) == nullptr && ad->stringInitializer.empty())
+                        refSlot = true;
+                }
+            if(known && !refSlot && lhsOriginal.rfind("_bgl", 0) != 0)   // the compiler's own temporaries bind freely
+                parsingError(format("':=' binds a 'ref', and '{0}' isn't one: use '=', or declare it `ref {1}`.",
+                                    lhsOriginal, lhsCls->dName()));
         }
         if(rhsT.empty() || getDispatchClass(rhsT) == nullptr)
             parsingError(format("the reference binding operator ':=' binds a reference, so the "

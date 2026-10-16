@@ -1,0 +1,6 @@
+/* ':=' binds a 'ref'; a plain slot of a reference class takes '=', which re-points it */
+// EXPECT_ERROR: ':=' binds a 'ref', and 'r' isn't one: use '=', or declare it `ref Room`
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Room : object { int visits; }
+Room hall;
+void main(){ Room r = hall; r := hall; }

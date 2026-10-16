@@ -1691,6 +1691,21 @@ void bglParser::preScanEnum(token& tok, bool isExtern){
 }
 
 // `object Name {…}` / `ClassName Name {…}` / `ClassName Name;` — register an object or variable stub, plus member stubs for a body.
+// Whether a class is a value class, counting the base names the pre-scan hasn't linked yet.
+bool bglParser::preScanInheritsValue(classDef* cls){
+    set<classDef*> seen;
+    function<bool(classDef*)> check = [&](classDef* c) -> bool {
+        if(!c || !seen.insert(c).second) return false;
+        if(c->isValue) return true;
+        for(classDef* b : c->baseClasses) if(check(b)) return true;
+        for(const DeferredClassBases& db : deferredClassBases)
+            if(db.cls == c)
+                for(const string& bn : db.baseNames) if(check(languageService.findClass(bn))) return true;
+        return false;
+    };
+    return check(cls);
+}
+
 void bglParser::preScanObject(token& tok, bool isExtern){
     // Could be: object Name { }, ClassName Name { }, or ClassName Name : Parent { }
     string classType = tok.value;
@@ -2002,6 +2017,16 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             file.getRawTextThroughClosingBrace();
         }
     } else {
+        // `ClassName Name;` of a reference class is that class's object, as with `{ }`.
+        if(classDef* oc = languageService.findClass(classType);
+           peek.is(token::endStatement) && !isExtern && !isVerbType && !preScanIsRef && !preScanIsConst
+           && plainSlotOwnsReferenceInstance(oc) && !preScanInheritsValue(oc) && !languageService.isObjectType(nameStr)){
+            objectDef& obj = languageService.registerObject(nameStr, false);
+            obj.isPrePassStub = true;
+            obj.objectClass = oc;
+            preScanSkipToSemicolon();
+            return;
+        }
         // `ClassName Name;` or `ClassName Name = …;` — a variable of that class, `verb` included (an
         // action is declared with its body).
         {
@@ -2393,6 +2418,7 @@ void bglParser::preScanGlobalLoop(){
         bool isExtern  = q.isExtern;
         bool isEmitter = q.isEmitter;
         preScanIsReplace = q.isReplace;
+        preScanIsRef = q.isRef;
         preScanIsConst = q.isConst;
 
         // extend class/object — register new members on the existing type during pre-scan

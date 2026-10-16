@@ -1,4 +1,4 @@
-// run_array_references — arrays are references: `=` and `:=` re-point, a declaration from another array refers
+// run_array_references — arrays are references: `=` re-points, as `:=` does on a `ref array`, a declaration from another array refers
 // to it, `copyFrom` copies, and `==` is the same array. A member array is a reference too. A returned local
 // array is copied into the destination's own storage; a re-pointed global is a variable over its storage.
 // EXPECT_OUTPUT: 99 99 9 true false 5 2 7 0 3 8 8 | hi hi ho
@@ -35,7 +35,7 @@ void main() {
     print($"{box.log[0]} {e.length} ");
     box.log = h;
     print($"{box.log[1]} ");
-    array<int> f[2];
+    ref array<int> f;
     f := h;
     print($"{f[1]} | ");
     array<char> s[4];

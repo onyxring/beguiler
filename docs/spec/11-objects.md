@@ -47,11 +47,15 @@ the two declaration forms is used (§11.2).
 object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
 ⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
+object ⟨name⟩ ;
+⟨class⟩ ⟨name⟩ ;
 ```
 
 **Description**
 
-An object is declared at global scope. The name becomes a globally visible identifier usable wherever
+An object is declared at global scope. Without a body, `object ⟨name⟩;` and `⟨class⟩ ⟨name⟩;` (of a
+reference class) declare an object exactly as an empty body does, as `Object j;` does in Inform 6; a
+global that refers to an object instead is declared `ref` (§3.7). The name becomes a globally visible identifier usable wherever
 an `object`-typed value is expected. The body holds member declarations in the same form as a class
 body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
 with no initializer defaults to `0`, `false` or `null` according to its type. The one exception is

@@ -767,6 +767,8 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
 }
 
 bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias, bool extendIsExtern){
+    rejectMemberBindingMismatch(q.isRef, tok, returnType, name);
+    if(tok.is(token::bindAssignment)) tok.value = token::assignment;   // a `ref` member's value, bound
     bool isReplace = q.isReplace;
     bool isMemberConst = q.isConst;
     bool isMemberStatic = q.isStatic;
@@ -869,8 +871,9 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     varDef.isInline = q.isInline;   // participates in positional inline construction (§6.2.1)
     if(q.isInline){ notePositional(newClass, varDef.name); addInlineOrder(newClass, varDef.name); }
     // A value class owns its members: one of its own type would own another, without end.
-    if(!q.isRef && !isMemberStatic && varDef.type.name == newClass.name && isValueClass(&newClass))
-        parsingError(format("value class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
+    if(!q.isRef && !isMemberStatic && varDef.type.name == newClass.name && !newClass.isExternal
+       && (isValueClass(&newClass) || (plainSlotOwnsReferenceInstance(&newClass) && !tok.is(token::assignment))))
+        parsingError(format("class '{0}': member '{1}' is a '{0}', which would own another '{0}' without end; declare it 'ref'",
                             newClass.dName(), varDef.dName()));
     if(q.isTypeSealed) varDef.isTypeSealed = true;
     varDef.isLiteral = q.isLiteral;
@@ -2460,14 +2463,26 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         token aliasTok = file.getToken(eTokenType::identifier);
         i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
     }
-    token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen});
+    token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen, token::bindAssignment});
     if(sym.is(token::parenOpen))
         processMemberMethod(obj, typeTok, propName, isReplace, i6alias);
-    else
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment), isReplace, i6alias, isRef,
-                              typeTok.docComment.empty() ? propName.docComment : typeTok.docComment);
+    else {
+        rejectMemberBindingMismatch(isRef, sym, typeTok, propName);
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment) || sym.is(token::bindAssignment),
+                              isReplace, i6alias, isRef, typeTok.docComment.empty() ? propName.docComment : typeTok.docComment);
+    }
 }
 
+
+// A `ref` member's declaration binds with `:=`; any other member's value is given with `=` (§3.7).
+void bglParser::rejectMemberBindingMismatch(bool isRef, token sym, const token& typeTok, const token& nameTok){
+    string type = typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue;
+    string name = nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue;
+    if(isRef && sym.is(token::assignment))
+        parsingError(format("'ref {0} {1} = …': a 'ref' declaration binds with ':='. Write 'ref {0} {1} := …'.", type, name));
+    if(!isRef && sym.is(token::bindAssignment))
+        parsingError(format("'{0} {1} := …': ':=' binds a 'ref'. Write 'ref {0} {1} := …' to bind, or '=' to give a value.", type, name));
+}
 
 void bglParser::processInheritedMember(objectDef& obj, token nameTok){
     // World-model child placement: `children = { a, b, c }` lists objects to move INTO this object.
@@ -3665,7 +3680,9 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
     currentObject = &newObj;
     openCompileContext(eCompileContext::objectDef);
 
-    token tok = file.getToken();
+    token tok;
+    if(hasBody) tok = file.getToken();
+    else tok.value = token::braceClose;   // `Note n;`: an object with no body
     if(startsPositionalSection(tok)) tok = parseDeclarationPositionals(newObj, tok);
     objectDef* aliases = pushOwnTypeAliases(newObj);   // the object's own type aliases are bare names inside it
     while(tok.isNot(token::braceClose)){ parseObjectMember(newObj, tok); syncOwnTypeAliases(newObj, aliases); }
