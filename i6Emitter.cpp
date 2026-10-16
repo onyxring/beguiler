@@ -2911,8 +2911,12 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
     for(variableDeclaration* vd : locals){
         auto* arr = dynamic_cast<arrayDeclaration*>(vd);
         if(arr == nullptr) continue;
-        if(!arr->ownerVar.empty())   // what a local declared from a call or a step's result owns
+        if(!arr->ownerVar.empty()){   // what a local given a call's or a step's result owns
             fn->cleanups.push_back({arr->name, format("_bglHeapDropOwned({0});", spillName(arr->ownerVar))});
+            // Declared from that result, it has no storage of its own.
+            if(arr->declaredExpressionValue != nullptr && dynamic_cast<initializerList*>(arr->declaredExpressionValue) == nullptr)
+                continue;
+        }
         if(!arr->copySource.empty() || !arr->copyLength.empty()){   // allocated where it's declared, sized from its value
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", arr->copyHeld)});
             continue;
@@ -3011,15 +3015,16 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
                       indent, name, src, held);
         return;
     }
-    if(arrLoc->arraySize == 0
+    if((arrLoc->arraySize == 0 || !arrLoc->ownerVar.empty())
        && arrLoc->declaredExpressionValue != nullptr
        && dynamic_cast<initializerList*>(arrLoc->declaredExpressionValue) == nullptr
        && arrLoc->stringInitializer.empty()){
         if(!arrLoc->ownerVar.empty()){
             // The array this declaration owned last time it ran goes first; the new one is owned when it has no owner.
             string own = spillName(arrLoc->ownerVar), name = spillName(arrLoc->name);
-            out << format("{0}_bglHeapDropOwned({1}); {2} = {3}; {1} = _bglHeapAdopt({2});\n", indent, own, name,
-                          exprText(arrLoc->declaredExpressionValue));
+            out << format("{0}{2} = {3}; {1} = _bglHeapReown({1}, {2}{4});\n", indent, own, name,
+                          exprText(arrLoc->declaredExpressionValue),
+                          arrLoc->ownerElementOps.empty() ? "" : ", " + arrLoc->ownerElementOps);
             return;
         }
         out << format("{0}{1} = {2};\n", indent, spillName(arrLoc->name),
@@ -5333,10 +5338,15 @@ void i6Emitter::synthesizeValueElementPools(){
         }
     for(auto& [cls, arrays] : languageService.valueElementArrays){
         int N = 0;
+        // An array declared from a value may take a step's result, which gets copies of its elements; the result
+        // is no larger than the class's largest array.
+        int largest = 0;
+        for(auto& rec : arrays) largest = max(largest, rec.decl->arraySize);
         for(auto& rec : arrays){
             int cap = rec.decl->arraySize;
             if(auto* list = dynamic_cast<initializerList*>(rec.decl->declaredExpressionValue))
                 cap = max(cap, (int)list->elements.size());
+            else if(cap <= 0 && rec.decl->declaredExpressionValue != nullptr) cap = largest;
             int copies = 1;
             if(rec.hostClass != nullptr){
                 copies = 0;

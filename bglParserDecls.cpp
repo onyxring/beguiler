@@ -584,7 +584,11 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
                                 || arrDecl.name.rfind("_bgl", 0) == 0
                                 || arrDecl.isRaw || !sharedBuffer;
-                if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
+                // A local declared from a call or a step's result owns that array; a capacity of its own would go unused.
+                bool ownsResult = func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray
+                               && elementType != "char" && holdsHandle
+                               && !(expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos);
+                if(canReread && ((arrDecl.arraySize > 0 && !ownsResult) || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
                     // Without a capacity, the storage is sized from the value when the declaration runs.
                     pendingInjections.clear();
@@ -606,7 +610,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                     if(func != nullptr && body != nullptr && !arrDecl.isRaw && !arrDecl.isByteArray && elementType != "char"){
                         bool plainName = expr->tokens.size() == 1 && srcText.find_first_of(".([") == string::npos;
                         if(plainName) expr->tokens.assign(1, "_bglHeapEscape(" + srcText + ")");
-                        else arrDecl.ownerVar = "_bglown_" + arrDecl.name;
+                        else giveOwner(arrDecl);
                     }
                 }
             }
@@ -661,19 +665,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         if(auto* list = dynamic_cast<initializerList*>(arrDecl.declaredExpressionValue))
             for(expression* e : list->elements) if(e != nullptr) applyActionConstant(e);
 
-    if(body != nullptr && !arrDecl.ownerVar.empty())
-        if(auto* top = dynamic_cast<statementBlock*>(func->body)){
-            bool present = false;
-            for(statement* s : top->statements)
-                if(auto* vd = dynamic_cast<variableDeclaration*>(s); vd && vd->name == arrDecl.ownerVar) present = true;
-            if(!present){
-                auto* own = new variableDeclaration();
-                own->name = own->displayName = arrDecl.ownerVar;
-                own->type = languageService.getType("var");
-                own->isSynthetic = true;
-                top->statements.insert(top->statements.begin(), own);
-            }
-        }
+    if(body != nullptr && !arrDecl.ownerVar.empty()) declareOwner(func, arrDecl);
     if(body != nullptr){
         // Set-up an element needs (a `?.` test, a temp) runs before the elements are stored.
         for(statement* inj : pendingInjections) body->statements.push_back(inj);
@@ -2348,4 +2340,24 @@ void bglParser::rejectUnionInto(expression* val, classDef* target){
         parsingError(format("A '{0}' value doesn't fit a '{1}' directly: narrow the union first with a cast, "
                             "such as `({1})value`.", shown, target->dName()));
     }
+}
+
+// A local array that owns the array it takes from a call or a step's result: the hidden local holding it, and
+// its element type's `operator =` and deinit when the elements own instances.
+void bglParser::giveOwner(arrayDeclaration& ad){
+    if(!ad.ownerVar.empty()) return;
+    ad.ownerVar = "_bglown_" + ad.name;
+    string assign = substituteElemOps("$opref(=)", ad.elementType, "");
+    if(assign != "0") ad.ownerElementOps = assign + ", " + substituteElemOps("$opref(deinit)", ad.elementType, "");
+}
+void bglParser::declareOwner(functionDef* func, arrayDeclaration& ad){
+    auto* top = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
+    if(top == nullptr) return;
+    for(statement* s : top->statements)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(s); vd && vd->name == ad.ownerVar) return;
+    auto* own = new variableDeclaration();
+    own->name = own->displayName = ad.ownerVar;
+    own->type = languageService.getType("var");
+    own->isSynthetic = true;
+    top->statements.insert(top->statements.begin(), own);
 }

@@ -159,13 +159,13 @@ array _bglarr_dst table 8;
 [main keep picked;
     keep = _bglHeapLocal(8);
     bglinit();
-    dst = _bglArrStore(dst, src, 0);
+    dst = _bglArrStore(dst, src, 0, 0);
     _bglArray.copy(keep, 0, src, 0, 0);
     picked = _bglHeapEscape(dst);
     _bglHeapLocalDrop();
 ];
-[_bglArrStore dst src assign;
-     return _bglArrAssign(dst, _bglHeapEscape(src), assign); 
+[_bglArrStore dst src assign dtor;
+     return _bglArrAssign(dst, _bglHeapEscape(src), assign, dtor); 
 ];
 object _bglArray
   with get [obj prop n;
@@ -277,9 +277,13 @@ object _bglArray
     }
     return -1;
 ];
-[_bglArrAssign dst src assign;
+[_bglArrAssign dst src assign dtor;
     
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return _bglHeapEscape(src);
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)){
+            _bglHeapOwnElements(src, assign, dtor);
+            if(_bglHeapIsFresh(src)) return src;   ! the variable's owner takes it, or the collector frees it
+            return _bglHeapEscape(src);
+        }
         return _bglArrCopyInto(dst, src, assign);
     
 ];
@@ -407,6 +411,25 @@ object _bglArray
         (_bglHeap-->0)-->2 = 0;
         _bglHeapSetStart(_bglHeap-->0, true);
         _bglPromptHook = _bglHeapAtPrompt;
+    
+];
+[_bglHeapIsFresh a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0 && (b-->2 & 12) == 8) rtrue;
+        rfalse;
+    
+];
+[_bglHeapOwnElements a assign dtor b i;
+    b = 0;
+    i = 0;
+    
+        if(assign == 0) return;
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
+        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
+        b-->1 = dtor;
     
 ];
 [_bglHeapRelease b a i;

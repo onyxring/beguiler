@@ -15,7 +15,7 @@ extern emitter class array<T>{
     replace emitter int  size                     { _bglArrSize($val) }    /// How many elements the array can hold.
     typesealed arrayLength length;                                         /// How many elements are in use.
     /// Refer to `v`'s array. (Taking a function's returned local array copies it into this array's storage.)
-    emitter void operator = (array<T> v)          { $self = _bglArrAssign($self, $v, $opref(=)) }
+    emitter void operator = (array<T> v)          { $self = _bglArrAssign($self, $v, $opref(=), $opref(deinit)) }
 }
 
 /// The type of an array's `length`: how many elements are in use. `<array>` makes it assignable.
@@ -112,17 +112,22 @@ superposed bool _bglArrEphemeral(int arr){
 // `dst = src` on arrays: dst refers to src's array, which another reference now keeps (so its owner's exit
 // won't free it), unless src is ephemeral, when its elements and length are copied into dst's own storage
 // (up to its capacity). `assign` is the element type's static
-// `operator =` when its elements own instances: each is copied into dst's own slot rather than shared.
-superposed int _bglArrAssign(int dst, int src, var assign = 0){
+// `operator =` when its elements own instances: each is copied into dst's own slot rather than shared, and a
+// step's result taken by reference gets copies of its own, which `dtor` releases.
+superposed int _bglArrAssign(int dst, int src, var assign = 0, var dtor = 0){
     #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)) return _bglHeapEscape(src);
+        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src) || ~~_bglArrTracked(dst)){
+            _bglHeapOwnElements(src, assign, dtor);
+            if(_bglHeapIsFresh(src)) return src;   ! the variable's owner takes it, or the collector frees it
+            return _bglHeapEscape(src);
+        }
         return _bglArrCopyInto(dst, src, assign);
     }
 }
 // `dst = src` where dst is a global or member array: as _bglArrAssign; a heap array stored there has left the
 // routine that made it, so that routine's exit doesn't free it.
-superposed int _bglArrStore(int dst, int src, var assign = 0){
-    #i6 { return _bglArrAssign(dst, _bglHeapEscape(src), assign); }
+superposed int _bglArrStore(int dst, int src, var assign = 0, var dtor = 0){
+    #i6 { return _bglArrAssign(dst, _bglHeapEscape(src), assign, dtor); }
 }
 // src's elements and length, up to dst's capacity, copied into dst; returns dst.
 superposed int _bglArrCopyInto(int dst, int src, var assign = 0){

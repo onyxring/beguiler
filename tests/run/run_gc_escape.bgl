@@ -1,6 +1,7 @@
 // run_gc_escape — a local array that leaves its routine is not freed at the routine's exit: stored into another
-// array's element, appended to one, or bound to a global ref; the routine that runs next can't reuse its words.
-// EXPECT_OUTPUT: elem 11 12 | ref 21 | append 41 | kept 3
+// array's element, appended to one, or bound to a global ref; the routine that runs next can't reuse its words. A
+// local given a function's result built from its previous one (`cur = grow(cur)`) keeps it until the new one is made.
+// EXPECT_OUTPUT: elem 11 12 | ref 21 | append 41 | kept 3 | grown 5 1 | used 0
 #beguilerSettings { target = z5; informName = "none"; heapSize = 512; }
 #include <array>
 array<array<int>> rows[4];
@@ -9,6 +10,8 @@ ref array<int> gref;
 void storeElem(){ array<int> t[3]; t += 11; t += 12; rows[0] = t; }
 void bindRef(){ array<int> t[3]; t += 21; gref := t; }
 void appendElem(){ array<int> t[3]; t += 41; list += t; }
+array<int> grow(array<int> a){ array<int> r[8]; for(int v in a) r += v; r += 1; return r; }
+int growFive(){ array<int> cur[1]; for(int i = 0; i < 5; i++) cur = grow(cur); return cur.length * 10 + cur[4]; }
 void clobber(){ array<int> z[3]; z += 99; z += 98; z += 97; }
 void main(){
     bglInit();
@@ -23,5 +26,10 @@ void main(){
     if(rows[0][1] == 12) kept++;
     if(gref[0] == 21) kept++;
     if(list[0][0] == 41) kept++;
-    print($"kept {kept}");
+    print($"kept {kept} | ");
+    int g = growFive();
+    print($"grown {g / 10} {g % 10} | ");
+    rows[0] = null; gref := null; list.clear();
+    bgl.gc.collect();
+    print($"used {bgl.gc.used}");
 }

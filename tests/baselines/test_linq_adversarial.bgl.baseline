@@ -85,7 +85,7 @@ array g_empty table 8;
     bglinit();
     print _bglArray.chainCount(_bglArray.take(_bglArray.skip(_bglArray.filter(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_0), -1, _bglLambda_1), -1, _bglLambda_2), -1, 1), -1, 3), -1);
     if(_bglArray.all(_bglArray.map(_bglArray.filter(g_nums, 0, _bglLambda_3), -1, _bglLambda_4), -1, _bglLambda_5) == true) print "true"; else print "false";
-    _bglHeapDropOwned(_bglown_result); result = _bglArray.filter(g_nums, 0, _bglLambda_6); _bglown_result = _bglHeapAdopt(result);
+    result = _bglArray.filter(g_nums, 0, _bglLambda_6); _bglown_result = _bglHeapReown(_bglown_result, result);
     print _bglArray.length(result, 0);
     print  _bglAt(result, 0, 0)-->0 ;
     print  _bglAt(result, 4, 0)-->0 ;
@@ -320,7 +320,7 @@ object _bglArray
     }
   ],
        filter [obj prop pred _bglret _bglown_dst dst writeCount srcLen i elem;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     writeCount = 0;
     srcLen=self.length(obj,prop);
     for (i = 0 : i < srclen : i++) {
@@ -382,7 +382,7 @@ object _bglArray
     return r;
   ],
        map [obj prop f _bglret _bglown_dst dst srcLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     for (i = 0 : i < srclen : i++) {
         _bglAt(dst, i, 1)-->0 = f(self.get(obj,prop,i));
@@ -395,7 +395,7 @@ object _bglArray
     return _bglret;
   ],
        take [obj prop n _bglret _bglown_dst dst srcLen outLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     outLen=n;
     if (outlen < 0) {
@@ -415,7 +415,7 @@ object _bglArray
     return _bglret;
   ],
        skip [obj prop n _bglret _bglown_dst dst srcLen start outLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     start=n;
     if (start < 0) {
@@ -436,7 +436,7 @@ object _bglArray
     return _bglret;
   ],
        takeWhile [obj prop pred _bglret _bglown_dst dst srcLen outLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
@@ -454,7 +454,7 @@ object _bglArray
     return _bglret;
   ],
        skipWhile [obj prop pred _bglret _bglown_dst dst srcLen start outLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     start = 0;
     while (start < srclen && pred(self.get(obj,prop,start))) {
@@ -472,7 +472,7 @@ object _bglArray
     return _bglret;
   ],
        distinct [obj prop op _bglret _bglown_dst dst srcLen outLen i elem seen j kept;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     outLen = 0;
     for (i = 0 : i < srclen : i++) {
@@ -501,7 +501,7 @@ object _bglArray
     return _bglret;
   ],
        orderBy [obj prop compare _bglret _bglown_dst dst srcLen i;
-    _bglHeapDropOwned(_bglown_dst); dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapAdopt(dst);
+    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     srcLen=self.length(obj,prop);
     for (i = 0 : i < srclen : i++) {
         _bglAt(dst, i, 1)-->0 = self.get(obj,prop,i);
@@ -521,15 +521,6 @@ object _bglArray
         n = _bglArrSize(arr);
         if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
         return _bglOutOfRange(i, n, w);
-    
-];
-[_bglHeapAdopt a b;
-    b = 0;
-    
-        b = _bglHeapBlockOf(a);
-        if(b == 0 || (b-->2 & 12) ~= 8) return 0;
-        b-->2 = b-->2 & ~8;
-        return a;
     
 ];
 [_bglHeapBlockOf a b o;
@@ -568,6 +559,14 @@ object _bglArray
         a-->(-2) = $DEAD;
         b-->2 = 0;
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    
+];
+[_bglHeapReown own a assign dtor n;
+    n = 0;
+    
+        n = _bglHeapAdopt(a, assign, dtor);
+        if(own ~= a) _bglHeapDropOwned(own);
+        return n;
     
 ];
 [_bglHeapReturn a;
@@ -622,6 +621,17 @@ array _bglsink --> 1;
         rfalse;
     
 ];
+[_bglHeapAdopt a assign dtor b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 12) ~= 8) return 0;
+        _bglHeapOwnElements(a, assign, dtor);
+        b-->2 = b-->2 & ~8;
+        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
+        return a;
+    
+];
 [_bglHeapBitMask b m k;
     m = 1;
     k = 0;
@@ -645,6 +655,17 @@ array _bglsink --> 1;
         a = _bglHeapAlloc(n);
         (a - 5 * WORDSIZE)-->2 = (a - 5 * WORDSIZE)-->2 | 8;
         return a;
+    
+];
+[_bglHeapOwnElements a assign dtor b i;
+    b = 0;
+    i = 0;
+    
+        if(assign == 0) return;
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
+        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
+        b-->1 = dtor;
     
 ];
 [_bglHeapAlloc n kind need o b nb a i;

@@ -3483,8 +3483,23 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             string elem = member ? resolveArrayElementTypeDotted(t.emitterSelf, t.emitterProp, currentFunc, nullptr)
                         : pointerMember ? resolveArrayElementTypeDotted(lOwner, lProp, currentFunc, nullptr)
                                  : resolveArrayElementType(a.variableLeft, currentFunc, nullptr);
-            storeText = "_bglArrStore(" + dst + ", " + val->text() + ", " + substituteElemOps("$opref(=)", elem, "") + ")";
+            storeText = "_bglArrStore(" + dst + ", " + val->text() + ", " + substituteElemOps("$opref(=)", elem, "") + ", "
+                      + substituteElemOps("$opref(deinit)", elem, "") + ")";
         }
+        // A local array given a call's or a step's result owns it, as one declared from it does.
+        else if(!member && !pointerMember && currentFunc != nullptr && t.leftType->name != "bytearray"
+                && !(val->tokens.size() == 1 && val->text().find_first_of(".([") == string::npos))
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(a.variableLeft, currentFunc,
+                   activeBlockStack.empty() ? nullptr : activeBlockStack.back()));
+               ad != nullptr && !ad->isRaw && !ad->isByteArray && ad->elementType != "char"
+               && languageService.findGlobalAs<variableDeclaration>(a.variableLeft) != ad){
+                giveOwner(*ad);
+                declareOwner(currentFunc, *ad);
+                auto* adopt = new i6RawNode(); adopt->cooked = true;
+                adopt->text = ad->ownerVar + " = _bglHeapReown(" + ad->ownerVar + ", " + a.variableLeft
+                            + (ad->ownerElementOps.empty() ? "" : ", " + ad->ownerElementOps) + ");";
+                postInjections.push_back(adopt);
+            }
     }
     const string& emitterSelfForLhs = t.emitterSelf;
     classDef* classType = t.ancestorCast != nullptr ? t.ancestorCast : t.classType;

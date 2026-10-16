@@ -188,6 +188,15 @@ superposed int _bglHeapEscapeAssign(int cur, int a){
     #i6 { return _bglHeapEscape(a); }
 }
 
+// Whether array `a` is on the heap with no owner yet.
+superposed bool _bglHeapIsFresh(int a){
+    int b = 0;
+    #i6 {
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0 && (b-->2 & 12) == 8) rtrue;
+        rfalse;
+    }
+}
 // A new array with no owner yet (a step's result), room for `n` elements.
 superposed int _bglHeapFresh(int n){
     int a = 0;
@@ -234,15 +243,40 @@ superposed int _bglHeapReturn(int a){
         return a;
     }
 }
+// A variable takes array `a`, a step's result that shares its source's elements: when the elements own
+// instances (`assign` is their type's `operator =`), the array gets copies of its own, which `dtor` releases.
+superposed void _bglHeapOwnElements(int a, var assign, var dtor){
+    int b = 0;
+    int i = 0;
+    #i6 {
+        if(assign == 0) return;
+        b = _bglHeapBlockOf(a);
+        if(b == 0 || (b-->2 & 8) == 0 || b-->1 ~= 0) return;
+        for(i = 1 : i <= a-->(-1) : i++) if(a-->i) a-->i = assign(0, a-->i);
+        b-->1 = dtor;
+    }
+}
 // A local declared from array `a` takes it when it has no owner; returns what the local now owns (`a`, or 0).
-superposed int _bglHeapAdopt(int a){
+// `assign` and `dtor` as for _bglHeapOwnElements.
+superposed int _bglHeapAdopt(int a, var assign = 0, var dtor = 0){
     int b = 0;
     #i6 {
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
+        _bglHeapOwnElements(a, assign, dtor);
         b-->2 = b-->2 & ~8;
         if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
         return a;
+    }
+}
+// A local that owned array `own` is given array `a`: it takes `a` as _bglHeapAdopt does, then drops `own`
+// (after, so `a` may have been computed from it). Returns what the local now owns.
+superposed int _bglHeapReown(int own, int a, var assign = 0, var dtor = 0){
+    int n = 0;
+    #i6 {
+        n = _bglHeapAdopt(a, assign, dtor);
+        if(own ~= a) _bglHeapDropOwned(own);
+        return n;
     }
 }
 // The same for a routine whose raw Inform 6 may have kept a reference: the array is left to the collector.

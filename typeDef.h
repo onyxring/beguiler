@@ -587,6 +587,7 @@ class arrayDeclaration : public variableDeclaration {
         string stringInitializer;    // non-empty when initialized from "string" (I6: Array name string "...")
         string localInitSource;      // a local byte array copied, on each call, from this file-scope array
         string ownerVar;             // a local declared from a call or a step's result: the hidden local holding what it owns
+        string ownerElementOps;      // its element type's `operator =` and deinit, for _bglHeapAdopt ("" when the elements own nothing)
         string copySource;           // `array<T> name = value;` local: the local holding the value, sized from it at run time
         string copyHeld;             //   and the local counting the frame words its storage took
         string copyLength;           //   or, from a member array (no address to alias), the member's length

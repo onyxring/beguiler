@@ -1,0 +1,33 @@
+// run_linq_value_copies — a variable that takes a <linq> result over a value class gets copies of its own:
+// changing or removing them leaves the source alone; steps inside a chain read the source as it is. A function's
+// returned result, taken by a local, goes back to the heap with it.
+// EXPECT_OUTPUT: high 7 9 | set 1 | hand 7 | removed 1 left 2 | hand 4 7 | kept 9 | sevens 10 used 10 | used 0
+#beguilerSettings { target = z5; informName = "none"; heapSize = 256; }
+#include <linq>
+value class Card { int n = 0; Card operator = (Card o) { n = o.n; return self; } }
+array<Card> hand[4];
+array<Card> kept[4];
+void take() {
+    array<Card> high = hand.filter((Card c) => c.n > 5);
+    print($"high {high[0].n} {high[1].n} | ");
+    high[0].n = 1;
+    print($"set {high[0].n} | hand {hand[1].n} | ");
+    high.remove(0);
+    print($"removed 1 left {high.length + 1} | hand {hand.length} {hand[1].n} | ");
+    kept = hand.filter((Card c) => c.n == 9);
+    hand[3].n = 2;
+    print($"kept {kept[0].n} | ");
+}
+array<Card> sevens() { return hand.filter((Card c) => c.n == 7); }
+int countSevens() { array<Card> mine = sevens(); return mine.length; }
+void main(){
+    bglInit();
+    hand += Card{ n = 3; }; hand += Card{ n = 7; }; hand += Card{ n = 4; }; hand += Card{ n = 9; };
+    take();
+    int n = 0;
+    for (int i = 0; i < 10; i++) n += countSevens();
+    print($"sevens {n} used {bgl.gc.used} | ");
+    kept = hand;
+    bgl.gc.collect();
+    print($"used {bgl.gc.used}");
+}

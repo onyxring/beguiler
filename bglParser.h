@@ -689,6 +689,8 @@ class bglParser {
         string readArrayElementType();
         // The declaration a statement's assignment target names (local, member, global), or nullptr.
         class variableDeclaration* findAssignedDeclaration(const string& path, class functionDef* func, class statementBlock* body);
+        void giveOwner(class arrayDeclaration& ad);
+        void declareOwner(class functionDef* func, class arrayDeclaration& ad);
         // Errors when `value`, stored into a slot of type `slotType` whose `literalMembers` apply, is not
         // known at compile time. `what` describes the slot for the message.
         void checkLiteralValue(const vector<string>& literalMembers, const string& slotType,
