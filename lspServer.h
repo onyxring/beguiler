@@ -141,6 +141,8 @@ private:
     json handleDefinition(const json& params);
     json handleDocumentSymbol(const json& params);
     json handleSignatureHelp(const json& params);
+    struct WordHit { string uri; int line; int start; int end; };   // UTF-16 columns
+    vector<WordHit> wordOccurrences(const string& uri, int line, int u16col, string& word);
     json handleReferences(const json& params);
     json handleRename(const json& params);
     json handleSemanticTokensFull(const json& params);

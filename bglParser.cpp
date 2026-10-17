@@ -3452,6 +3452,7 @@ void bglParser::parsingWarning(string msg){
     else{
         warningMessage=msg;
     }
+    if(lspMode) lspErrors.push_back(warningMessage);   // the editor shows it with the errors
     cerr << warningMessage << endl;
 }
 

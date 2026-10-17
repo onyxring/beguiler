@@ -897,6 +897,7 @@ void LspServer::publishDiagnostics(const string& uri) {
             if(firstColon != string::npos && firstColon > 0 && line + col > 0) {
                 string errFile = err.substr(0, firstColon);
                 if(canonPath(errFile) != canonPath(uriToPath(uri))) {
+                    if(severity == 2) continue;   // another file's warning belongs to that file
                     message = filesystem::path(errFile).filename().string() + ":" + to_string(line + 1) + ": " + message;
                     line = 0; col = 0;
                 }
@@ -3467,23 +3468,25 @@ json LspServer::completeKeywordSnippet(int col, const string& lineText, bool& ha
         bool afterDot = (wStart - 1 >= 0 && lineText[wStart - 1] == '.');   // skip member access `x.en…`
         string partial = (wStart < wEnd) ? lineText.substr(wStart, wEnd - wStart) : "";
         string plow = partial; transform(plow.begin(), plow.end(), plow.begin(), ::tolower);
-        if(syntaxHintsEnabled && !afterDot && !plow.empty() && string("enum").rfind(plow, 0) == 0){   // plow is a prefix of "enum"
+        // Only where a declaration can start, and once the word can't be another one (`else`, `end…`).
+        bool lineStart = lineText.find_first_not_of(" \t") >= (size_t)wStart;
+        if(syntaxHintsEnabled && !afterDot && lineStart && plow.size() >= 3 && string("enum").rfind(plow, 0) == 0){
             json item = {
                 {"label", "enum"},
                 {"kind", 14},                        // CompletionItemKind.Keyword
                 {"detail", "enum declaration"},
-                {"insertText", "enum ${1:Name} {\n\t${2:first} = 0,\n\t$0\n}"},
+                {"insertText", "enum ${1:Name} {\n\t${2:first},\n\t$0\n}"},
                 {"insertTextFormat", 2},             // 2 = Snippet
                 {"documentation", {{"kind", "markdown"}, {"value",
                     "**enum** — a named set of integer constants.\n\n"
                     "```beguile\n"
                     "enum Name {\n"
-                    "    first = 0,   // explicit start value optional\n"
-                    "    second,      // auto-increments (1)\n"
-                    "    third,       // (2)\n"
+                    "    first,       // 1\n"
+                    "    second,      // 2\n"
+                    "    third = 7,   // an explicit value\n"
                     "}\n"
                     "```\n\n"
-                    "The first value defaults to `0`; each later member auto-increments unless given an "
+                    "The first value is `1`; each later member is one more than the one before unless given an "
                     "explicit `= N`. Reference members as `Name.member`."}}}
             };
             handled = true; return json{{"isIncomplete", true}, {"items", json::array({item})}};
@@ -3787,6 +3790,7 @@ json LspServer::handleDefinition(const json& params) {
 
 json LspServer::handleDocumentSymbol(const json& params) {
     string uri = params["textDocument"]["uri"];
+    if(openDocuments.count(uri)) ensureParsedForRequest(uri);   // the outline is of this document's parse
 
     // .inf-mode: no Beguile declarations are allowed at the .inf top level, and #bgl{}
     // bodies run in loose statement mode (no declarations either). Return empty so the
@@ -4056,6 +4060,101 @@ void LspServer::resetAndReparse(const string& uri) {
 // References (find all references to a symbol)
 //=============================================================================
 
+// UTF-16 code units in s[0, byteEnd): LSP columns count these, the text here is UTF-8 bytes.
+static int lspByteToU16(const string& s, int byteEnd) {
+    int units = 0, k = 0, n = (int)s.size();
+    if(byteEnd > n) byteEnd = n;
+    while(k < byteEnd) {
+        unsigned char ch = (unsigned char)s[k];
+        if(ch < 0x80)      { units += 1; k += 1; }
+        else if(ch < 0xE0) { units += 1; k += 2; }
+        else if(ch < 0xF0) { units += 1; k += 3; }
+        else               { units += 2; k += 4; }
+    }
+    return units;
+}
+// The byte offset of UTF-16 column `u16` in s.
+static int lspU16ToByte(const string& s, int u16) {
+    int units = 0, k = 0, n = (int)s.size();
+    while(k < n && units < u16) {
+        unsigned char ch = (unsigned char)s[k];
+        if(ch < 0x80)      { units += 1; k += 1; }
+        else if(ch < 0xE0) { units += 1; k += 2; }
+        else if(ch < 0xF0) { units += 1; k += 3; }
+        else               { units += 2; k += 4; }
+    }
+    return min(k, n);
+}
+static bool lspWordChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
+
+// Every whole-word use of the identifier at (line, u16col) — matched ignoring case, as Beguile names are,
+// outside strings and comments — across the open documents, or only inside the enclosing function for
+// a local or parameter. `word` receives the identifier as written at the cursor.
+vector<LspServer::WordHit> LspServer::wordOccurrences(const string& uri, int line, int u16col, string& word) {
+    vector<WordHit> hits;
+    auto docIt = openDocuments.find(uri);
+    if(docIt == openDocuments.end()) return hits;
+    ensureParsedForRequest(uri);
+    istringstream stream(docIt->second);
+    string lineText;
+    for(int i = 0; i <= line; i++) getline(stream, lineText);
+    int col = lspU16ToByte(lineText, u16col);
+    if(col >= (int)lineText.size()) return hits;
+    int start = col, end = col;
+    while(start > 0 && lspWordChar(lineText[start-1])) start--;
+    while(end < (int)lineText.size() && lspWordChar(lineText[end])) end++;
+    word = lineText.substr(start, end - start);
+    if(word.empty() || isdigit((unsigned char)word[0])) { word.clear(); return hits; }
+
+    string lowered = word;
+    transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
+    LspSymbolRef ref = resolveSymbol(uri, line, start, lowered);
+    bool restrictToFunction = (ref.kind == LspSymbolRef::Local || ref.kind == LspSymbolRef::Parameter);
+    int fnStart1 = -1, fnEnd1 = -1;
+    string restrictFile;
+    if(restrictToFunction) {
+        auto rng = functionLines(uri, line, start, ref.enclosingFunc);
+        fnStart1 = rng.first;
+        fnEnd1   = rng.second + 1;
+        restrictFile = ref.enclosingFunc->src.file;
+    }
+    for(auto& [docUri, docText] : openDocuments) {
+        if(restrictToFunction) {
+            string docPath = documentParsePaths.count(docUri) ? documentParsePaths[docUri] : uriToPath(docUri);
+            if(docPath != restrictFile) continue;
+        }
+        istringstream docStream(docText);
+        string docLine;
+        int lineNum = 0;
+        bool inBlockComment = false;
+        while(getline(docStream, docLine)) {
+            int line1Based = lineNum + 1;
+            bool inRange = !restrictToFunction || (line1Based >= fnStart1 && line1Based < fnEnd1);
+            size_t i = 0;
+            char quote = 0;
+            while(i < docLine.size()) {
+                char c = docLine[i];
+                if(inBlockComment){ if(c == '*' && i + 1 < docLine.size() && docLine[i+1] == '/'){ inBlockComment = false; i += 2; } else i++; continue; }
+                if(quote){ if(c == '\\') i += 2; else { if(c == quote) quote = 0; i++; } continue; }
+                if(c == '/' && i + 1 < docLine.size() && docLine[i+1] == '/') break;
+                if(c == '/' && i + 1 < docLine.size() && docLine[i+1] == '*'){ inBlockComment = true; i += 2; continue; }
+                if(c == '"' || c == '\''){ quote = c; i++; continue; }
+                if(lspWordChar(c)){
+                    size_t j = i;
+                    while(j < docLine.size() && lspWordChar(docLine[j])) j++;
+                    if(inRange && j - i == word.size() && strncasecmp(docLine.c_str() + i, word.c_str(), word.size()) == 0)
+                        hits.push_back({docUri, lineNum, lspByteToU16(docLine, (int)i), lspByteToU16(docLine, (int)j)});
+                    i = j;
+                    continue;
+                }
+                i++;
+            }
+            lineNum++;
+        }
+    }
+    return hits;
+}
+
 json LspServer::handleReferences(const json& params) {
     string uri = params["textDocument"]["uri"];
     int line = params["position"]["line"].get<int>();
@@ -4064,73 +4163,11 @@ json LspServer::handleReferences(const json& params) {
     // .inf-mode gating: outside #bgl{} regions, no Beguile references.
     if(!requestAllowedAt(uri, line, col)) return json::array();
 
-    auto docIt = openDocuments.find(uri);
-    if(docIt == openDocuments.end()) return json::array();
-
-    // Extract the word at the cursor
-    istringstream stream(docIt->second);
-    string lineText;
-    for(int i = 0; i <= line; i++) getline(stream, lineText);
-
-    if(col >= (int)lineText.size()) return json::array();
-    int start = col, end = col;
-    while(start > 0 && (isalnum(lineText[start-1]) || lineText[start-1] == '_')) start--;
-    while(end < (int)lineText.size() && (isalnum(lineText[end]) || lineText[end] == '_')) end++;
-    string word = lineText.substr(start, end - start);
-    if(word.empty()) return json::array();
-
-    // Scope-gate: if the symbol is a local or parameter, restrict search to the enclosing
-    // function's line range in the current file. Otherwise scan all open documents.
-    string lowered = word;
-    transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-    LspSymbolRef ref = resolveSymbol(uri, line, col, lowered);
-    bool restrictToFunction = (ref.kind == LspSymbolRef::Local || ref.kind == LspSymbolRef::Parameter);
-    int fnStart1 = -1, fnEnd1 = -1;
-    string restrictFile;
-    if(restrictToFunction) {
-        auto rng = functionLines(uri, line, col, ref.enclosingFunc);
-        fnStart1 = rng.first;
-        fnEnd1   = rng.second + 1;
-        restrictFile = ref.enclosingFunc->src.file;
-    }
-
-    // Search all open documents for whole-word occurrences
+    string word;
     json locations = json::array();
-    for(auto& [docUri, docText] : openDocuments) {
-        // For scope-restricted searches, only scan the file containing the function.
-        if(restrictToFunction) {
-            string docPath = documentParsePaths.count(docUri) ? documentParsePaths[docUri] : uriToPath(docUri);
-            if(docPath != restrictFile) continue;
-        }
-        istringstream docStream(docText);
-        string docLine;
-        int lineNum = 0;  // 0-based LSP line
-        while(getline(docStream, docLine)) {
-            // For scope-restricted: only include lines within the function's range (1-based).
-            int line1Based = lineNum + 1;
-            if(restrictToFunction && (line1Based < fnStart1 || line1Based >= fnEnd1)) { lineNum++; continue; }
-            size_t pos = 0;
-            while(pos < docLine.size()) {
-                size_t found = docLine.find(word, pos);
-                if(found == string::npos) break;
-                bool leftOk = (found == 0) || !(isalnum(docLine[found-1]) || docLine[found-1] == '_');
-                size_t afterEnd = found + word.size();
-                bool rightOk = (afterEnd >= docLine.size()) || !(isalnum(docLine[afterEnd]) || docLine[afterEnd] == '_');
-                if(leftOk && rightOk) {
-                    locations.push_back({
-                        {"uri", docUri},
-                        {"range", {
-                            {"start", {{"line", lineNum}, {"character", (int)found}}},
-                            {"end", {{"line", lineNum}, {"character", (int)afterEnd}}}
-                        }}
-                    });
-                }
-                pos = found + 1;
-            }
-            lineNum++;
-        }
-    }
-
+    for(const WordHit& h : wordOccurrences(uri, line, col, word))
+        locations.push_back({{"uri", h.uri}, {"range", {{"start", {{"line", h.line}, {"character", h.start}}},
+                                                       {"end", {{"line", h.line}, {"character", h.end}}}}}});
     return locations;
 }
 
@@ -4147,73 +4184,15 @@ json LspServer::handleRename(const json& params) {
     // .inf-mode gating: outside #bgl{} regions, refuse to rename (would touch I6 code).
     if(!requestAllowedAt(uri, line, col)) return nullptr;
 
-    auto docIt = openDocuments.find(uri);
-    if(docIt == openDocuments.end()) return nullptr;
-
-    // Extract the word at the cursor
-    istringstream stream(docIt->second);
-    string lineText;
-    for(int i = 0; i <= line; i++) getline(stream, lineText);
-
-    if(col >= (int)lineText.size()) return nullptr;
-    int start = col, end = col;
-    while(start > 0 && (isalnum(lineText[start-1]) || lineText[start-1] == '_')) start--;
-    while(end < (int)lineText.size() && (isalnum(lineText[end]) || lineText[end] == '_')) end++;
-    string oldName = lineText.substr(start, end - start);
-    if(oldName.empty()) return nullptr;
-
-    // Scope-gate (same as handleReferences): locals/parameters only rename within
-    // their enclosing function's line range.
-    string lowered = oldName;
-    transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-    LspSymbolRef ref = resolveSymbol(uri, line, col, lowered);
-    bool restrictToFunction = (ref.kind == LspSymbolRef::Local || ref.kind == LspSymbolRef::Parameter);
-    int fnStart1 = -1, fnEnd1 = -1;
-    string restrictFile;
-    if(restrictToFunction) {
-        auto rng = functionLines(uri, line, col, ref.enclosingFunc);
-        fnStart1 = rng.first;
-        fnEnd1   = rng.second + 1;
-        restrictFile = ref.enclosingFunc->src.file;
-    }
-
-    // Build workspace edit — replace all whole-word occurrences in all open documents
+    string oldName;
     json changes = json::object();
-    for(auto& [docUri, docText] : openDocuments) {
-        if(restrictToFunction) {
-            string docPath = documentParsePaths.count(docUri) ? documentParsePaths[docUri] : uriToPath(docUri);
-            if(docPath != restrictFile) continue;
-        }
-        json edits = json::array();
-        istringstream docStream(docText);
-        string docLine;
-        int lineNum = 0;
-        while(getline(docStream, docLine)) {
-            int line1Based = lineNum + 1;
-            if(restrictToFunction && (line1Based < fnStart1 || line1Based >= fnEnd1)) { lineNum++; continue; }
-            size_t pos = 0;
-            while(pos < docLine.size()) {
-                size_t found = docLine.find(oldName, pos);
-                if(found == string::npos) break;
-                bool leftOk = (found == 0) || !(isalnum(docLine[found-1]) || docLine[found-1] == '_');
-                size_t afterEnd = found + oldName.size();
-                bool rightOk = (afterEnd >= docLine.size()) || !(isalnum(docLine[afterEnd]) || docLine[afterEnd] == '_');
-                if(leftOk && rightOk) {
-                    edits.push_back({
-                        {"range", {
-                            {"start", {{"line", lineNum}, {"character", (int)found}}},
-                            {"end", {{"line", lineNum}, {"character", (int)afterEnd}}}
-                        }},
-                        {"newText", newName}
-                    });
-                }
-                pos = found + 1;
-            }
-            lineNum++;
-        }
-        if(!edits.empty()) changes[docUri] = edits;
+    for(const WordHit& h : wordOccurrences(uri, line, col, oldName)){
+        if(!changes.contains(h.uri)) changes[h.uri] = json::array();
+        changes[h.uri].push_back({{"range", {{"start", {{"line", h.line}, {"character", h.start}}},
+                                             {"end", {{"line", h.line}, {"character", h.end}}}}},
+                                  {"newText", newName}});
     }
-
+    if(oldName.empty()) return nullptr;
     return {{"changes", changes}};
 }
 

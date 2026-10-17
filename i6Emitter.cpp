@@ -1417,6 +1417,16 @@ void i6Emitter::writeSymbolTable(const string& path){
         }
     }
 }
+// The type the debugger is told for a variable: an array keeps its element type and declared size
+// (`array<int>[4]`), which its type name alone ("array") doesn't carry.
+static string debugTypeName(variableDeclaration* vd){
+    auto* arr = dynamic_cast<arrayDeclaration*>(vd);
+    if(arr == nullptr || arr->elementType.empty() || arr->isByteArray) return vd->type.name;
+    string tn = (arr->isRaw ? "rawarray<" : "array<") + arr->elementType + ">";
+    if(arr->arraySize > 0) tn += "[" + std::to_string(arr->arraySize) + "]";
+    return tn;
+}
+
 void i6Emitter::writeTypesFile(const string& path){
     ofstream f(path);
     if(!f.is_open()) return;
@@ -1490,7 +1500,7 @@ void i6Emitter::writeTypesFile(const string& path){
     for(typeDef* node : languageService.globals){
         if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
             if(vd->isExternal || vd->type.name.empty()) continue;
-            f << "global " << vd->name << " " << vd->type.name << "\n";
+            f << "global " << vd->name << " " << debugTypeName(vd) << "\n";
         } else if(auto* od = dynamic_cast<objectDef*>(node)){
             if(od->isExternal || !od->objectClass) continue;
             f << "global " << od->name << " " << od->objectClass->name << "\n";
@@ -1707,7 +1717,7 @@ void i6Emitter::writeDebugBundle(const string& path){
     for(typeDef* node : languageService.globals){
         if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
             if(vd->type.name.empty()) continue;
-            f << "global " << vd->name << " " << vd->type.name << "\n";
+            f << "global " << vd->name << " " << debugTypeName(vd) << "\n";
         } else if(auto* od = dynamic_cast<objectDef*>(node)){
             if(od->isExternal) continue;  // object stubs have no properties to expand
             if(od->objectClass)

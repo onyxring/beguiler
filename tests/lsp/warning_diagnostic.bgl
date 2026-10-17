@@ -1,0 +1,3 @@
+#beguilerSettings { target = z5; }
+int score = 0;
+void main(){ int score = 5; print(score); }
