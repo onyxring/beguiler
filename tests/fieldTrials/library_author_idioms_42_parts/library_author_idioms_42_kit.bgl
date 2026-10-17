@@ -1,0 +1,326 @@
+/*  Field trial part — included by library_author_idioms_42.bgl. Not a trial on its own.  */
+
+#once
+#include <string>
+#include <linq>
+
+// ---- Configuration. ----
+
+#if !FK_MAX_FUSES
+    #define FK_MAX_FUSES 3
+#endif
+
+#if !FK_LOW_PCT
+    #define FK_LOW_PCT 25
+#endif
+
+#if FK_MAX_FUSES > 4
+    #warning "fk: more than four fuses is untried"
+#endif
+
+const int fkMaxFuses = FK_MAX_FUSES;
+const int fkMaxLamps = 4;
+
+// ---- Types. ----
+
+/// Where a lamp is in its life.
+enum eFkState {
+    dark, lit, spent,
+    /// True while the lamp burns.
+    emitter bool burning() { ($self == 2) }
+    /// A one-letter code for listings.
+    emitter char code { ($self + 'a' - 1) }
+}
+
+/// Fuel left against fuel a lamp holds when full.
+struct FkFuel {
+    int left;
+    int full;
+
+    FkFuel operator = (FkFuel o) { left = o.left; full = o.full; return self; }
+
+    /// Burns n units, never below empty.
+    void operator -= (int n) {
+        left -= n;
+        if (left < 0) left = 0;
+    }
+
+    /// Adds n units, never above full.
+    void operator += (int n) {
+        left += n;
+        if (left > full) left = full;
+    }
+
+    /// True when nothing is left.
+    bool empty() { return left <= 0; }
+
+    /// Fuel left as a percentage of full.
+    int pct() {
+        if (full == 0) return 0;
+        return left * 100 / full;
+    }
+
+    /// Prints "left/full".
+    void show() { print($"{left}/{full}"); }
+}
+
+/// A lamp that burns fuel, one unit a turn while lit.
+class FkLamp : object {
+    /// Units of fuel when full.
+    required inline int capacity;
+    FkFuel fuel;
+    eFkState state = eFkState.dark;
+    int burnt = 0;
+    bool warned = false;
+    /// Lamps burning now, across all lamps.
+    static int burningNow = 0;
+    /// Times any lamp was lit.
+    static int lightings = 0;
+
+    /// The lamp's label in listings.
+    default string label() { return "lamp"; }
+
+    /// Printed when the lamp runs dry.
+    default void onEmpty() { print($"The {label()} goes out.^"); }
+
+    /// Printed when the fuel runs low.
+    default void onLow() { print($"The {label()} flickers.^"); }
+
+    /// Fills the lamp from its capacity.
+    void fillUp() {
+        fuel.full = capacity;
+        fuel.left = capacity;
+    }
+
+    /// Lights the lamp; false when it is lit already or spent.
+    bool ignite() {
+        if (state != eFkState.dark) return false;
+        if (fuel.empty()) return false;
+        state = eFkState.lit;
+        give(light);
+        burningNow++;
+        lightings++;
+        return true;
+    }
+
+    /// Puts the lamp out; false when it was not lit.
+    bool snuff() {
+        if (!state.burning()) return false;
+        state = eFkState.dark;
+        ungive(light);
+        burningNow--;
+        return true;
+    }
+
+    /// Burns one turn's fuel.
+    void tick() {
+        if (!state.burning()) return;
+        fuel -= 1;
+        burnt++;
+        if (fuel.empty()) {
+            state = eFkState.spent;
+            ungive(light);
+            burningNow--;
+            onEmpty();
+            fkSpentHook(self);
+            return;
+        }
+        if (!warned && fuel.pct() <= FK_LOW_PCT) {
+            warned = true;
+            onLow();
+        }
+    }
+}
+
+/// A fuse that lights a lamp when it burns down.
+class FkFuse[fkMaxFuses] : object {
+    string short_name = "fuse";
+    int left;
+    int id;
+    FkLamp target;
+    /// Fuses made so far.
+    static int made = 0;
+
+    void create(int delay, FkLamp t) {
+        left = delay;
+        target = t;
+        made++;
+        id = made;
+    }
+
+    void destroy() {
+        target = null;
+    }
+
+    /// Burns down one turn; true when it reaches its lamp.
+    bool tick() {
+        left--;
+        return left <= 0;
+    }
+}
+
+/// Plain output helpers.
+emitter fkOut {
+    void rule()             { print "--^"; }
+    void units(int n)       { print $n, " unit"; if ($n ~= 1) print "s"; }
+    void flag(bool b, char c) { if ($b) print (char) $c; else print "."; }
+}
+
+/// Called when any lamp runs dry; a program may set its own.
+func<void, FkLamp> fkSpentHook = fkQuietSpent;
+
+void fkQuietSpent(FkLamp l) { }
+
+/// The line printed for one lamp in a listing.
+void fkLampLine(FkLamp l) {
+    print($"{l.state.code} {l.label()} ");
+    l.fuel.show();
+    print("^");
+}
+
+// ---- The kit's root. ----
+
+/// The lamps, the fuses and the log.
+object fk {
+    alias lamp  for FkLamp;
+    alias fuse  for FkFuse;
+    alias state for eFkState;
+    alias fuel  for FkFuel;
+    array<FkLamp> lamps[fkMaxLamps];
+    array<FkFuse> fuses[fkMaxFuses];
+    stringObj log;
+    int ticks = 0;
+    int refused = 0;
+
+    /// Adds a lamp, full; false when it is known or the list is full.
+    bool register(lamp l) {
+        if (lamps.contains(l)) return false;
+        if (!lamps.append(l)) return false;
+        l.fillUp();
+        return true;
+    }
+
+    /// The first lamp with a label, or null.
+    lamp find(string what) {
+        for (lamp l in lamps) {
+            if (l.label() == what) return l;
+        }
+        return null;
+    }
+
+    /// Lamps burning now.
+    int litCount() {
+        return lamps.filter((lamp l) => l.state.burning()).count();
+    }
+
+    /// Fuel left in every lamp, and fuel they hold when full.
+    fuel totals() {
+        fuel r;
+        for (lamp l in lamps) {
+            r.full += l.fuel.full;
+            r.left += l.fuel.left;
+        }
+        return r;
+    }
+
+    /// Lights a lamp, logging it.
+    bool ignite(lamp l) {
+        if (!l.ignite()) return false;
+        log += 'L';
+        return true;
+    }
+
+    /// Puts out a lamp, logging it.
+    bool snuff(lamp l) {
+        if (!l.snuff()) return false;
+        log += 'S';
+        return true;
+    }
+
+    /// Sets a fuse that lights a lamp after some turns; null when no fuse is free.
+    fuse arm(lamp l, int delay) {
+        fuse f = new FkFuse(delay, l);
+        if (f == null) {
+            refused++;
+            return null;
+        }
+        fuses.append(f);
+        log += 'F';
+        return f;
+    }
+
+    /// Takes a fuse away without letting it burn down.
+    void disarm(fuse f) {
+        int at = fuses.indexOf(f);
+        if (at < 0) return;
+        fuses.remove(at);
+        delete f;
+        log += 'X';
+    }
+
+    /// The fuse set on a lamp, or null.
+    fuse fuseFor(lamp l) {
+        for (fuse f in fuses) {
+            if (f.target == l) return f;
+        }
+        return null;
+    }
+
+    /// Prints the listing.
+    void list() {
+        fkOut.rule();
+        for (lamp l in lamps) fkLampLine(l);
+        for (fuse f in fuses) print($"fuse {f.id}: {f.target.label()} in {f.left}^");
+        fkOut.rule();
+        fuel t = totals();
+        print("Fuel ");
+        t.show();
+        print($" ({t.pct()}%), {litCount()} lit.^");
+    }
+
+    /// Burns the fuses down and the lamps' fuel, once a turn.
+    void daemon() {
+        ticks++;
+        int i = fuses.length - 1;
+        while (i >= 0) {
+            fuse f = fuses[i];
+            if (f.tick()) {
+                lamp l = f.target;
+                fuses.remove(i);
+                delete f;
+                if (ignite(l)) print($"The fuse lights the {l.label()}.^");
+                else print("The fuse fizzles.^");
+            }
+            i--;
+        }
+        for (lamp l in lamps) l.tick();
+    }
+}
+
+/// Counts over the kit's lamps; present only when used.
+superposed object fkStats {
+    /// Lamps in one state.
+    int inState(eFkState s) {
+        return fk.lamps.filter((FkLamp l) => l.state == s).count();
+    }
+
+    /// The lamp that has burnt longest, or null.
+    FkLamp longest() {
+        FkLamp b = null;
+        for (FkLamp l in fk.lamps) {
+            if (l.burnt > 0 && (b == null || l.burnt > b.burnt)) b = l;
+        }
+        return b;
+    }
+
+    /// Lamps below the low mark, emptiest first.
+    array<FkLamp> low() {
+        return fk.lamps
+            .filter((FkLamp l) => l.fuel.pct() <= FK_LOW_PCT)
+            .orderBy((FkLamp a, FkLamp b) => a.fuel.left - b.fuel.left);
+    }
+}
+
+extend fk {
+    alias stats = fkStats;
+}

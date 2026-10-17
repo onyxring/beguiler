@@ -1,0 +1,816 @@
+#grids
+Room A
+Room A. A frame of twelve beds and three seed packets.
+[win 1] 0: frame ready
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   3333               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 0 cut               |
+[grid 3]
+|Room A | turn 0 | log 1                           |
+> examine basil packet
+A packet of basil seed (B): thirst 1, ripe at 3, 0 sown.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   3333               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 0 cut               |
+[grid 3]
+|Room A | turn 1 | log 1                           |
+> pick 1 1
+Bed A1 picked: bare, moisture 3.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   3333               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 0 cut               |
+[grid 3]
+|Room A | turn 2 | log 1                           |
+> sow basil
+You sow basil in bed A1.
+[win 1] 2: sow B A1
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [b] .  .  .   2333               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A1 growing | 1 up 0 cut            |
+[grid 3]
+|Room A | turn 3 | log 2                           |
+> pick 1 2
+Bed A2 picked: bare, moisture 3.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  b [.] .  .   1333               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A2 bare | 1 up 0 cut               |
+[grid 3]
+|Room A | turn 4 | log 2                           |
+> sow leek
+You sow leek in bed A2.
+The basil in bed A1 is ripe.
+[win 1] 4: sow L A2
+[win 1] 5: A1 ripe
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B [l] .  .   0133               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A2 growing | 2 up 0 cut            |
+[grid 3]
+|Room A | turn 5 | log 4                           |
+> soak 1
+You soak row A: total moisture 11.
+The leek in bed A2 is ripe.
+[win 1] 6: A2 ripe
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B [L] .  .   1044               |
+|B  .  .  .  .   3333               |
+|C  .  .  .  .   2222               |
+|A2 ripe | 2 up 0 cut               |
+[grid 3]
+|Room A | turn 6 | log 5                           |
+> pick 2 3
+Bed B3 picked: bare, moisture 3.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B  L  .  .   1044               |
+|B  .  . [.] .   3333               |
+|C  .  .  .  .   2222               |
+|B3 bare | 2 up 0 cut               |
+[grid 3]
+|Room A | turn 7 | log 5                           |
+> sow carrot
+You sow carrot in bed B3.
+[win 1] 7: sow C B3
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B  L  .  .   1044               |
+|B  .  . [c] .   3323               |
+|C  .  .  .  .   2222               |
+|B3 growing | 3 up 0 cut            |
+[grid 3]
+|Room A | turn 8 | log 6                           |
+> soak 1
+You soak row A: total moisture 11.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B  L  .  .   2144               |
+|B  .  . [c] .   3313               |
+|C  .  .  .  .   2222               |
+|B3 growing | 3 up 0 cut            |
+[grid 3]
+|Room A | turn 9 | log 6                           |
+> report
+Passes 9; 3 planted; 0 wilted.
+Nothing picked.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B  L  .  .   2144               |
+|B  .  . [c] .   3313               |
+|C  .  .  .  .   2222               |
+|B3 growing | 3 up 0 cut            |
+[grid 3]
+|Room A | turn 9 | log 6                           |
+> styles
+Log alert weight: unset; honored no.
+Log normal style known: no.
+Legend shows emphasis: no.
+Timer yes; log links yes.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B  L  .  .   2144               |
+|B  .  . [c] .   3313               |
+|C  .  .  .  .   2222               |
+|B3 growing | 3 up 0 cut            |
+[grid 3]
+|Room A | turn 9 | log 6                           |
+> pick 1 2
+Bed A2 picked: ripe, moisture 1.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B [L] .  .   2144               |
+|B  .  .  c  .   3303               |
+|C  .  .  .  .   2222               |
+|A2 ripe | 3 up 0 cut               |
+[grid 3]
+|Room A | turn 10 | log 6                          |
+> harvest
+You harvest the leek from bed A2.
+[win 1] 10: pick L@A2/2
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A  B [.] .  .   2144               |
+|B  .  .  c  .   3303               |
+|C  .  .  .  .   2222               |
+|A2 bare | 2 up 1 cut               |
+[grid 3]
+|Room A | turn 11 | log 7                          |
+> pick 1 1
+Bed A1 picked: ripe, moisture 2.
+The carrot in bed B3 wilts.
+[win 1] 12: B3 wilted
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [B] .  .  .   2144               |
+|B  .  .  x  .   3303               |
+|C  .  .  .  .   2222               |
+|A1 ripe | 1 up 1 cut               |
+[grid 3]
+|Room A | turn 12 | log 8                          |
+> harvest
+You harvest the basil from bed A1.
+[win 1] 12: pick B@A1/3
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   3303               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 13 | log 9                          |
+> soak 2
+You soak row B: total moisture 13.
+[grid 1]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 14 | log 9                          |
+> legend
+The legend is closed.
+[grid 2]
+|    1  2  3  4                                    |
+|A [.] .  .  .   2144                              |
+|B  .  .  x  .   4414                              |
+|C  .  .  .  .   2222                              |
+|A1 bare | 0 up 2 cut                              |
+[grid 3]
+|Room A | turn 14 | log 9                          |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                                    |
+|A [.] .  .  .   2144                              |
+|B  .  .  x  .   4414                              |
+|C  .  .  .  .   2222                              |
+|A1 bare | 0 up 2 cut                              |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+> legend
+The legend is open (2 times).
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> wider
+The log is now 35 wide.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> narrower
+The log is now 30 wide.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> narrower
+The log is now 25 wide.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> narrower
+The log is now 20 wide.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> narrower
+The log is already 20 wide.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  x  .   4414               |
+|C  .  .  .  .   2222               |
+|A1 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 15 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> pick 2 3
+Bed B3 picked: wilted, moisture 1.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  . [x] .   4414               |
+|C  .  .  .  .   2222               |
+|B3 wilted | 0 up 2 cut             |
+[grid 3]
+|Room A | turn 16 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> harvest
+You clear the wilted bed B3.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  . [.] .   4414               |
+|C  .  .  .  .   2222               |
+|B3 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 17 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  . [.] .   4414               |
+|C  .  .  .  .   2222               |
+|B3 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 18 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> harvest
+There is nothing to harvest.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  . [.] .   4414               |
+|C  .  .  .  .   2222               |
+|B3 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 19 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> pick 3 4
+Bed C4 picked: bare, moisture 2.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2222               |
+|C4 bare | 0 up 2 cut               |
+[grid 3]
+|Room A | turn 20 | log 9                          |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> sow leek
+You sow leek in bed C4.
+[win 1] 20: sow L C4
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [l]  2220               |
+|C4 growing | 1 up 2 cut            |
+[grid 3]
+|Room A | turn 21 | log 10                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> water
+You water bed C4: moisture 2.
+The leek in bed C4 is ripe.
+[win 1] 22: C4 ripe
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [L]  2220               |
+|C4 ripe | 1 up 2 cut               |
+[grid 3]
+|Room A | turn 22 | log 11                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [L]  2220               |
+|C4 ripe | 1 up 2 cut               |
+[grid 3]
+|Room A | turn 23 | log 11                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> harvest
+You harvest the leek from bed C4.
+[win 1] 23: pick L@C4/2
+[grid 2]
+|    1  2  3  4                     |
+|A  .  .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 24 | log 12                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> pick 1 1
+Bed A1 picked: bare, moisture 2.
+[grid 2]
+|    1  2  3  4                     |
+|A [.] .  .  .   2144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 25 | log 12                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> sow carrot
+You sow carrot in bed A1.
+[win 1] 25: sow C A1
+[grid 2]
+|    1  2  3  4                     |
+|A [c] .  .  .   1144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 growing | 1 up 3 cut            |
+[grid 3]
+|Room A | turn 26 | log 13                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                     |
+|A [c] .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 growing | 1 up 3 cut            |
+[grid 3]
+|Room A | turn 27 | log 13                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                     |
+|A [c] .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 growing | 1 up 3 cut            |
+[grid 3]
+|Room A | turn 28 | log 13                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+The carrot in bed A1 wilts.
+[win 1] 29: A1 wilted
+[grid 2]
+|    1  2  3  4                     |
+|A [x] .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 wilted | 0 up 3 cut             |
+[grid 3]
+|Room A | turn 29 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> z
+Time passes.
+[grid 2]
+|    1  2  3  4                     |
+|A [x] .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  .  .   2220               |
+|A1 wilted | 0 up 3 cut             |
+[grid 3]
+|Room A | turn 30 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> pick 3 4
+Bed C4 picked: bare, moisture 0.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 31 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> harvest
+There is nothing to harvest.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 32 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> report
+Passes 32; 0 planted; 2 wilted.
+1. L@A2/2
+2. B@A1/3
+3. L@C4/2
+basil: 1
+leek: 2
+Oldest B@A1/3; youngest L@C4/2.
+By letter: B@A1/3, L@A2/2.
+Row A picked: yes; all aged 2+: yes.
+Same as the first: 1.
+Kinds 2; total age 7.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 32 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> styles
+Log alert weight: unset; honored no.
+Log normal style known: no.
+Legend shows emphasis: no.
+Timer yes; log links yes.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 32 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> examine leek packet
+A packet of leek seed (L): thirst 2, ripe at 2, 2 sown.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 33 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> pick 4 1
+There is no bed 4 1.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 34 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> soak 9
+There is no row 9.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 35 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> sow me
+That is not a seed packet.
+[grid 2]
+|    1  2  3  4                     |
+|A  x  .  .  .   0144               |
+|B  .  .  .  .   4414               |
+|C  .  .  . [.]  2220               |
+|C4 bare | 0 up 3 cut               |
+[grid 3]
+|Room A | turn 36 | log 14                         |
+[grid 4]
+|B basil     |
+|C carrot    |
+|L leek      |
+|. bare x dry|
+|            |
+> legend
+The legend is closed.
+[grid 2]
+|    1  2  3  4                                    |
+|A  x  .  .  .   0144                              |
+|B  .  .  .  .   4414                              |
+|C  .  .  . [.]  2220                              |
+|C4 bare | 0 up 3 cut                              |
+[grid 3]
+|Room A | turn 36 | log 14                         |
+> styles
+Log alert weight: unset; honored no.
+Log normal style known: no.
+Legend shows emphasis: no.
+Timer yes; log links yes.
+[grid 2]
+|    1  2  3  4                                    |
+|A  x  .  .  .   0144                              |
+|B  .  .  .  .   4414                              |
+|C  .  .  . [.]  2220                              |
+|C4 bare | 0 up 3 cut                              |
+[grid 3]
+|Room A | turn 36 | log 14                         |

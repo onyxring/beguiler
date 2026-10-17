@@ -1,0 +1,699 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, forty-third pass: an expression tree and
+// the Visitor pattern. An `Expr` base class with `default` virtual methods (`Accept`, `Precedence`,
+// `IsConst`, `Simplify`, `Kind`) and a static live-node countVisitor; four pooled subclasses (`NumExpr`,
+// `VarExpr`, `BinExpr`, `NegExpr`) with `create()`/`destroy()` and `ref Expr` children bound with `:=`;
+// double dispatch through a `Visitor` base with `default` `VisitXxx` methods and four visitors: an
+// evalVisitor that throws a pooled error, a printVisitor building a `stringObj` with precedence-driven parentheses,
+// a countVisitor filling a member `array<int>` indexed by an enum, and a disposeVisitor that `delete`s every node;
+// a constant-folding `Simplify()` that returns a new node and frees the old subtree; an RPN parser over a
+// `string` (characters, digits, `switch` on a `char`) with an `array<Expr>` stack used through
+// `push`/`pop`, wrapped in try/catch that frees the stack and re-throws; an environment object holding an
+// `array<Binding>` of a struct, searched with `<linq>` `any`/`first`/`filter` and lambdas capturing a
+// parameter; a static-only factory class (`Ex.Num`, `Ex.Bin`) used as a builder DSL with named arguments;
+// a workspace object with parallel `array<Expr>` and `array<string>` members; `?.`/`??` on references,
+// `is()` checks and downcasts; enum switches; interpolation calling class `print()` methods.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eOp { Plus, Minus, Times, Over }
+enum eKind { Number, Variable, Binary, Negation }
+enum eFault { DivByZero, Unbound, BadToken, Underflow, Leftover, OutOfNodes }
+
+string OpSymbol(eOp op) {
+    switch (op) {
+        case eOp.Plus:  return "+";
+        case eOp.Minus: return "-";
+        case eOp.Times: return "*";
+        case eOp.Over:  return "/";
+    }
+    return "?";
+}
+
+//-- Errors ----------------------------------------------------------------------------------------------------
+
+class ExprError[3] : object {
+    eFault Fault;
+    char Symbol;
+    static int Raised;
+
+    void create(eFault f, char c = ' ') {
+        Fault = f;
+        Symbol = c;
+        ExprError.Raised++;
+    }
+
+    string Message() {
+        switch (Fault) {
+            case eFault.DivByZero:  return "division by zero";
+            case eFault.Unbound:    return "unbound variable";
+            case eFault.BadToken:   return "bad token";
+            case eFault.Underflow:  return "stack underflow";
+            case eFault.Leftover:   return "too many operands";
+            case eFault.OutOfNodes: return "out of nodes";
+        }
+        return "?";
+    }
+
+    void print() {
+        print(Message());
+        if (Symbol != ' ') print($" '{Symbol}'");
+    }
+}
+
+// Throws and never returns normally; the C# habit of a helper that builds and throws.
+void Fail(eFault f, char c = ' ') {
+    ExprError e = new ExprError(f, c);
+    throw e;
+}
+
+//-- The tree --------------------------------------------------------------------------------------------------
+
+class Expr : object {
+    static int Live;
+    static int Made;
+
+    default int Accept(Visitor v) { return 0; }
+    default int Precedence() { return 9; }
+    default bool IsConst() { return false; }
+    default Expr Simplify() { return self; }
+    default eKind Kind() { return eKind.Number; }
+}
+
+class NumExpr[12] : Expr {
+    int Value;
+
+    void create(int v) {
+        Value = v;
+        Expr.Live++;
+        Expr.Made++;
+    }
+    void destroy() { Expr.Live--; }
+
+    int Accept(Visitor v) { return v.VisitNum(self); }
+    bool IsConst() { return true; }
+    eKind Kind() { return eKind.Number; }
+}
+
+class VarExpr[6] : Expr {
+    char Letter;
+
+    void create(char n) {
+        Letter = n;
+        Expr.Live++;
+        Expr.Made++;
+    }
+    void destroy() { Expr.Live--; }
+
+    int Accept(Visitor v) { return v.VisitVar(self); }
+    eKind Kind() { return eKind.Variable; }
+}
+
+class BinExpr[10] : Expr {
+    eOp Op;
+    ref Expr Left;
+    ref Expr Right;
+
+    void create(eOp how, Expr l, Expr r) {
+        Op = how;
+        Left := l;
+        Right := r;
+        Expr.Live++;
+        Expr.Made++;
+    }
+    void destroy() { Expr.Live--; }
+
+    int Accept(Visitor v) { return v.VisitBin(self); }
+    int Precedence() { return (Op == eOp.Plus || Op == eOp.Minus) ? 1 : 2; }
+    eKind Kind() { return eKind.Binary; }
+
+    Expr Simplify() {
+        Left := Left.Simplify();
+        Right := Right.Simplify();
+        if (Left.IsConst() && Right.IsConst()) {
+            int a = ((NumExpr)Left).Value;
+            int b = ((NumExpr)Right).Value;
+            if (Op == eOp.Over && b == 0) return self;
+            int v = 0;
+            switch (Op) {
+                case eOp.Plus:  v = a + b;
+                case eOp.Minus: v = a - b;
+                case eOp.Times: v = a * b;
+                case eOp.Over:  v = a / b;
+            }
+            Dispose(self);
+            return Ex.Num(v);
+        }
+        // x * 1 and x + 0 collapse to x.
+        if (Right.IsConst()) {
+            int k = ((NumExpr)Right).Value;
+            if ((Op == eOp.Times && k == 1) || ((Op == eOp.Plus || Op == eOp.Minus) && k == 0)) {
+                Expr keep = Left;
+                Dispose(Right);
+                Left := null;
+                Right := null;
+                BinExpr me = self;
+                delete me;
+                return keep;
+            }
+        }
+        return self;
+    }
+}
+
+class NegExpr[4] : Expr {
+    ref Expr Inner;
+
+    void create(Expr e) {
+        Inner := e;
+        Expr.Live++;
+        Expr.Made++;
+    }
+    void destroy() { Expr.Live--; }
+
+    int Accept(Visitor v) { return v.VisitNeg(self); }
+    int Precedence() { return 3; }
+    eKind Kind() { return eKind.Negation; }
+
+    Expr Simplify() {
+        Inner := Inner.Simplify();
+        if (Inner.IsConst()) {
+            int v = -((NumExpr)Inner).Value;
+            Dispose(self);
+            return Ex.Num(v);
+        }
+        if (Inner.is(NegExpr)) {
+            Expr keep = ((NegExpr)Inner).Inner;
+            NegExpr twice = (NegExpr)Inner;
+            delete twice;
+            NegExpr me = self;
+            delete me;
+            return keep;
+        }
+        return self;
+    }
+}
+
+//-- Factories -------------------------------------------------------------------------------------------------
+
+class Ex {
+    static Expr Num(int v) {
+        NumExpr n = new NumExpr(v);
+        if (n == null) Fail(eFault.OutOfNodes);
+        return n;
+    }
+    static Expr Var(char c) {
+        VarExpr x = new VarExpr(c);
+        if (x == null) Fail(eFault.OutOfNodes);
+        return x;
+    }
+    static Expr Bin(eOp op, Expr left, Expr right) {
+        BinExpr b = new BinExpr(op, left, right);
+        if (b == null) Fail(eFault.OutOfNodes);
+        return b;
+    }
+    static Expr Neg(Expr e) {
+        NegExpr n = new NegExpr(e);
+        if (n == null) Fail(eFault.OutOfNodes);
+        return n;
+    }
+}
+
+//-- Visitors --------------------------------------------------------------------------------------------------
+
+class Visitor : object {
+    int Visits;
+    default int VisitNum(NumExpr n) { Visits++; return 0; }
+    default int VisitVar(VarExpr v) { Visits++; return 0; }
+    default int VisitBin(BinExpr b) {
+        Visits++;
+        b.Left.Accept(self);
+        b.Right.Accept(self);
+        return 0;
+    }
+    default int VisitNeg(NegExpr n) {
+        Visits++;
+        n.Inner.Accept(self);
+        return 0;
+    }
+}
+
+struct Binding {
+    char Key;
+    int Value;
+}
+
+object env {
+    array<Binding> Vars[6];
+
+    bool Has(char name) {
+        return Vars.any((Binding b) => b.Key == name);
+    }
+
+    void Set(char name, int value) {
+        for (int i = 0; i < Vars.length; i++) {
+            if (Vars[i].Key == name) {
+                Vars[i].Value = value;
+                return;
+            }
+        }
+        Binding b;
+        b.Key = name;
+        b.Value = value;
+        Vars += b;
+    }
+
+    int Lookup(char name) {
+        if (!Has(name)) Fail(eFault.Unbound, name);
+        return Vars.filter((Binding b) => b.Key == name).first().Value;
+    }
+
+    void print() {
+        print("env");
+        for (Binding b in Vars) print($" {b.Key}={b.Value}");
+    }
+}
+
+class Evaluator : Visitor {
+    int VisitNum(NumExpr n) {
+        Visits++;
+        return n.Value;
+    }
+    int VisitVar(VarExpr v) {
+        Visits++;
+        return env.Lookup(v.Letter);
+    }
+    int VisitBin(BinExpr b) {
+        Visits++;
+        int l = b.Left.Accept(self);
+        int r = b.Right.Accept(self);
+        switch (b.Op) {
+            case eOp.Plus:  return l + r;
+            case eOp.Minus: return l - r;
+            case eOp.Times: return l * r;
+            case eOp.Over:
+                if (r == 0) Fail(eFault.DivByZero);
+                return l / r;
+        }
+        return 0;
+    }
+    int VisitNeg(NegExpr n) {
+        Visits++;
+        return -n.Inner.Accept(self);
+    }
+}
+
+class Printer : Visitor {
+    stringObj Out;
+
+    void Wrap(Expr part, int outerPrec) {
+        if (part.Precedence() < outerPrec) {
+            Out += "(";
+            part.Accept(self);
+            Out += ")";
+        } else {
+            part.Accept(self);
+        }
+    }
+
+    int VisitNum(NumExpr n) {
+        Visits++;
+        Out += $"{n.Value}";
+        return 0;
+    }
+    int VisitVar(VarExpr v) {
+        Visits++;
+        Out += v.Letter;
+        return 0;
+    }
+    int VisitBin(BinExpr b) {
+        Visits++;
+        int p = b.Precedence();
+        Wrap(b.Left, p);
+        Out += $" {OpSymbol(b.Op)} ";
+        // Right operand of - and / needs parentheses at equal precedence.
+        Wrap(b.Right, (b.Op == eOp.Minus || b.Op == eOp.Over) ? p + 1 : p);
+        return 0;
+    }
+    int VisitNeg(NegExpr n) {
+        Visits++;
+        Out += "-";
+        Wrap(n.Inner, 3);
+        return 0;
+    }
+}
+
+class Counter : Visitor {
+    array<int> ByKind[4];
+
+    void Reset() {
+        ByKind.clear();
+        ByKind.length = 4;
+        Visits = 0;
+    }
+
+    void Tally(Expr e) { ByKind[(int)e.Kind() - 1]++; }
+
+    int VisitNum(NumExpr n) { Tally(n); return ((Visitor)self).VisitNum(n); }
+    int VisitVar(VarExpr v) { Tally(v); return ((Visitor)self).VisitVar(v); }
+    int VisitBin(BinExpr b) { Tally(b); return ((Visitor)self).VisitBin(b); }
+    int VisitNeg(NegExpr n) { Tally(n); return ((Visitor)self).VisitNeg(n); }
+
+    int Total() {
+        int t = 0;
+        for (int k in ByKind) t += k;
+        return t;
+    }
+}
+
+class Disposer : Visitor {
+    int VisitNum(NumExpr n) {
+        Visits++;
+        delete n;
+        return 0;
+    }
+    int VisitVar(VarExpr v) {
+        Visits++;
+        delete v;
+        return 0;
+    }
+    int VisitBin(BinExpr b) {
+        Visits++;
+        b.Left?.Accept(self);
+        b.Right?.Accept(self);
+        delete b;
+        return 0;
+    }
+    int VisitNeg(NegExpr n) {
+        Visits++;
+        n.Inner?.Accept(self);
+        delete n;
+        return 0;
+    }
+}
+
+Evaluator evalVisitor { }
+Printer printVisitor { }
+Counter countVisitor { }
+Disposer disposeVisitor { }
+
+void Dispose(Expr e) {
+    e?.Accept(disposeVisitor);
+}
+
+stringObj Render(Expr e) {
+    printVisitor.Out = "";
+    if (e == null) printVisitor.Out = "(none)";
+    else e.Accept(printVisitor);
+    return printVisitor.Out;
+}
+
+//-- The parser ------------------------------------------------------------------------------------------------
+
+bool IsDigit(char c) { return c >= '0' && c <= '9'; }
+bool IsLetter(char c) { return c >= 'a' && c <= 'z'; }
+
+eOp OpFor(char c) {
+    switch (c) {
+        case '+': return eOp.Plus;
+        case '-': return eOp.Minus;
+        case '*': return eOp.Times;
+    }
+    return eOp.Over;
+}
+
+Expr ParseRpn(string src) {
+    array<Expr> stack[8];
+    try {
+        int i = 0;
+        while (i < src.length) {
+            char c = src[i];
+            if (c == ' ') {
+                i++;
+                continue;
+            }
+            if (IsDigit(c)) {
+                int v = 0;
+                while (i < src.length && IsDigit(src[i])) {
+                    v = v * 10 + (src[i] - '0');
+                    i++;
+                }
+                stack.push(Ex.Num(v));
+                continue;
+            }
+            if (IsLetter(c)) {
+                stack.push(Ex.Var(c));
+            } else if (c == '~') {
+                if (stack.length < 1) Fail(eFault.Underflow, c);
+                stack.push(Ex.Neg(stack.pop()));
+            } else if (c == '+' || c == '-' || c == '*' || c == '/') {
+                if (stack.length < 2) Fail(eFault.Underflow, c);
+                Expr right = stack.pop();
+                Expr left = stack.pop();
+                stack.push(Ex.Bin(OpFor(c), left, right));
+            } else {
+                Fail(eFault.BadToken, c);
+            }
+            i++;
+        }
+        if (stack.length == 0) Fail(eFault.Underflow);
+        if (stack.length > 1) Fail(eFault.Leftover);
+        return stack.pop();
+    } catch (ExprError e) {
+        while (stack.length > 0) Dispose(stack.pop());
+        throw e;
+    }
+}
+
+//-- The workspace ---------------------------------------------------------------------------------------------
+
+object workspace {
+    array<string> Sources = {"3 4 + 2 *", "x 2 * y -", "10 x y - /", "7 \~ 3 +"};
+    array<Expr> Items[4];
+
+    void Clear() {
+        for (Expr e in Items) Dispose(e);
+        Items.clear();
+    }
+
+    int Load() {
+        Clear();
+        int bad = 0;
+        for (string s in Sources) {
+            try {
+                Items += ParseRpn(s);
+            } catch (ExprError e) {
+                bad++;
+                delete e;
+            }
+        }
+        return bad;
+    }
+
+    void Show() {
+        for (int i = 0; i < Items.length; i++) printLine($"{i + 1}: {Render(Items[i])}");
+    }
+}
+
+void Report(stringObj label, Expr e) {
+    try {
+        evalVisitor.Visits = 0;
+        int v = e.Accept(evalVisitor);
+        printLine($"{label} = {v} ({evalVisitor.Visits} visits)");
+    } catch (ExprError err) {
+        printLine($"{label}: {err}");
+        delete err;
+    }
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------------------
+
+verb Build {
+    grammar = {.build};
+    void handler() {
+        int bad = workspace.Load();
+        workspace.Show();
+        printLine($"loaded {workspace.Items.length} bad {bad} live {Expr.Live}");
+    }
+}
+
+verb Bind {
+    grammar = {.bind};
+    void handler() {
+        env.Set('x', 5);
+        env.Set('y', 3);
+        env.Set('x', 6);
+        printLine($"{env}, has z {env.Has('z')}");
+    }
+}
+
+verb Eval {
+    grammar = {.eval};
+    void handler() {
+        for (Expr e in workspace.Items) Report(Render(e), e);
+    }
+}
+
+verb Zero {
+    grammar = {.zero};
+    void handler() {
+        env.Set('y', 6);
+        Report("third", workspace.Items[2]);
+        env.Set('y', 3);
+    }
+}
+
+verb Count {
+    grammar = {.count};
+    void handler() {
+        for (Expr e in workspace.Items) {
+            countVisitor.Reset();
+            e.Accept(countVisitor);
+            printLine($"{Render(e)}: num {countVisitor.ByKind[(int)eKind.Number - 1]} var {countVisitor.ByKind[(int)eKind.Variable - 1]} bin {countVisitor.ByKind[(int)eKind.Binary - 1]} neg {countVisitor.ByKind[(int)eKind.Negation - 1]} total {countVisitor.Total()} visits {countVisitor.Visits}");
+        }
+    }
+}
+
+verb Fold {
+    grammar = {.fold};
+    void handler() {
+        int before = Expr.Live;
+        for (int i = 0; i < workspace.Items.length; i++) {
+            Expr e = workspace.Items[i];
+            workspace.Items[i] = e.Simplify();
+        }
+        workspace.Show();
+        printLine($"live {before} -> {Expr.Live}");
+    }
+}
+
+verb Bad {
+    grammar = {.bad};
+    void handler() {
+        array<string> bad = {"1 +", "1 2", "1 $ 2", "", "\~"};
+        int before = Expr.Live;
+        for (string s in bad) {
+            try {
+                Expr e = ParseRpn(s);
+                printLine($"parsed {Render(e)}");
+                Dispose(e);
+            } catch (ExprError err) {
+                printLine($"[{s}]: {err}");
+                delete err;
+            }
+        }
+        printLine($"live {before} -> {Expr.Live}, raised {ExprError.Raised}");
+    }
+}
+
+verb Dsl {
+    grammar = {.dsl};
+    void handler() {
+        Expr e = Ex.Bin(eOp.Times,
+                        Ex.Neg(Ex.Bin(op: eOp.Minus, left: Ex.Var('x'), right: Ex.Num(1))),
+                        Ex.Bin(eOp.Plus, Ex.Var('y'), Ex.Num(0)));
+        Report(Render(e), e);
+        Expr f = e.Simplify();
+        Report(Render(f), f);
+        Dispose(f);
+        printLine($"live {Expr.Live}");
+    }
+}
+
+verb Simple {
+    grammar = {.simple};
+    void handler() {
+        Expr a = ParseRpn("x 1 * 0 +");
+        Expr b = ParseRpn("x \~ \~");
+        Expr c = ParseRpn("8 0 /");
+        stringObj line = "";
+        line += Render(a);
+        line += " | ";
+        line += Render(b);
+        line += " | ";
+        line += Render(c);
+        printLine(line);
+        a = a.Simplify();
+        b = b.Simplify();
+        c = c.Simplify();
+        printLine($"{Render(a)} | {Render(b)} | {Render(c)}");
+        printLine($"kinds {a.Kind() == eKind.Variable} {b.is(VarExpr)} {c.is(BinExpr)}");
+        Dispose(a);
+        Dispose(b);
+        Dispose(c);
+        printLine($"live {Expr.Live}");
+    }
+}
+
+verb Pool {
+    grammar = {.pool};
+    void handler() {
+        array<Expr> held[16];
+        try {
+            for (int i = 0; i < 16; i++) held += Ex.Num(i);
+            printLine("no limit");
+        } catch (ExprError err) {
+            printLine($"after {held.length}: {err}");
+            delete err;
+        }
+        int sum = 0;
+        for (Expr e in held) sum += ((NumExpr)e).Value;
+        for (Expr e in held) Dispose(e);
+        printLine($"sum {sum} live {Expr.Live}");
+    }
+}
+
+verb Pick {
+    grammar = {.pick};
+    void handler() {
+        Expr found = null;
+        for (Expr e in workspace.Items) {
+            if (e.is(BinExpr) && ((BinExpr)e).Op == eOp.Over) found = e;
+        }
+        Expr none = null;
+        printLine($"division {Render(found)}, nothing {Render(none)}");
+        BinExpr b = found.is(BinExpr) ? (BinExpr)found : null;
+        printLine($"left {Render(b?.Left)} right {Render(b?.Right)}");
+        int consts = workspace.Items.filter((Expr e) => e.IsConst()).count();
+        printLine($"constant items {consts}");
+    }
+}
+
+verb Wipe {
+    grammar = {.wipe};
+    void handler() {
+        disposeVisitor.Visits = 0;
+        workspace.Clear();
+        printLine($"wiped {disposeVisitor.Visits} nodes, live {Expr.Live}, made {Expr.Made}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}

@@ -1,0 +1,540 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a bed frame of three rows by four beds drawn in a text grid split above the main
+// window (the map, with a cursor marked by brackets), a text-buffer log split to the right of the
+// main window with its own styleSheet, and a legend grid split to the right of the map and closed
+// again on request. A global array<array<int>> of moisture levels (nested initializer, [r][c]
+// reads and writes, for-in over rows); a struct Bed (crop object, age, dry turns, wilted flag,
+// copy operator, methods returning char, bool and eStage) kept in a sized global array<Bed> made live
+// by assigning its length; a class Seed : object for three seed packets (letter char, thirst,
+// ripe age, label) with a before() answering Examine; a struct Pick (letter, row, col, age, copy
+// operator, ==) kept in a global array<Pick> and reported with <linq> filter, count, orderBy with a
+// comparator, map, distinct, take, any, all, first and last; an enum eStage switched on for names and
+// glyphs; a mister object whose daemon dries and grows the beds each turn; verbs taking NUMBER
+// NUMBER (pick a bed), NOUN (sow a packet, tested with is()), NUMBER (soak a row) and none (water, harvest, a meta
+// report, a style check through styleHonored, measureStyle, checkStyle, ?.distinguishes and
+// supports, a legend toggle, wider/narrower on the log's width through its Vert view clamped with
+// bgl.util.math); a replaced DrawStatusLine redrawing map and legend; the log written behind a null test
+// with bold for harvests.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define ROWS 3
+#define COLS 4
+#define BED_COUNT 12
+#define PICK_MAX 8
+#define WET_MAX 4
+#define LOG_MIN 20
+#define LOG_MAX 40
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eStage { bare, sprout, grown, ripe, wilted }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 2; };
+    alert = style{ fontWeight = 1; foreColor = $006400; };
+};
+
+styleSheet legendLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz map = null;
+textGridWindowVert legend = null;
+textBufferWindowVert logPane = null;
+
+array<array<int>> moisture = { {3, 3, 3, 3}, {3, 3, 3, 3}, {2, 2, 2, 2} };
+
+int cursorRow = 0;
+int cursorCol = 0;
+int logCount = 0;
+int legendOpenings = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+void note(stringObj text, bool loud = false) {
+    logCount++;
+    if (logPane == null) return;
+    if (loud) logPane.printLine($"{bold}{turns}: {text}{roman}");
+    else logPane.printLine($"{turns}: {text}");
+}
+
+string stageName(eStage s) {
+    switch (s) {
+        case eStage.bare:   return "bare";
+        case eStage.sprout: return "sprouting";
+        case eStage.grown:  return "growing";
+        case eStage.ripe:   return "ripe";
+        case eStage.wilted: return "wilted";
+    }
+    return "?";
+}
+
+int bedIndex(int r, int c) { return r * COLS + c; }
+
+stringObj bedName(int r, int c) {
+    stringObj out = "";
+    out += (char)('A' + r);
+    out += $"{c + 1}";
+    return out;
+}
+
+// ---- seeds ---------------------------------------------------------------------------------------
+
+class Seed : object {
+    attributeList attributes = {scenery};
+    char letter = '?';
+    string label = "seed";
+    int thirst = 1;
+    int ripeAge = 3;
+    int sown = 0;
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"A packet of {label} seed ({letter}): thirst {thirst}, ripe at {ripeAge}, {sown} sown.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. A frame of twelve beds and three seed packets.";
+    attributes = {light};
+}
+
+Seed basil  { "basil packet";  parent = roomA; name = {.basil, .packet};  letter = 'B'; label = "basil";  thirst = 1; ripeAge = 3; }
+Seed carrot { "carrot packet"; parent = roomA; name = {.carrot, .packet}; letter = 'C'; label = "carrot"; thirst = 1; ripeAge = 4; }
+Seed leek   { "leek packet";   parent = roomA; name = {.leek, .packet};   letter = 'L'; label = "leek";   thirst = 2; ripeAge = 2; }
+
+array<Seed> seeds = { basil, carrot, leek };
+
+// ---- beds ----------------------------------------------------------------------------------------
+
+struct Bed {
+    object crop;
+    int age;
+    int dryTurns;
+    bool wilted;
+
+    Bed operator = (Bed o) {
+        crop = o.crop;
+        age = o.age;
+        dryTurns = o.dryTurns;
+        wilted = o.wilted;
+        return self;
+    }
+
+    bool isEmpty() { return crop == null; }
+
+    eStage stage() {
+        if (crop == null) return eStage.bare;
+        if (wilted) return eStage.wilted;
+        Seed s = (Seed)crop;
+        if (age >= s.ripeAge) return eStage.ripe;
+        if (age == 0) return eStage.sprout;
+        return eStage.grown;
+    }
+
+    char glyph() {
+        switch (stage()) {
+            case eStage.bare:   return '.';
+            case eStage.sprout: return ',';
+            case eStage.wilted: return 'x';
+            case eStage.ripe:
+                Seed s = (Seed)crop;
+                return s.letter;
+        }
+        Seed g = (Seed)crop;
+        return g.letter + ('a' - 'A');
+    }
+
+    void reset() {
+        crop = null;
+        age = 0;
+        dryTurns = 0;
+        wilted = false;
+    }
+}
+
+array<Bed> beds[BED_COUNT];
+
+// ---- picks ---------------------------------------------------------------------------------------
+
+struct Pick {
+    char letter;
+    int row;
+    int col;
+    int age;
+
+    Pick operator = (Pick o) {
+        letter = o.letter;
+        row = o.row;
+        col = o.col;
+        age = o.age;
+        return self;
+    }
+
+    bool operator == (Pick o) { return letter == o.letter && row == o.row && col == o.col; }
+    bool operator != (Pick o) { return !(self == o); }
+
+    stringObj text() {
+        stringObj out = "";
+        out += letter;
+        out += '@';
+        out += bedName(row, col);
+        out += $"/{age}";
+        return out;
+    }
+}
+
+array<Pick> picks[PICK_MAX];
+
+int byAge(Pick a, Pick b) { return b.age - a.age; }
+int byLetter(Pick a, Pick b) { return a.letter - b.letter; }
+
+// ---- the mister ----------------------------------------------------------------------------------
+
+object mister {
+    "mister";
+    int passes = 0;
+    int wiltedTotal = 0;
+
+    void daemon() {
+        passes++;
+        for (int r = 0; r < ROWS; r++) {
+            for (int c = 0; c < COLS; c++) {
+                int i = bedIndex(r, c);
+                if (beds[i].isEmpty() || beds[i].wilted) continue;
+                Seed s = (Seed)beds[i].crop;
+                if (beds[i].age >= s.ripeAge) continue;
+                if (moisture[r][c] == 0) {
+                    beds[i].dryTurns++;
+                    if (beds[i].dryTurns >= 2) {
+                        beds[i].wilted = true;
+                        wiltedTotal++;
+                        stringObj msg = $"{bedName(r, c)} wilted";
+                        note(msg);
+                        printLine($"The {s.label} in bed {bedName(r, c)} wilts.");
+                    }
+                    continue;
+                }
+                moisture[r][c] = bgl.util.math.max(moisture[r][c] - s.thirst, 0);
+                beds[i].dryTurns = 0;
+                beds[i].age++;
+                if (beds[i].age == s.ripeAge) {
+                    printLine($"The {s.label} in bed {bedName(r, c)} is ripe.");
+                    stringObj msg = $"{bedName(r, c)} ripe";
+                    note(msg);
+                }
+            }
+        }
+    }
+}
+
+int planted() {
+    int n = 0;
+    for (Bed b in beds) {
+        if (!b.isEmpty() && !b.wilted) n++;
+    }
+    return n;
+}
+
+// ---- the windows ---------------------------------------------------------------------------------
+
+void drawMap() {
+    if (map == null) return;
+    map.clear();
+    map.moveCursor(0, 0);
+    map.print("    1  2  3  4");
+    int r = 0;
+    for (array<int> row in moisture) {
+        map.moveCursor(0, r + 1);
+        stringObj line = "";
+        line += (char)('A' + r);
+        line += ' ';
+        for (int c = 0; c < row.length; c++) {
+            bool here = r == cursorRow && c == cursorCol;
+            line += here ? '[' : ' ';
+            line += beds[bedIndex(r, c)].glyph();
+            line += here ? ']' : ' ';
+        }
+        line += "  ";
+        for (int w in row) line += (char)('0' + w);
+        map.print(line);
+        r++;
+    }
+    map.moveCursor(0, ROWS + 1);
+    map.print($"{bedName(cursorRow, cursorCol)} {stageName(beds[bedIndex(cursorRow, cursorCol)].stage())} | {planted()} up {picks.length} cut");
+}
+
+void drawLegend() {
+    if (legend == null) return;
+    legend.clear();
+    int line = 0;
+    for (Seed s in seeds) {
+        legend.moveCursor(0, line);
+        legend.print($"{s.letter} {s.label}");
+        line++;
+    }
+    legend.moveCursor(0, line);
+    legend.print(". bare x dry");
+}
+
+void openLegend() {
+    legend = map?.splitRightGrid(12, fixed, border, styles: legendLook);
+    if (legend != null) legendOpenings++;
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | log {logCount}");
+    drawMap();
+    drawLegend();
+}
+
+bool Initialise() {
+    location = roomA;
+    beds.length = BED_COUNT;
+    map = bgl.ui.mainWin.splitUpGrid(ROWS + 2, fixed, border);
+    logPane = bgl.ui.mainWin.splitRightBuffer(30, fixed, border, styles: logLook);
+    openLegend();
+    StartDaemon(mister);
+    note("frame ready");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+verb PickBed {
+    grammar = {.pick, NUMBER, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        int c = (int)second - 1;
+        if (r < 0 || r >= ROWS || c < 0 || c >= COLS) {
+            printLine($"There is no bed {(int)noun} {(int)second}.");
+            return;
+        }
+        cursorRow = r;
+        cursorCol = c;
+        printLine($"Bed {bedName(r, c)} picked: {stageName(beds[bedIndex(r, c)].stage())}, moisture {moisture[r][c]}.");
+    }
+}
+
+verb SowBed {
+    grammar = {.sow, NOUN};
+    void handler() {
+        if (!noun.is(Seed)) {
+            printLine("That is not a seed packet.");
+            return;
+        }
+        Seed s = (Seed)noun;
+        int i = bedIndex(cursorRow, cursorCol);
+        if (!beds[i].isEmpty()) {
+            printLine($"Bed {bedName(cursorRow, cursorCol)} is not empty.");
+            return;
+        }
+        beds[i].crop = s;
+        beds[i].age = 0;
+        beds[i].dryTurns = 0;
+        beds[i].wilted = false;
+        s.sown++;
+        printLine($"You sow {s.label} in bed {bedName(cursorRow, cursorCol)}.");
+        stringObj msg = $"sow {s.letter} {bedName(cursorRow, cursorCol)}";
+        note(msg);
+    }
+}
+
+void wet(int r, int c, int amount) {
+    moisture[r][c] = bgl.util.math.min(moisture[r][c] + amount, WET_MAX);
+}
+
+verb WaterBed {
+    grammar = {.water};
+    void handler() {
+        wet(cursorRow, cursorCol, 2);
+        printLine($"You water bed {bedName(cursorRow, cursorCol)}: moisture {moisture[cursorRow][cursorCol]}.");
+    }
+}
+
+verb SoakRow {
+    grammar = {.soak, NUMBER};
+    void handler() {
+        int r = (int)noun - 1;
+        if (r < 0 || r >= ROWS) {
+            printLine($"There is no row {(int)noun}.");
+            return;
+        }
+        for (int c = 0; c < COLS; c++) wet(r, c, 1);
+        array<int> row = moisture[r];
+        int total = 0;
+        for (int w in row) total += w;
+        printLine($"You soak row {(char)('A' + r)}: total moisture {total}.");
+    }
+}
+
+verb Harvest {
+    grammar = {.harvest};
+    void handler() {
+        int i = bedIndex(cursorRow, cursorCol);
+        eStage st = beds[i].stage();
+        if (st == eStage.bare) {
+            printLine("There is nothing to harvest.");
+            return;
+        }
+        if (st == eStage.wilted) {
+            printLine($"You clear the wilted bed {bedName(cursorRow, cursorCol)}.");
+            beds[i].reset();
+            return;
+        }
+        if (st != eStage.ripe) {
+            printLine($"Bed {bedName(cursorRow, cursorCol)} is not ripe yet.");
+            return;
+        }
+        Seed s = (Seed)beds[i].crop;
+        Pick p;
+        p.letter = s.letter;
+        p.row = cursorRow;
+        p.col = cursorCol;
+        p.age = beds[i].age;
+        if (picks.length >= PICK_MAX) picks.remove(0);
+        picks += p;
+        beds[i].reset();
+        printLine($"You harvest the {s.label} from bed {bedName(cursorRow, cursorCol)}.");
+        stringObj msg = $"pick {p.text()}";
+        note(msg, true);
+    }
+}
+
+verb Report {
+    grammar = {.report};
+    meta = true;
+    void handler() {
+        printLine($"Passes {mister.passes}; {planted()} planted; {mister.wiltedTotal} wilted.");
+        if (picks.length == 0) {
+            printLine("Nothing picked.");
+            return;
+        }
+        int n = 0;
+        for (Pick p in picks) {
+            n++;
+            printLine($"{n}. {p.text()}");
+        }
+        for (Seed s in seeds) {
+            int got = picks.filter((Pick p) => p.letter == s.letter).count();
+            if (got > 0) printLine($"{s.label}: {got}");
+        }
+        array<Pick> oldest[PICK_MAX];
+        oldest = picks.orderBy(byAge);
+        printLine($"Oldest {oldest.first().text()}; youngest {oldest.last().text()}.");
+        array<Pick> top[PICK_MAX];
+        top = picks.orderBy(byLetter).take(2);
+        stringObj firstTwo = "";
+        for (Pick p in top) {
+            if (!firstTwo.isEmpty()) firstTwo += ", ";
+            firstTwo += p.text();
+        }
+        printLine($"By letter: {firstTwo}.");
+        bool anyRowA = picks.any((Pick p) => p.row == 0);
+        bool allRipe = picks.all((Pick p) => p.age >= 2);
+        printLine($"Row A picked: {anyRowA ? "yes" : "no"}; all aged 2+: {allRipe ? "yes" : "no"}.");
+        Pick firstPick = picks[0];
+        int repeats = picks.filter((Pick p) => p == firstPick).count();
+        printLine($"Same as the first: {repeats}.");
+        int kinds = picks.map((Pick p) => p.letter).distinct().count();
+        int ageSum = 0;
+        for (var a in picks.map((Pick p) => p.age)) ageSum += (int)a;
+        printLine($"Kinds {kinds}; total age {ageSum}.");
+    }
+}
+
+verb ToggleLegend {
+    grammar = {.legend};
+    meta = true;
+    void handler() {
+        if (legend != null) {
+            legend.close();
+            legend = null;
+            printLine("The legend is closed.");
+            return;
+        }
+        openLegend();
+        if (legend == null) {
+            printLine("There is no room for the legend.");
+            return;
+        }
+        printLine($"The legend is open ({legendOpenings} {countWord(legendOpenings, "time", "times")}).");
+    }
+}
+
+verb CheckLook {
+    grammar = {.styles};
+    meta = true;
+    void handler() {
+        if (logPane == null) {
+            printLine("No log to check.");
+            return;
+        }
+        bool honored = logPane.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.fontWeight);
+        int weight = logPane.measureStyle(eGlulxStyleType.alert, eGlulxStyleHint.fontWeight);
+        printLine($"Log alert weight: {weight == styleUnset ? "unset" : "reported"}; honored {honored ? "yes" : "no"}.");
+        style want = style{ indentation = 2; };
+        eStyleCheck r = logPane.checkStyle(eGlulxStyleType.normal, want);
+        printLine($"Log normal style known: {r.known ? "yes" : "no"}.");
+        printLine($"Legend shows emphasis: {legend?.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.emphasized) ? "yes" : "no"}.");
+        printLine($"Timer {bgl.glulx.supports.timer ? "yes" : "no"}; log links {logPane.supports.hyperlinks ? "yes" : "no"}.");
+    }
+}
+
+void resizeLog(int delta) {
+    if (logPane == null) return;
+    int w = bgl.util.math.max(LOG_MIN, bgl.util.math.min(logPane.width + delta, LOG_MAX));
+    if (w == logPane.width) {
+        printLine($"The log is already {w} wide.");
+        return;
+    }
+    logPane.width = w;
+    printLine($"The log is now {logPane.width} wide.");
+}
+
+verb Wider {
+    grammar = {.wider};
+    meta = true;
+    void handler() { resizeLog(5); }
+}
+
+verb Narrower {
+    grammar = {.narrower};
+    meta = true;
+    void handler() { resizeLog(-5); }
+}
+
+#includeI6 "grammar"

@@ -1,0 +1,474 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a crafting bench driven entirely by tables. Parallel arrays indexed by an enum cast to int
+// (names, dictionary words, stock, caps, values); a recipe cost table as an array of arrays read
+// [recipe][material]; a file-scope array of struct recipes written as positional inline objects with an
+// enum tool and a bnum tag set (combined with |, tested with &); a func<int, int> rule table summed per
+// recipe; a general parsing routine that maps a typed word to a table index through indexOf; NUMBER
+// tokens read with a cast; a reference class of tool objects found by kind and tested by parent; a
+// struct tally updated through a ref parameter; a stringObj cost line built with += and interpolation;
+// an array<int> history used as a stack (push/pop) to undo crafts; an array<string> log kept as a
+// bounded queue (enqueue/dequeue); <linq> filter/orderBy/take/any/all/count/map over the recipe table
+// with lambdas capturing locals; switch on an enum (several values in one case, default) and on an int
+// with ranges and guards; range for-in loops with break and continue; bnum widening to int.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+//-- Constants and enumerations --------------------------------------------------
+
+const int MAT_COUNT = 4;
+const int NOT_FOUND = -1;
+#define LOG_SIZE 4
+#define HISTORY_SIZE 8
+
+enum eMat { wood, iron, cloth, stone }
+enum eTool { none = 0, saw, hammer, needle }
+bnum eTag { sharp, heavy, soft, sturdy }
+
+//-- Material tables (indexed by (int)eMat - 1) -----------------------------------
+
+array<string>         matNames  = { "wood", "iron", "cloth", "stone" };
+array<dictionaryWord> matWords  = { .wood, .iron, .cloth, .stone };
+array<int>            stock     = { 3, 1, 2, 0 };
+array<int>            startStock = { 3, 1, 2, 0 };
+array<int>            stockCap  = { 6, 4, 5, 9 };
+array<int>            yieldEach = { 2, 1, 2, 3 };
+array<int>            matValue  = { 1, 3, 2, 1 };
+
+array<string> toolNames = { "bare hands", "saw", "hammer", "needle" };
+
+array<eTag>   tagList  = { sharp, heavy, soft, sturdy };
+array<string> tagNames = { "sharp", "heavy", "soft", "sturdy" };
+
+//-- Recipes -------------------------------------------------------------------------
+
+struct Recipe {
+    inline int id;
+    inline string label;
+    inline eTool tool;
+    inline eTag tags;
+    int made;
+}
+
+array<Recipe> recipes = {
+    Recipe{ 0, "shelf",    saw,    sturdy | heavy },
+    Recipe{ 1, "rag doll", needle, soft },
+    Recipe{ 2, "knife",    hammer, sharp },
+    Recipe{ 3, "wall",     none,   heavy | sturdy },
+    Recipe{ 4, "cushion",  needle, soft },
+    Recipe{ 5, "spear",    hammer, sharp | heavy }
+};
+
+// Cost of each recipe, one column per material.
+//                              wood iron cloth stone
+array<array<int>> costTable = {
+    {                            2,   1,   0,    0 },   // shelf
+    {                            0,   0,   2,    0 },   // rag doll
+    {                            1,   1,   0,    0 },   // knife
+    {                            0,   0,   0,    3 },   // wall
+    {                            0,   0,   1,    0 },   // cushion
+    {                            2,   2,   0,    0 }    // spear
+};
+
+//-- Value rules -------------------------------------------------------------------
+
+int ruleMaterials(int r) {
+    int v = 0;
+    for (int i in 0 to MAT_COUNT - 1) v += costTable[r][i] * matValue[i];
+    return v;
+}
+
+int ruleTool(int r) {
+    return recipes[r].tool == eTool.none ? 0 : 2;
+}
+
+int ruleTags(int r) {
+    int n = 0;
+    for (eTag t in tagList) {
+        if ((recipes[r].tags & t) != 0) n++;
+    }
+    return n;
+}
+
+array<func<int, int>> valueRules = { ruleMaterials, ruleTool, ruleTags };
+
+int valueOf(int r) {
+    int v = 0;
+    for (func<int, int> rule in valueRules) v += rule(r);
+    return v;
+}
+
+//-- World ---------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+class Tool : object {
+    inline eTool kind;
+}
+
+Tool sawObj    { saw,    "saw";    name = {.saw};    parent = roomA; }
+Tool hammerObj { hammer, "hammer"; name = {.hammer}; parent = roomA; }
+Tool needleObj { needle, "needle"; name = {.needle}; parent = roomA; }
+
+array<Tool> tools = { sawObj, hammerObj, needleObj };
+
+//-- Running state -------------------------------------------------------------------
+
+struct Totals {
+    int crafted;
+    int spent;
+    int undone;
+}
+
+Totals tally;
+array<int> history[HISTORY_SIZE];
+array<string> craftLog[LOG_SIZE];
+
+//-- Lookups ------------------------------------------------------------------------
+
+Tool toolFor(eTool k) {
+    for (Tool t in tools) {
+        if (t.kind == k) return t;
+    }
+    return null;
+}
+
+bool hasTool(eTool k) {
+    if (k == eTool.none) rtrue;
+    Tool t = toolFor(k);
+    return t != null && t.parent == player;
+}
+
+int matIndex(dictionaryWord w) {
+    return matWords.indexOf(w);
+}
+
+int shortfall(int r) {
+    int missing = 0;
+    for (int i in 0 to MAT_COUNT - 1) {
+        int need = costTable[r][i] - stock[i];
+        if (need > 0) missing += need;
+    }
+    return missing;
+}
+
+bool canCraft(int r) {
+    return shortfall(r) == 0 && hasTool(recipes[r].tool);
+}
+
+stringObj costText(int r) {
+    stringObj s;
+    for (int i in 0 to MAT_COUNT - 1) {
+        int q = costTable[r][i];
+        if (q == 0) continue;
+        if (!s.isEmpty()) s += ", ";
+        s += $"{q} {matNames[i]}";
+    }
+    if (s.isEmpty()) s = "nothing";
+    return s;
+}
+
+stringObj tagText(eTag tags) {
+    stringObj s;
+    for (int b = 0; b < tagList.length; b++) {
+        if ((tags & tagList[b]) == 0) continue;
+        if (s.length > 0) s += "+";
+        s += tagNames[b];
+    }
+    return s;
+}
+
+string grade(int value) {
+    switch (value) {
+        case 0:       return "worthless";
+        case 1 to 3:  return "plain";
+        case 4 to 6:  return "useful";
+        case >= 7:    return "fine";
+        default:      return "odd";
+    }
+}
+
+string toolVerb(eTool k) {
+    switch (k) {
+        case saw:            return "cut";
+        case hammer, needle: return "worked";
+        default:             return "stacked";
+    }
+}
+
+void addLog(string line) {
+    if (craftLog.length == LOG_SIZE) craftLog.dequeue();
+    craftLog.enqueue(line);
+}
+
+void spend(ref Totals t, int r) {
+    for (int i in 0 to MAT_COUNT - 1) {
+        stock[i] -= costTable[r][i];
+        t.spent += costTable[r][i];
+    }
+    t.crafted++;
+}
+
+void refund(ref Totals t, int r) {
+    for (int i in 0 to MAT_COUNT - 1) {
+        stock[i] += costTable[r][i];
+        if (stock[i] > stockCap[i]) stock[i] = stockCap[i];
+        t.spent -= costTable[r][i];
+    }
+    t.crafted--;
+    t.undone++;
+}
+
+//-- Grammar helpers -----------------------------------------------------------------
+
+int parseMat() {
+    int at = matIndex(NextWord());
+    if (at == NOT_FOUND) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+bool validRecipe(int r) {
+    if (r < 0 || r >= recipes.length) {
+        printLine($"No recipe {r}.");
+        rfalse;
+    }
+    rtrue;
+}
+
+//-- Verbs -------------------------------------------------------------------------
+
+verb StockTest {
+    grammar = {.stock};
+    void handler() {
+        print("Stock:");
+        for (int i in 0 to MAT_COUNT - 1) print($" {matNames[i]} {stock[i]}/{stockCap[i]}");
+        printLine(".");
+    }
+}
+
+verb GatherTest {
+    grammar = {.gather, parseMat};
+    void handler() {
+        int m = (int)noun;
+        int room = stockCap[m] - stock[m];
+        if (room <= 0) {
+            printLine($"No room for more {matNames[m]}.");
+            return;
+        }
+        int got = yieldEach[m] < room ? yieldEach[m] : room;
+        stock[m] += got;
+        printLine($"Gathered {got} {matNames[m]} ({stock[m]}).");
+    }
+}
+
+verb RecipesTest {
+    grammar = {.recipes};
+    void handler() {
+        for (Recipe r in recipes) {
+            stringObj cost = costText(r.id);
+            print($"{r.id} {r.label}: {cost}; {toolNames[(int)r.tool]}; {tagText(r.tags)}");
+            if (canCraft(r.id)) print(" [ready]");
+            else if (shortfall(r.id) > 0) print($" [short {shortfall(r.id)}]");
+            else print(" [no tool]");
+            print("^");
+        }
+    }
+}
+
+verb CraftTest {
+    grammar = {.craft, NUMBER};
+    void handler() {
+        int r = (int)noun;
+        if (!validRecipe(r)) return;
+        eTool k = recipes[r].tool;
+        if (!hasTool(k)) {
+            printLine($"The {recipes[r].label} needs the {toolNames[(int)k]}.");
+            return;
+        }
+        int missing = shortfall(r);
+        if (missing > 0) {
+            printLine($"Short {missing} for the {recipes[r].label}.");
+            return;
+        }
+        if (history.length == HISTORY_SIZE) {
+            printLine("History full.");
+            return;
+        }
+        spend(tally, r);
+        recipes[r].made++;
+        history.push(r);
+        addLog(recipes[r].label);
+        printLine($"Made the {recipes[r].label} ({toolVerb(k)}); {recipes[r].made} so far.");
+    }
+}
+
+verb UndoTest {
+    grammar = {.uncraft};
+    void handler() {
+        if (history.length == 0) {
+            printLine("Nothing to undo.");
+            return;
+        }
+        int r = history.pop();
+        recipes[r].made--;
+        refund(tally, r);
+        printLine($"Took apart the {recipes[r].label}.");
+    }
+}
+
+verb ReadyTest {
+    grammar = {.ready};
+    void handler() {
+        array<Recipe> ready = recipes.filter((Recipe r) => canCraft(r.id));
+        print($"Ready {ready.count()}:");
+        for (Recipe r in ready) print($" {r.label}");
+        printLine($". Any soft: {ready.any((Recipe r) => (r.tags & soft) != 0)}. All tooled: {ready.all((Recipe r) => r.tool != eTool.none)}.");
+    }
+}
+
+verb RankTest {
+    grammar = {.rank, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        array<Recipe> top = recipes.orderBy((Recipe a, Recipe b) => valueOf(b.id) - valueOf(a.id)).take(n);
+        print($"Top {top.length}:");
+        for (Recipe r in top) {
+            int v = valueOf(r.id);
+            print($" {r.label}={v}({grade(v)})");
+        }
+        printLine(".");
+    }
+}
+
+verb TaggedTest {
+    grammar = {.tagged, NUMBER};
+    void handler() {
+        int b = (int)noun;
+        if (b < 0 || b >= tagList.length) {
+            printLine($"No tag {b}.");
+            return;
+        }
+        eTag want = tagList[b];
+        array<var> ids = recipes.filter((Recipe r) => (r.tags & want) != 0).map((Recipe r) => r.id);
+        print($"{tagNames[b]} (bit {(int)want}):");
+        for (var id in ids) print($" {recipes[(int)id].label}");
+        printLine(".");
+    }
+}
+
+verb CostTest {
+    grammar = {.cost, parseMat};
+    void handler() {
+        int m = (int)noun;
+        int total = 0;
+        int users = 0;
+        print($"Uses of {matNames[m]}:");
+        for (int r = 0; r < recipes.length; r++) {
+            int q = costTable[r][m];
+            if (q == 0) continue;
+            print($" {recipes[r].label}x{q}");
+            total += q;
+            users++;
+        }
+        if (users == 0) print(" none");
+        printLine($"; total {total}.");
+    }
+}
+
+verb FirstShortTest {
+    grammar = {.needs};
+    void handler() {
+        int found = NOT_FOUND;
+        for (int r = 0; r < recipes.length; r++) {
+            if (!hasTool(recipes[r].tool)) continue;
+            if (shortfall(r) > 0) {
+                found = r;
+                break;
+            }
+        }
+        if (found == NOT_FOUND) {
+            printLine("Nothing tooled is short.");
+            return;
+        }
+        print($"First short: {recipes[found].label} needs");
+        for (int i in 0 to MAT_COUNT - 1) {
+            int gap = costTable[found][i] - stock[i];
+            if (gap > 0) print($" {gap} {matNames[i]}");
+        }
+        printLine(".");
+    }
+}
+
+verb LogTest {
+    grammar = {.log};
+    void handler() {
+        print($"Log {craftLog.length}:");
+        for (string s in craftLog) print($" {s}");
+        printLine($". History {history.length}, top {history.peek()}.");
+    }
+}
+
+verb TallyTest {
+    grammar = {.tally};
+    void handler() {
+        int made = 0;
+        for (Recipe r in recipes) made += r.made;
+        printLine($"Crafted {tally.crafted}, spent {tally.spent}, undone {tally.undone}; made {made}.");
+    }
+}
+
+verb ResetTest {
+    grammar = {.reset};
+    void handler() {
+        stock = startStock;
+        history.clear();
+        craftLog.clear();
+        for (int r = 0; r < recipes.length; r++) recipes[r].made = 0;
+        Totals blank;
+        tally = blank;
+        for (Tool t in tools) t.parent = roomA;
+        printLine($"Reset: {stock.length} materials, {history.length} history, {craftLog.length} log.");
+    }
+}
+
+verb PlentyTest {
+    grammar = {.plenty};
+    void handler() {
+        array<int> order = { 0, 1, 2, 3 };
+        order.sort((int a, int b) => stock[b] - stock[a]);
+        print("By stock:");
+        for (int i in order) {
+            if (stock[i] == 0) break;
+            print($" {matNames[i]}={stock[i]}");
+        }
+        int empty = 0;
+        for (int i in order) if (stock[i] == 0) empty++;
+        printLine($"; empty {empty}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

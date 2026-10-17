@@ -1,0 +1,100 @@
+Room A
+Room A. A rack of pigeonholes, a sack and a scale. Room B is east.
+You can see a notice, a sack and a scale here.
+> tally
+R0 G0 B0 Y0 (sack 6, returns 0, filed 0, taken 0p)
+Any full: false.
+> returns
+Returns is empty.
+> x sack
+The sack holds #1R10g #2B45g #3R25g #4G5g #5R15g #6R30g.
+> x scale
+The scale shows 10 grams: 12p.
+> x notice
+The notice reads: "Red first, gold last; heavy costs more."
+Pencilled below: ^ means up and ~ means about.
+A late letter drops into the sack.
+> sort
+You put #1R10g in the red hole.
+> sort letter
+You put #2B45g in the blue hole.
+> x red hole
+The red hole holds #1R10g (10g).
+> tally
+R1 G0 B1 Y0 (sack 5, returns 0, filed 2, taken 0p)
+Any full: false.
+> sort all
+You sort 4 letters; 1 in returns.
+> tally
+R3 G1 B1 Y1 (sack 0, returns 1, filed 6, taken 0p)
+Any full: true.
+> returns
+Returns: #6R30g(r)
+Letter 6 is in returns.
+> retry
+The red hole is still full.
+> x red hole
+The red hole holds #1R10g #5R15g #3R25g (50g).
+> x sack
+The sack is empty.
+> x scale
+The scale is bare.
+> sort
+The sack is empty.
+> frank
+You frank 6 letters for 1.32L.
+> frank
+Nothing to frank.
+> bundle 1
+You bundle 3 from the red hole.
+> bundle 9
+Holes run 1 to 4.
+> bundle 2
+You bundle 1 from the green hole.
+> bundle 4
+You bundle 1 from the gold hole.
+> x gold hole
+The gold hole is empty.
+> retry
+#6R30g goes into the red hole.
+> bundle 1
+Frank them first.
+> frank
+You frank 1 letter for 24p.
+> bundle 3
+You bundle 1 from the blue hole.
+> post
+The out-tray is in Room B.
+> e
+Room B
+Room B. A counter with an out-tray. Room A is west.
+> sort all
+The rack is in Room A.
+> x counter
+The out-tray holds 6 letters.
+> post
+You post 6 (3 heavy).
+> w
+Room A
+Room A. A rack of pigeonholes, a sack and a scale. Room B is east.
+You can see a notice, a sack and a scale here.
+> bundle 2
+The green hole is empty.
+> e
+Room B
+Room B. A counter with an out-tray. Room A is west.
+> post
+The out-tray is empty.
+> post
+The out-tray is empty.
+> w
+Room A
+Room A. A rack of pigeonholes, a sack and a scale. Room B is east.
+You can see a notice, a sack and a scale here.
+> retry
+Returns is empty.
+> returns
+Returns is empty.
+> tally
+R1 G0 B0 Y0 (sack 0, returns 0, filed 7, taken 1.56L)
+Any full: false.

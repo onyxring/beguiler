@@ -1,0 +1,161 @@
+Room A
+Room A. The desk. The shelves are to the north.
+You can see a returns box (which is empty) and a clock here.
+> catalogue
+Red Hills by Ash, 120 pages, on the shelf.
+Blue Lakes by Birch, 80 pages, on the shelf.
+Green Fields by Cedar, 200 pages, on the shelf.
+White Roads by Ash, 60 pages, on the shelf.
+Atlas by Elm, 300 pages, on the shelf.
+Out: 0. Loans ever: 0. Back: 0.
+Nothing has gone out yet.
+Shortest first: 60 80 120 200 300
+Thinnest: WHITE ROADS.
+First on the list has 120 pages.
+> loans
+Day 1. No loans.
+> fines
+Owed: 0p. Paid: 0p.
+Still out would owe: 0p.
+Scale: 0 5 10 15 15
+> find 100
+2 found: Red Hills, Green Fields.
+The red one is there.
+Short list: Red Hills,.
+> find 500
+Nothing with 500 pages or more.
+> n
+Room B
+Room B. The shelves. The desk is to the south.
+You can see a shelf (on which are a red book, a blue book, a green book, a white book and an atlas) here.
+> about atlas
+Elm writes reference books.
+> about red book
+Ash writes about hills and roads.
+> about blue book
+Birch writes about water and land.
+> borrow atlas
+Atlas cannot leave the library.
+> borrow red book
+You borrow Red Hills. It is due on day 6.
+> borrow red book
+Red Hills is already out.
+> renew red book
+Red Hills is now due on day 9 (renewed 1).
+> renew red book
+Red Hills is now due on day 12 (renewed 2).
+> renew red book
+Red Hills has been renewed too often.
+> borrow blue book
+You borrow Blue Lakes. It is due on day 11.
+> borrow green book
+You borrow Green Fields. It is due on day 12.
+> borrow white book
+The desk is full (3 loans).
+> loans
+Day 11. 3 of 3 loans:
+1. Red Hills, out day 3, due day 12, renewed 2
+2. Blue Lakes, out day 8, due day 11
+3. Green Fields, out day 9, due day 12
+> catalogue
+Red Hills by Ash, 120 pages, lent, due day 12, lent 1 times.
+Blue Lakes by Birch, 80 pages, lent, due day 11, lent 1 times.
+Green Fields by Cedar, 200 pages, lent, due day 12, lent 1 times.
+White Roads by Ash, 60 pages, on the shelf.
+Atlas by Elm, 300 pages, on the shelf.
+Out: 3. Loans ever: 3. Back: 0.
+Shortest first: 60 80 120 200 300
+Thinnest: WHITE ROADS.
+First on the list has 120 pages.
+> examine red book
+Red Hills by Ash, 120 pages, lent, due day 12, lent 1 times.
+Blue Lakes is overdue.
+> days 3
+Red Hills is overdue.
+Green Fields is overdue.
+Time passes (3 days).
+> loans
+Day 15. 3 of 3 loans:
+1. Red Hills, out day 3, due day 12, renewed 2 (LATE)
+2. Blue Lakes, out day 8, due day 11 (LATE)
+3. Green Fields, out day 9, due day 12 (LATE)
+> fines
+Owed: 0p. Paid: 0p.
+Still out would owe: 50p.
+Scale: 0 5 10 15 15
+Something has been late.
+> renew blue book
+Blue Lakes is overdue and cannot be renewed.
+> s
+Room A
+Room A. The desk. The shelves are to the north.
+You can see a returns box (which is empty) and a clock here.
+> return blue book
+Blue Lakes is 6 days late: 20p.
+Blue Lakes goes back on the shelf.
+> put green book in box
+Green Fields is 6 days late: 20p.
+You put the green book into the returns box.
+> loans
+Day 19. 1 of 3 loans:
+1. Red Hills, out day 3, due day 12, renewed 2 (LATE)
+> examine green book
+Green Fields by Cedar, 200 pages, in the box, lent 1 times, well read.
+> z
+Time passes.
+The returns box is emptied onto the shelf (1).
+> z
+Time passes.
+> shelved
+Shelf: Green Fields Blue Lakes White Roads Atlas (4)
+Well read in the first four: 2.
+> n
+Room B
+Room B. The shelves. The desk is to the south.
+You can see a shelf (on which are a green book, a blue book, a white book and an atlas) here.
+> shelved
+Shelf: Green Fields Blue Lakes White Roads Atlas (4)
+Well read in the first four: 2.
+> fines
+Owed: 40p. Paid: 0p.
+Still out would owe: 20p.
+Scale: 0 5 10 15 15
+Something has been late.
+> pay 3
+You pay 3p. Owed: 37p.
+> pay 50
+You pay 37p. Owed: 0p.
+> pay 1
+Nothing is owed.
+> days 12
+Between 1 and 9 days.
+> days 9
+Time passes (9 days).
+> return red book
+Red Hills is 24 days late: 20p.
+Red Hills goes back on the shelf.
+> return red book
+Red Hills is not out.
+> loans
+Day 38. No loans.
+> fines
+Owed: 20p. Paid: 40p.
+Still out would owe: 0p.
+Scale: 0 5 10 15 15
+Something has been late.
+> catalogue
+Red Hills by Ash, 120 pages, on the shelf, lent 1 times, well read.
+Blue Lakes by Birch, 80 pages, on the shelf, lent 1 times, well read.
+Green Fields by Cedar, 200 pages, on the shelf, lent 1 times, well read.
+White Roads by Ash, 60 pages, on the shelf.
+Atlas by Elm, 300 pages, on the shelf.
+Out: 0. Loans ever: 3. Back: 3.
+Shortest first: 60 80 120 200 300
+Thinnest: WHITE ROADS.
+First on the list has 120 pages.
+> find 70
+3 found: Red Hills, Blue Lakes, Green Fields.
+The red one is there.
+Short list: Red Hills,.
+> examine blue book
+Blue Lakes by Birch, 80 pages, on the shelf, lent 1 times, well read.

@@ -1,0 +1,255 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a lamp-and-fuse kit and its consumer. The kit is configured by #define symbols set
+// before it (#if with a default, #if on a value, #warning); it declares an enum of lamp states with
+// emitter members, a struct of fuel (copy operator, -= and += with clamping, empty(), pct(), show()),
+// a lamp class with a required positional capacity, an owned fuel struct, a state, static counters,
+// default label()/onEmpty()/onLow() and ignite()/snuff()/tick() that give and take the light
+// attribute; a pooled fuse class sized by a constant, with create(delay, lamp) and destroy() and a
+// static count; an emitter namespace of output helpers; a global func<> hook with a kit default the
+// consumer swaps for a lambda; a kit routine the consumer replaces and chains with replaced(). The
+// kit's root object is a namespace (alias … for the types) holding an array of lamps and an array of
+// pooled fuses, a register/find/ignite/snuff/arm/disarm API, a <linq> lit count, totals() returning
+// the struct, a stringObj log and a daemon that burns fuses down (removing from the array while
+// walking it backwards) and burns fuel; a superposed stats object reached through an alias that
+// `extend` adds, returning a <linq> chain. The consumer extends the lamp class with a refill count and
+// a refill() that throws, declares lamps as objects (some overriding the defaults), and drives them
+// from its own verbs (ignite, snuff, fuse N, unfuse, refill, lamps, stats, log), catching the thrown
+// codes, with a dark room lit by a carried lamp.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define FK_MAX_FUSES 2
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_42_parts/library_author_idioms_42_kit"
+
+extend extern class object {
+    string description;
+}
+
+#using fk
+
+// ---- The consumer's additions to the kit. ----
+
+/// Every lamp can be refilled, and counts its refills.
+extend class FkLamp {
+    int refills = 0;
+
+    /// Fills the lamp again: throws 1 when it is lit, 2 when it is already full.
+    void refill() {
+        if (state.burning()) throw 1;
+        if (fuel.left == fuel.full) throw 2;
+        fuel += fuel.full;
+        refills++;
+        warned = false;
+        if (state == eFkState.spent) state = eFkState.dark;
+    }
+}
+
+replace void fkLampLine(FkLamp l) {
+    fkOut.flag(l.has(light), '*');
+    print(" ");
+    replaced(l);
+}
+
+int spentCount = 0;
+
+// ---- The world. ----
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    attributes = {light};
+    object n_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    object s_to = roomA;
+}
+
+lamp brassLamp {
+    6, "brass lamp";
+    parent = roomA;
+    name = {.brass, .lamp};
+    string label() { return "brass lamp"; }
+}
+
+lamp candle {
+    3, "wax candle";
+    parent = roomA;
+    name = {.wax, .candle};
+    string label() { return "candle"; }
+    void onEmpty() { print("The candle gutters and dies.^"); }
+}
+
+lamp lantern {
+    4, "tin lantern";
+    parent = roomA;
+    name = {.tin, .lantern};
+    string label() { return "lantern"; }
+    void onLow() { print("The lantern dims.^"); }
+}
+
+object stone {
+    "grey stone";
+    parent = roomA;
+    name = {.grey, .stone};
+}
+
+// ---- Verbs. ----
+
+/// The lamp the noun names, or null after saying it isn't one.
+lamp asLamp(object o) {
+    if (!o.is(FkLamp)) {
+        print("That is not a lamp.^");
+        return null;
+    }
+    return (lamp)o;
+}
+
+verb FkIgnite {
+    grammar = {.ignite, NOUN};
+    void handler() {
+        lamp l = asLamp(noun);
+        if (l == null) return;
+        if (fk.ignite(l)) {
+            print($"The {l.label()} is now lit.^");
+            return;
+        }
+        switch (l.state) {
+            case eFkState.lit:   print("It is already lit.^");
+            case eFkState.spent: print("It has no fuel.^");
+            default:             print("It will not light.^");
+        }
+    }
+}
+
+verb FkSnuff {
+    grammar = {.snuff, NOUN};
+    void handler() {
+        lamp l = asLamp(noun);
+        if (l == null) return;
+        if (fk.snuff(l)) print($"The {l.label()} goes dark.^");
+        else print("It is not lit.^");
+    }
+}
+
+verb FkSetFuse {
+    grammar = {.fuse, NOUN, .for, NUMBER};
+    void handler() {
+        lamp l = asLamp(noun);
+        if (l == null) return;
+        int delay = (int)second;
+        if (delay < 1) {
+            print("A fuse needs at least one turn.^");
+            return;
+        }
+        if (fk.fuseFor(l) != null) {
+            print("That lamp already has a fuse.^");
+            return;
+        }
+        fuse f = fk.arm(l, delay);
+        if (f == null) {
+            print("No fuse is free.^");
+            return;
+        }
+        print($"Fuse {f.id} set on the {l.label()} for ");
+        fkOut.units(delay);
+        print(".^");
+    }
+}
+
+verb FkUnfuse {
+    grammar = {.unfuse, NOUN};
+    void handler() {
+        lamp l = asLamp(noun);
+        if (l == null) return;
+        fuse f = fk.fuseFor(l);
+        if (f == null) {
+            print("There is no fuse on it.^");
+            return;
+        }
+        int id = f.id;
+        fk.disarm(f);
+        print($"Fuse {id} removed.^");
+    }
+}
+
+verb FkRefill {
+    grammar = {.refill, NOUN};
+    void handler() {
+        lamp l = asLamp(noun);
+        if (l == null) return;
+        try {
+            l.refill();
+            print($"The {l.label()} is full again (");
+            l.fuel.show();
+            print(").^");
+        } catch (int why) {
+            switch (why) {
+                case 1: print("Not while it is lit.^");
+                case 2: print("It is already full.^");
+            }
+        }
+    }
+}
+
+/// Report verbs: they take no time.
+class FkInfo : verb {
+    meta = true;
+}
+
+FkInfo FkLamps {
+    grammar = {.lamps};
+    void handler() { fk.list(); }
+}
+
+FkInfo FkLog {
+    grammar = {.log};
+    void handler() {
+        print($"log '{fk.log}' ({fk.log.length}), ticks {fk.ticks}, lightings {lamp.lightings}, burning {lamp.burningNow}");
+        print($", fuses made {fuse.made}, refused {fk.refused}, spent {spentCount}^");
+    }
+}
+
+FkInfo FkReport {
+    grammar = {.stats};
+    void handler() {
+        print($"dark {fk.stats.inState(state.dark)}, lit {fk.stats.inState(state.lit)}, spent {fk.stats.inState(state.spent)}");
+        lamp b = fk.stats.longest();
+        print($", longest {(b == null) ? "none" : b.label()}");
+        print(", low:");
+        array<lamp> lows = fk.stats.low();
+        if (lows.length == 0) print(" none");
+        for (lamp l in lows) print($" {l.label()}({l.fuel.left})");
+        print(", refills");
+        for (lamp l in fk.lamps) print($" {l.refills}");
+        print("^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    fk.register(brassLamp);
+    fk.register(candle);
+    fk.register(lantern);
+    fk.register(candle);
+    fkSpentHook = (FkLamp l) => {
+        spentCount++;
+        print($"({l.label()} spent)^");
+    };
+    StartDaemon(fk);
+    rfalse;
+}
+
+#includeI6 "grammar"

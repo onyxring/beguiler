@@ -1,0 +1,519 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small parcel-sorter belt program, on the Z-machine.
+// Routines written above the enum, classes and objects they use; a pooled class mixing in bglAllocated with
+// a defaulted create() parameter, a destroy() keeping a static count, an owned accessor struct whose class
+// declares `operator + (int)` (a kilo, not a gram), an instance `<=>` whose derived orderings meet an int
+// constant, a `default` route() and a `selfType` tag() chained; a pooled subclass with its own pool that
+// inherits create()/destroy(), overrides route() and reaches the base's through a cast on `self`, and
+// replaces the class's print() reaching the global one through `::`; compound assignment through the
+// accessor's own `+` (`p.weight += 1` adds a kilo) and a setter that clamps; an enum with gapped values
+// and an emitter method in its body, given an emitter value by an `extend enum` at the end of the file; a
+// bnum of tags tested with `&` and `==`; an object with an inline `auto` accessor whose setter changes its
+// own parameter and writes the host through `outer`, and a before() whose case list ends in `rtrue(…)` of
+// an interpolated string; a class derived from `verb` that supplies handler() and a `default` work() that
+// the verbs declared through it override; a `(second?) ? … : …` ternary; `for … in` over a list of objects
+// whose first element fixes the type, with `continue` before a stringObj local's declaration and named
+// arguments given out of order to a routine taking `ref stringObj`; a content switch on a stringObj;
+// for-in over `children` moving and deleting the current child; a throw of an object from a lambda passed
+// to a routine, caught by type; a catch that re-throws to an inner try in the same catch; a union of a
+// class and a string narrowed by typeof; a replace chain of a global function; a switch mixing guards,
+// a range and a value list; `?.` on an emptied `ref` member read as an int; `:==`; nested ternaries and
+// a block-bodied lambda inside interpolation spans. A `ref` local of the accessor struct bound to a pooled
+// object's owned member and written through the struct's `+` and setter; a ternary in a for step; a subclass
+// that hides an inherited method, reached through a cast to the base; a file-scope array of func<> holding a
+// function with a replace chain, a static method and a lambda; `break` in a switch inside a while loop
+// (as the last statement and early, under an `if`), and `continue` in a switch inside a do/while.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+#define BELT_LEN 5
+const int LIGHT_LIMIT = 800;
+
+// ---- routines, above the types they use ------------------------------------------------------------------
+
+Chute chuteFor(eChute e) {
+    switch (e) {
+        case lo: return chuteLo;
+        case hi: return chuteHi;
+        default: return chuteMid;
+    }
+}
+
+string sizeWord(int g) {
+    switch (g) {
+        case < 100:           return "tiny";
+        case 100 to 499, 500: return "small";
+        case >= 2000:         return "huge";
+        default:              return "mid";
+    }
+}
+
+void eachOnBelt(func<void, Parcel> fn) {
+    for (Parcel p in onBelt) fn(p);
+}
+
+void stamp(ref stringObj s, Parcel p, string sep = "-", bool loud = false) {
+    s = $"p{sep}{p.code}";
+    if ((p.tags & cold) == cold) s += "-C";
+    if (loud) s = s.toUpper();
+}
+
+Chute | string whereIs(Parcel p) {
+    object par = p.parent;
+    if (par.is(Chute)) return (Chute)par;
+    return par == belt ? "belt" : "floor";
+}
+
+Parcel findParcel(int n) {
+    for (Parcel p in onBelt) if (p.code == n) return p;
+    for (Chute c in { chuteLo, chuteMid, chuteHi }) {
+        for (object o in c.children) {
+            if (((Parcel)o).code == n) return (Parcel)o;
+        }
+    }
+    return null;
+}
+
+int probe(int n) {
+    try {
+        if (n > 3) throw n * 10;
+        return n;
+    } catch (int e) {
+        try {
+            throw e + 1;
+        } catch (int f) {
+            return f;
+        }
+    }
+}
+
+int fee(int g) { return g / 100; }
+replace int fee(int g) { return replaced(g) + 1; }
+replace int fee(int g) { return replaced(g * 1) + 1; }
+
+// ---- types -----------------------------------------------------------------------------------------------
+
+enum eChute {
+    lo = 2, mid, hi = 7,
+    emitter int lane() { ($self % 4) }
+}
+
+bnum eTag { fragile, heavy, cold, rush }
+
+struct Grams {
+    int _g;
+    int  operator ()        { return _g; }
+    void operator = (int v) { _g = v < 0 ? 0 : v; }
+    int  operator + (int kilos) { return _g + kilos * 1000; }
+    int  operator <=> (Grams o) { return _g - o._g; }
+}
+
+class Parcel[4] : object, bglAllocated {
+    int code;
+    eTag tags;
+    Grams weight;
+    static int made = 0;
+    void create(int c, int g = 500) {
+        code = c;
+        weight = g;
+        made++;
+    }
+    void destroy() { made--; }
+    static int kilos(int g) { return g / 1000; }
+    default eChute route() {
+        if ((tags & heavy) == heavy || weight > LIGHT_LIMIT) return hi;
+        return (tags & fragile) == fragile ? lo : mid;
+    }
+    selfType tag(eTag t) {
+        tags = tags | t;
+        return self;
+    }
+    void print() { print($"#{code}"); }
+}
+
+class ColdParcel[2] : Parcel {
+    int temp = -5;
+    eChute route() {
+        eChute base = ((Parcel)self).route();
+        return base == hi ? hi : lo;
+    }
+    replace void print() {
+        ::print($"#{code}*");
+    }
+}
+
+class Chute : object {
+    inline eChute which;
+    inline int cap = 3;
+    int count;
+    ref Parcel last;
+    array<int> codes[4];
+    bool accept(Parcel p) {
+        if (count >= cap) return false;
+        count++;
+        last := p;
+        codes += p.code;
+        p.parent = self;
+        return true;
+    }
+}
+
+class Bin : Chute {
+    hide accept(Parcel);
+    int spills;
+}
+
+// ---- data ------------------------------------------------------------------------------------------------
+
+array<Parcel> onBelt[BELT_LEN];
+array<func<int, int>> fees = { fee, Parcel.kilos, (int g) => g % 7 };
+int seenG = 0;
+stringObj lastLabel;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object belt {
+    "conveyor belt";
+    name = {.conveyor, .belt};
+    int speed = 1;
+    int jams = 0;
+    auto load = {
+        int _n = 0;
+        int  operator () { return _n; }
+        void operator = (int v) {
+            if (v > BELT_LEN) {
+                outer.jams++;
+                v = BELT_LEN;
+            }
+            _n = v * outer.speed;
+        }
+    };
+    parent = roomA;
+    attributes = {scenery};
+    bool before() {
+        switch (action) {
+            case Take, Push: rtrue($"The {self} stays put.^");
+            default:         rfalse;
+        }
+    }
+}
+
+Chute chuteLo  { lo, 2, "low chute"; parent = roomA; attributes = scenery; }
+Chute chuteMid { mid, 3, "middle chute"; parent = roomA; attributes = {scenery}; }
+Chute chuteHi  { hi; instanceName = "high chute"; parent = roomA; attributes = scenery; }
+Bin binA { mid, 1, "spare bin"; parent = roomA; attributes = scenery; }
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+class beltVerb : verb {
+    string done = "ok";
+    void handler() {
+        work();
+        printLine($" ({done}, load {belt.load}).");
+    }
+    default void work() { print("nothing"); }
+}
+
+beltVerb Feed {
+    grammar = { {.feed, NUMBER}, {.feed, NUMBER, .grams | .gr, NUMBER} };
+    done = "fed";
+    void work() {
+        int g = (second?) ? (int)second : 500;
+        Parcel p = new Parcel((int)noun, g);
+        if (p == null) {
+            print("pool empty");
+            return;
+        }
+        p.parent = belt;
+        onBelt += p;
+        belt.load = onBelt.length;
+        print($"{p} on belt, {p.remaining()} left");
+    }
+}
+
+beltVerb Chill {
+    grammar = {.chill, NUMBER};
+    done = "chilled";
+    void work() {
+        ColdParcel c = new ColdParcel((int)noun, 300);
+        if (!c?) {
+            print("cold pool empty");
+            return;
+        }
+        c.tag(cold).tag(fragile);
+        c.parent = belt;
+        onBelt += c;
+        belt.load = onBelt.length;
+        print($"{c} temp {c.tag(rush).temp}");
+    }
+}
+
+beltVerb Idle {
+    grammar = {.idle};
+}
+
+verb Weigh {
+    grammar = {.weigh};
+    void handler() {
+        if (onBelt.length == 0) {
+            printLine("empty belt.");
+            return;
+        }
+        Parcel heaviest = onBelt[0];
+        for (Parcel p in onBelt) if (p.weight > heaviest.weight) heaviest = p;
+        int total = 0;
+        for (int i = 0; i < onBelt.length; i++) total += onBelt[i].weight;
+        print($"heaviest {heaviest} at {heaviest.weight}g, total {total}g, plus a kilo {heaviest.weight + 1}");
+        print($", light {onBelt.filter((Parcel p) => { return p.weight < LIGHT_LIMIT; }).count()}, order");
+        for (Parcel p in onBelt.orderBy((Parcel a, Parcel b) => a.weight <=> b.weight)) print($" {p}");
+        print($", sizes");
+        for (Parcel p in onBelt) print($" {sizeWord(p.weight)}");
+        printLine($", {sizeWord(total)}.");
+    }
+}
+
+verb Mark {
+    grammar = {.mark, NUMBER};
+    void handler() {
+        Parcel p = findParcel((int)noun);
+        if (p == null) return;
+        p.weight += 1;
+        p.tag(heavy);
+        printLine($"{p} now {p.weight}g, heavy {(p.tags & heavy) == heavy}.");
+    }
+}
+
+verb Lighten {
+    grammar = {.lighten, NUMBER};
+    void handler() {
+        Parcel p = findParcel((int)noun);
+        if (p == null) return;
+        p.weight = p.weight - 700;
+        printLine($"{p} now {p.weight}g.");
+    }
+}
+
+verb Jam {
+    grammar = {.jam, NUMBER};
+    void handler() {
+        int limit = (int)noun;
+        seenG = 0;
+        try {
+            eachOnBelt((Parcel p) => {
+                seenG++;
+                if (p.code == limit) throw p;
+            });
+            printLine($"no jam after {seenG}.");
+        } catch (Parcel j) {
+            belt.jams++;
+            printLine($"jam at {j} after {seenG}.");
+        }
+    }
+}
+
+verb SortBelt {
+    grammar = {.sort | .route};
+    void handler() {
+        int moved = 0;
+        for (object o in belt.children) {
+            Parcel p = (Parcel)o;
+            Chute c = chuteFor(p.route());
+            if (c.accept(p)) moved++;
+            else p.parent = roomA;
+        }
+        onBelt = onBelt.filter((Parcel p) => p.parent == belt);
+        belt.load = onBelt.length;
+        print($"sorted {moved}, belt {onBelt.length}:");
+        for (Chute c in { chuteLo, chuteMid, chuteHi }) {
+            print(" [");
+            for (int k in c.codes) print($"{k == c.codes[0] ? "" : " "}{k}");
+            print("]");
+        }
+        printLine(".");
+    }
+}
+
+verb Status {
+    grammar = {.status};
+    meta = true;
+    void handler() {
+        for (Chute c in { chuteLo, chuteMid, chuteHi }) {
+            print($"{c.which.lane()}:{c.count}/{c.cap}{c.count == c.cap ? "!" : c.count == 0 ? "-" : ""} ");
+        }
+        for (func<int, int> f in fees) print($"{f(2500)} ");
+        printLine($"jams {belt.jams} speed {belt.speed} fee {fee(1234)} probe {probe(2)},{probe(5)} last {chuteHi.last?.code}.");
+    }
+}
+
+verb Label {
+    grammar = {.label};
+    void handler() {
+        stringObj all;
+        for (Chute c in { chuteLo, chuteMid, chuteHi }) {
+            if (!c.last?) continue;
+            stringObj one;
+            stamp(loud: c.which == hi, p: c.last, s: one);
+            switch (one) {
+                case "p-1": all += "[first]";
+                default:    all += one;
+            }
+            all += ' ';
+        }
+        lastLabel = all.trim();
+        printLine($"labels: {lastLabel} ({lastLabel.length}), ends {lastLabel.left(3) + lastLabel.right(3)}.");
+    }
+}
+
+verb Where {
+    grammar = {.where, NUMBER};
+    void handler() {
+        Parcel p = findParcel((int)noun);
+        if (p == null) {
+            printLine("none.");
+            return;
+        }
+        Chute | string w = whereIs(p);
+        if (typeof(w) == eType.object) {
+            print($"{p} in {(Chute)w} lane {((Chute)w).which.lane()} limit {((Chute)w).which.limit}");
+        } else {
+            print($"{p} on {(string)w}");
+        }
+        printLine($", last {p :== chuteHi.last}.");
+    }
+}
+
+verb Fast {
+    grammar = {.fast};
+    void handler() {
+        int k = 3;
+        do {
+            k--;
+        } until (k * 2 <= 2);
+        belt.speed = k + 1;
+        belt.load = 9;
+        printLine($"load {belt.load} jams {belt.jams} speed {belt.speed}.");
+    }
+}
+
+verb Purge {
+    grammar = {.purge};
+    void handler() {
+        int n = 0;
+        for (Chute c in { chuteLo, chuteMid, chuteHi }) {
+            for (object o in c.children) {
+                Parcel p = (Parcel)o;
+                delete p;
+                n++;
+            }
+            c.count = 0;
+            c.last := null;
+            c.codes.clear();
+        }
+        for (Parcel q in onBelt) {
+            delete q;
+            n++;
+        }
+        onBelt.clear();
+        belt.load = 0;
+        Parcel spare = new Parcel(0);
+        int free = spare.remaining();
+        delete spare;
+        printLine($"purged {n}, made {Parcel.made}, free {free}.");
+    }
+}
+
+verb Boost {
+    grammar = {.boost, NUMBER};
+    void handler() {
+        Parcel p = findParcel((int)noun);
+        if (p == null) {
+            printLine("none.");
+            return;
+        }
+        ref Grams r := p.weight;
+        r = r + 2;
+        int before = r;
+        for (int i = 0; i < 4; i += i < 2 ? 1 : 3) r = r - 100;
+        printLine($"{p} boosted to {before}g, then {p.weight}g, {r <=> p.weight}.");
+    }
+}
+
+verb Spill {
+    grammar = {.spill};
+    void handler() {
+        if (onBelt.length == 0) {
+            printLine("empty belt.");
+            return;
+        }
+        Parcel p = onBelt.first();
+        bool ok = ((Chute)binA).accept(p);
+        if (!ok) binA.spills++;
+        onBelt -= p;
+        belt.load = onBelt.length;
+        printLine($"{cThe(binA)} took {p}: {ok}, holds {binA.count}, spills {binA.spills}, lane {binA.which.lane()}.");
+    }
+}
+
+verb Scan {
+    grammar = {.scan};
+    void handler() {
+        int tally = 0;
+        int i = 0;
+        while (i < onBelt.length) {
+            eChute r = onBelt[i].route();
+            i++;
+            switch (r) {
+                case hi:
+                    tally += 1000;
+                    break;
+                case lo:
+                    if (i > 0) break;
+                    tally += 100;
+                default:
+                    tally += 10;
+            }
+            tally += 1;
+        }
+        int d = 0;
+        int j = 0;
+        do {
+            j++;
+            switch (j % 3) {
+                case 0:  continue;
+                default: d += j;
+            }
+        } while (j < 4);
+        printLine($"scan {tally} {d}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+extend enum eChute {
+    emitter int limit { ($self * 100) }
+}

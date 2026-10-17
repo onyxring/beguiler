@@ -1,0 +1,491 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, a sack of letters, a rack of
+// four pigeonholes, a scale and an out-tray. A struct letter (an enum zone, a bnum of flags set with
+// `|=` and tested with `&`, a static `<=>` that orders by zone then weight, an `==`, a postage switch
+// mixing a range, guards and `default`, a method returning a `stringObj` tag built from chars and
+// interpolations); a struct of pence with `+`, `+=` and a copy operator; a hole class with positional
+// members (`inline instanceName` re-listed, an `inline eZone`), a member array of letters, a static
+// counter, a method that `throw`s when the hole is full and a computed description; a global sack
+// filled from a manifest read three words at a time with `do`/`until`, trimmed with `remove`, sorted,
+// and a returns array searched with `indexOf`; a daemon that drops in a late letter; a string `switch`
+// on a typed colour word; <linq> `filter`, `first`, `count`, `any`, `all` and `orderBy`; a `NUMBER`
+// grammar token; `#define` values under `#if`/`#else`; hex, binary and char-escape literals, a raw
+// string and `~`/`^`; mixed-case keywords, Allman, K&R and one-line braces, comments between tokens
+// and inside argument lists, a routine written with no optional spaces and declarations split over
+// several lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6   "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define SACK_CAP   8        // letters the sack can hold
+#define HOLE_CAP   3
+#define OUT_CAP    12
+#define VERBOSE    0
+
+const int BASE_RATE = $0C ;            // pence for an ordinary letter
+CONST INT HEAVY     = $$10100 ;        // 20 grams
+const int
+    HEAVIER         = 40 ;
+Const Int LATE_TURN = 3 ;
+
+enum eZone { red , green , /* the odd one */ blue , gold }
+
+bnum bFlag
+{
+    franked ,
+    returned ,   // came back from a full hole
+    bundled
+}
+
+char zoneChar ( eZone z )
+{
+    SWITCH ( z )
+    {
+        case eZone.red   : RETURN 'R' ;
+        case eZone.green : return 'G' ;
+        case eZone.blue  : return 'B' ;
+        default          : return 'Y' ;
+    }
+}
+
+string zoneWord(eZone z){switch(z){case eZone.red:return "red";case eZone.green:return "green";case eZone.blue:return "blue";default:return "gold";}}
+
+// ---- money ----------------------------------------------------------------------------------------
+
+struct Pence
+{
+    int p ;
+
+    Pence operator = ( Pence o ) { p = o.p ; return self ; }
+    Pence operator + ( Pence o ) { Pence r ; r.p = p + o.p ; return r ; }
+    void  operator += ( int n ) { p += n ; }
+
+    stringObj show ()
+    {
+        stringObj s = "" ;
+        if ( p >= 100 ) s += $"{p / 100}." ;
+        int rest = p % 100 ;
+        if ( p >= 100 && rest < 10 ) s += '0' ;
+        s += $"{rest}" ;
+        s += ( p >= 100 ) ? 'L' : 'p' ;
+        return s ;
+    }
+}
+
+Pence takings ;
+
+// ---- letters --------------------------------------------------------------------------------------
+
+/// One letter: a number, the zone it goes to, its weight.
+struct Letter
+{
+    int   id ;
+    eZone zone ;
+    int   grams ;
+    bFlag flags ;
+
+    bool operator == ( Letter o ) { return id == o.id ; }
+    bool operator != ( Letter o ) { return id != o.id ; }
+
+    /// By zone, then the lighter first.
+    static int operator <=> ( Letter a , Letter b )
+    {
+        if ( a.zone != b.zone ) return ( int ) a.zone - ( int ) b.zone ;
+        return a.grams - b.grams ;
+    }
+
+    int postage ()
+    {
+        switch ( grams )
+        {
+            case < 1         : return 0 ;
+            case 1 to HEAVY  : return BASE_RATE ;
+            case > HEAVIER   : return BASE_RATE * 3 ;
+            default          : return BASE_RATE * 2 ;
+        }
+    }
+
+    stringObj tag ()
+    {
+        stringObj s = $"#{id}" ;
+        s += zoneChar( zone ) ;
+        s += $"{grams}g" ;
+        if ( flags & bFlag.franked ) s += '*' ;
+        if ( flags & bFlag.returned ) s += '\~' ;
+        return s ;
+    }
+}
+
+/* id, zone, grams -- three words a letter */
+array<int> manifest =
+{
+    1 , 1 , 10 ,
+    2 , 3 , 45 ,
+    3 , 1 , 25 ,
+    4 , 2 , 5 ,
+    5 , 1 , $0F ,                      // fifteen grams
+    6 , 1 , 30
+} ;
+
+array<Letter> sack[ SACK_CAP ] ;
+array<Letter> returns[ SACK_CAP ] ;
+array<Letter> outTray[ OUT_CAP ] ;
+
+void fillSack ()
+{
+    int i = 0 ;
+    do
+    {
+        Letter l ;
+        l.id    = manifest[ i ] ;
+        l.zone  = ( eZone ) manifest[ i + 1 ] ;
+        l.grams = manifest[ i + 2 ] ;
+        sack += l ;
+        i += 3 ;
+    }
+    until ( i >= manifest.length ) ;
+}
+
+// ---- rooms ----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A rack of pigeonholes, a sack and a scale. Room B is east." ;
+    object e_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A counter with an out-tray. Room A is west." ;
+    object w_to = roomA ;
+}
+
+object counter
+{
+    "counter" ; parent = roomB ; name = { .counter , .out-tray , .tray } ;
+    attributes = { static , scenery } ;
+    void description () { printLine( $"The out-tray holds {outTray.length} letter{outTray.length == 1 ? "" : "s"}." ) ; }
+}
+
+object notice
+{
+    "notice" ;
+    parent = roomA ;
+    name   = { .notice , .white } ;
+    void description ()
+    {
+        printLine( "The notice reads: ~Red first, gold last; heavy costs more.~" ) ;
+        printLine( @"Pencilled below: ^ means up and ~ means about." ) ;
+    }
+}
+
+object sackObj
+{
+    "sack" ;
+    parent     = roomA ;
+    name       = { .sack , .bag } ;
+    attributes = { static } ;
+    void description ()
+    {
+        if ( sack.length == 0 ) { printLine( "The sack is empty." ) ; return ; }
+        print( "The sack holds" ) ;
+        for ( Letter l in sack ) print( $" {l.tag()}" ) ;
+        printLine( "." ) ;
+    }
+}
+
+// ---- holes ----------------------------------------------------------------------------------------
+
+class Hole : object
+{
+    inline instanceName ;
+    inline eZone zone = eZone.red ;
+    array<Letter> held[ HOLE_CAP ] ;
+    attributeList attributes = { static , scenery } ;
+
+    static int filed = 0 ;
+
+    bool full () { return held.length >= HOLE_CAP ; }
+
+    int weight ()
+    {
+        int g = 0 ;
+        for ( Letter l in held ) g += l.grams ;
+        return g ;
+    }
+
+    /// Files a letter here; throws when the hole is full.
+    void take ( Letter l )
+    {
+        if ( full() ) throw "full" ;
+        held += l ;
+        Hole.filed++ ;
+    }
+
+    void description ()
+    {
+        if ( held.length == 0 ) { printLine( $"The {zoneWord( zone )} hole is empty." ) ; return ; }
+        print( $"The {zoneWord( zone )} hole holds" ) ;
+        for ( int i = 0 ; i < held.length ; i++ ) print( $" {held[ i ].tag()}" ) ;
+        printLine( $" ({weight()}g)." ) ;
+    }
+}
+
+Hole holeR { "red hole"   , eZone.red ;   name = { .red , .hole } ;   parent = roomA ; }
+Hole holeG { "green hole" , eZone.green ; name = { .green , .hole } ; parent = roomA ; }
+Hole holeB
+{
+    "blue hole" ,
+    eZone.blue ;                        // zone by position
+    name   = { .blue , .hole } ;
+    parent = roomA ;
+}
+Hole holeY { "gold hole" , eZone.gold ; name = { .gold , .yellow , .hole } ; parent = roomA ; }
+
+array<Hole> holes = { holeR , holeG , holeB , holeY } ;
+
+Hole holeFor ( eZone z ) { return holes.filter( ( Hole h ) => h.zone == z ).first() ; }
+
+Hole holeAt ( int n )
+{
+    if ( n < 1 || n > holes.length ) return null ;
+    return holes[ n - 1 ] ;
+}
+
+array<string> zoneOrder = { "red" , "green" , "blue" , "gold" } ;   // the order Tally shows
+
+eZone zoneOf ( string w )
+{
+    switch ( w )
+    {
+        case "red" , "r"     : return eZone.red ;
+        case "green"         : return eZone.green ;
+        case "blue"          : return eZone.blue ;
+        default              : return eZone.gold ;
+    }
+}
+
+// ---- the scale and its daemon ---------------------------------------------------------------------
+
+object scale
+{
+    "scale" ;
+    parent     = roomA ;
+    name       = { .scale , .scales } ;
+    attributes = { static } ;
+    int ticks  = 0 ;
+
+    void description ()
+    {
+        if ( sack.length == 0 ) { printLine( "The scale is bare." ) ; return ; }
+        Letter top = sack[ 0 ] ;
+        printLine( $"The scale shows {top.grams} grams: {top.postage()}p." ) ;
+    }
+
+    void daemon ()
+    {
+        ticks++ ;
+        if ( ticks != LATE_TURN ) return ;
+        Letter late ;
+        late.id    = $07 ;
+        late.zone  = eZone.gold ;
+        late.grams = 50 ;
+        if ( !sack.append( late ) ) return ;
+        if ( location == roomA ) printLine( "^A late letter drops into the sack." ) ;
+    }
+}
+
+// ---- startup --------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    fillSack() ;
+    StartDaemon( scale ) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb SortNext
+{
+    grammar = { { .sort } , { .sort , .letter } } ;
+    void handler ()
+    {
+        if ( location != roomA ) { printLine( "The rack is in Room A." ) ; return ; }
+        if ( sack.length == 0 )  { printLine( "The sack is empty." ) ; return ; }
+        Letter l = sack[ 0 ] ;
+        sack.remove( 0 ) ;
+        Hole h = holeFor( l.zone ) ;
+        Try
+        {
+            h.take( l ) ;
+        }
+        Catch ( string why )
+        {
+            l.flags |= bFlag.returned ;
+            returns += l ;
+            printLine( $"{cThe( h )} is {why}; {l.tag()} goes to returns." ) ;
+            return ;
+        }
+        printLine( $"You put {l.tag()} in {the( h )}." ) ;
+    }
+}
+
+verb SortAll
+{
+    grammar = { .sort , .all } ;
+    void handler ()
+    {
+        if ( location != roomA ) { printLine( "The rack is in Room A." ) ; return ; }
+        sack.sort() ;
+        int n = 0 ;
+        while ( sack.length > 0 )
+        {
+            Letter l = sack[ 0 ] ;
+            sack.remove( 0 ) ;
+            try { holeFor( l.zone ).take( l ) ; n++ ; }
+            catch ( string why ) {
+                l.flags |= bFlag.returned ;
+                returns += l ;
+            }
+        }
+        printLine( $"You sort {n} letter{n == 1 ? "" : "s"}; {returns.length} in returns." ) ;
+    }
+}
+
+verb Frank
+{
+    grammar = { { .frank } , { .frank , .letters } } ;
+    void handler ()
+    {
+        int n = 0 ;
+        Pence due ;
+        for ( Hole h in holes )
+        {
+            for ( int i = 0 ; i < h.held.length ; i++ )
+            {
+                if ( h.held[ i ].flags & bFlag.franked ) continue ;
+                h.held[ i ].flags |= bFlag.franked ;
+                due += h.held[ i ].postage() ;
+                n++ ;
+            }
+        }
+        if ( n == 0 ) { printLine( "Nothing to frank." ) ; return ; }
+        takings = takings + due ;
+        printLine( $"You frank {n} letter{n == 1 ? "" : "s"} for {due.show()}." ) ;
+    }
+}
+
+verb Bundle {
+    grammar = { .bundle , NUMBER } ;
+    void handler () {
+        Hole h = holeAt( ( int ) noun ) ;
+        if ( h == null ) { printLine( $"Holes run 1 to {holes.length}." ) ; return ; }
+        if ( h.held.length == 0 ) { printLine( $"{cThe( h )} is empty." ) ; return ; }
+        array<Letter> moving[ HOLE_CAP ] ;
+        moving = h.held ;
+        if ( !moving.all( ( Letter l ) => ( l.flags & bFlag.franked ) != 0 ) ) { printLine( "Frank them first." ) ; return ; }
+        int n = 0 ;
+        for ( int i = 0 ; i < moving.length ; i++ )
+        {
+            moving[ i ].flags |= bFlag.bundled ;
+            if ( outTray.append( moving[ i ] ) ) n++ ;
+        }
+        h.held.clear() ;
+        printLine( $"You bundle {n} from {the( h )}." ) ;
+    }
+}
+
+verb Retry
+{
+    grammar = { .retry } ;
+    void handler ()
+    {
+        if ( returns.length == 0 ) { printLine( "Returns is empty." ) ; return ; }
+        Letter l = returns[ 0 ] ;
+        Hole h = holeFor( l.zone ) ;
+        if ( h.full() ) { printLine( $"{cThe( h )} is still full." ) ; return ; }
+        returns.remove( 0 ) ;
+        l.flags = l.flags ^ bFlag.returned ;
+        h.take( l ) ;
+        printLine( $"{l.tag()} goes into {the( h )}." ) ;
+    }
+}
+
+verb PostOut
+{
+    grammar = { { .post } , { .post , .tray } } ;
+    void handler ()
+    {
+        if ( location != roomB ) { printLine( "The out-tray is in Room B." ) ; return ; }
+        if ( outTray.length == 0 ) { printLine( "The out-tray is empty." ) ; return ; }
+        int heavyOnes = outTray.filter( ( Letter l ) => l.grams > HEAVY ).count() ;
+        printLine( $"You post {outTray.length} ({heavyOnes} heavy)." ) ;
+        outTray.clear() ;
+    }
+}
+
+verb Tally
+{
+    meta    = true ;
+    grammar = { .tally } ;
+    void handler ()
+    {
+        stringObj row = "" ;
+        for ( string w in zoneOrder )
+        {
+            Hole h = holeFor( zoneOf( w ) ) ;
+            row += zoneChar( h.zone ) ;
+            row += $"{h.held.length}" ;
+            row += ' ' ;
+        }
+        row = row.trimRight() ;
+        row.print() ;
+        printLine( $" (sack {sack.length}, returns {returns.length}, filed {Hole.filed}, taken {takings.show()})" ) ;
+#if VERBOSE > 0          // a bare name only tests that it is defined
+        printLine( $"Ticks: {scale.ticks}." ) ;
+#else
+        printLine( $"Any full: {holes.any( ( Hole h ) => h.full() )}." ) ;
+#endif
+    }
+}
+
+verb ShowReturns
+{
+    meta    = TRUE ;
+    grammar = { .returns } ;
+    void handler ()
+    {
+        if ( returns.length == 0 ) { printLine( "Returns is empty." ) ; return ; }
+        stringObj line = "Returns:" ;
+        for ( Letter l in returns.orderBy( ( Letter a , Letter b ) => b.grams - a.grams ) )
+        {
+            line += ' ' ;
+            line += l.tag() ;
+        }
+        printLine( line.replaceAll( '\~' , "(r)" ) ) ;
+        Letter probe ;
+        probe.id = 6 ;
+        int at = returns.indexOf( probe ) ;
+        printLine( $"Letter 6 is {at < 0 ? "not in returns" : "in returns"}." ) ;
+    }
+}

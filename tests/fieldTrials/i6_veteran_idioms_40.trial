@@ -1,0 +1,235 @@
+Composing Room
+Composing Room. A type case stands against the wall. The press room is north.
+You can see a type case (in which are three sorts (a P sort, an O sort and a T sort)), a composing stick (which is empty) and an ink roller here.
+> proofs
+Impressions 0, blank 0: none.
+Stick: 0 sorts, ink 1, timer 0. Roller 2. Found 0. Score 0 of 3.
+> smell
+Ink and machine oil.
+> x case
+A shallow wooden case divided into compartments.
+> take case
+The case is screwed to the wall.
+> x p sort
+A piece of type with a reversed P on its face.
+> take p sort
+Taken.
+> i
+You're carrying:
+  a P sort
+> take sorts
+O sort: Taken.
+T sort: Taken.
+> i
+You're carrying:
+  three sorts:
+    a T sort
+    an O sort
+    a P sort
+> x stick
+A steel stick for setting type. It holds nothing.
+> put roller in case
+(first taking the ink roller)
+Only type goes in the case.
+> put p sort in stick
+You set the P sort in the stick. It reads P.
+> put o sort in stick
+You set the O sort in the stick. It reads PO.
+> put t sort in stick
+You set the T sort in the stick. It reads POT.
+> x stick
+A steel stick for setting type. It holds POT.
+> take stick
+Taken.
+> x roller
+A rubber roller on a handle. It is tacky with ink.
+> ink stick
+You roll ink over the type.
+> take roller
+You already have the ink roller.
+> x stick
+A steel stick for setting type. It holds POT, wet with ink.
+> ink stick
+You roll ink over the type.
+> x stick
+A steel stick for setting type. It holds POT, wet with ink.
+> z
+Time passes.
+> z
+Time passes.
+The ink on the type dries to a dull crust.
+> put o sort in case
+(first taking the O sort out of the composing stick)
+You put the O sort into the type case.
+> n
+Press Room
+Press Room. An iron hand press fills the room. The composing room is south.
+You can see an ink tin and a hand press here.
+> put roller on press
+Only the composing stick fits the bed.
+> put stick on press
+You put the composing stick on the hand press.
+> pull bar
+The sheet comes away blank.
+> take stick
+Taken.
+> distribute stick
+The type case is in the composing room.
+> s
+Composing Room
+Composing Room. A type case stands against the wall. The press room is north.
+You can see a type case (in which is an O sort) here.
+> distribute stick
+You put 2 sorts back in the case.
+> put t sort in stick
+(first taking the T sort out of the type case)
+You set the T sort in the stick. It reads T.
+> put o sort in stick
+(first taking the O sort out of the type case)
+You set the O sort in the stick. It reads TO.
+> put p sort in stick
+(first taking the P sort out of the type case)
+You set the P sort in the stick. It reads TOP.
+> ink stick with roller
+The roller is dry.
+> ink stick
+The roller is dry.
+> n
+Press Room
+Press Room. An iron hand press fills the room. The composing room is south.
+You can see an ink tin and a hand press here.
+> touch tin
+You work the roller through the ink.
+> x roller
+A rubber roller on a handle. It is tacky with ink.
+> ink stick with roller
+You roll ink over the type.
+> put stick on press
+You put the composing stick on the hand press.
+> proofs
+Impressions 1, blank 1: (blank).
+Stick: 3 sorts, ink 2, timer 1. Roller 1. Found 0. Score 0 of 3.
+> pull bar
+You pull the bar. The sheet reads TOP: TOP.
+[The score has just gone up by one point.]
+> pull bar
+The sheet comes away blank.
+> proofs
+Impressions 3, blank 2: (blank) TOP (blank).
+Stick: 3 sorts, ink 3, timer 0. Roller 1. Found 2. Score 1 of 3.
+> take stick
+Taken.
+> s
+Composing Room
+Composing Room. A type case stands against the wall. The press room is north.
+You can see a type case (which is empty) here.
+> distribute stick
+You put 3 sorts back in the case.
+> put p sort in stick
+(first taking the P sort out of the type case)
+You set the P sort in the stick. It reads P.
+> put o sort in stick
+(first taking the O sort out of the type case)
+You set the O sort in the stick. It reads PO.
+> put t sort in stick
+(first taking the T sort out of the type case)
+You set the T sort in the stick. It reads POT.
+> ink stick
+You roll ink over the type.
+> n
+Press Room
+Press Room. An iron hand press fills the room. The composing room is south.
+You can see an ink tin and a hand press here.
+> z
+Time passes.
+> z
+Time passes.
+The ink on the type dries to a dull crust.
+> z
+Time passes.
+> put stick on press
+You put the composing stick on the hand press.
+> pull bar
+The sheet comes away blank.
+> take stick
+Taken.
+> ink stick
+The roller is dry.
+> put stick on press
+You put the composing stick on the hand press.
+> push press
+The sheet comes away blank.
+> take stick
+Taken.
+> s
+Composing Room
+Composing Room. A type case stands against the wall. The press room is north.
+You can see a type case (which is empty) here.
+> distribute stick
+You put 3 sorts back in the case.
+> put o sort in stick
+(first taking the O sort out of the type case)
+You set the O sort in the stick. It reads O.
+> put p sort in stick
+(first taking the P sort out of the type case)
+You set the P sort in the stick. It reads OP.
+> put t sort in stick
+(first taking the T sort out of the type case)
+You set the T sort in the stick. It reads OPT.
+> n
+Press Room
+Press Room. An iron hand press fills the room. The composing room is south.
+You can see an ink tin and a hand press here.
+> touch tin
+You work the roller through the ink.
+> ink t sort
+You roll ink over the type.
+> x stick
+A steel stick for setting type. It holds OPT, wet with ink.
+> put stick on press
+You put the composing stick on the hand press.
+> turn press
+You pull the bar. The sheet reads OPT: OPT.
+[The score has just gone up by one point.]
+> take stick
+Taken.
+> ink stick
+You roll ink over the type.
+> put stick on press
+You put the composing stick on the hand press.
+> pull bar
+You pull the bar. The sheet reads OPT: OPT.
+> proofs
+Impressions 7, blank 4: (blank) OPT OPT.
+Stick: 3 sorts, ink 3, timer 0. Roller 0. Found 6. Score 2 of 3.
+> x roller
+A rubber roller on a handle. It is dry.
+> touch tin
+You work the roller through the ink.
+> touch tin
+You work the roller through the ink.
+> x roller
+A rubber roller on a handle. It is thick with ink.
+> ink stick
+You roll ink over the type.
+> x roller
+A rubber roller on a handle. It is tacky with ink.
+> s
+Composing Room
+Composing Room. A type case stands against the wall. The press room is north.
+You can see a type case (which is empty) here.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> n
+Press Room
+Press Room. An iron hand press fills the room. The composing room is south.
+You can see an ink tin and a hand press (on which is a composing stick (in which are three sorts (a T sort, a P sort and an O sort))) here.
+> x stick
+A steel stick for setting type. It holds OPT.
+> proofs
+Impressions 7, blank 4: (blank) OPT OPT.
+Stick: 3 sorts, ink 1, timer 0. Roller 3. Found 6. Score 2 of 3.

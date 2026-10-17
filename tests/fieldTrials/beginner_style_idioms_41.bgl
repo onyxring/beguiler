@@ -1,0 +1,657 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a forty-first first-time-programmer program, a lending desk where books are taken off a
+// shelf, lent out for a few days, renewed, become overdue, run up fines that are paid, and are put back
+// through a returns box that empties itself onto the shelf, written the way a beginner writes it after
+// reading the spec once. Counts in int globals with consts for the loan length, the fine per day, the
+// fine cap and how many loans fit, bool flags, an enum for where a book is kept in a class member and
+// switched on, a class of books (title, author, pages, a state, a due day, a static count of loans, a
+// method that says whether it can be lent, one that prints a line about it, a before() for Examine)
+// with a subclass for reference books that replaces the can-lend method, a struct for a loan holding
+// a book and some days (default copy) kept in an array of the struct sized by a const (+= / remove /
+// [i] written back), a helper that throws a reason code caught in the verb and switched on, helper
+// functions with a default argument and called with a named argument, a string switch on an author,
+// a clock object with a daemon that moves the day on and marks loans overdue, a returns box container
+// whose after() takes Receive and starts a timer whose time_out moves its children back to a shelf
+// supporter, children loops, give / has on a custom attribute, C-style for loops with break and
+// continue, a while loop, a do/while, for-in over a books array, over the loans and over a literal
+// list, <linq> filter / count / any / all / orderBy / first / map, stringObj text built with += and
+// interpolation, toUpper, left and contains, and verbs with no noun, one noun and a number (borrow,
+// return, renew, loans, fines, pay, catalogue, find, wait days, overdue) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <array>
+
+// ===== COUNTS =====
+
+// how many days a book is lent for
+const int LOAN_DAYS = 3;
+// pence owed for every day a book is late
+const int FINE_PER_DAY = 5;
+// the most a single book can owe
+const int FINE_CAP = 20;
+// how many loans the desk can keep
+const int MAX_LOANS = 3;
+// what day it is
+int today = 1;
+// pence owed altogether
+int finesOwed = 0;
+// pence paid so far
+int finesPaid = 0;
+// how many books have come back
+int booksBack = 0;
+// has anything ever been late?
+bool everLate = false;
+// is the returns box waiting to be emptied?
+bool boxBusy = false;
+
+// a book that has been read on the desk
+attribute wellRead;
+
+// ===== KINDS OF THINGS =====
+
+enum BookState { onShelf, lent, overdue, inBox }
+
+// ===== HELPER FUNCTIONS =====
+
+// a word for where a book is
+string stateWord(BookState s) {
+    switch (s) {
+        case BookState.onShelf: return "on the shelf";
+        case BookState.lent: return "lent";
+        case BookState.overdue: return "overdue";
+        case BookState.inBox: return "in the box";
+    }
+    return "?";
+}
+
+// "day" or "days"
+string dayWord(int n) {
+    if (n == 1) {
+        return "day";
+    }
+    return "days";
+}
+
+// the fine for being some days late, with a cap
+int fineFor(int daysLate, int cap = FINE_CAP) {
+    if (daysLate <= 0) {
+        return 0;
+    }
+    int fine = daysLate * FINE_PER_DAY;
+    if (fine > cap) {
+        fine = cap;
+    }
+    return fine;
+}
+
+// ===== BOOKS =====
+
+class Book : object {
+    // the title on the spine
+    string title;
+    // who wrote it
+    string author;
+    // how many pages
+    int pages = 100;
+    // where the book is
+    BookState state = BookState.onShelf;
+    // the day it has to be back
+    int dueDay = 0;
+    // how many times it has gone out
+    int timesLent = 0;
+    string description;
+
+    // how many loans there have been of any book
+    static int loansEver = 0;
+
+    // can this book go out?
+    bool canLend() {
+        return true;
+    }
+
+    // prints a line about the book
+    void sayLine() {
+        print($"{title} by {author}, {pages} pages, {stateWord(state)}");
+        if (state == BookState.lent || state == BookState.overdue) {
+            print($", due day {dueDay}");
+        }
+        if (timesLent > 0) {
+            print($", lent {timesLent} times");
+        }
+        if (has(wellRead)) {
+            print(", well read");
+        }
+        print(".^");
+    }
+
+    bool before() {
+        if (action == Examine) {
+            sayLine();
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a reference book stays in the library
+class RefBook : Book {
+    replace bool canLend() {
+        return false;
+    }
+}
+
+// ===== LOANS =====
+
+// one loan: which book, when it went out and when it is due
+struct Loan {
+    Book book;
+    int outDay;
+    int dueDay;
+    int renewals;
+}
+
+// the loans the desk is keeping
+array<Loan> loans[MAX_LOANS];
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. The desk. The shelves are to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. The shelves. The desk is to the south.";
+    object s_to = roomA;
+    attributes = {light};
+}
+
+// the shelf the books stand on
+object shelf {
+    "shelf";
+    parent = roomB;
+    name = {.shelf};
+    string description = "A shelf.";
+    attributes = {supporter, static};
+}
+
+// ===== THE BOOKS =====
+
+Book bookOne {
+    "red book";
+    parent = shelf;
+    name = {.red, .book};
+    title = "Red Hills";
+    author = "Ash";
+    pages = 120;
+    description = "A red book.";
+}
+
+Book bookTwo {
+    "blue book";
+    parent = shelf;
+    name = {.blue, .book};
+    title = "Blue Lakes";
+    author = "Birch";
+    pages = 80;
+    description = "A blue book.";
+}
+
+Book bookThree {
+    "green book";
+    parent = shelf;
+    name = {.green, .book};
+    title = "Green Fields";
+    author = "Cedar";
+    pages = 200;
+    description = "A green book.";
+}
+
+Book bookFour {
+    "white book";
+    parent = shelf;
+    name = {.white, .book};
+    title = "White Roads";
+    author = "Ash";
+    pages = 60;
+    description = "A white book.";
+}
+
+RefBook atlas {
+    "atlas";
+    parent = shelf;
+    name = {.atlas, .book};
+    title = "Atlas";
+    author = "Elm";
+    pages = 300;
+    description = "An atlas.";
+}
+
+// every book, in shelf order
+array<Book> books = { bookOne, bookTwo, bookThree, bookFour, atlas };
+
+// ===== THE RETURNS BOX =====
+
+object returnsBox {
+    "returns box";
+    parent = roomA;
+    name = {.returns, .box};
+    string description = "A returns box.";
+    attributes = {container, open, static};
+    int time_left;
+    bool after() {
+        if (action == Receive) {
+            takeBack((Book)noun);
+            // noun is an object, so it is cast to Book to set its state
+            ((Book)noun).state = BookState.inBox;
+            if (!boxBusy) {
+                boxBusy = true;
+                StartTimer(returnsBox, 2);
+            }
+            rfalse;
+        }
+        rfalse;
+    }
+    void time_out() {
+        int moved = 0;
+        for (object o in returnsBox.children) {
+            o.parent = shelf;
+            if (o.is(Book)) {
+                ((Book)o).state = BookState.onShelf;
+            }
+            moved++;
+        }
+        boxBusy = false;
+        print($"^The returns box is emptied onto the shelf ({moved}).^");
+    }
+}
+
+// ===== THE CLOCK =====
+
+object clock {
+    "clock";
+    parent = roomA;
+    name = {.clock};
+    string description = "A clock.";
+    attributes = {static};
+    void daemon() {
+        today++;
+        for (int i = 0; i < loans.length; i++) {
+            Loan l = loans[i];
+            if (l.dueDay >= today) {
+                continue;
+            }
+            if (l.book.state == BookState.overdue) {
+                continue;
+            }
+            l.book.state = BookState.overdue;
+            everLate = true;
+            print($"^{l.book.title} is overdue.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(clock);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the loans) =====
+
+// where a book's loan is in the loans array, or -1
+int loanIndex(Book b) {
+    for (int i = 0; i < loans.length; i++) {
+        if (loans[i].book == b) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// lends a book; throws 1 for a reference book, 2 when it is out, 3 when the desk is full
+void lendBook(Book b) {
+    if (!b.canLend()) {
+        throw 1;
+    }
+    if (loanIndex(b) != -1) {
+        throw 2;
+    }
+    if (loans.length >= MAX_LOANS) {
+        throw 3;
+    }
+    Loan l;
+    l.book = b;
+    l.outDay = today;
+    l.dueDay = today + LOAN_DAYS;
+    l.renewals = 0;
+    loans += l;
+    b.state = BookState.lent;
+    b.dueDay = l.dueDay;
+    b.timesLent++;
+    Book.loansEver++;
+}
+
+// takes a book back, works out its fine and drops its loan; returns the fine
+int takeBack(Book b) {
+    int i = loanIndex(b);
+    if (i == -1) {
+        return 0;
+    }
+    int late = today - loans[i].dueDay;
+    int fine = fineFor(late);
+    finesOwed += fine;
+    loans.remove(i);
+    booksBack++;
+    b.give(wellRead);
+    b.state = BookState.onShelf;
+    if (fine > 0) {
+        print($"{b.title} is {late} {dayWord(late)} late: {fine}p.^");
+    }
+    return fine;
+}
+
+// a word about an author
+string authorNote(string who) {
+    switch (who) {
+        case "Ash": return "writes about hills and roads";
+        case "Birch", "Cedar": return "writes about water and land";
+        default: return "writes reference books";
+    }
+}
+
+// ===== VERBS =====
+
+// BORROW <book> - lends a book
+verb Borrow {
+    grammar = {.borrow, NOUN};
+    void handler() {
+        if (!(noun.is(Book))) {
+            print("Only books can be borrowed.^");
+            return;
+        }
+        Book b = (Book)noun;
+        try {
+            lendBook(b);
+        } catch (int why) {
+            switch (why) {
+                case 1: print($"{b.title} cannot leave the library.^");
+                case 2: print($"{b.title} is already out.^");
+                case 3: print($"The desk is full ({loans.length} loans).^");
+                default: print("No.^");
+            }
+            return;
+        }
+        b.parent = player;
+        print($"You borrow {b.title}. It is due on day {b.dueDay}.^");
+    }
+}
+
+// RETURN <book> - hands a book back over the desk
+verb ReturnBook {
+    grammar = {.return, NOUN};
+    void handler() {
+        if (!(noun.is(Book))) {
+            print("Only books come back.^");
+            return;
+        }
+        Book b = (Book)noun;
+        if (loanIndex(b) == -1) {
+            print($"{b.title} is not out.^");
+            return;
+        }
+        int fine = takeBack(b);
+        b.parent = shelf;
+        if (fine == 0) {
+            print($"{b.title} is back in time.^");
+        } else {
+            print($"{b.title} goes back on the shelf.^");
+        }
+    }
+}
+
+// RENEW <book> - gives a loan more days
+verb Renew {
+    grammar = {.renew, NOUN};
+    void handler() {
+        if (!(noun.is(Book))) {
+            print("Only loans can be renewed.^");
+            return;
+        }
+        Book b = (Book)noun;
+        int i = loanIndex(b);
+        if (i == -1) {
+            print($"{b.title} is not out.^");
+            return;
+        }
+        Loan l = loans[i];
+        if (l.renewals >= 2) {
+            print($"{b.title} has been renewed too often.^");
+            return;
+        }
+        if (b.state == BookState.overdue) {
+            print($"{b.title} is overdue and cannot be renewed.^");
+            return;
+        }
+        l.renewals++;
+        l.dueDay = l.dueDay + LOAN_DAYS;
+        loans[i] = l;
+        b.dueDay = l.dueDay;
+        print($"{b.title} is now due on day {b.dueDay} (renewed {l.renewals}).^");
+    }
+}
+
+// LOANS - lists the loans
+verb ListLoans {
+    meta = true;
+    grammar = {.loans};
+    void handler() {
+        print($"Day {today}. ");
+        if (loans.length == 0) {
+            print("No loans.^");
+            return;
+        }
+        print($"{loans.length} of {MAX_LOANS} loans:^");
+        int n = 1;
+        for (Loan l in loans) {
+            print($"{n}. {l.book.title}, out day {l.outDay}, due day {l.dueDay}");
+            if (l.renewals > 0) {
+                print($", renewed {l.renewals}");
+            }
+            if (l.dueDay < today) {
+                print(" (LATE)");
+            }
+            print("^");
+            n++;
+        }
+    }
+}
+
+// FINES - what is owed now and what would be owed
+verb ShowFines {
+    meta = true;
+    grammar = {.fines};
+    void handler() {
+        print($"Owed: {finesOwed}p. Paid: {finesPaid}p.^");
+        int pending = 0;
+        for (Loan l in loans) {
+            pending += fineFor(today - l.dueDay);
+        }
+        print($"Still out would owe: {pending}p.^");
+        // what one book would owe on the next few days, with a smaller cap
+        stringObj row = "Scale:";
+        int d = 0;
+        do {
+            row += $" {fineFor(d, cap: 15)}";
+            d++;
+        } while (d < 5);
+        print(row);
+        print("^");
+        if (everLate == true) {
+            print("Something has been late.^");
+        }
+    }
+}
+
+// PAY <number> - pays off some of the fines
+verb PayFine {
+    grammar = {.pay, NUMBER};
+    void handler() {
+        int amount = (int)noun;
+        if (finesOwed == 0) {
+            print("Nothing is owed.^");
+            return;
+        }
+        if (amount > finesOwed) {
+            amount = finesOwed;
+        }
+        finesOwed -= amount;
+        finesPaid += amount;
+        print($"You pay {amount}p. Owed: {finesOwed}p.^");
+    }
+}
+
+// CATALOGUE - every book, and some counts with <linq>
+verb Catalogue {
+    meta = true;
+    grammar = {.catalogue};
+    void handler() {
+        for (Book b in books) {
+            b.sayLine();
+        }
+        int out = books.filter((Book b) => b.state == BookState.lent || b.state == BookState.overdue).count();
+        print($"Out: {out}. Loans ever: {Book.loansEver}. Back: {booksBack}.^");
+        if (books.any((Book b) => b.state == BookState.overdue)) {
+            print("Some are overdue.^");
+        }
+        if (books.all((Book b) => b.timesLent == 0)) {
+            print("Nothing has gone out yet.^");
+        }
+        array<Book> bySize[5];
+        bySize = books.orderBy((Book a, Book b) => a.pages - b.pages);
+        stringObj row = "Shortest first:";
+        for (Book b in bySize) {
+            row += $" {b.pages}";
+        }
+        print(row);
+        print("^");
+        Book thin = bySize.first();
+        print($"Thinnest: {thin.title.toUpper()}.^");
+        int firstPages = books.map((Book b) => b.pages).first();
+        print($"First on the list has {firstPages} pages.^");
+    }
+}
+
+// FIND <number> - books with at least that many pages that can go out
+verb FindBooks {
+    meta = true;
+    grammar = {.find, NUMBER};
+    void handler() {
+        int least = (int)noun;
+        int found = 0;
+        stringObj row = "";
+        for (int i = 0; i < books.length; i++) {
+            Book b = books[i];
+            if (b.pages < least) {
+                continue;
+            }
+            if (!b.canLend()) {
+                continue;
+            }
+            if (found > 0) {
+                row += ", ";
+            }
+            row += b.title;
+            found++;
+        }
+        if (found == 0) {
+            print($"Nothing with {least} pages or more.^");
+            return;
+        }
+        print($"{found} found: ");
+        print(row);
+        print(".^");
+        if (row.contains("Red")) {
+            print("The red one is there.^");
+        }
+        print($"Short list: {row.left(10)}.^");
+    }
+}
+
+// ABOUT <book> - who wrote it
+verb AboutBook {
+    meta = true;
+    grammar = {.about, NOUN};
+    void handler() {
+        if (!(noun.is(Book))) {
+            print("That is not a book.^");
+            return;
+        }
+        Book b = (Book)noun;
+        print($"{b.author} {authorNote(b.author)}.^");
+    }
+}
+
+// WAIT <number> - lets some days go by (the clock still ticks once for this turn)
+verb WaitDays {
+    grammar = {.days, NUMBER};
+    void handler() {
+        int n = (int)noun;
+        if (n < 1 || n > 9) {
+            print("Between 1 and 9 days.^");
+            return;
+        }
+        int k = 1;
+        while (k < n) {
+            clock.daemon();
+            k++;
+        }
+        print($"Time passes ({n} {dayWord(n)}).^");
+    }
+}
+
+// SHELF - what is on the shelf and in the box
+verb CheckShelf {
+    meta = true;
+    grammar = {.shelved};
+    void handler() {
+        stringObj row = "Shelf:";
+        for (object o in shelf.children) {
+            if (o.is(Book)) {
+                row += $" {((Book)o).title}";
+            }
+        }
+        print(row);
+        print($" ({shelf.children.length})^");
+        if (returnsBox.children.length > 0) {
+            print($"Box: {returnsBox.children.length}.^");
+        }
+        // checks some books by their place in the list
+        int wellReadCount = 0;
+        for (int i in {0, 1, 2, 3, 4}) {
+            if (books[i].has(wellRead)) {
+                wellReadCount++;
+            }
+            if (i == 3) {
+                break;
+            }
+        }
+        print($"Well read in the first four: {wellReadCount}.^");
+    }
+}

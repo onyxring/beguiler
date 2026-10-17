@@ -1,0 +1,564 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a forty-second PunyInform program, written plainly: two rooms (Room A with a shelf, an
+// oil can, a rag, scissors and a keeper; Room B above with an oil lamp and three lens panels) and
+// OPTIONAL_SCORED; an enum wick state; a `Fuel` struct (`operator ()`, `=` from int clamped, `+=`,
+// `-=`, a method returning `stringObj`) owned by the lamp and by the oil can; a `Lens` class with a
+// panel number and a dirt count, its description a routine with a `switch` over ranges, and a
+// `before` taking `Rub`; a switchable lamp whose `before` refuses `SwitchOn` without fuel or with a
+// burnt wick, whose daemon burns fuel each turn, records brightness readings in an `array<int>` and
+// puts the lamp out when the fuel runs dry; a brightness rule over `bgl.world.instances(Lens)`; a
+// `set flame to NUMBER` verb whose routine throws on a bad level, caught with `try`/`catch`; `fill
+// NOUN from NOUN`, `polish NOUN with HELD` and `trim NOUN` verbs; a keeper with `life` (Ask through
+// NextWord, Give) and `orders`; a `stringObj` log with `contains` and `startsWith`, a report line built
+// from an interpolated string and `+=`, and `toUpper`; a local `Fuel` copied from the lamp's accessor
+// member and run down in a `while` loop; `bgl.world.inParent` with a predicate; `<linq>` `filter`,
+// `orderBy`, `count`, `any`, `all`, `last` over the readings; `for`, `for … in`, `while` and
+// `do`/`until` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 2;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    ref object u_to;
+    ref object d_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eWick { trimmed, sooty, burnt }
+
+const int FUEL_MAX  = 12;
+const int CAN_START = 9;
+const int MAX_FLAME = 3;
+
+struct Fuel {
+    int _units = 0;
+
+    int  operator ()        { return _units; }
+    void operator = (int v) {
+        _units = bgl.util.math.clamp(v, 0, FUEL_MAX);
+    }
+    void operator += (int v) {
+        _units = bgl.util.math.clamp(_units + v, 0, FUEL_MAX);
+    }
+    void operator -= (int v) {
+        _units = bgl.util.math.clamp(_units - v, 0, FUEL_MAX);
+    }
+
+    bool isEmpty() {
+        return _units == 0;
+    }
+
+    stringObj gauge() {
+        stringObj s = "[";
+        for (int i = 0; i < FUEL_MAX; i += 3) {
+            if (i < _units) s += '#';
+            else s += '-';
+        }
+        s += "]";
+        return s;
+    }
+}
+
+stringObj keeperLog;
+int  entries     = 0;
+int  polishes    = 0;
+int  fills       = 0;
+bool fullyLit    = false;
+
+array<int> readings[10];
+
+void note(string what, int n = -1) {
+    entries++;
+    if (n < 0) keeperLog += $"{what}; ";
+    else keeperLog += $"{what} {n}; ";
+}
+
+string wickName(eWick w) {
+    switch (w) {
+        case eWick.trimmed: return "trimmed";
+        case eWick.sooty:   return "sooty";
+        case eWick.burnt:   return "burnt";
+    }
+    return "unknown";
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {proper, light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A shelf stands by the wall. Stairs lead up.";
+    u_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. An oil lamp stands behind three lens panels. Stairs lead down.";
+    d_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object shelf {
+    "shelf";
+    parent = roomA;
+    name = {.shelf};
+    description = "A wooden shelf.";
+    attributes = {supporter, static};
+}
+
+object oilCan {
+    "oil can";
+    parent = shelf;
+    name = {.oil, .can};
+    string article = "an";
+    Fuel oil;
+
+    void description() {
+        printLine($"An oil can. Its gauge reads {oil.gauge()}, {(int)oil} units.");
+    }
+}
+
+object rag {
+    "rag";
+    parent = shelf;
+    name = {.rag, .cloth};
+    description = "A soft rag.";
+}
+
+object scissors {
+    "scissors";
+    parent = shelf;
+    name = {.scissors};
+    description = "A pair of scissors.";
+    string article = "some";
+    attributes = {pluralname};
+}
+
+object keeper {
+    "keeper";
+    parent = roomA;
+    name = {.keeper};
+    description = "A keeper in a blue coat.";
+    int asked = 0;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .lamp) rtrue("The keeper says: keep it fed and the wick trimmed.^");
+                if (w == .lens || w == .lenses || w == .panels) rtrue("The keeper says: polish all three.^");
+                if (w == .oil) rtrue("The keeper says: the can is on the shelf.^");
+                rtrue("The keeper shrugs.^");
+            case Give:
+                if (noun == oilCan) {
+                    if (oilCan.oil == CAN_START) rtrue("The keeper says: it is still full.^");
+                    oilCan.oil = CAN_START;
+                    note("can refilled");
+                    rtrue("The keeper refills the oil can and hands it back.^");
+                }
+                rtrue("The keeper says: keep it.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Wait:
+                rtrue("The keeper waits.^");
+        }
+        rtrue("The keeper says: do it yourself.^");
+    }
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+class Lens : object {
+    int panel = 1;
+    int dirt  = 3;
+    name = {.lens, .panel};
+    attributes = {static};
+
+    void description() {
+        print($"Lens panel {panel}");
+        switch (dirt) {
+            case 0:      printLine(" is clean.");
+            case 1 to 2: printLine(" is smeared.");
+            case > 2:    printLine(" is grimy.");
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case Rub:
+                rtrue("You need to polish it with something.^");
+        }
+        rfalse;
+    }
+}
+
+Lens lensOne {
+    "first lens";
+    parent = roomB;
+    name = {.first, .one};
+    panel = 1;
+    dirt = 3;
+}
+
+Lens lensTwo {
+    "second lens";
+    parent = roomB;
+    name = {.second, .two};
+    panel = 2;
+    dirt = 2;
+}
+
+Lens lensThree {
+    "third lens";
+    parent = roomB;
+    name = {.third, .three};
+    panel = 3;
+    dirt = 4;
+}
+
+int totalDirt() {
+    int t = 0;
+    for (object o in bgl.world.instances(Lens)) t += ((Lens)o).dirt;
+    return t;
+}
+
+int brightness() {
+    if (!lamp.has(on)) return 0;
+    int b = lamp.flame * 10 - totalDirt() * 2;
+    if (lamp.wick == eWick.sooty) b -= 5;
+    if (b < 1) b = 1;
+    return b;
+}
+
+string glowWord(int b) {
+    switch (b) {
+        case 0:        return "dark";
+        case 1 to 9:   return "dim";
+        case 10 to 19: return "steady";
+        case >= 20:    return "bright";
+    }
+    return "odd";
+}
+
+object lamp {
+    "oil lamp";
+    parent = roomB;
+    name = {.oil, .lamp};
+    string article = "an";
+    Fuel  fuel;
+    eWick wick  = eWick.sooty;
+    int   flame = 1;
+    int   burned = 0;
+    attributes = {switchable, static};
+
+    void description() {
+        string state = has(on) ? "lit" : "unlit";
+        printLine($"An oil lamp, {state}, flame {flame}. Fuel {fuel.gauge()}. The wick is {wickName(wick)}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case SwitchOn:
+                if (fuel.isEmpty()) rtrue("The lamp has no oil.^");
+                if (wick == eWick.burnt) rtrue("The wick is burnt down. Trim it first.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                StartDaemon(self);
+                note("lit", flame);
+                checkLit();
+            case SwitchOff:
+                StopDaemon(self);
+                note("out");
+        }
+        rfalse;
+    }
+
+    void daemon() {
+        fuel -= flame;
+        burned++;
+        if (burned % 4 == 0 && wick == eWick.trimmed) wick = eWick.sooty;
+        if (readings.length == readings.size) readings.remove(0);
+        readings += brightness();
+        if (fuel.isEmpty()) {
+            ungive(on);
+            StopDaemon(self);
+            note("ran dry");
+            if (location == roomB) printLine("The lamp gutters and goes out.");
+        }
+    }
+}
+
+void checkLit() {
+    if (fullyLit) return;
+    if (lamp.has(on) && totalDirt() == 0 && lamp.wick == eWick.trimmed) {
+        fullyLit = true;
+        score++;
+        printLine("The lamp shines through three clean panels.");
+    }
+}
+
+// Sets the flame; throws the asked-for level when it is out of range.
+void setFlame(int level) {
+    if (level < 1 || level > MAX_FLAME) throw level;
+    lamp.flame = level;
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Polish {
+    grammar = { {.polish, NOUN, .with, HELD}, {.polish, NOUN} };
+    void handler() {
+        object tool = second;
+        if (tool == null) {
+            if (rag.parent != player) {
+                printLine("You have nothing to polish with.");
+                return;
+            }
+            tool = rag;
+        }
+        if (tool != rag) {
+            printLine($"{cThe(tool)} won't polish anything.");
+            return;
+        }
+        if (!noun.is(Lens)) {
+            printLine($"Polishing {the(noun)} achieves nothing.");
+            return;
+        }
+        Lens l = (Lens)noun;
+        if (l.dirt == 0) {
+            printLine($"{cThe(l)} is already clean.");
+            return;
+        }
+        l.dirt = l.dirt - 2;
+        if (l.dirt < 0) l.dirt = 0;
+        polishes++;
+        note("polished", l.panel);
+        if (l.dirt == 0) printLine($"You polish {the(l)} until it is clean.");
+        else printLine($"You polish {the(l)}. It is better.");
+        if (totalDirt() == 0) {
+            score++;
+            printLine("All three panels are clean.");
+        }
+        checkLit();
+    }
+}
+
+verb Trim {
+    grammar = {.trim, NOUN};
+    void handler() {
+        if (noun != lamp) {
+            printLine($"You can't trim {the(noun)}.");
+            return;
+        }
+        if (scissors.parent != player) {
+            printLine("You need the scissors.");
+            return;
+        }
+        if (lamp.has(on)) {
+            printLine("Not while the lamp is lit.");
+            return;
+        }
+        if (lamp.wick == eWick.trimmed) {
+            printLine("The wick is already trimmed.");
+            return;
+        }
+        lamp.wick = eWick.trimmed;
+        note("trimmed");
+        printLine("You trim the wick.");
+    }
+}
+
+verb FillFrom {
+    grammar = { {.fill, NOUN, .from, HELD} };
+    void handler() {
+        if (noun != lamp) {
+            printLine($"You can't fill {the(noun)}.");
+            return;
+        }
+        if (second != oilCan) {
+            printLine($"{cThe(second)} holds no oil.");
+            return;
+        }
+        if (oilCan.oil.isEmpty()) {
+            printLine("The oil can is empty.");
+            return;
+        }
+        int room = FUEL_MAX - lamp.fuel;
+        if (room == 0) {
+            printLine("The lamp is full.");
+            return;
+        }
+        int poured = bgl.util.math.min(room, oilCan.oil);
+        oilCan.oil -= poured;
+        lamp.fuel += poured;
+        fills++;
+        note("filled", poured);
+        printLine($"You pour {poured} units into the lamp. Fuel {lamp.fuel.gauge()}.");
+    }
+}
+
+verb Flame {
+    grammar = { {.set, .flame, .to, NUMBER}, {.flame, NUMBER} };
+    void handler() {
+        if (lamp.parent != location) {
+            printLine("There is no lamp here.");
+            return;
+        }
+        try {
+            setFlame(parsed_number);
+        } catch (int bad) {
+            printLine($"The flame goes from 1 to {MAX_FLAME}, not {bad}.");
+            return;
+        }
+        note("flame", lamp.flame);
+        printLine($"The flame is now {lamp.flame}.");
+    }
+}
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        string state = lamp.has(on) ? "lit" : "unlit";
+        printLine($"Score {score} of {MAX_SCORE}. Lamp {state}, flame {lamp.flame}, fuel {(int)lamp.fuel}, wick {wickName(lamp.wick)}.");
+        int b = brightness();
+        printLine($"Brightness {b} ({glowWord(b)}), dirt {totalDirt()}, can {(int)oilCan.oil}.");
+        printLine($"Polishes {polishes}, fills {fills}, asked {keeper.asked}, burned {lamp.burned}.");
+    }
+}
+
+verb Panels {
+    meta = true;
+    grammar = {.panels};
+    void handler() {
+        array<object> all[4];
+        all = bgl.world.instances(Lens).orderBy((object a, object b) => ((Lens)b).dirt - ((Lens)a).dirt);
+        print("Panels:");
+        int i = 0;
+        while (i < all.length) {
+            Lens l = (Lens)all[i];
+            print($" {l.panel}={l.dirt}");
+            i++;
+        }
+        printLine(".");
+        int clean = bgl.world.instances(Lens, (object o) => ((Lens)o).dirt == 0).length;
+        printLine($"{clean} clean.");
+    }
+}
+
+verb ShowReadings {
+    meta = true;
+    grammar = {.readings};
+    void handler() {
+        if (readings.length == 0) {
+            printLine("No readings.");
+            return;
+        }
+        print("Readings:");
+        for (int r in readings) print($" {r}");
+        printLine(".");
+        int top = readings.orderBy().last();
+        int steady = readings.filter((int r) => r >= 10).count();
+        printLine($"Top {top}, {steady} steady or better of {readings.count()}.");
+        if (readings.any((int r) => r >= 20)) printLine("It has been bright.");
+        if (readings.all((int r) => r < 10)) printLine("It has only been dim.");
+    }
+}
+
+verb Countdown {
+    meta = true;
+    grammar = {.countdown};
+    void handler() {
+        Fuel sim = lamp.fuel;
+        int turns = 0;
+        while (!sim.isEmpty()) {
+            sim -= lamp.flame;
+            turns++;
+        }
+        printLine($"About {turns} turns of oil at flame {lamp.flame}, lamp still {(int)lamp.fuel}.");
+        int left = oilCan.oil;
+        int cans = 0;
+        if (left > 0) {
+            do {
+                left -= FUEL_MAX / 4;
+                cans++;
+            } until (left <= 0);
+        }
+        printLine($"The can holds {cans} quarter-lamps.");
+    }
+}
+
+verb Report {
+    meta = true;
+    grammar = {.report};
+    void handler() {
+        stringObj title = "lamp room report";
+        printLine(title.toUpper());
+        for (object o in bgl.world.inParent(roomB, (object x) => x.is(Lens))) {
+            Lens l = (Lens)o;
+            print("  ");
+            l.description();
+        }
+        stringObj line;
+        line = $"Wick {wickName(lamp.wick)}, glow {glowWord(brightness())}";
+        if (lamp.has(on)) line += ", burning";
+        line += ".";
+        printLine(line);
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (keeperLog.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({entries}): {keeperLog}");
+        if (keeperLog.contains("ran dry")) printLine("The lamp has run dry.");
+        if (keeperLog.startsWith("polished")) printLine("The first entry is a polish.");
+    }
+}
+
+bool Initialise() {
+    oilCan.oil = CAN_START;
+    lamp.fuel = 2;
+    rfalse;
+}

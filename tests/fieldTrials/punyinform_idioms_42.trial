@@ -1,0 +1,193 @@
+Room A
+Room A. A shelf stands by the wall. Stairs lead up.
+You can see a shelf (on which are an oil can, a rag and some scissors) and a keeper here.
+> status
+Score 0 of 2. Lamp unlit, flame 1, fuel 2, wick sooty.
+Brightness 0 (dark), dirt 9, can 9.
+Polishes 0, fills 0, asked 0, burned 0.
+> panels
+Panels: 3=4 1=3 2=2.
+0 clean.
+> readings
+No readings.
+> countdown
+About 2 turns of oil at flame 1, lamp still 2.
+The can holds 3 quarter-lamps.
+> log
+The log is empty.
+> examine can
+An oil can. Its gauge reads [###-], 9 units.
+> ask keeper about lamp
+The keeper says: keep it fed and the wick trimmed.
+> ask keeper about lenses
+The keeper says: polish all three.
+> ask keeper about oil
+The keeper says: the can is on the shelf.
+> ask keeper about cheese
+The keeper shrugs.
+> keeper, wait
+The keeper waits.
+> keeper, jump
+The keeper says: do it yourself.
+> take all from shelf
+oil can: Removed.
+rag: Removed.
+scissors: Removed.
+> i
+You're carrying some scissors, a rag and an oil can.
+> up
+Room B
+Room B. An oil lamp stands behind three lens panels. Stairs lead down.
+You can see a first lens, a second lens, a third lens and an oil lamp here.
+> examine lamp
+An oil lamp, unlit, flame 1. Fuel [#---]. The wick is sooty.
+The oil lamp is currently switched off.
+> examine first lens
+Lens panel 1 is grimy.
+> examine second lens
+Lens panel 2 is smeared.
+> rub first lens
+You need to polish it with something.
+> polish first lens
+You polish the first lens. It is better.
+> polish lamp with rag
+Polishing the oil lamp achieves nothing.
+> polish first lens with scissors
+The scissors won't polish anything.
+> polish first lens with rag
+You polish the first lens until it is clean.
+> polish first lens
+The first lens is already clean.
+> polish first lens
+The first lens is already clean.
+> panels
+Panels: 3=4 2=2 1=0.
+1 clean.
+> set flame to 5
+The flame goes from 1 to 3, not 5.
+> set flame to 2
+The flame is now 2.
+> turn on lamp
+You switch the oil lamp on.
+The lamp gutters and goes out.
+> wait
+Nothing happens.
+> readings
+Readings: 3.
+Top 3, 0 steady or better of 1.
+It has only been dim.
+> status
+Score 0 of 2. Lamp unlit, flame 2, fuel 0, wick sooty.
+Brightness 0 (dark), dirt 6, can 9.
+Polishes 2, fills 0, asked 4, burned 1.
+> wait
+Nothing happens.
+> trim lamp
+You trim the wick.
+> turn off lamp
+That's already off.
+> trim lamp
+The wick is already trimmed.
+> trim lamp
+The wick is already trimmed.
+> turn on lamp
+The lamp has no oil.
+> fill lamp from can
+You pour 9 units into the lamp. Fuel [###-].
+> turn on lamp
+You switch the oil lamp on.
+> status
+Score 0 of 2. Lamp lit, flame 2, fuel 7, wick trimmed.
+Brightness 8 (dim), dirt 6, can 0.
+Polishes 2, fills 1, asked 4, burned 2.
+> countdown
+About 4 turns of oil at flame 2, lamp still 7.
+The can holds 0 quarter-lamps.
+> polish second lens
+You polish the second lens until it is clean.
+> polish third lens
+You polish the third lens. It is better.
+> polish third lens
+You polish the third lens until it is clean.
+All three panels are clean.
+[The score has just gone up by 1 point.]
+> status
+Score 1 of 2. Lamp lit, flame 2, fuel 1, wick sooty.
+Brightness 15 (steady), dirt 0, can 0.
+Polishes 5, fills 1, asked 4, burned 5.
+> readings
+Readings: 3 8 12 11 15.
+Top 15, 3 steady or better of 5.
+> flame 3
+The flame is now 3.
+The lamp gutters and goes out.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> wait
+Nothing happens.
+> status
+Score 1 of 2. Lamp unlit, flame 3, fuel 0, wick sooty.
+Brightness 0 (dark), dirt 0, can 0.
+Polishes 5, fills 1, asked 4, burned 6.
+> readings
+Readings: 3 8 12 11 15 25.
+Top 25, 4 steady or better of 6.
+It has been bright.
+> log
+Log (13): polished 1; polished 1; flame 2; lit 2; ran dry; trimmed; filled 9; lit 2; polished 2; polished 3; polished 3; flame 3; ran dry;
+The lamp has run dry.
+The first entry is a polish.
+> down
+Room A
+You can see a shelf and a keeper here.
+> give can to keeper
+The keeper refills the oil can and hands it back.
+> give can to keeper
+The keeper says: it is still full.
+> give rag to keeper
+The keeper says: keep it.
+> examine can
+An oil can. Its gauge reads [###-], 9 units.
+> status
+Score 1 of 2. Lamp unlit, flame 3, fuel 0, wick sooty.
+Brightness 0 (dark), dirt 0, can 9.
+Polishes 5, fills 1, asked 4, burned 6.
+> countdown
+About 0 turns of oil at flame 3, lamp still 0.
+The can holds 3 quarter-lamps.
+> up
+Room B
+You can see a first lens, a second lens, a third lens and an oil lamp here.
+> fill lamp from can
+You pour 9 units into the lamp. Fuel [###-].
+> trim lamp
+You trim the wick.
+> report
+LAMP ROOM REPORT
+  Lens panel 1 is clean.
+  Lens panel 2 is clean.
+  Lens panel 3 is clean.
+Wick trimmed, glow dark.
+> turn on lamp
+The lamp shines through three clean panels.
+You switch the oil lamp on.
+[The score has just gone up by 1 point.]
+> countdown
+About 2 turns of oil at flame 3, lamp still 6.
+The can holds 0 quarter-lamps.
+> report
+LAMP ROOM REPORT
+  Lens panel 1 is clean.
+  Lens panel 2 is clean.
+  Lens panel 3 is clean.
+Wick trimmed, glow bright, burning.
+> status
+Score 2 of 2. Lamp lit, flame 3, fuel 6, wick trimmed.
+Brightness 30 (bright), dirt 0, can 0.
+Polishes 5, fills 2, asked 4, burned 7.
+> log
+Log (17): polished 1; polished 1; flame 2; lit 2; ran dry; trimmed; filled 9; lit 2; polished 2; polished 3; polished 3; flame 3; ran dry; can refilled; filled 9; trimmed; lit 3;
+The lamp has run dry.
+The first entry is a polish.

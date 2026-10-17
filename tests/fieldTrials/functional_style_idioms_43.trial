@@ -1,0 +1,101 @@
+Room A
+Room A.
+
+> parcels
+P1 w7 $30 north
+P2 w12 $45 south fragile
+P3 w3 $18 north
+P4 w9 $20 east
+P5 w5 $40 south fragile
+P6 w4 $12 north
+heavy 2, fragile 2, on cart 0
+> byweight
+by weight: P3 P6 P5 P1 P4 P2; reversed P2,P4,P1,P5,P6,P3
+top P2 (12), bottom P3 (3), sum 40
+> byworth
+by worth: P6 P3 P4 P1 P5 P2; reversed P2,P5,P1,P4,P3,P6
+top P2 (45), bottom P6 (12), sum 165
+> bymargin
+by margin: P6 P4 P3 P1 P2 P5; reversed P5,P2,P1,P3,P4,P6
+top P5 (35), bottom P6 (8), sum 125
+> rank 1
+key weight: 7,12,3,9,5,4; best P2; distinct 6
+middle four P6 P5 P1 P4, first P6, last P4
+> rank 2
+key worth: 30,45,18,20,40,12; best P2; distinct 6
+middle four P3 P4 P1 P5, first P3, last P5
+> rank 3
+key density: 42,37,60,22,80,30; best P5; distinct 6
+middle four P6 P2 P1 P3, first P6, last P3
+> rank 4
+key zone: 1,2,1,3,2,1; best P4; distinct 3
+middle four P3 P6 P2 P5, first P3, last P5
+> zones
+north: P1 P3 P6 | n 3 w 14 heaviest P1
+south: P2 P5 | n 2 w 17 heaviest P2
+east: P4 | n 1 w 9 heaviest P4
+empty group heaviest none, any fragile east false, all north light true
+> pick
+heavy and fragile P2; heavy or fragile P2 P4 P5; light P1 P3 P5 P6; light and cheap P3 P6
+all light cheap true, all light false, none heavy cheap 1
+> pack 15
+cap 15: density P5 P3 P1 $88/15; worth P2 P3 $63/15; lightest P3 P6 P5 n3
+better $88, left over 0
+> pack 20
+cap 20: density P5 P3 P1 P6 $100/19; worth P2 P5 P3 $103/20; lightest P3 P6 P5 P1 n4
+better $103, left over 0
+> ways 12
+ways to weigh 12: 4 (from 7,12,3,9,5,4)
+> ways 16
+ways to weigh 16: 4 (from 7,12,3,9,5,4)
+> price p2
+P2: worth 45, covered 60, steps 66 63 60, net 60, taxed twice 53
+> price p4
+P4: worth 20, covered 20, steps 22 19 20, net 20, taxed twice 24
+> price cart
+That is not a parcel.
+> load p1
+P1 loaded. Cart: P1, weight 7.
+> load p5
+P5 loaded. Cart: P1 P5, weight 12.
+> load p1
+P1 is already on the cart.
+> totals
+cart: 2 parcels, weight 12, worth 70, mean 35, heaviest 7
+floor: 4 parcels, weight 28, worth 95, mean 23, heaviest 12
+all: 6 parcels, weight 40, worth 165, mean 27, heaviest 12
+agrees true, heaviest on cart P1
+> parcels
+P1 w7 $30 north (cart)
+P2 w12 $45 south fragile
+P3 w3 $18 north
+P4 w9 $20 east
+P5 w5 $40 south fragile (cart)
+P6 w4 $12 north
+heavy 2, fragile 2, on cart 2
+> unload
+Unloaded 2.
+> totals
+cart: 0 parcels, weight 0, worth 0, mean 0, heaviest 0
+floor: 6 parcels, weight 40, worth 165, mean 27, heaviest 12
+all: 6 parcels, weight 40, worth 165, mean 27, heaviest 12
+agrees true, heaviest on cart none
+> checks
+heavy: P2 P4 (2)
+fragile: P2 P5 (2)
+carted: - (0)
+valuable: P1 P2 P5 (3)
+north: P1 P3 P6 (3)
+checks with a hit 4 of 5
+> tags
+tags down P6/P5/P4/P3/P2/P1; worths 12,18,20,30,40,45; under 30 12,18,20; rest 30,40,45
+first three not east, lowered: p6p5p3
+> load p2
+P2 loaded. Cart: P2, weight 12.
+> checks
+heavy: P2 P4 (2)
+fragile: P2 P5 (2)
+carted: P2 (1)
+valuable: P1 P2 P5 (3)
+north: P1 P3 P6 (3)
+checks with a hit 5 of 5

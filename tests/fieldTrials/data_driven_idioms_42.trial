@@ -1,0 +1,156 @@
+Room A
+> stock
+Stock: wood 3/6 iron 1/4 cloth 2/5 stone 0/9.
+> recipes
+0 shelf: 2 wood, 1 iron; saw; heavy+sturdy [no tool]
+1 rag doll: 2 cloth; needle; soft [no tool]
+2 knife: 1 wood, 1 iron; hammer; sharp [no tool]
+3 wall: 3 stone; bare hands; heavy+sturdy [short 3]
+4 cushion: 1 cloth; needle; soft [no tool]
+5 spear: 2 wood, 2 iron; hammer; sharp+heavy [short 1]
+> ready
+Ready 0:. Any soft: false. All tooled: true.
+> take saw
+Taken.
+> take needle
+Taken.
+#repeat 3
+> recipes
+0 shelf: 2 wood, 1 iron; saw; heavy+sturdy [ready]
+1 rag doll: 2 cloth; needle; soft [ready]
+2 knife: 1 wood, 1 iron; hammer; sharp [no tool]
+3 wall: 3 stone; bare hands; heavy+sturdy [short 3]
+4 cushion: 1 cloth; needle; soft [ready]
+5 spear: 2 wood, 2 iron; hammer; sharp+heavy [short 1]
+#repeat 3
+> ready
+Ready 3: shelf rag doll cushion. Any soft: true. All tooled: true.
+> craft 0
+Made the shelf (cut); 1 so far.
+> craft 1
+Made the rag doll (worked); 1 so far.
+> craft 2
+The knife needs the hammer.
+> craft 9
+No recipe 9.
+> stock
+Stock: wood 1/6 iron 0/4 cloth 0/5 stone 0/9.
+> gather wood
+Gathered 2 wood (3).
+> gather iron
+Gathered 1 iron (1).
+> gather iron
+Gathered 1 iron (2).
+> gather iron
+Gathered 1 iron (3).
+> gather iron
+Gathered 1 iron (4).
+> gather stone
+Gathered 3 stone (3).
+> gather plaster
+I didn't understand that sentence.
+> craft 3
+Made the wall (stacked); 1 so far.
+> craft 0
+Made the shelf (cut); 2 so far.
+> craft 4
+Short 1 for the cushion.
+> craft 4
+Short 1 for the cushion.
+> log
+Log 4: shelf rag doll wall shelf. History 4, top 0.
+> tally
+Crafted 4, spent 11, undone 0; made 4.
+> uncraft
+Took apart the shelf.
+> log
+Log 4: shelf rag doll wall shelf. History 3, top 3.
+> tally
+Crafted 3, spent 8, undone 1; made 3.
+> stock
+Stock: wood 3/6 iron 4/4 cloth 0/5 stone 0/9.
+#repeat 3
+> rank 3
+Top 3: spear=12(fine) shelf=9(fine) rag doll=7(fine).
+> rank 9
+Top 6: spear=12(fine) shelf=9(fine) rag doll=7(fine) knife=7(fine) wall=5(useful) cushion=5(useful).
+> rank 0
+Top 0:.
+> tagged 0
+sharp (bit 1): knife spear.
+#repeat 3
+> tagged 1
+heavy (bit 2): shelf wall spear.
+> tagged 3
+sturdy (bit 8): shelf wall.
+> tagged 7
+No tag 7.
+#repeat 3
+> cost wood
+Uses of wood: shelfx2 knifex1 spearx2; total 5.
+> cost cloth
+Uses of cloth: rag dollx2 cushionx1; total 3.
+> cost stone
+Uses of stone: wallx3; total 3.
+> needs
+First short: rag doll needs 2 cloth.
+> take hammer
+Taken.
+> needs
+First short: rag doll needs 2 cloth.
+> ready
+Ready 3: shelf knife spear. Any soft: false. All tooled: true.
+> plenty
+By stock: iron=4 wood=3; empty 2.
+> craft 2
+Made the knife (worked); 1 so far.
+> craft 5
+Made the spear (worked); 1 so far.
+> gather iron
+Gathered 1 iron (2).
+> gather iron
+Gathered 1 iron (3).
+> gather iron
+Gathered 1 iron (4).
+> gather iron
+No room for more iron.
+> gather iron
+No room for more iron.
+> craft 5
+Short 2 for the spear.
+> log
+Log 4: wall shelf knife spear. History 5, top 5.
+> uncraft
+Took apart the spear.
+> uncraft
+Took apart the knife.
+> uncraft
+Took apart the wall.
+> uncraft
+Took apart the rag doll.
+> uncraft
+Took apart the shelf.
+> uncraft
+Nothing to undo.
+> uncraft
+Nothing to undo.
+> tally
+Crafted 0, spent 0, undone 6; made 0.
+> plenty
+By stock: wood=5 iron=4 stone=3 cloth=2; empty 0.
+> reset
+Reset: 4 materials, 0 history, 0 log.
+> stock
+Stock: wood 3/6 iron 1/4 cloth 2/5 stone 0/9.
+> plenty
+By stock: wood=3 cloth=2 iron=1; empty 1.
+> tally
+Crafted 0, spent 0, undone 0; made 0.
+> log
+Log 0:. History 0, top 0.
+> look
+Room A
+Room A.
+You can see a needle, a hammer and a saw here.
+> ready
+Ready 0:. Any soft: false. All tooled: true.

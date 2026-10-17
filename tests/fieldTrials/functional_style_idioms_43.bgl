@@ -1,0 +1,477 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a parcel-sorting model written in a functional style on z5. Parcels are objects of a class
+// with an enum zone, a weight, a worth and a fragile flag, held in a global array; a cart container they
+// are moved into and out of. Key functions (`func<int, Parcel>`) and predicates (`func<bool, Parcel>`)
+// as named functions and lambdas, chosen by a function that returns a func value from a switch, kept in
+// a member of verbs derived from a shared verb class, and in a global `array<func<int, int>>` pricing
+// pipeline folded over. Hand-written where/sumBy/maxBy/countIf/allOf over func parameters, predicate
+// combinators (both/either/negate applied through lambdas that capture function parameters), a sortedBy
+// that returns an `orderBy` chain built from a captured key, a greedy pack returning a local array, a
+// group-by returning a local `array<array<Parcel>>` whose rows are `filter` results (a capture of the
+// for-in range variable), a pure recursive subset count over a local `array<int>` built from `map`, a
+// Summary struct with `operator +` over a Parcel and over another Summary folded through a
+// `func<Summary, Summary, Parcel>`, `?.`/`??` over a maybe-null maxBy result, stringObj joins returned
+// by value with a default separator argument, named arguments, ternaries choosing between functions,
+// `<linq>` filter/map/orderBy/take/skip/first/last/count/any/all/distinct over parcels and ints, a
+// for-in over a chain and over `cart.children`, and verbs reading noun and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXP = 8;
+
+//-- World ------------------------------------------------------------------------------------------
+
+enum eZone { north, south, east }
+
+class Parcel : object {
+    string tag;
+    int weight;
+    int worth;
+    eZone zone;
+    bool fragile;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object cart {
+    "cart";
+    parent = roomA;
+    name = {.cart};
+    attributes = {scenery, container, open};
+}
+
+Parcel p1 { "parcel P1"; parent = roomA; name = {.parcel, .p1}; tag = "P1"; weight = 7;  worth = 30; zone = eZone.north; }
+Parcel p2 { "parcel P2"; parent = roomA; name = {.parcel, .p2}; tag = "P2"; weight = 12; worth = 45; zone = eZone.south; fragile = true; }
+Parcel p3 { "parcel P3"; parent = roomA; name = {.parcel, .p3}; tag = "P3"; weight = 3;  worth = 18; zone = eZone.north; }
+Parcel p4 { "parcel P4"; parent = roomA; name = {.parcel, .p4}; tag = "P4"; weight = 9;  worth = 20; zone = eZone.east; }
+Parcel p5 { "parcel P5"; parent = roomA; name = {.parcel, .p5}; tag = "P5"; weight = 5;  worth = 40; zone = eZone.south; fragile = true; }
+Parcel p6 { "parcel P6"; parent = roomA; name = {.parcel, .p6}; tag = "P6"; weight = 4;  worth = 12; zone = eZone.north; }
+
+array<Parcel> parcels = {p1, p2, p3, p4, p5, p6};
+
+//-- Keys and predicates ----------------------------------------------------------------------------
+
+int weightOf(Parcel p) { return p.weight; }
+int worthOf(Parcel p) { return p.worth; }
+int densityOf(Parcel p) { return p.worth * 10 / p.weight; }
+int zoneOf(Parcel p) { return (int)p.zone; }
+
+bool isHeavy(Parcel p) { return p.weight >= 8; }
+bool isFragile(Parcel p) { return p.fragile; }
+bool onCart(Parcel p) { return p.parent == cart; }
+
+func<int, Parcel> keyNamed(int k) {
+    switch (k) {
+        case 1: return weightOf;
+        case 2: return worthOf;
+        case 3: return densityOf;
+        default: return zoneOf;
+    }
+}
+
+string keyLabel(int k) {
+    switch (k) {
+        case 1: return "weight";
+        case 2: return "worth";
+        case 3: return "density";
+        default: return "zone";
+    }
+}
+
+string zoneName(eZone z) {
+    switch (z) {
+        case eZone.north: return "north";
+        case eZone.south: return "south";
+        default:          return "east";
+    }
+}
+
+//-- Combinators ------------------------------------------------------------------------------------
+
+bool both(func<bool, Parcel> a, func<bool, Parcel> b, Parcel p) { return a(p) && b(p); }
+bool either(func<bool, Parcel> a, func<bool, Parcel> b, Parcel p) { return a(p) || b(p); }
+bool negate(func<bool, Parcel> a, Parcel p) { return !a(p); }
+
+array<Parcel> where(array<Parcel> xs, func<bool, Parcel> pred) {
+    array<Parcel> out[MAXP];
+    for (Parcel p in xs) {
+        if (pred(p)) out += p;
+    }
+    return out;
+}
+
+int countIf(array<Parcel> xs, func<bool, Parcel> pred) {
+    int n = 0;
+    for (Parcel p in xs) {
+        if (pred(p)) n++;
+    }
+    return n;
+}
+
+bool allOf(array<Parcel> xs, func<bool, Parcel> pred) {
+    for (Parcel p in xs) {
+        if (!pred(p)) return false;
+    }
+    return true;
+}
+
+int sumBy(array<Parcel> xs, func<int, Parcel> key) {
+    int t = 0;
+    for (Parcel p in xs) t += key(p);
+    return t;
+}
+
+Parcel maxBy(array<Parcel> xs, func<int, Parcel> key) {
+    Parcel best = null;
+    for (Parcel p in xs) {
+        if (best == null || key(p) > key(best)) best = p;
+    }
+    return best;
+}
+
+array<Parcel> sortedBy(array<Parcel> xs, func<int, Parcel> key, bool down = false) {
+    if (down) return xs.orderBy((Parcel a, Parcel b) => key(b) - key(a));
+    return xs.orderBy((Parcel a, Parcel b) => key(a) - key(b));
+}
+
+// Greedy: take parcels in rank order while they still fit.
+array<Parcel> pack(array<Parcel> xs, int limit, func<int, Parcel> rank) {
+    array<Parcel> out[MAXP];
+    int room = limit;
+    for (Parcel p in sortedBy(xs, rank, down: true)) {
+        if (p.weight <= room) {
+            out += p;
+            room -= p.weight;
+        }
+    }
+    return out;
+}
+
+array<array<Parcel>> byZone(array<Parcel> xs) {
+    array<array<Parcel>> out[3];
+    for (int z in 1 to 3) out += xs.filter((Parcel p) => (int)p.zone == z);
+    return out;
+}
+
+// Number of subsets of ws[i..] whose sum is exactly target.
+int subsetsTo(array<int> ws, int i, int target) {
+    if (target == 0) return 1;
+    if (target < 0 || i >= ws.length) return 0;
+    return subsetsTo(ws, i + 1, target - ws[i]) + subsetsTo(ws, i + 1, target);
+}
+
+stringObj tagsOf(array<Parcel> xs, string sep = " ") {
+    stringObj s;
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) s += sep;
+        s += xs[i].tag;
+    }
+    if (s.isEmpty()) s = "-";
+    return s;
+}
+
+stringObj intsOf(array<int> xs) {
+    stringObj s;
+    for (int v in xs) {
+        if (!s.isEmpty()) s += ",";
+        s += $"{v}";
+    }
+    return s;
+}
+
+string heaviestTag(array<Parcel> xs) {
+    return maxBy(xs, weightOf)?.tag ?? "none";
+}
+
+//-- Summary ----------------------------------------------------------------------------------------
+
+struct Summary {
+    int n;
+    int weight;
+    int worth;
+    int heaviest;
+}
+
+extend struct Summary {
+    Summary operator + (Parcel p) {
+        Summary s;
+        s.n = n + 1;
+        s.weight = weight + p.weight;
+        s.worth = worth + p.worth;
+        s.heaviest = p.weight > heaviest ? p.weight : heaviest;
+        return s;
+    }
+
+    Summary operator + (Summary o) {
+        Summary s;
+        s.n = n + o.n;
+        s.weight = weight + o.weight;
+        s.worth = worth + o.worth;
+        s.heaviest = o.heaviest > heaviest ? o.heaviest : heaviest;
+        return s;
+    }
+
+    int mean() { return n == 0 ? 0 : worth / n; }
+}
+
+Summary addParcel(Summary s, Parcel p) { return s + p; }
+
+Summary foldSummary(array<Parcel> xs, func<Summary, Summary, Parcel> f) {
+    Summary acc;
+    for (Parcel p in xs) acc = f(acc, p);
+    return acc;
+}
+
+void showSummary(string label, Summary s) {
+    printLine($"{label}: {s.n} parcels, weight {s.weight}, worth {s.worth}, mean {s.mean()}, heaviest {s.heaviest}");
+}
+
+//-- Pricing ----------------------------------------------------------------------------------------
+
+int identity(int c) { return c; }
+int withTax(int c) { return c + c / 10; }
+int roundTen(int c) { return (c + 5) / 10 * 10; }
+int insured(int c) { return c + 15; }
+
+array<func<int, int>> pricing = { withTax, (int c) => c - 3, roundTen };
+
+int runAll(array<func<int, int>> fs, int x) {
+    int v = x;
+    for (func<int, int> f in fs) v = f(v);
+    return v;
+}
+
+int twice(func<int, int> f, int x) { return f(f(x)); }
+
+//-- Helpers for verbs ------------------------------------------------------------------------------
+
+Parcel asParcel(object o) {
+    if (o == null || !o.is(Parcel)) {
+        printLine("That is not a parcel.");
+        return null;
+    }
+    return (Parcel)o;
+}
+
+array<Parcel> loaded() { return where(parcels, onCart); }
+
+array<Parcel> waiting() { return where(parcels, (Parcel p) => !onCart(p)); }
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb ParcelsVerb {
+    grammar = {{.parcels}};
+    void handler() {
+        for (Parcel p in parcels) {
+            print($"{p.tag} w{p.weight} ${p.worth} {zoneName(p.zone)}");
+            if (p.fragile) print(" fragile");
+            if (onCart(p)) print(" (cart)");
+            print("^");
+        }
+        printLine($"heavy {countIf(parcels, isHeavy)}, fragile {countIf(parcels, isFragile)}, on cart {countIf(parcels, onCart)}");
+    }
+}
+
+class SortVerb : verb {
+    func<int, Parcel> key;
+    string label;
+
+    void handler() {
+        array<Parcel> up = sortedBy(parcels, key);
+        array<Parcel> down = sortedBy(parcels, key, down: true);
+        printLine($"by {label}: {tagsOf(up)}; reversed {tagsOf(down, sep: ",")}");
+        printLine($"top {down.first().tag} ({key(down.first())}), bottom {up.first().tag} ({key(up.first())}), sum {sumBy(parcels, key)}");
+    }
+}
+
+SortVerb ByWeightVerb { grammar = {{.byweight}}; key = weightOf; label = "weight"; }
+SortVerb ByWorthVerb { grammar = {{.byworth}}; key = worthOf; label = "worth"; }
+SortVerb ByMarginVerb { grammar = {{.bymargin}}; key = (Parcel p) => p.worth - p.weight; label = "margin"; }
+
+verb RankVerb {
+    grammar = {{.rank, NUMBER}};
+    void handler() {
+        int k = parsed_number;
+        func<int, Parcel> key = keyNamed(k);
+        Parcel best = maxBy(parcels, key);
+        array<int> keys = parcels.map((var p) => key((Parcel)p));
+        printLine($"key {keyLabel(k)}: {intsOf(keys)}; best {best.tag}; distinct {keys.distinct().count()}");
+        array<Parcel> middle = sortedBy(parcels, key).skip(1).take(4);
+        printLine($"middle four {tagsOf(middle)}, first {middle.first().tag}, last {middle.last().tag}");
+    }
+}
+
+verb ZonesVerb {
+    grammar = {{.zones}};
+    void handler() {
+        array<array<Parcel>> groups = byZone(parcels);
+        int z = 0;
+        for (array<Parcel> g in groups) {
+            z++;
+            Summary s = foldSummary(g, addParcel);
+            printLine($"{zoneName((eZone)z)}: {tagsOf(g)} | n {s.n} w {s.weight} heaviest {heaviestTag(g)}");
+        }
+        array<Parcel> east = groups[2];
+        array<Parcel> none = east.filter((Parcel p) => p.weight > 100);
+        printLine($"empty group heaviest {heaviestTag(none)}, any fragile east {east.any(isFragile)}, all north light {groups[0].all((Parcel p) => !isHeavy(p))}");
+    }
+}
+
+verb PickVerb {
+    grammar = {{.pick}};
+    void handler() {
+        array<Parcel> a = where(parcels, (Parcel p) => both(isHeavy, isFragile, p));
+        array<Parcel> b = where(parcels, (Parcel p) => either(isHeavy, isFragile, p));
+        array<Parcel> c = where(parcels, (Parcel p) => negate(isHeavy, p));
+        func<bool, Parcel> cheap = (Parcel p) => p.worth < 25;
+        array<Parcel> d = where(c, cheap);
+        printLine($"heavy and fragile {tagsOf(a)}; heavy or fragile {tagsOf(b)}; light {tagsOf(c)}; light and cheap {tagsOf(d)}");
+        printLine($"all light cheap {allOf(d, cheap)}, all light {allOf(parcels, (Parcel p) => !isHeavy(p))}, none heavy cheap {countIf(parcels, (Parcel p) => isHeavy(p) && cheap(p))}");
+    }
+}
+
+verb PackVerb {
+    grammar = {{.pack, NUMBER}};
+    void handler() {
+        int limit = parsed_number;
+        array<Parcel> byDensity = pack(parcels, limit, densityOf);
+        array<Parcel> byWorth = pack(parcels, limit, worthOf);
+        array<Parcel> byLight = pack(parcels, limit, (Parcel p) => -p.weight);
+        Summary sd = foldSummary(byDensity, addParcel);
+        Summary sw = foldSummary(byWorth, addParcel);
+        Summary sl = foldSummary(byLight, (Summary acc, Parcel p) => acc + p);
+        printLine($"cap {limit}: density {tagsOf(byDensity)} ${sd.worth}/{sd.weight}; worth {tagsOf(byWorth)} ${sw.worth}/{sw.weight}; lightest {tagsOf(byLight)} n{sl.n}");
+        Summary better = sd.worth >= sw.worth ? sd : sw;
+        printLine($"better ${better.worth}, left over {limit - better.weight}");
+    }
+}
+
+verb WaysVerb {
+    grammar = {{.ways, NUMBER}};
+    void handler() {
+        array<int> ws = parcels.map((var p) => ((Parcel)p).weight);
+        int n = subsetsTo(ws, 0, parsed_number);
+        printLine($"ways to weigh {parsed_number}: {n} (from {intsOf(ws)})");
+    }
+}
+
+verb PriceVerb {
+    grammar = {{.price, NOUN}};
+    void handler() {
+        Parcel p = asParcel(noun);
+        if (p == null) return;
+        func<int, int> cover = p.fragile ? insured : identity;
+        int base = cover(p.worth);
+        int net = runAll(pricing, base);
+        print($"{p.tag}: worth {p.worth}, covered {base}, steps");
+        int v = base;
+        for (func<int, int> f in pricing) {
+            v = f(v);
+            print($" {v}");
+        }
+        printLine($", net {net}, taxed twice {twice(withTax, p.worth)}");
+    }
+}
+
+verb LoadVerb {
+    grammar = {{.load, NOUN}};
+    void handler() {
+        Parcel p = asParcel(noun);
+        if (p == null) return;
+        if (onCart(p)) {
+            printLine($"{p.tag} is already on the cart.");
+            return;
+        }
+        p.parent = cart;
+        Summary s = foldSummary(loaded(), addParcel);
+        printLine($"{p.tag} loaded. Cart: {tagsOf(loaded())}, weight {s.weight}.");
+    }
+}
+
+verb UnloadVerb {
+    grammar = {{.unload}};
+    void handler() {
+        int n = 0;
+        for (object o in cart.children) {
+            o.parent = roomA;
+            n++;
+        }
+        printLine($"Unloaded {n}.");
+    }
+}
+
+verb TotalsVerb {
+    grammar = {{.totals}};
+    void handler() {
+        Summary onC = foldSummary(loaded(), addParcel);
+        Summary off = foldSummary(waiting(), addParcel);
+        Summary all = onC + off;
+        showSummary("cart", onC);
+        showSummary("floor", off);
+        showSummary("all", all);
+        Summary direct = foldSummary(parcels, addParcel);
+        printLine($"agrees {all.worth == direct.worth && all.n == direct.n}, heaviest on cart {heaviestTag(loaded())}");
+    }
+}
+
+array<func<bool, Parcel>> checks = { isHeavy, isFragile, onCart, (Parcel p) => p.worth >= 30, (Parcel p) => p.zone == eZone.north };
+array<string> checkNames = { "heavy", "fragile", "carted", "valuable", "north" };
+
+int byTagDown(Parcel a, Parcel b) { return b.tag.compareTo(a.tag); }
+
+verb ChecksVerb {
+    grammar = {{.checks}};
+    void handler() {
+        for (int i = 0; i < checks.length; i++) {
+            func<bool, Parcel> c = checks[i];
+            array<Parcel> hits = parcels.filter(c);
+            printLine($"{checkNames[i]}: {tagsOf(hits)} ({hits.count()})");
+        }
+        int passed = 0;
+        for (func<bool, Parcel> c in checks) {
+            if (parcels.any(c)) passed++;
+        }
+        printLine($"checks with a hit {passed} of {checks.length}");
+    }
+}
+
+verb TagsVerb {
+    grammar = {{.tags}};
+    void handler() {
+        array<Parcel> down = parcels.orderBy(byTagDown);
+        array<int> worths = parcels.map((var p) => ((Parcel)p).worth).orderBy();
+        array<int> low = worths.takeWhile((int w) => w < 30);
+        array<int> high = worths.skipWhile((int w) => w < 30);
+        printLine($"tags down {tagsOf(down, "/")}; worths {intsOf(worths)}; under 30 {intsOf(low)}; rest {intsOf(high)}");
+        stringObj line;
+        for (Parcel p in down.filter((Parcel q) => q.zone != eZone.east).take(3)) line += p.tag.toLower();
+        printLine($"first three not east, lowered: {line}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

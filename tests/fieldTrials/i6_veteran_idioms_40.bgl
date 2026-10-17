@@ -1,0 +1,469 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a composing room and
+// a press room. A Sort class (an int code member, a char letter member printed by a short_name
+// routine and in a description, a per-object dictionaryWord member, a class parse_name reading
+// NextWord that sets parser_action = PluralFound on a plural word and answers TheSame from
+// parser_one and parser_two cast to Sort, list_together and a plural
+// string); a type case whose before rule on the Receive fake action takes only Sorts; a composing
+// stick (capacity, an after rule on Receive spelling what it holds) whose letters are read by a
+// child/sibling walk into a local array<object> and spelled oldest-first, packed base 4 into one
+// int and looked up in a global array<int> of known words beside an array<string> of their names;
+// an enum member for the stick's ink, a timer (StartTimer, time_left, time_out) drying it and a
+// visibility test walking parents; an ink roller whose int ink member is named through a switch
+// with ranges and a guard; a press supporter whose before rule on Receive takes only the stick and
+// whose Pull prints an impression, logs it in a sized ring array<int> and scores each new word
+// once (a global bitmask tested with &, set with |=); a native Ink verb (NOUN, NOUN .with HELD) and a
+// native Distribute verb moving every child back with a for-in loop over children; a LibraryMessages
+// override of Smell; a meta Proofs verb reading the ring oldest-first.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int NLOG = 3;             // impressions remembered
+const int DRY_TURNS = 3;        // turns the ink stays wet
+const int STICK_HOLDS = 3;
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Smell:
+                rtrue("Ink and machine oil.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+enum inkState { dry, wet, used }
+
+// Known words, packed base 4 from the letters' codes (P 1, O 2, T 3), oldest letter first.
+array<int> wordCodes = {27, 57, 39};
+array<string> wordNames = {"POT", "TOP", "OPT"};
+
+array<int> impLog[NLOG];        // codes of the last impressions; oldest dropped
+int nImps;                      // impressions ever pulled
+int g_found;                    // a bit per known word already printed
+int g_blanks;
+
+// The index of a packed word in wordCodes, or -1.
+int WordIndex(int code) {
+    for (int i = 0; i < wordCodes.length; i++)
+        if (wordCodes[i] == code) return i;
+    return -1;
+}
+
+// True when o is in the player's location, however deep.
+bool Near(object o) {
+    object p = o;
+    while (p != null) {
+        if (p == location) return true;
+        p = p.parent;
+    }
+    return false;
+}
+
+void LogImpression(int code) {
+    impLog[nImps % NLOG] = code;
+    nImps++;
+}
+
+// Prints a packed word's letters, oldest first.
+void PrintCode(int code) {
+    if (code == 0) {
+        print("(blank)");
+        return;
+    }
+    array<int> digits[STICK_HOLDS];
+    int n = 0;
+    while (code > 0 && n < STICK_HOLDS) {
+        digits[n] = code % 4;
+        code = code / 4;
+        n++;
+    }
+    for (int i = n - 1; i >= 0; i--) {
+        switch (digits[i]) {
+            case 1: print("P");
+            case 2: print("O");
+            case 3: print("T");
+            default: print("?");
+        }
+    }
+}
+
+// ---------------------------------------------------------------- rooms
+
+object composingRoom {
+    short_name = "Composing Room";
+    description = "Composing Room. A type case stands against the wall. The press room is north.";
+    object n_to = pressRoom;
+    attributes = {light};
+}
+
+object pressRoom {
+    short_name = "Press Room";
+    description = "Press Room. An iron hand press fills the room. The composing room is south.";
+    object s_to = composingRoom;
+    attributes = {light};
+}
+
+// ---------------------------------------------------------------- type
+
+class Sort : object {
+    int code;
+    char letter;
+    dictionaryWord ownWord;
+    string list_together = "sorts";
+    string plural = "sorts";
+
+    bool short_name() {
+        print(letter);
+        print(" sort");
+        return true;
+    }
+
+    int parse_name() {
+        if (parser_action == TheSame) {
+            if (((Sort)parser_one).ownWord == ((Sort)parser_two).ownWord) return -1;
+            return -2;
+        }
+        int n = 0;
+        bool own = false;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .sort || w == .type || w == .letter) {
+                n++;
+                continue;
+            }
+            if (w == .sorts || w == .letters) {
+                parser_action = PluralFound;
+                n++;
+                continue;
+            }
+            if (!own && w != null && w == ownWord) {
+                own = true;
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+
+    void description() {
+        print($"A piece of type with a reversed {letter} on its face.^");
+    }
+}
+
+Sort sortP {
+    parent = typeCase;
+    code = 1;
+    letter = 'P';
+    ownWord = .p;
+}
+
+Sort sortO {
+    parent = typeCase;
+    code = 2;
+    letter = 'O';
+    ownWord = .o;
+}
+
+Sort sortT {
+    parent = typeCase;
+    code = 3;
+    letter = 'T';
+    ownWord = .t;
+}
+
+object typeCase {
+    short_name = "type case";
+    name = {.type, .case};
+    parent = composingRoom;
+    description = "A shallow wooden case divided into compartments.";
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Sort)) rtrue("Only type goes in the case.^");
+            case Take, Push, Pull:
+                rtrue("The case is screwed to the wall.^");
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+// ---------------------------------------------------------------- the stick
+
+object stick {
+    short_name = "composing stick";
+    name = {.composing, .stick};
+    parent = composingRoom;
+    int capacity = STICK_HOLDS;
+    inkState ink = dry;
+    int time_left;
+
+    // The sorts in the stick, oldest first, packed base 4.
+    int Packed() {
+        array<object> held[STICK_HOLDS];
+        int n = 0;
+        object o = child;
+        while (o != null) {
+            if (n < STICK_HOLDS) held[n] = o;
+            n++;
+            o = o.sibling;
+        }
+        int code = 0;
+        for (int i = n - 1; i >= 0; i--) {
+            Sort s = (Sort)held[i];
+            code = code * 4 + s.code;
+        }
+        return code;
+    }
+
+    void Spell() {
+        if (children.length == 0) {
+            print("nothing");
+            return;
+        }
+        PrintCode(Packed());
+    }
+
+    void description() {
+        print("A steel stick for setting type. It holds ");
+        Spell();
+        switch (ink) {
+            case wet: print(", wet with ink");
+            case used: print(", smudged from the press");
+        }
+        print(".^");
+    }
+
+    void time_out() {
+        if (ink == wet) {
+            ink = dry;
+            if (Near(self)) print("^The ink on the type dries to a dull crust.^");
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Sort)) rtrue("The stick only takes type.^");
+                if (ink == wet) rtrue("Not while the type is wet.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                print($"You set {the(noun)} in the stick. It reads ");
+                Spell();
+                print(".^");
+                return true;
+        }
+        rfalse;
+    }
+    attributes = {container, open};
+}
+
+// ---------------------------------------------------------------- ink
+
+object roller {
+    short_name = "ink roller";
+    name = {.ink, .roller, .brayer};
+    parent = composingRoom;
+    int ink = 2;
+
+    void description() {
+        print("A rubber roller on a handle. It is ");
+        switch (ink) {
+            case 0: print("dry");
+            case 1: print("nearly dry");
+            case 2 to 3: print("tacky with ink");
+            case >= 4: print("thick with ink");
+        }
+        print(".^");
+    }
+
+    // Inks whatever is in the stick.
+    bool Roll() {
+        if (ink <= 0) {
+            print("The roller is dry.^");
+            return false;
+        }
+        if (stick.children.length == 0) {
+            print("There is no type in the stick to ink.^");
+            return false;
+        }
+        ink--;
+        stick.ink = wet;
+        StopTimer(stick);
+        StartTimer(stick, DRY_TURNS);
+        print("You roll ink over the type.^");
+        return true;
+    }
+}
+
+object inkTin {
+    short_name = "ink tin";
+    name = {.ink, .tin};
+    parent = pressRoom;
+    description = "A tin of black ink.";
+    bool before() {
+        switch (action) {
+            case Take:
+                rtrue("The tin is stuck to the bench with old ink.^");
+            case Rub, Touch:
+                if (roller.parent != player) rtrue("You'd want the roller in your hand.^");
+                roller.ink += 2;
+                print("You work the roller through the ink.^");
+                return true;
+        }
+        rfalse;
+    }
+    attributes = {static};
+}
+
+// ---------------------------------------------------------------- the press
+
+object press {
+    short_name = "hand press";
+    name = {.hand, .press, .bed, .lever, .bar};
+    parent = pressRoom;
+    description = "An iron press with a flat bed and a long bar.";
+
+    void Impress() {
+        if (stick.parent != self) {
+            print("The bed is empty. The platen comes down on nothing.^");
+            return;
+        }
+        int code = stick.Packed();
+        if (stick.ink != wet) {
+            g_blanks++;
+            LogImpression(0);
+            print("The sheet comes away blank.^");
+            return;
+        }
+        stick.ink = used;
+        StopTimer(stick);
+        LogImpression(code);
+        print("You pull the bar. The sheet reads ");
+        PrintCode(code);
+        int k = WordIndex(code);
+        if (k < 0) {
+            print(", which is not a word.^");
+            return;
+        }
+        print($": {wordNames[k]}.^");
+        int bit = 1;
+        for (int i = 0; i < k; i++) bit = bit * 2;
+        if ((g_found & bit) == 0) {
+            g_found |= bit;
+            score++;
+        }
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (noun != stick) rtrue("Only the composing stick fits the bed.^");
+            case Pull, Push, Turn:
+                Impress();
+                return true;
+            case Take:
+                rtrue("It weighs as much as a horse.^");
+        }
+        rfalse;
+    }
+    attributes = {static, supporter};
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Ink {
+    grammar = {{.ink, NOUN}, {.ink, NOUN, .with, HELD}};
+    void handler() {
+        if (noun != stick && !noun.is(Sort)) {
+            print("Only the type takes ink.^");
+            return;
+        }
+        if (second != null && second != roller) {
+            print($"You can't ink anything with {the(second)}.^");
+            return;
+        }
+        if (roller.parent != player) {
+            print("You need the roller in your hand.^");
+            return;
+        }
+        if (noun.is(Sort) && noun.parent != stick) {
+            print("Set it in the stick first.^");
+            return;
+        }
+        roller.Roll();
+    }
+}
+
+verb Distribute {
+    grammar = {.distribute, NOUN};
+    void handler() {
+        if (noun != stick) {
+            print("You can only distribute the stick.^");
+            return;
+        }
+        if (stick.ink == wet) {
+            print("Not while the ink is wet.^");
+            return;
+        }
+        if (!Near(typeCase)) {
+            print("The type case is in the composing room.^");
+            return;
+        }
+        int n = 0;
+        for (object o in stick.children) {
+            o.parent = typeCase;
+            n++;
+        }
+        stick.ink = dry;
+        print($"You put {n} sorts back in the case.^");
+    }
+}
+
+verb Proofs {
+    grammar = {.proofs};
+    meta = true;
+    void handler() {
+        print($"Impressions {nImps}, blank {g_blanks}:");
+        if (nImps == 0) print(" none");
+        int first = 0;
+        if (nImps > NLOG) first = nImps - NLOG;
+        for (int i = first; i < nImps; i++) {
+            print(" ");
+            PrintCode(impLog[i % NLOG]);
+        }
+        print(".^");
+        print($"Stick: {stick.children.length} sorts, ink {(int)stick.ink}, timer {stick.time_left}. ");
+        print($"Roller {roller.ink}. Found {g_found}. Score {score} of {MAX_SCORE}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = composingRoom;
+    rfalse;
+}
