@@ -2156,7 +2156,9 @@ bool bglParser::processSubscriptMemberAccess(const string& arrPath, expression* 
             string selfValue = arrPath;
             size_t innerDot = arrPath.rfind('.');
             if(innerDot != string::npos){ selfValue = arrPath.substr(0, innerDot); pv = arrPath.substr(innerDot + 1); }
-            emitterBindings rb; rb.self = selfValue; rb.val = arrPath; rb.prop = pv;
+            else if(func != nullptr)   // a name emitted under another (`keep` → `_keep`)
+                if(string q = qualifyIdentifier(arrPath, func, body); !q.empty()) selfValue = q;
+            emitterBindings rb; rb.self = selfValue; rb.val = selfValue == arrPath ? arrPath : selfValue; rb.prop = pv;
             rb.fn = getMethod; rb.args.push_back(indexExpr->text());
             subscriptText = expandEmitterBody(blk, rb);
         }
@@ -2476,7 +2478,10 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     if(!bind) op.assert(token::assignment);
     expression* valExpr = nullptr;
     // `grid[i] = { 5, 6 };`: the list is a hidden local array, copied into the row as an array value would be.
-    string rowType = arrPath.find('.') == string::npos ? resolveArrayElementType(arrPath, func, body) : "";
+    size_t rowDot = arrPath.rfind('.');
+    string rowType = rowDot == string::npos ? resolveArrayElementType(arrPath, func, body)
+                   : arrPath.find_first_of("([") == string::npos
+                     ? resolveArrayElementTypeDotted(arrPath.substr(0, rowDot), arrPath.substr(rowDot + 1), func, body) : "";
     if(!bind && file.peekToken().is(token::braceOpen) && isWordArrayType(rowType) && rowType != "array<char>"){
         file.getToken();   // '{'
         vector<expression*> elements;
@@ -2720,6 +2725,22 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
     // An element that is an array is assigned as an array is: copied into the array the slot holds (an empty
     // slot takes the array itself).
     else if(isWordArrayType(elemType) && elemType != "array<char>"){
+        copyMemberArrayValue(valExpr);
+        if(!bind && !isMemberWordArray && pointerSlot.empty()){
+            callStmt.emitterBody = "_bglArrRowStore(" + arrPath + ", " + indexExpr->text() + ", " + valExpr->text() + ", "
+                                 + substituteElemOps("$opref(=)", elemType, "") + ")";
+            for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
+            pendingInjections.clear();
+            if(body != nullptr) body->statements.push_back(&callStmt);
+            for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
+            postInjections.clear();
+            return false;
+        }
+        // The row is read for the copy and written by the store, so the index is evaluated twice.
+        if(string ix = regex_replace(indexExpr->text(), regex("_bgl(At|ByteAt|MemberAt)\\(|-->|->"), "(");
+           ix.find("++") != string::npos || ix.find("--") != string::npos || regex_search(ix, regex("[A-Za-z0-9_]\\s*\\(")))
+            parsingError("a row of an array of arrays is copied into where it stands, so its index is read twice; index "
+                         "it with a variable instead of a call.");
         string rowSlot = !pointerSlot.empty() ? pointerSlot
                        : isMemberWordArray ? checkedMemberSlot(memOwner, propertyI6Name(memProp), indexExpr->text(), true,
                                                                memberArrayIsTracked(memOwner, memProp, func, body))
@@ -3030,6 +3051,19 @@ bool bglParser::rewriteElementCompound(token tok, StatementContext& sc){
         for(statement* inj : pendingInjections) if(sc.body != nullptr) sc.body->statements.push_back(inj);
         pendingInjections.clear();
         if(sc.body != nullptr) sc.body->statements.push_back(&node);
+        return true;
+    }
+    string listRhs = rhs;
+    listRhs.erase(0, listRhs.find_first_not_of(" \t\r\n"));
+    // `grid[1] += { 7, 6 }`: the row takes the list as a named array does.
+    if(arrayElement && (op == "+" || op == "-") && !listRhs.empty() && listRhs[0] == '{'){
+        string tmp = format("_bglel{0}", counter++);
+        listRhs = decls + "{ ref " + elemType + " " + tmp + " := " + lhs + "; " + tmp + " " + op + "= " + listRhs + "; }";
+        size_t statements = count(decls.begin(), decls.end(), ';') + 1;
+        file.openText(listRhs, sc.src.file, sc.src.line);
+        try { for(size_t n = 0; n < statements; n++) processStatementDispatch(file.getToken(), *sc.func); }
+        catch(...) { file.close(); throw; }
+        file.close();
         return true;
     }
     string text = arrayElement && (op == "+" || op == "-")
@@ -3596,6 +3630,14 @@ bool bglParser::memberArraySource(expression* val, string& owner, string& prop){
         && memberArrayIsTracked(owner, prop, currentFunc, nullptr) && !memberArrayIsRef(owner, prop, currentFunc, nullptr);
 }
 
+// A member array stored where an array itself is kept (a row, a `var`) is copied: it has no address of its own.
+void bglParser::copyMemberArrayValue(expression* val){
+    string owner, prop;
+    if(val == nullptr || !isWordArrayType(val->resolvedType) || !memberArraySource(val, owner, prop)) return;
+    val->tokens.assign(1, "_bglHeapCopyOfMember(" + owner + ", " + escapePropertyName(prop) + ")");
+    val->memberArrayDecl = nullptr;
+}
+
 // Applies `operator =` dispatch (emitter, method, or conversion) to one assignment node.
 void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* val, const AssignTarget& t, bool isBindAssign){
     // A hide narrowed to one overload (`hide fill.operator = (int);`) blocks a write of that operand's type.
@@ -3625,6 +3667,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
     }
     if(slotOfAnyType && val != nullptr && !isBindAssign && (isWordArrayType(val->resolvedType) || slotHoldsArray(val->resolvedType)) && currentFunc != nullptr
        && a.src.file.find("beguiLib") == string::npos){
+        copyMemberArrayValue(val);
         // A `var` or union slot holds the array itself; one that outlives the routine keeps it past its owner.
         bool localSlot = a.variableLeft.find('.') == string::npos
             && (qualifyFromParams(a.variableLeft, currentFunc)
@@ -3676,7 +3719,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 return;
             }
         } else if(t.leftType->name == "bytearray"){
-            if(!localSlot && currentFunc != nullptr){
+            if(currentFunc != nullptr && (!localSlot || a.src.file.find("beguiLib") == string::npos)){
                 val->tokens = {"_bglByteArrCopyInto(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)
                                + ", " + val->text() + ")"};
                 a.variableLeft = "_bglSink-->0";   // the copy is the statement
@@ -4002,7 +4045,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
             string recv = target.variableLeft, prop = "0";
             ArrayReceiver r = arrayReceiver(recv, tok.value, aType, func, body);
             if(r.isMember){ recv = r.owner; prop = r.prop; }
-            classDef* ac = languageService.classOf(aType);
+            classDef* ac = getDispatchClass(aType);   // `array<int>` for a parameter
             auto* clearFn = ac ? dynamic_cast<functionDef*>(findMemberInHierarchy(ac, [](typeMember* m){
                 auto* f = dynamic_cast<functionDef*>(m);
                 return f && f->name == "clear" && f->isEmitter && f->params.empty()
@@ -4389,6 +4432,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
         string elem = dot == string::npos ? resolveArrayElementType(tok.value, func, body)
                                           : resolveArrayElementTypeDotted(tok.value.substr(0, dot), tok.value.substr(dot + 1), func, body);
         if(!elem.empty() && elem != rhs->resolvedType && elem != "var") applyImplicitConversion(rhs, elem);
+        if(symbol.value == "+=" && (isWordArrayType(elem) || slotHoldsArray(elem))) copyMemberArrayValue(rhs);
     }
     if(lhsClass != nullptr && rhs != nullptr && !rhs->resolvedType.empty()){
         string rhsType = rhs->resolvedType;
@@ -4479,7 +4523,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
                 if(pb.elemType->empty() && cIsMember) pb.elemType = resolveArrayElementTypeDotted(cOwner, cProp, func, body);
                 // `+=`/`-=` take one element; another array is one only for an array of arrays.
                 if(rhs != nullptr && isWordArrayType(rhs->resolvedType) && !pb.elemType->empty()
-                   && *pb.elemType != "var" && !isWordArrayType(*pb.elemType))
+                   && *pb.elemType != "var" && !isWordArrayType(*pb.elemType) && !slotHoldsArray(*pb.elemType))
                     parsingError(format("'{0}' on an array takes one element ({1}); '{2}' is an array. Use a "
                                         "loop to {3} each element.", symbol.value, typeDisplayName(*pb.elemType),
                                         rhs->text(), symbol.value == "+=" ? "append" : "remove"));
@@ -4702,6 +4746,21 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
                         return (shadowed ? "::" : "") + imp->name + "." + rawName;
                     }
         string qualified = qualifyIdentifier(rawName, func, body);
+        // A global variable or constant can't be called, so a method of this object or class of the name takes the call.
+        if(qualified.rfind("self.", 0) != 0 && languageService.findGlobalAs<functionDef>(rawName) == nullptr
+           && !qualifyFromParams(rawName, func) && !qualifyFromBodyLocals(rawName, body)
+           && !qualifyFromAncestorBlocks(rawName, body) && !qualifyFromCaptures(rawName)){
+            classDef* oc = currentClass != nullptr ? currentClass
+                         : currentObject != nullptr ? currentObject->objectClass : nullptr;
+            bool isMethod = false;
+            if(currentObject != nullptr)
+                for(typeMember* m : currentObject->members)
+                    if(dynamic_cast<functionDef*>(m) != nullptr && m->name == rawName){ isMethod = true; break; }
+            if(!isMethod && oc != nullptr)
+                isMethod = oc->findMember([&](typeMember* m){
+                    return dynamic_cast<functionDef*>(m) != nullptr && m->name == rawName; }) != nullptr;
+            if(isMethod) qualified = "self." + rawName;
+        }
         // A method of this object or class is called by its Beguile name: the arguments choose among its overloads.
         if(qualified.rfind("self.", 0) == 0 && strcasecmp(qualified.c_str() + 5, rawName.c_str()) != 0){
             bool isMethod = false;
@@ -5197,6 +5256,34 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         ParsedArgList chainPal = parseCallArgList(func, body);
         vector<expression*> chainArgs = chainPal.args;
         classDef* chainCls = languageService.classOf(chainReturnType);
+        // `descend(3).clear();`: an array a call returned is addressed as a value, as in an expression.
+        if(chainCls == nullptr && isWordArrayType(chainReturnType) && getDispatchClass(chainReturnType) != nullptr){
+            string recv = callStmt.emitterBody.empty() ? string() : resolveEmitterText(callStmt);
+            if(recv.empty()){
+                recv = (callStmt.displayName.empty() ? callStmt.functionName : callStmt.displayName) + "(";
+                for(size_t i = 0; i < callStmt.args.size(); i++) recv += (i ? ", " : "") + callStmt.args[i]->text();
+                recv += ")";
+            }
+            string elem;
+            if(size_t lt = chainReturnType.find('<'); lt != string::npos && chainReturnType.back() == '>')
+                elem = chainReturnType.substr(lt + 1, chainReturnType.size() - lt - 2);
+            vector<vector<interpolatedSegment>> interp;
+            functionDef* m = bindMethodCall(chainReturnType, recv, chainMember.value, chainArgs, chainPal.namedArgNames, interp, elem);
+            auto* blk = m != nullptr && m->isEmitter ? dynamic_cast<i6Block*>(m->body) : nullptr;
+            if(blk == nullptr)
+                parsingError(format("Chained method '{0}' on type '{1}' is not an emitter", chainMember.value,
+                                    typeDisplayName(chainReturnType)));
+            emitterBindings cb; cb.self = recv; cb.val = recv;
+            cb.prop = languageService.linqInUse && !recv.empty() && recv.back() == ')' ? "-1" : "0";
+            cb.selfType = chainReturnType; cb.fn = m; cb.elemType = elem; cb.trim = emitterTrim::ws;
+            for(expression* a : chainArgs){ cb.args.push_back(a->text()); cb.argTypes.push_back(a->resolvedType); }
+            callStmt.emitterBody = expandEmitterBody(blk, cb);
+            callStmt.emitterParams.clear();
+            callStmt.args.clear();
+            chainReturnType = m->returnType.name;
+            chainTok = file.getToken();
+            continue;
+        }
         if(chainCls == nullptr)
             parsingError(format("Type '{0}' is not a class (cannot chain method '{1}')", chainReturnType, chainMember.value));
         string chainMethodName = chainMember.value;

@@ -1929,6 +1929,11 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     if(q) arrDecl.isRefLocal = q->isRef;
     arrDecl.type = languageService.getType("array");
     arrDecl.elementType = elemType;
+    // A struct's instances are copied and pooled member by member; rows of rows aren't.
+    if(auto* sc = dynamic_cast<classDef*>(ctx); sc != nullptr && isValueClass(sc) && !(q && (q->isRef || q->isStatic)) && isArrayOfArraysElement(elemType))
+        parsingError(format("Array '{0}': a struct can't hold an array of arrays; make '{1}' a class, or make the member a "
+            "`ref` to an array of arrays kept elsewhere.", propName.originalValue.empty() ? propName.value : propName.originalValue,
+            sc->dName()));
     // `[N]` fixes the capacity; an initializer may follow to seed the leading slots, as on a global.
     if(sym.is(token::bracketOpen)){
         arrDecl.arraySize = readCompileTimeInt("an array's capacity");

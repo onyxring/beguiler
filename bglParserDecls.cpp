@@ -410,6 +410,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
         arrDecl.i6name = "_" + arrDecl.dName();
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
+    // An array of arrays of arrays isn't supported: rows of rows don't copy or free as rows do.
+    if(isArrayOfArraysElement(elementType) && isArrayOfArraysElement(arrayInnerType(elementType)))
+        parsingError(format("Array '{0}': arrays nest two deep at most (`array<array<T>>`); keep a third level in a "
+            "class member instead.", name.originalValue.empty() ? (string)name : name.originalValue));
     arrDecl.isExternal = isExternal;
     arrDecl.isSuperposed = isSuperposed;
     arrDecl.literalElements = pendingLiteralElements;
@@ -580,6 +584,23 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                 // included. A `bgl.world` query's result lives in a buffer the next query reuses, so that one
                 // is copied.
                 string srcText = expr->text();
+                // `array<char> a = word;` in a routine: a copy with the file-scope source's capacity.
+                if(body != nullptr && arrDecl.isByteArray && arrDecl.arraySize == 0 && !arrDecl.isRefLocal && !declaringRefArray
+                   && first.is(eTokenType::identifier) && expr->tokens.size() == 1
+                   && !(func != nullptr && qualifyFromParams(first.value, func)) && !qualifyFromBodyLocals(first.value, body)
+                   && !qualifyFromAncestorBlocks(first.value, body))
+                    if(auto* g = languageService.findGlobalAs<arrayDeclaration>(first.value); g != nullptr && g->isByteArray){
+                        int cap = g->arraySize > 0 ? g->arraySize
+                                : !g->stringInitializer.empty() ? i6Emitter::i6StringChars(g->stringInitializer)
+                                : dynamic_cast<initializerList*>(g->declaredExpressionValue)
+                                  ? (int)dynamic_cast<initializerList*>(g->declaredExpressionValue)->elements.size() : 0;
+                        if(cap > 0) arrDecl.arraySize = cap;
+                    }
+                if(body != nullptr && arrDecl.isByteArray && arrDecl.arraySize == 0 && !arrDecl.isRefLocal && !declaringRefArray
+                   && expr->resolvedType == "bytearray" && arrDecl.src.file.find("beguiLib") == string::npos
+                   && srcText.find_last_not_of(" \t") != string::npos && srcText[srcText.find_last_not_of(" \t")] != ')')
+                    parsingError(format("'{0}' copies an array<char> of unknown capacity: give it one (`array<char> {0}[n] = …;`), "
+                                        "or share it with `ref array<char> {0} := …;`.", arrDecl.dName()));
                 bool sharedBuffer = srcText.find("_bglWorld") != string::npos;
                 bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
                                 || arrDecl.name.rfind("_bgl", 0) == 0
@@ -1515,6 +1536,8 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     pendingInjections.clear();
 
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body, !symbol.is(token::endStatement));
+    if(func != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.src.file.find("beguiLib") == string::npos)
+        copyMemberArrayValue(varDecl.declaredExpressionValue);
     // A `var` or union local declared from a call's or chain's result takes it, as an array local does.
     if(func != nullptr && body != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.declaredExpressionValue != nullptr
        && isWordArrayType(varDecl.declaredExpressionValue->resolvedType) && varDecl.src.file.find("beguiLib") == string::npos

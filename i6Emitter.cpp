@@ -773,8 +773,10 @@ void i6Emitter::prepareRecursionSave(functionDef* fd){
             if(!fm || fm->isStatic || fm->isPrePassStub || isHeaderMember(fm->name)) continue;
             if(fm->type.name == "attributelist") continue;
             if(fm->type.name == "grammarrulelist" || fm->type.name == "grammarrule") continue;
-            if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive) continue;
-            if(dynamic_cast<arrayDeclaration*>(fm)) continue;
+            auto* fad = dynamic_cast<arrayDeclaration*>(fm);
+            if(fad != nullptr && !(fad->isRefLocal && !fad->isByteArray)) continue;
+            if(fad == nullptr)
+                if(classDef* ft = languageService.findClass(fm->type.name); ft && ft->isEmitterClass && !ft->isPrimitive) continue;
             if(classDef* owned = ownedFieldClass(fm, visited)){
                 visited.insert(owned);
                 collect(owned, format("_bglField_{0}_{1}", inst, fm->dName()));
@@ -852,6 +854,10 @@ void i6Emitter::emitBackingReset(classDef* cls, const string& backing, const str
                         out << format("{0}{1}.{2} = {3}; _bglArrSetLength({3}, 0);\n", indent, inst, prop, storage);
                         if(ec == nullptr || !isValueClass(ec))
                             for(int k = 1; k <= ad->arraySize && k <= 64; k++) out << format("{0}{1}-->{2} = 0;\n", indent, storage, k);
+                        continue;
+                    }
+                    if(ad->isRefLocal && !ad->isByteArray){   // a `ref` member starts unbound
+                        out << format("{0}{1}.{2} = 0;\n", indent, inst, fm->i6name.empty() ? fm->dName() : fm->i6name);
                         continue;
                     }
                     if(ad->isByteArray || ad->isRefLocal || ad->arraySize <= 0) continue;
@@ -2009,10 +2015,11 @@ for(typeDef* g : languageService.globals){
            || vd->declaredExpressionValue == nullptr || earlyDeclaredGlobals.count(vd->name)) continue;
         string value = staticText(vd->declaredExpressionValue);
         if(value.empty() || !plain(value)) continue;
-        out << format("constant {0} = {1};\n", vd->dName(), value);
-        if(vd->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", vd->dName());   // used, though folded away
+        const string& cname = vd->i6name.empty() ? vd->dName() : vd->i6name;   // as its uses name it
+        out << format("constant {0} = {1};\n", cname, value);
+        if(vd->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", cname);   // used, though folded away
         earlyDeclaredGlobals.insert(vd->name);
-        known.insert(lower(vd->dName()));
+        known.insert(lower(cname));
     }
     // Plain variables too: a scalar, string, func or reference global with no value or a plain one.
     for(typeDef* g : languageService.globals){
@@ -2034,6 +2041,12 @@ for(typeDef* g : languageService.globals){
         if(cd == nullptr || cd->isExternal || cd->isEmitterClass || cd->isAlias) continue;
         for(typeMember* m : cd->members){
             auto* vd = dynamic_cast<variableDeclaration*>(m);
+            // A static `ref array` is a variable too, which the class's methods may use before its global comes.
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(vd); ad != nullptr && ad->isStatic && ad->isRefLocal){
+                string name = lowerText(format("_bgl_{0}_{1}", cd->dName(), ad->dName()));
+                if(earlyStaticGlobals.insert(name).second) out << "global " << name << ";\n";
+                continue;
+            }
             if(vd == nullptr || !vd->isStatic || vd->staticHasGlobal || dynamic_cast<arrayDeclaration*>(vd) != nullptr) continue;
             string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
             if(!value.empty() && !plain(value)) continue;
@@ -3784,7 +3797,24 @@ void i6Emitter::appendLeaveSweep(functionDef* fd){
     fd->cleanups.push_back({"", "_bglHeapSweepFresh(true);"});
 }
 void i6Emitter::emitStatement(statement* stmt, string indent){
+    bool owners = false;
+    if(currentCleanups != nullptr)
+        for(auto& c : *currentCleanups) if(c.second.find("_bglown_") != string::npos){ owners = true; break; }
+    std::streampos before = owners ? out.tellp() : std::streampos(0);
     emitStatementOnly(stmt, indent);
+    // An array a local owned, freed early: the owner lets go of it too, or its exit would free whatever reuses it.
+    if(owners){
+        string text = out.str().substr((size_t)before);
+        set<string> cleared;
+        for(auto& c : *currentCleanups){
+            if(c.second.find("_bglown_") == string::npos && c.second.find("_bglHeapDropOwned(") == string::npos) continue;
+            string local = c.first.rfind("_bglown_", 0) == 0 ? c.first.substr(8) : c.first;
+            if(local.empty() || !cleared.insert(local).second) continue;
+            // A spilled local is freed through its frame slot.
+            if(text.find("_bglHeapFree(" + spillName(local) + ")") != string::npos)
+                out << indent << spillName("_bglown_" + local) << " = 0;\n";
+        }
+    }
     // Not after a set-up a later statement consumes, nor after one that leaves the routine.
     if(currentSweep.empty() || dynamic_cast<i6RawNode*>(stmt) || dynamic_cast<returnStatement*>(stmt)
        || dynamic_cast<throwStatement*>(stmt)) return;
@@ -4191,6 +4221,7 @@ if(list != nullptr){
 }
 
 // `ref array<T> name;` at file scope: no storage of its own, a variable that refers to an array once bound.
+if(earlyStaticGlobals.count(lowerText(arrName))) return;   // a static `ref array`, declared ahead of its class
 out << format("global {0};\n", arrName);
 }
 
@@ -4265,11 +4296,12 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
 
     if(varNode->isConst){
         if(earlyDeclaredGlobals.count(varNode->name)) return;   // declared ahead of the classes
-        out << format("constant {0}", varNode->dName());
+        const string& cname = varNode->i6name.empty() ? varNode->dName() : varNode->i6name;   // as its uses name it
+        out << format("constant {0}", cname);
         if(varNode->declaredExpressionValue != nullptr)
             out << format(" = {0}", staticText(varNode->declaredExpressionValue));
         out << ";\n";
-        if(varNode->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", varNode->dName());   // used, though folded away
+        if(varNode->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", cname);   // used, though folded away
         return;
     }
     if(varNode->type.name == "attribute"){
@@ -5455,13 +5487,20 @@ void i6Emitter::synthesizeValueElementPools(){
             copy = format(" _bglcur.{0}(_bglv);", it->second);
         // A freed instance lets go of the arrays its `ref` and `var` members held, so the collector can free them.
         string drop;
-        cls->forEachMember([&](typeMember* m){
-            auto* fvd = dynamic_cast<variableDeclaration*>(m);
-            if(!fvd || fvd->isExternal || fvd->isStatic || isHeaderMember(fvd->name)) return;
-            auto* fad = dynamic_cast<arrayDeclaration*>(fvd);
-            bool holds = fad ? (fad->isRefLocal && !fad->isByteArray && !fad->isRaw) : (fvd->isRefLocal ? holdsHeapArray(fvd->type.name) : holdsHeapArray(fvd->type.name));
-            if(holds) drop += format(" _bglv.{0} = 0;", fvd->i6name.empty() ? fvd->dName() : fvd->i6name);
-        });
+        std::function<void(classDef*, const string&, int)> dropFrom = [&](classDef* c, const string& path, int depth){
+            c->forEachMember([&](typeMember* m){
+                auto* fvd = dynamic_cast<variableDeclaration*>(m);
+                if(!fvd || fvd->isExternal || fvd->isStatic || isHeaderMember(fvd->name)) return;
+                string pn = fvd->i6name.empty() ? fvd->dName() : fvd->i6name;
+                auto* fad = dynamic_cast<arrayDeclaration*>(fvd);
+                bool holds = fad ? (fad->isRefLocal && !fad->isByteArray && !fad->isRaw) : holdsHeapArray(fvd->type.name);
+                if(holds){ drop += format(" {0}.{1} = 0;", path, pn); return; }
+                set<classDef*> none;
+                if(classDef* owned = depth < 4 ? ownedFieldClass(fvd, none) : nullptr)
+                    dropFrom(owned, "(" + path + "." + pn + ")", depth + 1);   // a struct field: its own members
+            });
+        };
+        dropFrom(cls, "_bglv", 0);
         i6RawNode* raw = new i6RawNode();
         string n = to_string(N), cn = cls->dName();
         if(languageService.rowCopyClasses.count(cls))
@@ -6219,12 +6258,19 @@ string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& refer
             if(cd->isExternal || cd->isEmitterClass || cd->isUnion() || !referenced(cd->i6Name())) continue;
             for(typeMember* m : cd->members){
                 auto* mv = dynamic_cast<variableDeclaration*>(m);
+                // A static member is one global (`_bgl_<Class>_<member>`).
+                if(mv != nullptr && mv->isStatic && !isHeaderMember(mv->name)){
+                    auto* sad = dynamic_cast<arrayDeclaration*>(mv);
+                    bool holds = sad ? (sad->isRefLocal && !sad->isByteArray) : holdsHeapArray(mv->type.name);
+                    string g = lowerText(format("_bgl_{0}_{1}", cd->dName(), mv->dName()));
+                    if(holds && seen.insert(g).second && referenced(g)) body += format("    _bglHeapMark({0});\n", g);
+                    continue;
+                }
                 if(!memberHolds(mv)) continue;
                 // A routine's own instances are read only while it runs (assignRunCounters).
                 string skip;
                 for(auto& [b, rc] : runCounterOf)
-                    if(classDef* bc = languageService.findClass(languageService.findGlobalAs<variableDeclaration>(b) ? languageService.findGlobalAs<variableDeclaration>(b)->type.name : string());
-                       bc != nullptr && (bc == cd || bc->hasAncestor(cd))){
+                    if(classDef* bc = runCounterClass[b]; bc != nullptr && (bc == cd || bc->hasAncestor(cd)) && referenced(b)){
                         skip += (skip.empty() ? "" : " or ") + b;
                         body += format("    if({0}) ", rc) + markProp(b, propName(mv)).substr(4);
                     }
@@ -6267,15 +6313,33 @@ void i6Emitter::assignRunCounters(){
         return any;
     };
     int n = 0;
+    // An instance and the instances its struct fields own (`_bglField_<instance>_<field>`), with their classes.
+    std::function<void(classDef*, const string&, vector<pair<string, classDef*>>&, set<classDef*>&)> withFields =
+        [&](classDef* c, const string& inst, vector<pair<string, classDef*>>& out, set<classDef*>& visited){
+            if(c == nullptr) return;
+            out.push_back({inst, c});
+            c->forEachMember([&](typeMember* m){
+                auto* fm = dynamic_cast<variableDeclaration*>(m);
+                if(classDef* owned = ownedFieldClass(fm, visited)){
+                    visited.insert(owned);
+                    withFields(owned, format("_bglField_{0}_{1}", inst, fm->dName()), out, visited);
+                    visited.erase(owned);
+                }
+            });
+        };
     auto visit = [&](functionDef* fd){
         if(fd == nullptr || fd->isEmitter || fd->isExternal || !fd->runCounter.empty()) return;
-        vector<string> mine;
-        for(auto& [backing, typeName] : fd->ownBackings)
-            if(holds(languageService.findClass(typeName))) mine.push_back(backing);
+        vector<pair<string, classDef*>> mine;
+        for(auto& [backing, typeName] : fd->ownBackings){
+            vector<pair<string, classDef*>> all;
+            set<classDef*> visited;
+            withFields(languageService.findClass(typeName), backing, all, visited);
+            for(auto& e : all) if(holds(e.second)) mine.push_back(e);
+        }
         if(mine.empty()) return;
         fd->runCounter = format("_bglRun_{0}", n++);
         fd->cleanups.push_back({"", fd->runCounter + "--;"});
-        for(const string& b : mine) runCounterOf[b] = fd->runCounter;
+        for(auto& [b, c] : mine){ runCounterOf[b] = fd->runCounter; runCounterClass[b] = c; }
         auto* raw = new i6RawNode();
         raw->text = "Global " + fd->runCounter + ";\n";
         languageService.globals.insert(languageService.globals.begin(), raw);

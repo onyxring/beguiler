@@ -225,6 +225,12 @@ bool bglParser::memberIsArrayData(const string& text, string& shown){
         auto* ad = dynamic_cast<arrayDeclaration*>(m);
         return ad != nullptr && !ad->isRefLocal;
     }
+    // A variable of a class or struct (`gb.note`): its class's member.
+    string t = resolveIdentifierType(owner, currentFunc, nullptr);
+    if(classDef* c = t.empty() ? nullptr : getDispatchClass(t)){
+        typeMember* m = findMemberInHierarchy(c, isProp);
+        if(m != nullptr){ shown = owner + "." + prop; return arrayData(m); }
+    }
     return true;
 }
 
@@ -3050,8 +3056,15 @@ bglParser::ExprStep bglParser::parseExprSubscriptInner(ExprParseState& st, token
                                        && !nextOperatorIsOwn(st, expr->resolvedType) ? nativeGetterOf(expr->resolvedType) : nullptr){
                 expr->tokens.push_back(recv + "." + memberI6Name(elemType, member.value) + "." + g->i6name + "()");
                 expr->resolvedType = g->returnType.name;
-            } else
+            } else {
                 expr->tokens.push_back(recv + "." + memberI6Name(elemType, member.value));
+                // `bs[0].items` read whole: where it lives, as for a named owner's member.
+                if(memberArr != nullptr && !heldByPointer(memberArr) && isWordArrayType(expr->resolvedType)){
+                    expr->memberArrayOwner = recv;
+                    expr->memberArrayProp = memberI6Name(elemType, member.value);
+                    expr->memberArrayDecl = memberArr;
+                }
+            }
             // `stubs[0].text[1]`: the member's own `operator []`.
             if(file.peekToken().is(token::bracketOpen)){
                 string row = expr->tokens.back();
@@ -4588,6 +4601,12 @@ bglParser::ExprStep bglParser::parseExprMemberRead(ExprParseState& st, token& me
             }
             expr->tokens.push_back("_bgl_" + maybeCls->declaringClass(vd)->name + "_" + member.value);
             isStaticAccess = true;
+            // `(array<int>)Bin.pick`: the cast applies to the static's value.
+            if(!castType.empty() && !afterMember.is(token::period) && !afterMember.is("?.")){
+                expr->tokens.back() = applyCastConversion(expr->tokens.back(), expr->resolvedType, castType);
+                expr->resolvedType = castType;
+                castType = "";
+            }
         }
     }
     // Value emitter member: expand body inline. Members can live on either

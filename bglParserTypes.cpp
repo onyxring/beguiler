@@ -1129,6 +1129,16 @@ string bglParser::resolveArrayElementType(const string& name, functionDef* func,
                return dynamic_cast<arrayDeclaration*>(m) != nullptr && m->name == name; })))
             return ad->elementType;
     if(auto* ad = languageService.findGlobalAs<arrayDeclaration>(name)) return ad->elementType;
+    // A class's static array, by its global's name (`_bgl_<Class>_<member>`).
+    if(strncasecmp(name.c_str(), "_bgl_", 5) == 0){
+        string low = lowerText(name);
+        for(typeDef* g : languageService.globals)
+            if(auto* cd = dynamic_cast<classDef*>(g))
+                for(typeMember* m : cd->members)
+                    if(auto* ad = dynamic_cast<arrayDeclaration*>(m); ad && ad->isStatic
+                       && lowerText("_bgl_" + cd->dName() + "_" + ad->dName()) == low)
+                        return ad->elementType;
+    }
     return "";
 }
 

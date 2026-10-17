@@ -161,11 +161,24 @@ superposed void _bglArrCopyShared(int dst, int src, var assign){
 // `dst = src` on arrays: src's elements and length, up to dst's capacity, copied into dst's own storage. A source
 // nothing owns (a step's result, a call's returned array) is freed once copied. Returns dst.
 superposed int _bglArrCopyFrom(int dst, int src, var assign = 0){
+    int n = 0;
+    int i = 0;
     #i6 {
         if(dst == 0){ print "^[Beguile run-time error: copying into an array that is null; bind it with := first]^"; return 0; }
         if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
         if(src == 0 || dst == src) return dst;
-        if(_bglHeapBorrows(dst)) assign = 0;   ! an array with no instances of its own takes the pointers
+        if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
+        if(_bglHeapBorrows(dst)){
+            ! A view of a struct array: the values go into the instances it shows (it can't take more than it has).
+            if(assign && dst-->(-1) > 0 && metaclass(dst-->1) == Object){
+                n = _bglArrLength(src);
+                if(n > dst-->(-1)) n = dst-->(-1);
+                for(i = 1 : i <= n : i++) assign(dst-->i, src-->i);
+                if(_bglHeapIsFresh(src)) _bglHeapFree(src);
+                return dst;
+            }
+            assign = 0;   ! an array with no instances of its own takes the pointers
+        }
         if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
         else _bglArrCopyInto(dst, src, assign);
         if(_bglHeapIsFresh(src)) _bglHeapFree(src);
@@ -178,6 +191,25 @@ superposed int _bglArrCopyAssign(int cur, int src){
     #i6 {
         if(cur == 0) return _bglHeapEscape(src);
         return _bglArrCopyFrom(cur, src);
+    }
+}
+// `=` into a row of an array of arrays: an empty slot takes a copy of src (src itself when nothing else holds it), so
+// a later copy into that row can't change src.
+superposed int _bglArrCopyRow(int cur, int src){
+    #i6 {
+        if(cur ~= 0) return _bglArrCopyFrom(cur, src);
+        if(src == 0 || _bglHeapIsFresh(src)) return _bglHeapEscape(src);
+        return _bglHeapEscape(_bglHeapCopyOf(src));
+    }
+}
+// `rows[i] = src`: the row slot is found once, and `assign` copies src into the array it holds.
+superposed int _bglArrRowStore(int arr, int i, int src, var assign){
+    int s = 0;
+    #i6 {
+        if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
+        s = _bglAt(arr, i, 1);
+        if(s ~= _bglSink) s-->0 = assign(s-->0, src);
+        return 0;
     }
 }
 // A whole member array that is its property's data, assigned from `src`: src's elements and length,

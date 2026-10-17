@@ -164,12 +164,25 @@ array dst table 8;
     _bglHeapDropOwned(_bglown_picked);
     _bglHeapLocalDrop();
 ];
-[_bglArrCopyFrom dst src assign;
+[_bglArrCopyFrom dst src assign n i;
+    n = 0;
+    i = 0;
     
         if(dst == 0){ print "^[Beguile run-time error: copying into an array that is null; bind it with := first]^"; return 0; }
         if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
         if(src == 0 || dst == src) return dst;
-        if(_bglHeapBorrows(dst)) assign = 0;   ! an array with no instances of its own takes the pointers
+        if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
+        if(_bglHeapBorrows(dst)){
+            ! A view of a struct array: the values go into the instances it shows (it can't take more than it has).
+            if(assign && dst-->(-1) > 0 && metaclass(dst-->1) == Object){
+                n = _bglArrLength(src);
+                if(n > dst-->(-1)) n = dst-->(-1);
+                for(i = 1 : i <= n : i++) assign(dst-->i, src-->i);
+                if(_bglHeapIsFresh(src)) _bglHeapFree(src);
+                return dst;
+            }
+            assign = 0;   ! an array with no instances of its own takes the pointers
+        }
         if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
         else _bglArrCopyInto(dst, src, assign);
         if(_bglHeapIsFresh(src)) _bglHeapFree(src);
@@ -188,6 +201,13 @@ array dst table 8;
         }
         dst-->(-1) = n;
         return dst;
+    
+];
+[_bglArrCopyRow cur src;
+    
+        if(cur ~= 0) return _bglArrCopyFrom(cur, src);
+        if(src == 0 || _bglHeapIsFresh(src)) return _bglHeapEscape(src);
+        return _bglHeapEscape(_bglHeapCopyOf(src));
     
 ];
 [_bglArrCopyShared dst src assign cap n i j k e w;
@@ -353,6 +373,17 @@ object _bglArray
         _bglHeapRelease(b);
     
 ];
+[_bglHeapEscape a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b ~= 0){
+            b-->2 = (b-->2 | 4) & ~8;   ! kept somewhere: no longer an unclaimed result, nor one on its way back
+            if(a == _bglHeap-->4) _bglHeap-->4 = 0;
+        }
+        return a;
+    
+];
 [_bglHeapFree a b;
     b = 0;
     
@@ -416,10 +447,13 @@ object _bglArray
         _bglHeap-->2 = _bglHeap-->2 - b-->0;
     
 ];
-[_bglHeapReown own a n;
+[_bglHeapReown own a n b;
     n = 0;
+    b = 0;
     
         n = _bglHeapAdopt(a);
+        ! An array kept elsewhere (a global's) is held while the routine runs, in case that slot lets go meanwhile.
+        if(n == 0){ b = _bglHeapBlockOf(a); if(b ~= 0 && (b-->2 & 36) == 4){ b-->2 = b-->2 | 32; n = a; } }
         if(own ~= a) _bglHeapDropOwned(own);
         return n;
     
@@ -443,6 +477,12 @@ object _bglArray
 ];
 array _bglfresh --> 48;
 array _bglsink --> 1;
+[_bglArrCopyAssign cur src;
+    
+        if(cur == 0) return _bglHeapEscape(src);
+        return _bglArrCopyFrom(cur, src);
+    
+];
 [_bglArrSetLength arr n;
      if(_bglArrTracked(arr)) arr-->(-1) = n; 
 ];
@@ -523,8 +563,22 @@ array _bglsink --> 1;
     roots = 48;
     
         if(_bglHeap == 0) return;
-        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too.
-        if(midRoutine) roots = 56;
+        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too. One recorded
+        ! below every routine's marker was made for Inform 6 code, and no statement's end will free it.
+        if(midRoutine){
+            roots = 56;
+            if(_bglFresh-->47 == 0){
+                for(o = 1 : o <= _bglFresh-->0 && _bglFresh-->o ~= 0 : o++){
+                    b = _bglHeapBlockOf(_bglFresh-->o);
+                    if(b ~= 0 && (b-->2 & 60) == 8 && _bglFresh-->o ~= _bglHeap-->4) _bglHeapRelease(b);
+                }
+                if(o > 1){
+                    for(again = o : again <= _bglFresh-->0 : again++) _bglFresh-->(again - o + 1) = _bglFresh-->again;
+                    _bglFresh-->0 = _bglFresh-->0 - o + 1;
+                }
+                again = false;
+            }
+        }
         do {
             _bglGcRoots();
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){

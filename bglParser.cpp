@@ -2609,7 +2609,7 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
     // The grammar's `dataType identifier …` declaration rules then match unchanged, so this one
     // choke point gives unions to locals, return types, members, and typed object declarations.
     // A func<…>/array<…> first member is recognized by matching its angle brackets ahead.
-    if(!q.isExtern && tok.isDataType()){
+    if(tok.isDataType()){
         bool generic = tok.value == "func" || tok.value == "array" || tok.value == "rawarray";
         if(!generic && file.peekToken().value == "|")
             tok.value = maybeParseUnionTail(tok.value);

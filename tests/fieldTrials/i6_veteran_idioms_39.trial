@@ -53,7 +53,7 @@ swap 2 into 1: A 2160, B 116, peg 54, ring 11 5 -1; used 58.
 > swap
 swap 3 into 2: A 2164, B 122, peg 60, ring 17 11 8; used 70.
 > swap
-swap 4 into 0: A 2168, B 128, peg 66, ring 12 17 14; used 70.
+swap 4 into 0: A 2168, B 128, peg 66, ring 12 17 14; used 82.
 > cells
 cells 2 of 5: sum 871; held true.
 > cells
@@ -74,7 +74,7 @@ A 2184, B 152, peg 90, ring 36 41 38; used 82.
 > settle
 used 82.
 > release
-released; freed true; used 0. A -1, B -1, peg -1, ring -1 -1 -1.
+released; freed true; used 12. A -1, B -1, peg -1, ring -1 -1 -1.
 > settle
 used 0.
 > drops

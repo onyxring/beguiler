@@ -323,8 +323,22 @@ array _bglsink --> 1;
     roots = 48;
     
         if(_bglHeap == 0) return;
-        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too.
-        if(midRoutine) roots = 56;
+        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too. One recorded
+        ! below every routine's marker was made for Inform 6 code, and no statement's end will free it.
+        if(midRoutine){
+            roots = 56;
+            if(_bglFresh-->47 == 0){
+                for(o = 1 : o <= _bglFresh-->0 && _bglFresh-->o ~= 0 : o++){
+                    b = _bglHeapBlockOf(_bglFresh-->o);
+                    if(b ~= 0 && (b-->2 & 60) == 8 && _bglFresh-->o ~= _bglHeap-->4) _bglHeapRelease(b);
+                }
+                if(o > 1){
+                    for(again = o : again <= _bglFresh-->0 : again++) _bglFresh-->(again - o + 1) = _bglFresh-->again;
+                    _bglFresh-->0 = _bglFresh-->0 - o + 1;
+                }
+                again = false;
+            }
+        }
         do {
             _bglGcRoots();
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){

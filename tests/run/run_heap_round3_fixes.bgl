@@ -1,0 +1,77 @@
+// run_heap_round3_fixes — a program constant named like a library method; an array method on a call's result as a
+// statement; a list appended to a row; a list assigned to a parameter; a member array read through an element, or
+// stored as a row or a var, is copied; a local array<char> declared or assigned from another copies it; a row
+// store reads its index once; a list assigned to a member's row; bgl.gc.free on a local spilled to the frame pool lets its owner go too.
+// EXPECT_OUTPUT: append 2 2 | chain 0 | row 3 2 6 | param 2 8 | slot 2 6 | member 7 7 7 9 | chars 7 a 6 a 6 a | once 1 | spill 6 5 5 5 | mrow 2 3 1
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+const int APPEND = 2;
+array<int> q[8];
+array<int> g = {3, 1, 2};
+array<int> descend(int n){ array<int> t[4]; for(int i = n; i > 0; i--) t += i; return t; }
+array<int> keep(){ return g; }
+array<array<int>> grid[2];
+void fill(array<int> a){ a = {7, 8}; }
+struct Batch { int id; array<int> items[4]; }
+Batch one;
+array<Batch> bs[3];
+object depot { array<int> slots[3] = {7, 8, 9}; }
+array<array<int>> two = { {1, 2}, {3, 4, 5} };
+var kept;
+class Shelf { array<array<int>> rows = { { 0, 0 }, { 0, 0, 0 } }; }
+Shelf s1;
+object box { array<array<int>> rows = { { 0, 0 }, { 0, 0, 0 } }; }
+int calls = 0;
+int nextRow(){ calls++; return calls - 1; }
+array<int> hist = {1, 2, 3, 4, 5, 6};
+array<int> makeRow(int n){ array<int> r[3]; r += n; return r; }
+void spill(){
+    int a1 = 1; int a2 = 2; int a3 = 3; int a4 = 4; int a5 = 5; int a6 = 6;
+    int a7 = 7; int a8 = 8; int a9 = 9; int a10 = 10; int a11 = 11; int a12 = 12;
+    ref array<int> best := null;
+    print(" | spill");
+    for(int i = 0; i < 4; i++){
+        best := hist.filter((int x) => x > (i == 0 ? 0 : 1));
+        array<int> spare = makeRow(i);
+        bgl.gc.free(spare);
+        print($" {best.length}");
+    }
+}
+array<char> word = "abcdefg";
+void main(){
+    q.append(4); q.append(APPEND);
+    print($"append {q.length} {q[1]} | ");
+    descend(3).clear(); keep().clear();
+    print($"chain {g.length} | ");
+    array<int> a[4]; a += 1; array<int> b[4]; b += 3;
+    grid += a; grid += b;
+    grid[1] += { 7, 6 };
+    print($"row {grid[1].length} ");
+    grid[1] -= { 7 };
+    print($"{grid[1].length} {grid[1][1]} | ");
+    array<int> x[4]; x += 1;
+    fill(x);
+    print($"param {x.length} {x[1]} | ");
+    one.id = 1; one.items += 5; bs += one;
+    one.id = 2; one.items += 6; bs += one;
+    bs[0].items = bs[1].items;
+    print($"slot {bs[0].items.length} {bs[0].items[1]} | ");
+    two[1] = depot.slots;
+    var v = depot.slots;
+    var w; w = depot.slots;
+    kept = depot.slots;
+    depot.slots[0] = 1;
+    print($"member {two[1][0]} {((array<int>)v)[0]} {((array<int>)kept)[0]} {((array<int>)w)[2]} | ");
+    array<char> c1 = word;
+    array<char> c2[6] = word;
+    array<char> c3[6];
+    c3 = word;
+    word[0] = 'z';
+    print($"chars {c1.length} {c1[0]} {c2.length} {c2[0]} {c3.length} {c3[0]} | ");
+    grid[nextRow()] = b;
+    print($"once {calls}");
+    spill();
+    s1.rows[0] = { 1, 2 }; box.rows[1] = { 3 };
+    print($" | mrow {s1.rows[0][1]} {box.rows[1][0]} {box.rows[1].length}");
+}

@@ -349,7 +349,8 @@ class i6Emitter{
         void appendLeaveSweep(functionDef* fd);
         void emitStatementOnly(statement* stmt, string indent);
         string currentSweep;   // the statement-end sweep of the routine being emitted, or ""
-        map<string,string> runCounterOf;   // an instance a routine owns → that routine's run counter
+        map<string,string> runCounterOf;
+        map<string, classDef*> runCounterClass;   // the class of each such instance   // an instance a routine owns → that routine's run counter
         bool valuePoolsDone = false;
         map<string, string> ownedCopyRoutines;
         map<string, string> currentCallEscapes;   // routines this function calls that a local of the name hides

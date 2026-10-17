@@ -49,8 +49,9 @@ third is the one-element form of the second: a single value of the element type 
 from that array instead; the value's type decides which is meant. A local declared from a call's or a
 chain's result takes that array; one declared from another array gets a copy of its own, with that array's
 capacity; a sized declaration (`array<int> x[⟨n⟩] = src;`) copies into its declared capacity (§12.5, §12.6).
-At file scope the value is copied in at startup. The same shorthand applies to a
-list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
+These forms are for locals: a file-scope or member array is static data, so one declared from another array or a
+run-time value is a compile-time error; copy into it inside a routine instead. A local `array<char>` declared from
+another needs a capacity unless its source is a file-scope array, whose capacity it takes. The fourth combines the first two: capacity `⟨n⟩`,
 length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
 error.
 
@@ -238,8 +239,8 @@ Arrays are freed in three ways:
   `return` hands back a file-scope array (as `bgl.world`'s queries do, §21) returns that array itself: there is
   nothing to free or own.
 - **At the routine's exit.** A local array that no reference has left is freed as its routine returns,
-  and so is an array a local took from a call or a chain, and the rows of a local array of arrays that nothing
-  else took.
+  and so is an array a local took from a call or a chain, and the rows of a local array of arrays that its own
+  `{ … }` initializer made and nothing else took. Rows it gained later are left to the collector.
   A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
   arrays to the collector, since the raw code may have kept one.
 - **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
@@ -449,7 +450,9 @@ element of `⟨type⟩`.
 
 **Description**
 
-The element type of an array may itself be an array type, to any depth. A nested initializer supplies
+The element type of an array may itself be an array type, two deep at most: `array<array<T>>`. A third level is
+a compile-time error; keep it in a class member instead. A struct can't hold an array of arrays either (its
+instances are copied and pooled member by member); a struct member may be a `ref` to one kept elsewhere. A nested initializer supplies
 one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
 `array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
@@ -458,8 +461,11 @@ arrays are allocated per call with it (§12.6). A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
 
 A slot holds a reference to its inner array. `grid[i] = row;` copies `row` into the array the slot holds, as `=`
-on any array does (§12.5); appending (`grid += row;`) stores `row` itself in the new slot, and the outer array then
-keeps it alive.
+on any array does (§12.5). Appending
+(`grid += row;`) stores `row` itself in the new slot, and the outer array then keeps it alive. A member array has
+no address of its own, so storing one as a row (or in a `var`) stores a copy. A whole `grid = other;` treats each
+row as an element: a row `grid` already holds is copied into, and a slot past `grid`'s length takes a copy of
+`other`'s row, so the two stay independent.
 
 **Example**
 
@@ -550,6 +556,10 @@ is a compile-time error; copy it into an array with a capacity of its own first.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance, which stays the array's.
+- Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
+  `ref` to an element follows that element to its new place.
+- A view is valid only while its source is unchanged: once the source removes or clears an element, the view may
+  still show that instance, which another array can then be given.
 - An element store into a member array of a class that manages its own storage (`stringObj`) reads
   the slot twice, so its index is a variable or a constant; a computed index is a compile-time error.
 
