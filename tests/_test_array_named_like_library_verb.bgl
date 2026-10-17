@@ -1,5 +1,5 @@
 // Negative test: a program array may not take a library verb's name.
-// EXPECT_ERROR: has the same name as the library verb
+// EXPECT_ERROR: has the same name as the extern verb
 #beguilerSettings { target = z5; informName = "none"; }
 #include <bindings/i6StandardLibrary>
 object m1 { }

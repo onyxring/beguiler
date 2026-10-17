@@ -1,5 +1,5 @@
 /* an object can't take the name of an I6 library property */
-// EXPECT_ERROR: object 'initial' has the same name as the library's property 'initial'
+// EXPECT_ERROR: object 'initial' has the same name as the extern property 'initial'
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"

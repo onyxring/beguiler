@@ -6069,7 +6069,7 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
                     for(verbObjectDef* vd : languageService.verbs) if(vd->name == verbNameLower){ owner = vd; break; }
                     string where = owner != nullptr && owner->src.line > 0
                                  ? format("{0}:{1}:{2}: ", owner->src.file, owner->src.line, max(1, owner->src.col)) : string();
-                    std::cerr << format("{0}warning: meta verb '{1}' takes the library word {2}, which stays a non-meta "
+                    std::cerr << format("{0}warning: meta verb '{1}' takes the word {2}, which an extern verb holds and which stays a non-meta "
                         "word: commands using it take a turn. Use a word of its own.\n", where, owner != nullptr ? owner->dName() : verbName, toI6Word(word));
                 }
                 switch(mode){

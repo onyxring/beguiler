@@ -1,6 +1,6 @@
 // Negative test: a fake action of the I6 library (Order, ThrownAt, …) has no grammar or action routine,
 // and Inform 6 can't give a real action its name.
-// EXPECT_ERROR: 'Order' is a fake action of the I6 library
+// EXPECT_ERROR: 'Order' is an Inform 6 fake action
 #beguilerSettings { target = z5; informName = "none"; includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 #includeI6 "parser"

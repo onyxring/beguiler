@@ -687,13 +687,13 @@ bool beguiler::runInform6() {
         {
             static const vector<pair<string, string>> limits = {
                 {"attributes already declared",
-                 "The program and its library declare more attributes than the Z-machine's 48. Use bool members for "
+                 "The program, with what it includes, declares more attributes than the Z-machine's 48. Use bool members for "
                  "some flags (they cost no attribute), or target Glulx."},
                 {"global variables already declared",
-                 "The program and its library use more global variables than the Z-machine's 233 (compiler temporaries "
+                 "The program, with what it includes, uses more global variables than the Z-machine's 233 (compiler temporaries "
                  "such as lambda captures count too). Keep some values in an object or an array, or target Glulx."},
                 {"properties already declared",
-                 "The program and its library declare more common properties than the Z-machine's 61 (a `property` "
+                 "The program, with what it includes, declares more common properties than the Z-machine's 61 (a `property` "
                  "declaration, and an extern property a class declares, is one). Make some members individual "
                  "(declared on a class or object instead), or target Glulx."},
                 {"overflowed the maximum readable-memory size",
@@ -875,7 +875,7 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         cout << "  -includepaths=<dir>  Add a directory to the include search path\n";
         cout << "  -lib=<dir>           Path to the Beguile system library (default: beguiLib/ next to binary)\n";
         cout << "  --debug              Enable debug mode (emit .bgldbg debug info)\n";
-        cout << "  -filterVerbSplitWarnings=<true|false>  Hide I6's warnings about library verbs left empty by a split (default true)\n";
+        cout << "  -filterVerbSplitWarnings=<true|false>  Hide I6's warnings about extern verbs left empty by a split (default true)\n";
         cout << "\n";
         cout << "Most options can also be set via #beguilerSettings in the source file.\n";
         cout << "The compiler should be placed in the same folder as the I6 compiler,\n";

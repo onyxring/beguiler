@@ -1954,7 +1954,7 @@ json LspServer::hoverVerbExtendKeyword(const string& word, const string& docText
             string hd;
             if(word == "synonyms")      hd = "**`synonyms`** — declare true I6 aliases of this verb: `synonyms = {.w1, .w2};` emits `Verb 'w1' 'w2' = '<anchor>';`, so any later `extend` of the verb flows to them too (unlike copying a grammar line, which is a one-time snapshot).";
             else if(word == "priority") hd = "**`priority`** — grammar match order. On the verb block it sets the anchor (default `10`); inside an `extend` it is a block-local directive stamped onto the lines that block adds. Lower number = matched earlier.";
-            else                        hd = "**`grammar`** — this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts a library word), `replace grammar = { … }` wipes and replaces.";
+            else                        hd = "**`grammar`** — this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts an extern verb's word), `replace grammar = { … }` wipes and replaces.";
             handled = true;
             return {{"contents", {{"kind", "markdown"}, {"value", hd}}}};
         }
@@ -2510,7 +2510,7 @@ json LspServer::completeI6Include(const string& uri, int line, int col, const st
                         if(relStr.empty() || relStr[0] == '/') continue;
                         if(!ciContains(relStr, query)) continue;     // server-side substring filter
                         if(!seen.insert(relStr).second) continue;
-                        items.push_back(makeIncludeItem(relStr, "Inform 6 library file", delimCol, query, line, col));
+                        items.push_back(makeIncludeItem(relStr, "Inform 6 file", delimCol, query, line, col));
                     }
                 }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.

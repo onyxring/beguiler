@@ -514,8 +514,8 @@ bool bglParser::processDirectiveUnrecognized(token directive){
         return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
     }
     if(directive.value == "#i6replace")
-        return parsingError("'#i6replace' is not a Beguile directive. Replace an I6 library routine with `replace` on its "
-                            "`extern` declaration, or write I6's `Replace` in an `#i6` block ahead of the library.");
+        return parsingError("'#i6replace' is not a Beguile directive. Replace an extern routine with `replace` on its "
+                            "`extern` declaration, or write I6's `Replace` in an `#i6` block ahead of its definition.");
     return parsingError("Unrecognized directive '" + directive.value + "'.");
 }
 
@@ -559,7 +559,7 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
         }
         if(t.is(eTokenType::eof)) unterminated = true;
         if(unterminated){
-            parsingError(format("#include <{0}…>: missing closing '>'. A library include name "
+            parsingError(format("#include <{0}…>: missing closing '>'. An include name "
                                 "must be on one line — add the '>'.", includeName));
             return processDirectiveUnrecognized(directive);   // stop this directive (don't search for a garbage filename)
         }

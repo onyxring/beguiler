@@ -2510,7 +2510,7 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
 // an instance and may be empty, so it is declared `ref`.
 void bglParser::rejectPlainExternMember(const string& typeName, const string& name){
     if(!plainSlotOwnsReferenceInstance(getDispatchClass(typeName))) return;
-    parsingError(format("'{1}' is the library's property, which refers to an instance or is empty: declare it `ref {0} {1}`.",
+    parsingError(format("'{1}' is a property of an extern class, which refers to an instance or is empty: declare it `ref {0} {1}`.",
                         typeDisplayName(typeName), name));
 }
 
@@ -3676,7 +3676,7 @@ bool bglParser::processObjectDeclaration(token objectType, token name, bool isEx
         if(!isExternal)
             for(verbObjectDef* v : languageService.verbs)
                 if(v->isExternal && v->claimsNoWords && v->name == (string)name)
-                    parsingError(format("'{0}' is a fake action of the I6 library: it has no grammar or action "
+                    parsingError(format("'{0}' is an Inform 6 fake action: it has no grammar or action "
                         "routine, and Inform 6 can't give a real action its name. Give the verb another name.",
                         origName));
         // A verb whose class is declared below it was pre-scanned as a plain object: that stub goes.
@@ -4404,10 +4404,10 @@ void bglParser::extendGrammarRuleListRemove(objectDef& obj, const string& member
             for(size_t i = 0; i < rem.patternTokens.size(); i++){ if(i) patStr += " "; patStr += rem.patternTokens[i]; }
             if(patStr.empty()) patStr = "(no pattern)";
             if(isExternalObj){
-                // Two-layer diagnostic: distinguish "opaque library grammar" (word IS claimed —
+                // Two-layer diagnostic: distinguish "opaque extern grammar" (word IS claimed —
                 // point the user at word-level eviction) from a genuine typo (word not claimed).
                 if(externClaims(rem.verbWord))
-                    parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a library word whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
+                    parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a word of the extern verb, whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
                 else
                     parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar line `'{1}' * {2}`, so nothing was removed. Check the trigger word.", vn, rem.verbWord, patStr));
             } else if(wordLevel){

@@ -5582,9 +5582,9 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                     }
                 }
                 if(fits){
-                    parsingWarning(format("this call goes to the library's '{0}', which fits it better than the program's own "
+                    parsingWarning(format("this call goes to the '{0}' declared in {2}, which fits it better than the program's own "
                         "'{0}' (line {1}); give the program's function another name, or pass all its arguments.",
-                        gcm.match->dName(), fd->src.line));
+                        gcm.match->dName(), fd->src.line, filesystem::path(gcm.match->src.file).filename().string()));
                     break;
                 }
             }

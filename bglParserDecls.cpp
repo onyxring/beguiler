@@ -1683,7 +1683,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             if(ex && ex->isExternal && !ex->isPrePassStub && ex->name == funcDef.name){
                 if(!ex->isDefault)
                     parsingError(format("'{0}' is already declared extern (it exists externally); a plain "
-                        "definition would silently redefine it. If it's an overridable library stub, mark the "
+                        "definition would silently redefine it. If it's an overridable stub, mark the "
                         "declaration `extern default`; otherwise rename to avoid the collision.", funcDef.name));
                 if(overriddenDefault == nullptr) overriddenDefault = ex;
                 it = languageService.globals.erase(it);
@@ -1726,7 +1726,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         for(typeDef* g : languageService.globals)
             if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->name == funcDef.name
                && vd->type.name != "property" && vd->i6name.empty())
-                parsingError(format("function '{0}' has the same name as the library's {1} '{2}'; Inform 6 keeps these "
+                parsingError(format("function '{0}' has the same name as the extern {1} '{2}'; Inform 6 keeps these "
                     "in one namespace, ignoring case, so rename the function or give it an `asI6` name.",
                     funcDef.dName(), vd->type.name == "attribute" ? "attribute" : "global", vd->dName()));
 
@@ -1772,7 +1772,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             string sig;
             for(size_t i = 0; i < overriddenDefault->params.size(); i++)
                 sig += (i ? ", " : "") + typeDisplayName(overriddenDefault->params[i]->type.name);
-            parsingError(format("'{0}' overrides the library's '{0}({1})', whose parameters it must keep.",
+            parsingError(format("'{0}' overrides the extern default '{0}({1})', whose parameters it must keep.",
                                 funcDef.dName(), sig));
         }
     }
@@ -2389,12 +2389,12 @@ void bglParser::rejectUnionInto(expression* val, classDef* target){
     }
 }
 
-// What a local of a global's name hides, for the shadowing warning: "the library function 'Cap'".
+// What a local of a global's name hides, for the shadowing warning: "the extern function 'Cap'".
 string bglParser::shadowedGlobal(typeDef* g){
-    string file = dynamic_cast<functionDef*>(g) ? dynamic_cast<functionDef*>(g)->src.file
-                : dynamic_cast<objectDef*>(g) ? dynamic_cast<objectDef*>(g)->src.file
-                : dynamic_cast<statement*>(g) ? dynamic_cast<statement*>(g)->src.file : "";
-    string from = file.find("beguiLib") != string::npos ? "library " : "";
+    bool ext = dynamic_cast<functionDef*>(g) ? dynamic_cast<functionDef*>(g)->isExternal
+             : dynamic_cast<objectDef*>(g) ? dynamic_cast<objectDef*>(g)->isExternal
+             : dynamic_cast<variableDeclaration*>(g) ? dynamic_cast<variableDeclaration*>(g)->isExternal : false;
+    string from = ext ? "extern " : "";
     string kind = dynamic_cast<functionDef*>(g) ? "function" : dynamic_cast<objectDef*>(g) ? "object" : "global variable";
     return "the " + from + kind + " '" + g->dName() + "'";
 }

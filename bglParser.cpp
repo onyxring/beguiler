@@ -247,7 +247,7 @@ void bglParser::unknownTypeError(const token& typeTok){
                 if(!target.empty() && f.parent_path().filename() == "core")
                     parsingError(format("Unknown type '{0}': it exists only on {1} target. Set the target in "
                                         "#beguilerSettings.", shown, target));
-                parsingError(format("Unknown type '{0}'. It is declared by the library extension <{1}>: add "
+                parsingError(format("Unknown type '{0}'. It is declared in <{1}>: add "
                                     "`#include <{1}>`.", shown, f.stem().string()));
                 return;
             }
@@ -697,7 +697,7 @@ void bglParser::validateGlobalNameClashes(){
     for(auto& [name, sym] : seen){
         if(sym.kind == "function" || sym.src.file.find("beguiLib") != string::npos) continue;
         if(auto r = libraryRoutines.find(name); r != libraryRoutines.end())
-            parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library routine '{4}'; Inform 6 keeps "
+            parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the extern routine '{4}'; Inform 6 keeps "
                 "these in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
                 sym.src.file, sym.src.line, sym.kind, sym.def->dName(), r->second->dName()));
     }
@@ -709,7 +709,7 @@ void bglParser::validateGlobalNameClashes(){
         if(libProperty)   // the program's own `property` of the name is that property
             if(auto* sv = dynamic_cast<variableDeclaration*>(sym.def); sv != nullptr && sv->type.name == "property") continue;
         string what = libProperty ? "property" : lv != nullptr && lv->type.name == "attribute" ? "attribute" : lv != nullptr ? "global" : "object";
-        parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library's {4} '{5}'; Inform 6 keeps these "
+        parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the extern {4} '{5}'; Inform 6 keeps these "
             "in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
             sym.src.file, sym.src.line, sym.kind, sym.def->dName(), what, lib->second->dName()));
     }
@@ -739,7 +739,7 @@ void bglParser::validateVerbNameClashes(bool early){
                     kind = "object"; gsrc = od->src;
                 } else continue;   // a function is called, never named bare, so it can't be taken for the verb
                 if(gsrc.file.empty() || gsrc.file.find("beguiLib") != string::npos) continue;
-                parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the library verb '{4}'; a verb is a "
+                parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the extern verb '{4}'; a verb is a "
                     "global name, so rename the {2}.", gsrc.file, gsrc.line, kind, g->dName(), v->dName()));
             }
             continue;
@@ -748,8 +748,8 @@ void bglParser::validateVerbNameClashes(bool early){
         string name = lower(v->dName());
         for(verbObjectDef* o : languageService.verbs)
             if(o != v && o->isExternal && lower(o->dName()) == name)
-                parsingError(format("{0}:{1}:1: verb '{2}' has the same name as the library verb '{3}' ({4}); "
-                    "rename it, or add to the library verb with `extend {3} {{ … }}`.",
+                parsingError(format("{0}:{1}:1: verb '{2}' has the same name as the extern verb '{3}' ({4}); "
+                    "rename it, or add to the extern verb with `extend {3} {{ … }}`.",
                     v->src.file, v->src.line, v->dName(), o->dName(), at(o->src)));
         // The verb's action routine is <name>Sub: a library routine of that name already holds it.
         if(auto* fd = languageService.findGlobalAs<functionDef>(name + "sub"); fd && !fd->isEmitter && !fd->isPrePassStub)

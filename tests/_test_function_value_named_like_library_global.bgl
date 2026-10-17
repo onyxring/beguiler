@@ -1,5 +1,5 @@
 // Negative test: a function named like a library global is reported where it is declared, even when only used as a value.
-// EXPECT_ERROR: has the same name as the library's global 'score'
+// EXPECT_ERROR: has the same name as the extern global 'score'
 #beguilerSettings { target = z5; informName = "none"; }
 #include <bindings/i6StandardLibrary>
 int score(object o){ return 1; }
