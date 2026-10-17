@@ -28,6 +28,18 @@
 
 // Two-word scratch: glk writes [0]=width, [1]=height.
 array<int> _glkWinSizeBuf[2];
+// The pair window whose split placed `win`: the nearest ancestor keyed on it. A window split again since sits in a
+// newer pair, so its parent alone may be the wrong one.
+superposed int _glkSplitPair(int win){
+    int pair = bgl.asm.windowGetParent(win);
+    while(pair != 0){
+        _glkWinSizeBuf[0] = 0;
+        bgl.asm.windowGetArrangement(pair, 0, 0, ((int)_glkWinSizeBuf) + bgl.wordsize);
+        if(_glkWinSizeBuf[0] == win) return pair;
+        pair = bgl.asm.windowGetParent(pair);
+    }
+    return bgl.asm.windowGetParent(win);
+}
 
 // Image drawing reuses core's aspect-preserving `scaleVectors` (in _glulxCore, #if generateBlorb) and
 // `_bglGetImageInfo` (in <glulxImage>). Both are blorb-only — you can't draw images without blorb
@@ -56,7 +68,7 @@ struct _winDim {
         int adjustable = 0;
         if((_method % 4) >= 2) adjustable = 1;
         if(_axis == adjustable)
-            bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(_id), _method, v, _id);
+            bgl.asm.windowSetArrangement(_glkSplitPair(_id), _method, v, _id);
         else
             log("[glulxWindow] size ignored: this axis is fixed by the sibling window (resize the split axis).");
     }
@@ -109,7 +121,7 @@ class window[16] : _bglObject {
         self._splitMethod = (int)method;
         self.width._method  = (int)method;
         self.height._method = (int)method;
-        bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(self.id), method, size, self.id);
+        bgl.asm.windowSetArrangement(_glkSplitPair(self.id), method, size, self.id);
     }
     /// Move this window to the top of its parent split and resize it. `size` is lines, or a
     /// percentage when `scale` is `proportional`.
@@ -218,12 +230,12 @@ extend _bglMainWindow {
     auto width = {
         int _m = 0;
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
-        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
+        void operator=(int v){ bgl.asm.windowSetArrangement(_glkSplitPair(outer.id), _m, v, outer.id); }
     }
     auto height = {
         int _m = 0;
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[1]; }
-        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
+        void operator=(int v){ bgl.asm.windowSetArrangement(_glkSplitPair(outer.id), _m, v, outer.id); }
     }
     // (mainWin is a text-buffer window: drawImage(align) added under #if generateBlorb below)
     // Split family returns oriented subtypes (Up/Down → …Horz, Left/Right → …Vert), same as `window`.
@@ -248,7 +260,7 @@ extend _bglStatus {
     auto width = {
         int _m = 0;
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
-        void operator=(int v){ bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(outer.id), _m, v, outer.id); }
+        void operator=(int v){ bgl.asm.windowSetArrangement(_glkSplitPair(outer.id), _m, v, outer.id); }
     }
     textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
     textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles){ return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }

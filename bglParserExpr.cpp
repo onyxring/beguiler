@@ -5458,10 +5458,11 @@ bool bglParser::parseExprUnaryOperand(ExprParseState& st, const string& op, toke
     bool bracketed = !path && !castOperand;
     if(bracketed){
         int depth = 1;
+        bool closed = false;   // the group's own `)` is read; the next token is what follows it
         vector<token> ahead = file.peekTokens(100000, [&](token& t){
+            if(closed) return true;
             if(t.is(token::parenOpen)) depth++;
-            else if(t.is(token::parenClose) && --depth == 0) return false;
-            if(depth == 0) return true;
+            else if(t.is(token::parenClose) && --depth == 0) closed = true;
             return t.is(eTokenType::eof) || t.is(token::endStatement);
         });
         if(depth == 0 && !ahead.empty()){

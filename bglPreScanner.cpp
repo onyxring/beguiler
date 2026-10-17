@@ -741,7 +741,7 @@ void bglParser::drainDeferredObjectExtends(){
         if(auto* od = languageService.findGlobalAs<objectDef>(de.objName)) obj = od;
         // `extend U { … }` on a named union adds to it as to a class body.
         if(obj == nullptr)
-            if(classDef* uc = languageService.findClass(de.objName); uc != nullptr && !uc->unionMembers.empty()){
+            if(classDef* uc = languageService.findClass(de.objName); uc != nullptr){   // a union's members come later
                 file.openText(de.body + "}", de.virtualName, de.startLine);
                 preScanClassBody(uc);
                 file.close();

@@ -4592,6 +4592,17 @@ void bglParser::checkReturnValue(expression* e, const string& returnType, const 
                             typeDisplayName(shown), fnName, typeDisplayName(returnType)));
     };
     if(!genericValueFits(e, returnType, currentFunc, nullptr)) fail(elementAwareType(e, currentFunc, nullptr));
+    // A routine's own array<char> lives in its frame, which the next call reuses.
+    if((returnType == "bytearray" || returnType == "array<char>") && currentFunc != nullptr){
+        string t = e->text();
+        statementBlock* blk = activeBlockStack.empty() ? nullptr : activeBlockStack.back();
+        if(!t.empty() && t.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == string::npos
+           && !qualifyFromParams(t, currentFunc))
+            if(auto* ad = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(t, currentFunc, blk));
+               ad != nullptr && ad->isByteArray && !ad->isRefLocal && (ad->arraySize > 0 || !ad->localInitSource.empty()))
+                parsingError(format("'{0}' is this routine's own array<char>, which doesn't outlive it; return a file-scope "
+                                    "array<char> or a stringObj instead.", ad->dName()));
+    }
     if(isWordArrayType(returnType)){
         rejectEscapingView(e, "returned");
         if(currentFunc != nullptr && currentFunc->returnsStatic != 0)
@@ -4767,6 +4778,10 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
             args[i]->resolvedType = defaultValueType(fd->params[i]->defaultValue);
         string argType = args[i]->resolvedType;
         rejectUnionArgument(args[i], paramType, fd->dName(), false);
+        // `bump(Trip)` for a struct parameter: the type itself, where an instance is meant.
+        if(args[i] != nullptr && args[i]->tokens.size() == 1 && args[i]->tokens[0].rfind("_bglClass_", 0) == 0
+           && isValueClass(languageService.classOf(paramType)))
+            parsingError(format("'{0}' is a type, not a value; pass a variable or object of it.", args[i]->tokens[0].substr(10)));
         // An array parameter takes one reference, and a member array is property data on its owner
         // with no address of its own to give (§12.7): reject it here rather than at run time.
         if(isWordArrayType(argType) && (isWordArrayType(paramType) || paramType == "var")){
@@ -4950,6 +4965,12 @@ bool bglParser::isLiteralValue(const expression* e, string& why){
         // A composite token (`( _bglAt(arr, i, 0)-->0 )`, a checked subscript) that calls something.
         if(!isalpha((unsigned char)c) && c != '_' && t.size() > 1){
             static const std::regex call(R"([A-Za-z_]\w*\s*\()");
+            // One element of an `array<literal T>`: every value stored there is literal, whatever the index.
+            static const std::regex elem(R"(^\s*\(?\s*_bglAt\(\s*(\w+)\s*,[\s\S]*\)-->0\s*\)?\s*$)");
+            std::smatch em;
+            if(std::regex_match(t, em, elem))
+                if(auto* ad = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(em[1].str(), currentFunc, nullptr));
+                   ad != nullptr && ad->literalElements) continue;
             if(std::regex_search(t, call)){ why = "a subscript or call, evaluated at run time"; return false; }
         }
         if(!isalpha((unsigned char)c) && c != '_') continue;                           // operator, punctuation

@@ -226,6 +226,9 @@ permanent storage and are never freed.
 A local array declared from a call's result or a chain's result (`array<int> e = evens(nums);`) takes that array:
 nothing is copied. One declared from another array (`array<int> c = a;` or `= obj.arr`) gets a copy of its own.
 
+A local `array<char>` is the exception: it lives in its routine's frame (§18.10), so returning one is a compile-time
+error; return a file-scope `array<char>` or a `stringObj` instead.
+
 A heap array lives as long as something refers to it, as in C# and TypeScript: a function may return its local
 array, append it to an array of arrays, or bind a `ref` global or member to it with `:=`, and the reference stays
 good. `<linq>` results (§22.5) are heap arrays too.

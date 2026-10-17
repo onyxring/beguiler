@@ -1,0 +1,6 @@
+/* Negative test: a struct's type name passed where an instance of it is expected. */
+// EXPECT_ERROR: 'Trip' is a type, not a value
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+struct Trip { int steps; }
+void bump(ref Trip t) { t.steps++; }
+void main(){ bump(Trip); }

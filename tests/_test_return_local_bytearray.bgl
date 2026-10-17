@@ -1,0 +1,5 @@
+/* Negative test: a routine's own array<char> lives in its frame, which the next call reuses, so it can't be returned. */
+// EXPECT_ERROR: 'row' is this routine's own array<char>
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+array<char> makeRow(char c) { array<char> row[3]; row[0] = c; return row; }
+void main(){ array<char> r[3] = makeRow('a'); }

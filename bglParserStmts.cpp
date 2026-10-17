@@ -1161,6 +1161,9 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
 
     bool isForIn = false;
     string elemVarName, elemVarType;
+    // `for (literal func<void> f in fs)`: the elements of an `array<literal T>` are literal.
+    bool loopLiteral = false;
+    if(file.peekToken().is("literal")){ file.getToken(); loopLiteral = true; }
 
     // A loop variable's type may be a `#using` alias (`tier`) or a dotted type path (`reg.part`).
     if(file.peekToken().is(eTokenType::identifier)){
@@ -1243,6 +1246,12 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             isForIn = true;
             elemVarName = nameTok.value;
             elemVarType = typeTok.value;
+            if(loopLiteral){
+                auto* src = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(file.peekToken(2).value, func, body));
+                if(src == nullptr || !src->literalElements || !file.peekToken(3).is(token::parenClose))
+                    parsingError(format("Loop variable '{0}' is literal, so it walks an `array<literal T>` by name.",
+                        nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
+            }
             bool alreadyDeclared = false;
             if(body != nullptr)
                 for(statement* s : body->statements)
@@ -1258,6 +1267,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                 variableDeclaration& elemDecl = *(new variableDeclaration());
                 forInLoopDecl = &elemDecl;
                 elemDecl.name = elemVarName;
+                elemDecl.isLiteral = loopLiteral;
                 elemDecl.type = languageService.getType(elemVarType);
                 // getType returns the base type for templated names (func<…>/array<…>); keep the
                 // full parameterized name so the loop var is recognized as callable (func) or as a

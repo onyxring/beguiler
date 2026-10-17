@@ -1,0 +1,23 @@
+// run_measure15_fixes — an element of an `array<literal T>` is literal (to a `literal` parameter and variable); a
+// `literal` for-in loop variable over one; a static member a later `extend` adds to a named union, used above it;
+// `!( … || … )` as an `if` condition.
+// EXPECT_OUTPUT: b b | ab | w 1 | not
+#beguilerSettings { target = z5; informName = "none"; }
+void a() { print("a"); }
+void b() { print("b"); }
+array<literal func<void>> fs = { a, b };
+literal func<void> kept = a;
+void keep(literal func<void> f) { kept = f; }
+union lbl = string | int;
+void main(){
+    keep(fs[1]); kept(); print(" ");
+    literal func<void> k2 = fs[1]; k2(); print(" | ");
+    for (literal func<void> g in fs) g();
+    lbl x = "s";
+    print($" | w {lbl.weight(x)}");
+    int n = 2;
+    if (!(n == 1 || n == 3)) print(" | not");
+}
+extend lbl {
+    static int weight(lbl x) { return typeof(x) == eType.string ? 1 : 2; }
+}
