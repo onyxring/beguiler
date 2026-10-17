@@ -913,9 +913,10 @@ std::string bglParser::resolveIdentifierType(std::string name, functionDef* func
         if(auto r = resolveTypeFromParams(name, func))          return *r;
         if(auto r = resolveTypeFromBodyLocals(name, body))      return *r;
         if(auto r = resolveTypeFromAncestorBlocks(name, body))  return *r;
+        // In a lambda, an enclosing routine's local or parameter is nearer than the object's member it hides.
+        if(auto r = resolveTypeFromCaptures(name))              return *r;
         if(auto r = resolveTypeFromCurrentObject(name))         return *r;
         if(auto r = resolveTypeFromCurrentClass(name))          return *r;
-        if(auto r = resolveTypeFromCaptures(name))              return *r;
     }
 
     // ── FILE SCOPE — collect all matches, then apply ambiguity rule ───────────
@@ -5846,11 +5847,32 @@ bool bglParser::tryConsumeNamespacedEnumValue(token first, string& outFlatEmissi
     // ambiguous against, e.g., eGlulxStyleType.fixed.
     if(segments.size() == 2){
         auto* et = languageService.findEnum(segments[0]);
-        // A #using-imported alias of an enum (`size.large` after `#using kit` with `alias size for eSize`).
+        // A #using-imported alias of an enum (`size.large` after `#using kit` with `alias size for eSize`), unless a
+        // member, parameter or local of the name is nearer.
+        auto isField = [&](typeMember* m){
+            auto* vd = dynamic_cast<variableDeclaration*>(m);
+            return vd != nullptr && !vd->isNamespaceAlias() && vd->name == segments[0];
+        };
+        bool memberField = false;
+        if(currentObject != nullptr)
+            for(typeMember* m : currentObject->members) if(isField(m)){ memberField = true; break; }
+        if(classDef* oc = currentClass != nullptr ? currentClass : currentObject != nullptr ? currentObject->objectClass : nullptr)
+            memberField |= findMemberInHierarchy(oc, isField) != nullptr;
+        bool nearer = et == nullptr && (memberField
+            || (currentFunc != nullptr && (qualifyFromParams(segments[0], currentFunc)
+                || qualifyFromBodyLocals(segments[0], activeBlockStack.empty() ? nullptr : activeBlockStack.back())
+                || qualifyFromAncestorBlocks(segments[0], nullptr))));
         for(objectDef* imp : usingObjectImports){
             if(et != nullptr) break;
             if(string t = resolveNamespacedType(imp->name + "." + segments[0]); !t.empty())
                 et = languageService.findEnum(t);
+        }
+        if(et != nullptr && nearer){
+            string v = segments[1];
+            transform(v.begin(), v.end(), v.begin(), ::tolower);
+            bool isValue = false;
+            for(enumValueDef* ev : et->namedValues) if(ev->name == v){ isValue = true; break; }
+            if(!isValue) return false;   // `mode.live()`: the member's own method
         }
         if(et == nullptr) return false;   // not a direct enum/bnum type — let normal handling proceed
         string valLower = segments[1];

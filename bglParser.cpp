@@ -2982,7 +2982,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
                             warnOnce("Parameter '" + param.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                                 + "'; in this routine the name means the parameter, though it still names the type in declarations.");
                         else
-                            warnOnce("Parameter '" + param.name + "' shadows global of the same name; '::" + param.name + "' reaches the global.");
+                            warnOnce("Parameter '" + param.name + "' shadows " + shadowedGlobal(g) + "; '::" + param.name + "' reaches it.");
                     }
                 if(definedSymbols.count(param.name))
                     warnOnce("Parameter '" + param.name + "' has the name of a #define symbol; in this routine the name means the parameter.");

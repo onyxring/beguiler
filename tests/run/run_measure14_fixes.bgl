@@ -1,0 +1,20 @@
+// run_measure14_fixes — a class member named like a #using-imported enum alias wins over the alias before `.`; a lambda
+// in an object's method captures a parameter named like a member; a compound step with a ternary in a `for`.
+// EXPECT_OUTPUT: live true | has true false | step 0125
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <linq>
+enum eMode { off, on, emitter bool live() { ($self == 2) } }
+object ns { alias mode for eMode; }
+#using ns
+class Box { eMode mode = eMode.on; bool isOn() { return mode.live(); } }
+Box b1;
+array<int> vals = {1, 2, 3};
+object finder {
+    array<int> key[2];
+    bool Has(int key) { return vals.any((int v) => v == key); }
+}
+void main(){
+    print($"live {b1.isOn()} | has {finder.Has(2)} {finder.Has(7)} | step ");
+    for (int i = 0; i < 6; i += i < 2 ? 1 : 3) print(i);
+}

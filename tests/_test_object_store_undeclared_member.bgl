@@ -1,0 +1,10 @@
+/* Negative test: a store through an `object`-typed variable to a property no class or object declares is an error;
+   Inform 6 would otherwise fail on the unknown property. */
+// EXPECT_ERROR: 'zzzz' is not a declared property of 'o' (type 'object')
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Book : object { int state = 1; }
+Book b { }
+void main(){
+    object o = b;
+    o.zzzz += 5;
+}

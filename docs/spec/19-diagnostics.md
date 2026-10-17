@@ -132,7 +132,7 @@ or object, when a named member does not exist, or when the member is not of an i
 enclosing class or object, or a capturable name from an enclosing function:
 
 ```text
-Local variable 'score' shadows global of the same name; the global is unreachable from this scope.
+Local variable 'score' shadows the global variable 'score'; '::score' reaches it.
 Parameter 'name' shadows a member of class 'Thing'.
 ```
 

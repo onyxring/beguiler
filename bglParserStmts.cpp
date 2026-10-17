@@ -544,7 +544,10 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
         // A step through a member path (`dial.pos++`) is a statement too: the member's accessor or class decides.
         size_t afterTarget = a == string::npos ? string::npos : stepText.find_first_not_of(" \t\r\n", a + target.size());
         bool memberStep = !target.empty() && afterTarget != string::npos && stepText[afterTarget] == '.' && func != nullptr;
-        if(memberStep || (!target.empty() && stepCls != nullptr && !stepCls->isPrimitive && !isWordArrayType(stepCls->name)
+        // `i += c ? 1 : 3`: a compound step with a ternary on its right lowers as the statement it is.
+        bool compoundTernary = stepText.find('?') != string::npos
+            && regex_search(stepText, regex("^\\s*[A-Za-z_][\\w.]*\\s*(\\+|-|\\*|/|%|\\||&|\\^|<<|>>)=[^=]"));
+        if(memberStep || compoundTernary || (!target.empty() && stepCls != nullptr && !stepCls->isPrimitive && !isWordArrayType(stepCls->name)
            && !plainSlotOwnsReferenceInstance(stepCls)))
             deferredStep = stepText;
         else {
@@ -1206,7 +1209,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         parsingWarning("Loop variable '" + name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                             + "'; in the loop the name means the variable, though it still names the type in declarations.");
                     else
-                        parsingWarning("Loop variable '" + name + "' shadows global of the same name; '::" + name + "' reaches the global.");
+                        parsingWarning("Loop variable '" + name + "' shadows " + shadowedGlobal(g) + "; '::" + name + "' reaches it.");
                     break;
                 }
             if(definedSymbols.count(name))
@@ -3311,6 +3314,18 @@ bool bglParser::processSubscriptStatement(token tok, StatementContext& sc){
 
 // Resolves an assignment's left-hand side: emitted name, declared type, ref / byte-array flags,
 // emitter `$self`, and the class used for `operator =` dispatch.
+// `o.zzzz = v` where `o` is typed `object`: a store to a property nothing declares is an error (I6 would reject it).
+void bglParser::rejectUndeclaredObjectStore(const string& path, functionDef* func, statementBlock* body){
+    size_t d = path.rfind('.');
+    if(func == nullptr || looseIdentifierMode || d == string::npos || path.find('.') != d) return;
+    string recv = path.substr(0, d), mem = path.substr(d + 1);
+    if(recv.find_first_of("([:") != string::npos || recv == "self") return;
+    if(resolveIdentifierType(recv, func, body, mem) != "object" || isPropertyValuedLocal(mem, func, body)) return;
+    if(!resolvePathType(path, func, body).empty() || namesProperty(mem)) return;   // a property some object has: as in I6
+    parsingError(format("'{0}' is not a declared property of '{1}' (type 'object'). Declare it as a member so the access "
+                        "type-checks.", mem, recv));
+}
+
 bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOriginal, StatementContext& sc){
     AssignTarget t;
     functionDef* func = sc.func;
@@ -3322,6 +3337,7 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         parsingError("assigning to `.children` with `=` would replace all contents; use `.children += { … }` to add objects (or move them individually).");
     if(isConstName(lhsOriginal, func, body))
         parsingError(format("Cannot assign to const variable '{0}'", lhsOriginal));
+    if(stmtCastType.empty()) rejectUndeclaredObjectStore(lhsOriginal, func, body);
     if(func != nullptr){
         string qualified = qualifyIdentifier(lhsOriginal, func, body);
         if(qualified.empty())
@@ -4304,6 +4320,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     const sourceLocation& stmtLoc = sc.src;
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
+    if(sc.castType.empty()) rejectUndeclaredObjectStore(tok.value, func, body);
     if(func != nullptr && tok.value.find('.') != string::npos){
         // A path that starts at a bare member (`label.price.cents += 1;`) starts at self.
         string head = tok.value.substr(0, tok.value.find('.'));
@@ -4634,6 +4651,7 @@ string bglParser::withReceiverCast(const string& path, const StatementContext& s
 void bglParser::emitIncDecStatement(token var, const string& lhs, const vector<string>& ops, StatementContext& sc){
     functionDef* func = sc.func;
     statementBlock* body = sc.body;
+    if(sc.castType.empty()) rejectUndeclaredObjectStore(var.value, func, body);
     string lhsTypeName = var.value.find('.') == string::npos ? resolveIdentifierType(var.value, func, body)
                                                              : resolvePathType(var.value, func, body);
     classDef* lhsClass = languageService.classOf(lhsTypeName);

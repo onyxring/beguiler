@@ -404,7 +404,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
                     warnOnceHere("Parameter '" + shown + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this lambda the name means the parameter, though it still names the type in declarations.");
                 else
-                    warnOnceHere("Parameter '" + shown + "' shadows global of the same name; '::" + shown + "' reaches the global.");
+                    warnOnceHere("Parameter '" + shown + "' shadows " + shadowedGlobal(g) + "; '::" + shown + "' reaches it.");
                 warned = true;
             }
             if(!warned && definedSymbols.count(p.name))

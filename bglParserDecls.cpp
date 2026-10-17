@@ -797,7 +797,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     parsingWarning("Local variable '" + varDecl.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this routine the name means the variable, though the class still declares types.");
                 else
-                    parsingWarning("Local variable '" + varDecl.name + "' shadows global of the same name; '::" + varDecl.name + "' reaches the global.");
+                    parsingWarning("Local variable '" + varDecl.name + "' shadows " + shadowedGlobal(g) + "; '::" + varDecl.name + "' reaches it.");
                 break;   // one warning, however many overloads the name has
             }
         if(definedSymbols.count(varDecl.name))
@@ -2387,6 +2387,16 @@ void bglParser::rejectUnionInto(expression* val, classDef* target){
         parsingError(format("A '{0}' value doesn't fit a '{1}' directly: narrow the union first with a cast, "
                             "such as `({1})value`.", shown, target->dName()));
     }
+}
+
+// What a local of a global's name hides, for the shadowing warning: "the library function 'Cap'".
+string bglParser::shadowedGlobal(typeDef* g){
+    string file = dynamic_cast<functionDef*>(g) ? dynamic_cast<functionDef*>(g)->src.file
+                : dynamic_cast<objectDef*>(g) ? dynamic_cast<objectDef*>(g)->src.file
+                : dynamic_cast<statement*>(g) ? dynamic_cast<statement*>(g)->src.file : "";
+    string from = file.find("beguiLib") != string::npos ? "library " : "";
+    string kind = dynamic_cast<functionDef*>(g) ? "function" : dynamic_cast<objectDef*>(g) ? "object" : "global variable";
+    return "the " + from + kind + " '" + g->dName() + "'";
 }
 
 // A local array that owns the array it takes from a call or a step's result: the hidden local holding it.

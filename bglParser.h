@@ -743,6 +743,8 @@ class bglParser {
         bool staticArrayDeclaredBelow(const string& path);
         bool memberArraySource(expression* val, string& owner, string& prop);
         void copyMemberArrayValue(expression* val);
+        string shadowedGlobal(typeDef* g);
+        void rejectUndeclaredObjectStore(const string& path, functionDef* func, statementBlock* body);
         string staticMemberGlobal(const string& path);
         bool memberTakesCall(functionDef* fd, const string& name, bool openConsumed);   // `Class.member` static → its global, else ""
         // Per-statement context shared by the processStatement branch methods.

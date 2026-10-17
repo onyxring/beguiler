@@ -1,6 +1,6 @@
 // A parameter named like a union type is reported as having the type's name, not as shadowing a global.
 // EXPECT_WARNING: Parameter 'tag' has the name of union 'Tag'
-// EXPECT_NO_WARNING: shadows global of the same name
+// EXPECT_NO_WARNING: shadows the
 #beguilerSettings { target = z5; informName = "none"; }
 union Tag = string | object;
 int count(var tag) { if (typeof(tag) == eType.string) return 1; return 0; }
