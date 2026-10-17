@@ -1,0 +1,166 @@
+/*  Field trial part — included by library_author_idioms_41.bgl. Not a trial on its own.  */
+
+#once
+#include <array>
+#include <linq>
+
+// ---- Handles: structs that name arrays kept elsewhere. ----
+
+/// A second reference carried inside a handle.
+struct La41Inner {
+    int note;
+    ref array<int> more;
+    var extra;
+}
+
+/// A numbered handle on arrays kept elsewhere.
+struct La41Handle {
+    int id;
+    ref array<int> data;
+    La41Inner inner;
+}
+
+extend struct La41Handle {
+    /// Points the handle at an array.
+    void attach(array<int> a) {
+        data := a;
+    }
+
+    /// The sum of every array the handle names.
+    int total() {
+        int s = 0;
+        if (data) s += la41.sum(data);
+        if (inner.more) s += la41.sum(inner.more);
+        if (inner.extra) s += la41.sum(inner.extra);
+        return s;
+    }
+
+    /// Lets go of every array the handle names.
+    void release() {
+        data := null;
+        inner.more := null;
+        inner.extra = null;
+    }
+}
+
+/// A row, or a word standing in for one.
+union la41Cell = array<int> | string;
+
+/// The word a cell holds when it holds no row.
+const string la41None = "none";
+
+// ---- Bins: class instances that keep rows, with class-wide statics. ----
+
+/// A shelf holding one grid.
+struct La41Crate {
+    int id;
+    ref array<array<int>> grid;
+}
+
+/// A bin of rows.
+class La41Bin : object {
+    /// The last run any bin made.
+    static ref array<int> lastMade;
+    /// Every run any bin archived.
+    static array<array<int>> archive[6];
+    /// Anything any bin stashed.
+    static var stash;
+
+    int id;
+    ref array<array<int>> rows;
+    ref array<int> tail;
+    La41Handle h;
+    la41Cell cell;
+    array<la41Cell> notes[2];
+
+    /// Makes a run, remembering it class-wide.
+    array<int> make(int start, int n) {
+        array<int> r = la41.run(start, n);
+        lastMade := r;
+        return r;
+    }
+
+    /// Archives a run class-wide; false when the archive is full.
+    bool archiveRun(int start, int n) {
+        if (archive.length >= archive.size) return false;
+        archive += la41.run(start, n);
+        return true;
+    }
+
+    /// The sum of everything the bin holds.
+    int total() {
+        int s = 0;
+        if (rows) s += la41.gridSum(rows);
+        if (tail) s += la41.sum(tail);
+        s += h.total();
+        if (cell != la41None) s += la41.sum((array<int>)cell);
+        for (la41Cell n in notes) if (n != la41None) s += la41.sum((array<int>)n);
+        return s;
+    }
+
+    /// Lets go of everything the bin holds.
+    void empty() {
+        rows := null;
+        tail := null;
+        h.release();
+        cell = la41None;
+        notes.clear();
+    }
+
+    /// Notes a run; false when the notes are full.
+    bool note(la41Cell c) {
+        return notes.append(c);
+    }
+}
+
+// ---- The kit's API, reached as la41. ----
+
+/// Builds, sums and settles arrays.
+object la41 {
+    /// A fresh run of n values counting up from start.
+    array<int> run(int start, int n) {
+        array<int> r[8];
+        for (int i = 0; i < n; i++) r += start + i;
+        return r;
+    }
+
+    /// A fresh grid: row i is a run of i + 1 values from base + 10 * i.
+    array<array<int>> grid(int rowCount, int base) {
+        array<array<int>> g[4];
+        for (int i = 0; i < rowCount; i++) g += run(base + 10 * i, i + 1);
+        return g;
+    }
+
+    /// The sum of an array.
+    int sum(array<int> a) {
+        int s = 0;
+        for (int v in a) s += v;
+        return s;
+    }
+
+    /// The sum of a grid.
+    int gridSum(array<array<int>> g) {
+        int s = 0;
+        for (array<int> row in g) s += sum(row);
+        return s;
+    }
+
+    /// A handle whose data is this routine's own local array.
+    La41Handle handle(int id, int start) {
+        array<int> own[4];
+        own += {start, start + 1};
+        La41Handle t;
+        t.id = id;
+        t.data := own;
+        t.inner.note = id * 10;
+        t.inner.more := run(start * 2, 2);
+        t.inner.extra = run(start * 3, 1);
+        return t;
+    }
+
+    /// The heap words in use after a collection.
+    int settled() {
+        bgl.gc.collect();
+        return bgl.gc.used;
+    }
+}

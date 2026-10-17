@@ -1,0 +1,51 @@
+Room A
+> heapnow
+used 0.
+> stock
+filled: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+#repeat 3
+> totals
+totals: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+steady true.
+> renew
+renewed: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+near true.
+> totals
+totals: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+steady true.
+> deep
+deep 392, scan 311; back true.
+> totals
+totals: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+steady true.
+#repeat 3
+> churn
+churn 10230; settled true.
+> repoint
+repointed: kept 24, hG 606, pen 1206, lastMade 3; grew 0.
+> totals
+totals: globals 3137, handles 4621, bins 8013, desk 8045; used 726.
+steady true.
+> swap
+swapped: A 350, B 1884, stash 1884, cell 24; freed true.
+#repeat 2
+> totals
+totals: globals 3161, handles 4621, bins 8955, desk 8045; used 688.
+steady true.
+> prune
+pruned: globals 2516, handles 4218, bins 8354, desk 7244; freed true.
+> totals
+totals: globals 2516, handles 4218, bins 8354, desk 7244; used 562.
+steady true.
+> unstock
+dropped: globals 0, handles 0, bins 0, desk 0; used 0; back true.
+#repeat 3
+> cycle
+cycled: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+empty between 0.
+#repeat 2
+> totals
+totals: globals 3416, handles 4821, bins 8311, desk 8051; used 726.
+steady true.
+> unstock
+dropped: globals 0, handles 0, bins 0, desk 0; used 0; back true.

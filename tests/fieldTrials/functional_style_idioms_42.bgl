@@ -1,0 +1,546 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: structs on the heap, written in a functional style on z5. A Pt struct (positional `inline`
+// fields) whose operators (`+`, `-`, `==`, `!=`, `<=>`), a static factory and methods all come from
+// `extend struct`; a Seg struct using the automatic copy operator over a nested struct, an owned array, a
+// `ref array` and a field `extend struct` adds; a Stats struct with a written copy operator holding a Seg
+// (copied by Seg's automatic one), an owned `array<Pt>` and a `ref array<int>`; a Bag struct holding an
+// owned `array<Pt>`, a `ref array<Pt>` view of another array's instances and a `var` member keeping a
+// `<linq>` result. Pure helpers that take and return structs: folds through `func<Pt, Pt, Pt>` and
+// `func<Stats, Stats, Pt>` parameters with named routines and lambdas, a "with" helper that edits its
+// parameter copy and returns it, struct ternaries and operator chains on returned structs, a recursion
+// over `take`/`skip` views returning the smallest point, a recursion that hands a local struct array down
+// and back through every level, a mapper returning a fresh local struct array. Arrays of arrays of
+// structs: returned local struct arrays kept as rows of a global (`+=`, rolling `remove(0)`), a returned
+// local `array<array<Pt>>` whose rows are views of a global kept through a `ref` global, rows copied into
+// (`lanes[i] = row`), a returned local array of arrays whose rows are fresh mapper results, a `ref Pt`
+// local bound to a slot of one of its heap rows and written through, rows copied into one another; structs
+// returned from an array slot, an object's struct member and a ternary over rows. A rolling global struct array (the trail), an array of Seg whose `ref` members name
+// heap arrays, an object and class instances with struct members, struct-array members, `ref` struct-array
+// members bound to views and written through. `<linq>` over struct arrays in loops (filter, orderBy by `<=>`
+// and by a lambda, take, skip, distinct, any, all, first, last, count, map to ints), views kept in globals,
+// sized locals copied from views and grown, a view assigned back into its source, copies between struct
+// arrays of different capacity, self-assignment of structs and struct arrays, and the shared-array add
+// error caught once. `bgl.gc.used` after a collection at checkpoints, across repeated identical commands,
+// and back to zero once everything is let go.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int TRAILCAP = 12;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- Value types -----------------------------------------------------------------------------------
+
+struct Pt {
+    inline int x;
+    inline int y;
+}
+
+extend struct Pt {
+    static Pt of(int x, int y) {
+        Pt p;
+        p.x = x;
+        p.y = y;
+        return p;
+    }
+
+    Pt operator + (Pt o) { return Pt.of(x + o.x, y + o.y); }
+    Pt operator - (Pt o) { return Pt.of(x - o.x, y - o.y); }
+    bool operator == (Pt o) { return x == o.x && y == o.y; }
+    bool operator != (Pt o) { return x != o.x || y != o.y; }
+    int operator <=> (Pt o) { return len() - o.len(); }
+
+    int len() { return (x < 0 ? -x : x) + (y < 0 ? -y : y); }
+    Pt scaled(int k) { return Pt.of(x * k, y * k); }
+}
+
+struct Seg {
+    Pt a;
+    Pt b;
+    array<int> tally[3];
+    ref array<int> marks;
+}
+
+extend struct Seg {
+    int weight;
+
+    Pt mid() { return Pt.of((a.x + b.x) / 2, (a.y + b.y) / 2); }
+    int span() { return (b - a).len(); }
+}
+
+struct Stats {
+    int n;
+    int copies;
+    Pt sum;
+    Pt hi;
+    Seg last;
+    array<Pt> seen[3];
+    ref array<int> lens;
+
+    Stats operator = (Stats o) {
+        n = o.n;
+        sum = o.sum;
+        hi = o.hi;
+        last = o.last;
+        seen = o.seen;
+        lens := o.lens;
+        copies = o.copies + 1;
+        return self;
+    }
+}
+
+struct Bag {
+    int id;
+    array<Pt> pts[5];
+    ref array<Pt> view;
+    var note;
+}
+
+//-- State -----------------------------------------------------------------------------------------
+
+array<Pt> base = { Pt{ 1, 2 }, Pt{ 5, -1 }, Pt{ -3, 4 }, Pt{ 2, 2 }, Pt{ 0, 7 }, Pt{ 6, 1 } };
+array<Pt> trail[TRAILCAP];
+array<Pt> few[3];
+array<array<Pt>> lanes[3];
+ref array<array<Pt>> grid;
+ref array<Pt> best;
+ref array<array<Pt>> pairs;
+array<Seg> segs[4];
+Stats gs;
+Bag gb;
+Seg gseg;
+int turnNo = 0;
+
+object board {
+    "board";
+    parent = roomA;
+    name = {.board};
+    attributes = {scenery};
+    array<Pt> cells[4] = { Pt{ 3, 3 }, Pt{ -1, 0 }, Pt{ 4, -4 }, Pt{ 0, 2 } };
+    ref array<Pt> hot;
+    Seg edge;
+}
+
+class Walker : object {
+    Pt at;
+    Pt dir;
+    array<Pt> steps[4];
+    ref array<Pt> seen;
+
+    Pt next() { return at + dir; }
+
+    void advance() {
+        at = next();
+        if (steps.length == steps.size) steps.remove(0);
+        steps += at;
+    }
+}
+
+Walker w1 { "walker one"; parent = roomA; name = {.walker, .one}; }
+Walker w2 { "walker two"; parent = roomA; name = {.walker, .two}; }
+
+//-- Pure helpers ----------------------------------------------------------------------------------
+
+Pt addPt(Pt a, Pt b) { return a + b; }
+Pt maxPt(Pt a, Pt b) { return a.len() >= b.len() ? a : b; }
+
+Pt withX(Pt p, int x) {
+    p.x = x;
+    return p;
+}
+
+Pt foldPts(array<Pt> xs, func<Pt, Pt, Pt> f, Pt seed) {
+    Pt acc = seed;
+    for (Pt p in xs) acc = f(acc, p);
+    return acc;
+}
+
+Stats addStat(Stats s, Pt p) {
+    s.n++;
+    s.sum = s.sum + p;
+    if (s.n == 1 || p.len() > s.hi.len()) s.hi = p;
+    if (s.seen.length < s.seen.size) s.seen += p;
+    return s;
+}
+
+Stats reduce(array<Pt> xs, func<Stats, Stats, Pt> f, Stats seed) {
+    Stats r = seed;
+    for (Pt p in xs) r = f(r, p);
+    return r;
+}
+
+array<int> lensOf(array<Pt> xs) {
+    array<int> out[TRAILCAP];
+    for (Pt p in xs) out += p.len();
+    return out;
+}
+
+array<Pt> mapPts(array<Pt> xs, func<Pt, Pt> f) {
+    array<Pt> out[6];
+    for (Pt p in xs.take(6)) out += f(p);
+    return out;
+}
+
+array<Pt> row(int seed, int n) {
+    array<Pt> out[4];
+    for (int i = 0; i < n; i++) out += Pt.of(seed + i, seed - 2 * i);
+    return out;
+}
+
+// Each level owns a local array, takes the deeper level's array and hands it back up.
+array<Pt> deeper(array<Pt> xs, int d) {
+    array<Pt> mine[2];
+    mine += xs.first() + Pt.of(d, d);
+    if (d == 0) return xs;
+    array<Pt> got = deeper(xs, d - 1);
+    got[0].y += mine[0].x;
+    return got;
+}
+
+Pt minPt(array<Pt> xs) {
+    if (xs.length == 1) return xs[0];
+    int h = xs.length / 2;
+    Pt a = minPt(xs.take(h));
+    Pt b = minPt(xs.skip(h));
+    return a.len() <= b.len() ? a : b;
+}
+
+array<array<Pt>> chunks(array<Pt> xs, int n) {
+    array<array<Pt>> out[4];
+    for (int i = 0; i < xs.length && out.length < out.size; i += n) out += xs.skip(i).take(n);
+    return out;
+}
+
+// Pairs of xs, doubled: each row is a fresh local array of its own, kept by the returned array.
+array<array<Pt>> pairUp(array<Pt> xs) {
+    array<array<Pt>> out[3];
+    for (int i = 0; i + 1 < xs.length && out.length < out.size; i += 2) out += mapPts(xs.skip(i).take(2), (Pt q) => q.scaled(2));
+    return out;
+}
+
+Seg lastSeg() { return segs.last(); }
+Pt edgeMid() { return board.edge.mid(); }
+Pt cornerOf(array<Pt> xs) { return xs.length > 0 ? xs[xs.length - 1] : Pt.of(0, 0); }
+
+Seg segOf(Pt a, Pt b) {
+    Seg s;
+    s.a = a;
+    s.b = b;
+    s.weight = a.len() + b.len();
+    s.tally += a.x;
+    s.tally += b.x;
+    array<int> m[4];
+    m += a.len();
+    m += b.len();
+    m += (b - a).len();
+    s.marks := m;
+    return s;
+}
+
+Bag bagOf(array<Pt> xs, int id) {
+    Bag b;
+    b.id = id;
+    b.pts = xs;
+    b.view := xs;
+    b.note = xs.filter((Pt p) => p.x > 0);
+    return b;
+}
+
+int sumInts(array<int> xs) {
+    int t = 0;
+    for (int v in xs) t += v;
+    return t;
+}
+
+int byY(Pt a, Pt b) { return a.y - b.y; }
+
+void show(string label, array<Pt> xs) {
+    print(label);
+    print(":");
+    for (Pt p in xs) print($" {p.x},{p.y}");
+    print($" [{xs.length}/{xs.size}]^");
+}
+
+void level(string where) {
+    bgl.gc.collect();
+    printLine($"heap {where}: {bgl.gc.used}");
+}
+
+//-- Verbs -----------------------------------------------------------------------------------------
+
+Pt nextPoint() {
+    turnNo++;
+    return Pt.of((turnNo * 7) % 11 - 5, (turnNo * 5) % 9 - 4);
+}
+
+verb PlotVerb {
+    grammar = {{.plot}};
+    void handler() {
+        Pt p = nextPoint();
+        if (trail.length == trail.size) trail.remove(0);
+        trail += p;
+        if (lanes.length == lanes.size) lanes.remove(0);
+        lanes += row(p.x, 3);
+        if (segs.length == segs.size) segs.remove(0);
+        segs += segOf(trail.first(), p);
+        gseg = segs.last();
+        Stats z;
+        gs = reduce(trail, addStat, z);
+        gs.lens := lensOf(trail);
+        gs.last = gseg;
+        best := trail.orderBy().take(3);
+        printLine($"plot {turnNo}: {p.x},{p.y}, trail {trail.length}, lanes {lanes.length}, seg {gseg.span()}/{gseg.weight}, stats {gs.n}");
+    }
+}
+
+verb FoldVerb {
+    grammar = {{.fold}};
+    void handler() {
+        Pt total = foldPts(trail, addPt, Pt.of(0, 0));
+        Pt far = foldPts(base, maxPt, base[0]);
+        Pt pos = foldPts(trail.filter((Pt q) => q.x > 0), (Pt a, Pt b) => a + b.scaled(2), Pt.of(1, 1));
+        Pt mid = foldPts(base.orderBy(byY).skip(1).take(4), (Pt a, Pt b) => a - b, Pt.of(0, 0));
+        Stats z;
+        Stats s = reduce(base.filter((Pt q) => q.y > 0), addStat, z);
+        Stats t = reduce(base, (Stats acc, Pt q) => q.x < 0 ? acc : addStat(acc, q), s);
+        Pt m = minPt(base);
+        Pt e = (total + far) - withX(m, 0);
+        Pt pick = e.len() > 10 ? far : m;
+        printLine($"total {total.x},{total.y}; far {far.x},{far.y}; pos {pos.x},{pos.y}; mid {mid.x},{mid.y}");
+        printLine($"s {s.n} {s.sum.x},{s.sum.y} hi {s.hi.x},{s.hi.y}; t {t.n} {t.sum.x},{t.sum.y}");
+        printLine($"min {m.x},{m.y}; e {e.x},{e.y}; pick {pick.x},{pick.y}; same {m == minPt(base.orderBy())} {withX(m, 9) != m}");
+        array<Pt> tailPts[6] = base.skip(2);
+        array<Pt> deep = deeper(tailPts, 3);
+        show("deep", deep);
+        array<Pt> moved = mapPts(trail, (Pt q) => q + Pt.of(10, 0));
+        show("moved", moved);
+        int lens = sumInts(lensOf(moved));
+        int far2 = trail.map((Pt q) => q.len()).count();
+        printLine($"lens {lens}, mapped {far2}, any {trail.any((Pt q) => q == Pt.of(0, 0))}, all {base.all((Pt q) => q.len() < 9)}");
+    }
+}
+
+verb WalkVerb {
+    grammar = {{.walk}};
+    void handler() {
+        w1.dir = Pt.of(1, 0);
+        w2.dir = trail.length > 0 ? trail.last() : Pt.of(0, 1);
+        w1.advance();
+        w2.advance();
+        w1.seen := mapPts(base, (Pt q) => q + w1.at);
+        w2.seen := w2.steps.filter((Pt q) => q.y != 0);
+        board.hot := board.cells.filter((Pt q) => q.len() > 3);
+        for (int i = 0; i < board.hot.length; i++) board.hot[i].y += 1;
+        board.edge = segOf(board.cells.first(), board.cells.last());
+        array<Pt> st = w1.steps;
+        show("w1", st);
+        show("w2 seen", w2.seen);
+        array<Pt> cs = board.cells;
+        show("cells", cs);
+        printLine($"w1 at {w1.at.x},{w1.at.y} next {w1.next().x},{w1.next().y}; seen {w1.seen.length}; edge {board.edge.span()} {sumInts(board.edge.marks)}");
+    }
+}
+
+verb ChunkVerb {
+    grammar = {{.chunk}};
+    void handler() {
+        grid := chunks(trail, 3);
+        int rows = 0;
+        int cells = 0;
+        for (array<Pt> r in grid) {
+            rows++;
+            cells += r.length;
+        }
+        Pt hiRow = grid.length > 0 ? foldPts(grid[0], maxPt, grid[0].first()) : Pt.of(0, 0);
+        printLine($"grid {rows} rows, {cells} cells, first row max {hiRow.x},{hiRow.y}");
+        if (lanes.length > 1) lanes[0] = lanes[lanes.length - 1];
+        for (array<Pt> r in lanes) show("lane", r);
+    }
+}
+
+verb CopyVerb {
+    grammar = {{.copy}};
+    void handler() {
+        Seg a = gseg;
+        a.a = Pt.of(99, 99);
+        a.tally[0] = 50;
+        a.marks[0] += 0;
+        a = a;
+        gseg = gseg;
+        Stats s = gs;
+        Stats u;
+        u = s;
+        u = u;
+        printLine($"seg {gseg.a.x} vs {a.a.x}, tally {gseg.tally[0]} vs {a.tally[0]}, marks same {a.marks == gseg.marks}, weight {a.weight}");
+        printLine($"stats copies +{s.copies - gs.copies} +{u.copies - gs.copies}, last {u.last.span()}, seen {u.seen.length}, lens {sumInts(u.lens)}");
+        few = base;
+        show("few", few);
+        array<Pt> mine[8] = base.filter((Pt q) => q.y > 1);
+        mine += Pt.of(8, 8);
+        mine[0].x = 77;
+        show("mine", mine);
+        array<Pt> pb = base;
+        show("base", pb);
+        segs[0] = segs[segs.length - 1];
+        segs = segs;
+        trail = trail.orderBy(byY);
+        best := trail.orderBy().take(3);
+        show("trail", trail);
+        gb = bagOf(base.filter((Pt q) => q.x != turnNo % 3), turnNo);
+        gb.view[0].y = gb.view[0].y;
+        Bag b2 = gb;
+        b2.pts[0].x = -50;
+        array<Pt> gp = gb.pts;
+        array<Pt> bp = b2.pts;
+        printLine($"bag {gb.id}: own {gp[0].x} copy {bp[0].x}, view {gb.view.length}, shared {b2.view == gb.view}");
+    }
+}
+
+verb ScanVerb {
+    grammar = {{.scan}};
+    void handler() {
+        int hits = 0;
+        for (int k = 1; k <= 4; k++) {
+            hits += trail.filter((Pt q) => q.len() > k).count();
+            hits += trail.skip(1).take(k).distinct().count();
+            if (base.any((Pt q) => q.x == k)) hits++;
+            Pt top = trail.orderBy((Pt a, Pt b) => b.len() - a.len()).take(k).last();
+            hits += top.len();
+        }
+        int nested = 0;
+        for (array<Pt> r in lanes) {
+            if (r.any((Pt q) => trail.any((Pt t) => t.x == q.x))) nested++;
+        }
+        array<Pt> ring = base.orderBy().skip(1).filter((Pt q) => q.y > 0).orderBy(byY);
+        Pt lo = ring.first();
+        Pt hi = ring.last();
+        int spread = (hi - lo).len();
+        int runs = 0;
+        for (int pass = 0; pass < 30; pass++) {
+            for (int w in segs.filter((Seg s) => s.span() > pass % 5).map((Seg s) => s.weight)) runs += w % 3;
+        }
+        printLine($"scan {hits}, nested {nested}, ring {ring.length} {lo.x},{lo.y}..{hi.x},{hi.y} spread {spread}, runs {runs}");
+    }
+}
+
+verb NestVerb {
+    grammar = {{.nest}};
+    void handler() {
+        pairs := pairUp(base);
+        ref Pt cur := pairs[0][0];
+        cur.x += 1;
+        Pt all = Pt.of(0, 0);
+        for (array<Pt> r in pairs) all = all + foldPts(r, addPt, Pt.of(0, 0));
+        pairs[1] = pairs[0];
+        pairs[1][0].y = 50;
+        Pt c = cornerOf(pairs[2]) - cornerOf(pairs[1]);
+        int at = trail.indexOf(trail.last());
+        bool has = base.contains(Pt.of(2, 2));
+        int mids = segs.length > 0 ? lastSeg().mid().len() + lastSeg().span() : -1;
+        printLine($"pairs {pairs.length}: {pairs[0][0].x},{pairs[0][0].y} {pairs[1][0].x},{pairs[1][0].y}; all {all.x},{all.y}; c {c.x},{c.y}");
+        printLine($"at {at}, has {has}, mids {mids}, edge mid {edgeMid().x},{edgeMid().y}, w1 next {w1.next().len()}");
+    }
+}
+
+verb TrapVerb {
+    grammar = {{.trap}};
+    void handler() {
+        array<Pt> v = base.filter((Pt q) => q.x > 0);
+        printLine($"view {v.length}");
+        v += Pt.of(1, 1);
+        printLine($"after {v.length}");
+    }
+}
+
+verb StateVerb {
+    grammar = {{.state}};
+    meta = true;
+    void handler() {
+        printLine($"turn {turnNo}");
+        show("trail", trail);
+        print($"lanes {lanes.length}:");
+        for (array<Pt> r in lanes) print($" {r.length}/{foldPts(r, addPt, Pt.of(0, 0)).x}");
+        print("^");
+        if (pairs == null) printLine("pairs: none");
+        else {
+            print($"pairs {pairs.length}:");
+            for (array<Pt> r in pairs) print($" {cornerOf(r).x},{cornerOf(r).y}");
+            print("^");
+        }
+        if (grid == null) printLine("grid: none");
+        else printLine($"grid {grid.length}");
+        if (best == null) printLine("best: none");
+        else show("best", best);
+        print($"segs {segs.length}:");
+        for (Seg s in segs) print($" {s.span()}/{sumInts(s.marks)}");
+        print("^");
+        printLine($"gs {gs.n} {gs.sum.x},{gs.sum.y} hi {gs.hi.x},{gs.hi.y} last {gs.last.weight}");
+        if (gs.lens == null) printLine("lens: none");
+        else printLine($"lens {sumInts(gs.lens)}/{gs.lens.length}");
+        if (gb.view == null) printLine("bag: none");
+        else {
+            show("bag view", gb.view);
+            show("bag note", (array<Pt>)gb.note);
+        }
+        if (board.hot == null) printLine("hot: none");
+        else show("hot", board.hot);
+        if (w1.seen == null) printLine("w1 seen: none");
+        else show("w1 seen", w1.seen);
+    }
+}
+
+verb LevelVerb {
+    grammar = {{.level}};
+    meta = true;
+    void handler() {
+        level("now");
+    }
+}
+
+verb DropVerb {
+    grammar = {{.drop}};
+    void handler() {
+        lanes.clear();
+        grid := null;
+        pairs := null;
+        best := null;
+        for (int i = 0; i < segs.length; i++) segs[i].marks := null;
+        segs.clear();
+        gseg.marks := null;
+        gs.lens := null;
+        gs.last.marks := null;
+        gb.view := null;
+        gb.note = null;
+        board.hot := null;
+        board.edge.marks := null;
+        w1.seen := null;
+        w2.seen := null;
+        printLine("Dropped.");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

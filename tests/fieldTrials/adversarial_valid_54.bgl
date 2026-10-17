@@ -1,0 +1,647 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but awkward code around arrays that own their storage, structs and the heap, in the
+// places adversarial_valid_52 and _53 did not go.
+// Results freed at the end of their statement in odd positions: a `while` and a `do … while` condition and a
+// `for` condition and step (run every time round), both sides of `&&` and `||` (one side never run), a ternary's
+// arms, a compound assignment, a subscript's index, a nested argument, a `switch` value, a `return` expression
+// with two results, an interpolation, an expression statement that drops the result, a method called on a
+// result, two results compared, a chain inside a predicate (one result per element). `for … in` over results
+// left by `break`, `continue` and a `return` from inside one and two loops, and over a chain inside a recursion.
+// Results claimed by a `ref` local, a `var` local and a union local, re-pointed many times in a loop, handed
+// back through a `ref` local, freed with `bgl.gc.free` from a `ref` local and from an array local in a loop (the
+// routine's exit must not free them again). Static returns: functions whose every return is a file-scope array
+// (directly and through a recursion that ends in one) taken by locals, a `ref` and a sized copy, written through
+// a subscript on the call, and chained. A local declared from a ternary of a call and a name. Arrays of arrays held
+// by class instances, in global and local arrays: row copies between layers, member copies, references, a member
+// copied out to an array of arrays. Struct views (a `<linq>` result and a local declared from a value): a view
+// assigned to itself, written through, slot-stored into, whole-assigned from another array. An array of arrays
+// of a struct: rows copied between, from a global and from a view. A recursion where each level writes into its
+// caller's struct array through a view and hands its own down. The struct pool under pressure: a `ref` global
+// re-pointed at a new returned array of structs each time round (the collector gives the old instances back),
+// and a recursion that fills exactly what is left. A `ref` local re-pointed at its own chain (`r :=
+// r.orderBy()`) after `r = r.filter(…)`; chains over a struct's member array; a recursion returning its local or
+// a chain over the deeper level's result through a ternary. Heap churn far past `heapSize`: a `ref` global and a
+// union global re-pointed at chains whose steps run while the collector makes room, and an array of arrays
+// filled with results and cleared, many times in one command, with two results passed to one call; a struct
+// global's `ref` member keeping a row after the array of arrays is cleared. `bgl.gc.used` after an explicit
+// collection, after every command and across repeats; `bgl.gc.peak` against `bgl.gc.size`.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 900;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ---- structs ---------------------------------------------------------------------------------------------
+
+struct Pt {
+    inline int x;
+    inline int y;
+}
+
+extend struct Pt {
+    bool operator == (Pt o) { return x == o.x && y == o.y; }
+    int sum() { return x + y; }
+}
+
+// A third level of nesting: a class whose instances each hold an array of arrays.
+class Layer {
+    int tag;
+    array<array<int>> rows = { { 0, 0 }, { 0, 0, 0 } };
+}
+
+struct Tok {
+    inline int v;
+}
+
+struct Bag {
+    int n;
+    array<int> items[5];
+    ref array<int> view;
+}
+
+extend struct Bag {
+    int total() {
+        int t = 0;
+        for (int x in items) t += x;
+        return t;
+    }
+}
+
+// ---- globals ---------------------------------------------------------------------------------------------
+
+array<int> nums = { 5, 3, 8, 1, 9, 2 };
+array<int> small[2];
+array<int> evensG[6];
+ref array<int> keptRef;
+int | array<int> uni;
+Layer layerA;
+Layer layerB;
+Layer layerC;
+Layer layerD;
+array<Layer> cube[2];
+array<Layer> cube2[2];
+array<array<int>> plane = { { 0, 0 }, { 0 } };
+array<array<int>> bin[6];
+array<Pt> pts = { Pt{ 1, 2 }, Pt{ 3, 4 }, Pt{ 5, 6 } };
+array<Pt> others = { Pt{ 7, 7 }, Pt{ 8, 8 }, Pt{ 9, 9 } };
+array<array<Pt>> pg = { { Pt{ 1, 1 } }, { Pt{ 2, 2 }, Pt{ 3, 3 } } };
+array<Pt> spareSlots[8];      // never filled: room in the pool for spread's levels
+ref array<Tok> lastToks;
+Bag bagA;
+int baseline;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- helpers ---------------------------------------------------------------------------------------------
+
+void show(array<int> a) {
+    print("[");
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("]");
+}
+
+void showPts(array<Pt> a) {
+    for (Pt p in a) print($"({p.x},{p.y})");
+}
+
+void showCube(array<Layer> c) {
+    for (Layer pl in c) {
+        print("{");
+        for (array<int> r in pl.rows) show(r);
+        print("}");
+    }
+}
+
+void fillCube() {
+    cube.clear();
+    cube2.clear();
+    cube += layerA;
+    cube += layerB;
+    cube2 += layerC;
+    cube2 += layerD;
+    layerA.rows[0] = { 1, 2 };
+    layerA.rows[1] = { 3 };
+    layerB.tag = 0;
+    layerB.rows[0] = { 4, 0 };
+    layerB.rows[1] = { 5, 6, 7 };
+    layerC.rows[0].clear();
+    layerC.rows[1].clear();
+    layerD.rows[0].clear();
+    layerD.rows[1].clear();
+}
+
+void showPg() {
+    for (array<Pt> row in pg) {
+        print("{");
+        showPts(row);
+        print("}");
+    }
+}
+
+array<int> descend(int n) {
+    array<int> mine[6];
+    mine += n;
+    if (n == 0) return mine;
+    array<int> deeper = descend(n - 1);
+    for (int v in deeper) mine += v;
+    return mine;
+}
+
+array<int> evens(array<int> a) {
+    return a.filter((int x) => x % 2 == 0);
+}
+
+int total(array<int> a) {
+    int t = 0;
+    for (int x in a) t += x;
+    return t;
+}
+
+// Takes a block and fills it, so an array freed too early would show the zeros laid over it.
+array<int> filler() {
+    array<int> f = { 0, 0, 0, 0, 0, 0 };
+    return f.filter((int x) => x == 0);
+}
+
+// ---- odd positions ---------------------------------------------------------------------------------------
+
+// Two results in one return expression.
+int lenAndFirst(int n) {
+    return descend(n).length + descend(n).first();
+}
+
+int firstUnder(int lim) {
+    for (int v in descend(5)) {
+        if (v < lim) return v;
+    }
+    return -1;
+}
+
+int pairFind(int target) {
+    for (int a in descend(3)) {
+        for (int b in evens(nums).orderBy()) {
+            if (a * b == target) return a * 10 + b;
+        }
+    }
+    return -1;
+}
+
+// Recurses from inside a `for … in` over a chain.
+int sumDeep(int n) {
+    if (n == 0) return 0;
+    int s = 0;
+    for (int v in descend(n).filter((int x) => x > 0)) {
+        s += v;
+        if (v == n) s += sumDeep(n - 1);
+    }
+    return s;
+}
+
+// ---- claims ----------------------------------------------------------------------------------------------
+
+array<int> viaRefLocal(int n) {
+    ref array<int> r := descend(n);
+    r[0] = r[0] * 100;
+    return r;
+}
+
+int freedInLoop() {
+    int s = 0;
+    for (int n = 1; n <= 4; n++) {
+        array<int> r = descend(n);
+        s += r.length;
+        bgl.gc.free(r);
+    }
+    ref array<int> t := descend(3);
+    s += t[0];
+    bgl.gc.free(t);
+    return s;
+}
+
+// ---- static returns --------------------------------------------------------------------------------------
+
+array<int> pickG(int n) {
+    if (n > 0) return nums;
+    return small;
+}
+
+array<int> deepG(int n) {
+    if (n == 0) return nums;
+    return deepG(n - 1);
+}
+
+// ---- recursion through a ternary -------------------------------------------------------------------------
+
+array<int> zig(int n) {
+    array<int> mine = { n, n * 2 };
+    if (n == 0) return mine;
+    array<int> deeper = zig(n - 1);
+    return n % 2 == 0 ? mine : deeper.filter((int x) => x != n - 1);
+}
+
+// ---- struct pool -----------------------------------------------------------------------------------------
+
+array<Tok> makeToks(int n) {
+    array<Tok> t[3];
+    for (int i = 0; i < 3; i++) t += Tok{ n * 10 + i };
+    return t;
+}
+
+int tokDepth(int n) {
+    array<Tok> mine[3];
+    mine += Tok{ n };
+    if (n == 0) return mine[0].v;
+    return tokDepth(n - 1) + mine[0].v;
+}
+
+// ---- structs through recursion ---------------------------------------------------------------------------
+
+// Each level owns a struct array, writes into its caller's through the view it was given, and hands a view of
+// its own down.
+int spread(int n, array<Pt> up) {
+    array<Pt> mine[2];
+    mine += Pt{ n, n };
+    mine += Pt{ n * 10, 0 };
+    if (up.length > 0) up[0].y = up[0].y + n;
+    if (n == 0) return mine[0].x + mine[1].x;
+    array<Pt> view = mine.filter((Pt p) => p.x > 0);
+    int below = spread(n - 1, view);
+    return below + mine[0].y;
+}
+
+// A local struct's `ref` member takes a chain's result for the rest of the routine.
+int viaBag() {
+    Bag b;
+    b.view := nums.filter((int x) => x > 4);
+    array<int> f = filler();
+    b.items = b.view;
+    b.n = b.view.length + f.length;
+    return total(b.view) * 100 + b.n * 10 + b.items.length;
+}
+
+int pairSum(array<int> a, array<int> b) {
+    return total(a) * 100 + total(b);
+}
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb BaseCmd {
+    grammar = {.base};
+    void handler() {
+        bgl.gc.collect();
+        baseline = bgl.gc.used;
+        print($"baseline set, zero {bgl.gc.used - baseline}.^");
+    }
+}
+
+verb UsedCmd {
+    grammar = {.used};
+    void handler() {
+        bgl.gc.collect();
+        print($"used {bgl.gc.used - baseline}, peak in size {bgl.gc.peak <= bgl.gc.size}.^");
+    }
+}
+
+verb StmtEndCmd {
+    grammar = {.stmtend};
+    void handler() {
+        int k = 0;
+        while (descend(k).length < 4) k++;
+        int c = 0;
+        for (int i = 0; i < descend(2).length; i += descend(0).length) c += descend(i)[0];
+        do {
+            c++;
+        } while (evens(nums).length > c);
+        bool both = descend(1)[0] == 0 && descend(5)[0] > 0;
+        bool either = descend(2)[0] == 2 || descend(5)[0] > 0;
+        int t = k > 2 ? descend(3).length : evens(nums).length;
+        t += descend(2)[1];
+        int pick = nums[descend(1).length];
+        int nest = total(descend(descend(2).length));
+        switch (descend(2).length) {
+            case 3: print("three ");
+            default: print("other ");
+        }
+        print($"{k} {c} {both} {either} {t} {pick} {nest} {lenAndFirst(3)} {descend(4).last()}");
+        descend(4);
+        descend(3).clear();
+        descend(3).pop();
+        evens(nums).orderBy();
+        int r = 0;
+        for (int i in 0 to descend(3).length - 1) r += descend(5)[descend(i).length];
+        if (descend(1).length > 2) r = -1;
+        else if (evens(nums).contains(descend(2)[0])) r += 1000;
+        else r = -2;
+        func<array<int>, int> mk = descend;
+        func<bool, int> deep = (int x) => mk(x).filter((int y) => y > 1).count() > 1;
+        print($" {descend(2) == descend(2)} {nums.filter((int x) => descend(x % 4).length > 2).count()} {r} {nums.filter(deep).count()}.^");
+    }
+}
+
+verb ForExitCmd {
+    grammar = {.forexit};
+    void handler() {
+        int s = 0;
+        for (int v in descend(4)) {
+            if (v == 2) continue;
+            if (v == 0) break;
+            s += v;
+        }
+        print($"{s} {firstUnder(3)} {pairFind(16)} {pairFind(99)} {sumDeep(3)}.^");
+    }
+}
+
+verb ClaimsCmd {
+    grammar = {.claims};
+    void handler() {
+        ref array<int> r := descend(3);
+        var v = evens(nums);
+        int | array<int> u = descend(2).orderBy();
+        array<int> f = filler();
+        show(r);
+        show((array<int>)v);
+        show((array<int>)u);
+        r := nums;
+        v = 7;
+        u = 4;
+        array<int> got = viaRefLocal(2);
+        show(got);
+        for (int i = 0; i < 5; i++) r := descend(i);
+        show(r);
+        int | array<int> w = 0;
+        for (int i = 1; i < 4; i++) w = descend(i).filter((int x) => x > 0);
+        show((array<int>)w);
+        print($" {(int)v + (int)u} {f.length} {freedInLoop()}.^");
+    }
+}
+
+verb StaticCmd {
+    grammar = {.static};
+    void handler() {
+        array<int> a = pickG(1);
+        a[0] = 50;
+        array<int> b = deepG(3);
+        b[1] = 30;
+        ref array<int> r := deepG(2);
+        array<int> c[3] = deepG(1);
+        c[2] = 0;
+        show(nums);
+        show(c);
+        print($" {pickG(0).length} {a == nums} {b == nums} {r == nums}");
+        print($" {deepG(4).filter((int x) => x > 8).count()}");
+        pickG(1)[2] = 80;
+        deepG(5)[3] = 10;
+        show(nums);
+        nums = { 5, 3, 8, 1, 9, 2 };
+        print(".^");
+    }
+}
+
+verb TernaryCmd {
+    grammar = {.ternary};
+    void handler() {
+        int k = 1;
+        array<int> q = k > 0 ? descend(2) : nums;
+        q[0] = 77;
+        array<int> q2 = k < 0 ? descend(2) : nums;
+        q2[0] = 66;
+        array<int> f = filler();
+        show(q);
+        show(q2);
+        show(nums);
+        print($" {f.length}.^");
+    }
+}
+
+verb CubeCmd {
+    grammar = {.cube};
+    void handler() {
+        fillCube();
+        cube[0].rows[1] = cube[1].rows[1];
+        cube[1].rows[0] = cube[0].rows[0];
+        cube[1].rows[0][0] = 40;
+        showCube(cube);
+        print(" / ");
+        cube2[0].rows = cube[0].rows;
+        cube2[1].rows = cube[1].rows;
+        cube2[0].rows[0][0] = 77;
+        plane = cube[1].rows;
+        plane[1][0] = 66;
+        cube[1].rows = cube[0].rows;
+        cube[1].rows[1][0] = 9;
+        showCube(cube);
+        showCube(cube2);
+        show(plane[0]);
+        show(plane[1]);
+        array<Layer> loc[2];
+        loc += layerC;
+        loc += layerD;
+        loc[0].rows[0] = { 1 };
+        loc[0].rows[1] = { 2, 3 };
+        loc[1].rows[0] = { 0, 1 };
+        loc[1].rows[1] = { 2, 3 };
+        loc[1].rows[0] = loc[0].rows[1];
+        loc[0].rows[0] = descend(4);
+        loc[0].rows[1][1] = 5;
+        loc[1].rows[1] += { 7 };
+        loc[1].rows[1] -= { 2 };
+        print(" / ");
+        showCube(loc);
+        print($" {loc[1].rows[0].filter((int x) => x == 2).count()} {cube[0].rows[1].filter((int x) => x > 5).count()}");
+        cube2 = cube;
+        cube2[1].tag = 5;
+        print($" {layerB.tag} {cube2[0] == cube[0]} {layerC.rows[0] == layerA.rows[0]}.^");
+    }
+}
+
+verb UncubeCmd {
+    grammar = {.uncube};
+    void handler() {
+        cube.clear();
+        cube2.clear();
+        print("emptied.^");
+    }
+}
+
+verb ViewsCmd {
+    grammar = {.views};
+    void handler() {
+        array<Pt> v = pts.filter((Pt p) => p.x > 1);
+        v = v;
+        v[0].y = 40;
+        array<Pt> rev = pts.orderBy((Pt a, Pt b) => b.x - a.x);
+        rev[0] = Pt{ 50, 60 };
+        showPts(pts);
+        print(" / ");
+        rev = others;
+        rev[1].x = 100;
+        showPts(pts);
+        showPts(others);
+        print(" / ");
+        array<Pt> w = pts;
+        w[2].x = 9;
+        showPts(pts);
+        print($" {w.contains(Pt{ 100, 8 })} {w.length} {v.filter((Pt p) => p.sum() > 100).count()}");
+        pts = { Pt{ 1, 2 }, Pt{ 3, 4 }, Pt{ 5, 6 } };
+        print(".^");
+    }
+}
+
+verb PRowsCmd {
+    grammar = {.prows};
+    void handler() {
+        pg[0] = pg[1];
+        pg[0][0].x = 20;
+        showPg();
+        pg[1] = others;
+        pg[1][1].y = 80;
+        showPg();
+        showPts(others);
+        array<array<Pt>> loc = { { Pt{ 4, 4 }, Pt{ 5, 5 } } };
+        loc[0] = pg[1].filter((Pt p) => p.x > 7);
+        loc[0][0].x = 0;
+        print(" ");
+        showPts(loc[0]);
+        showPg();
+        print($" {pg[1].filter((Pt p) => p.y > 7).count()} {loc[0].length}");
+        pg[0][0] = Pt{ 1, 1 };
+        pg[1][0] = Pt{ 2, 2 };
+        pg[1][1] = Pt{ 3, 3 };
+        print(".^");
+    }
+}
+
+verb PoolCmd {
+    grammar = {.pool};
+    void handler() {
+        for (int i = 1; i <= 6; i++) lastToks := makeToks(i);
+        for (Tok t in lastToks) print($"{t.v} ");
+        print($"depth {tokDepth(2)} {lastToks.filter((Tok t) => t.v > 60).count()}.^");
+    }
+}
+
+verb UnpoolCmd {
+    grammar = {.unpool};
+    void handler() {
+        lastToks := null;
+        print("let go.^");
+    }
+}
+
+verb StructsCmd {
+    grammar = {.structs};
+    void handler() {
+        print($"spread {spread(3, pts.take(0))} bag {viaBag()}");
+        ref Bag rb := bagA;
+        bagA.items.clear();
+        bagA.items += { 1, 2 };
+        bagA.view := nums;
+        bagA.n = 5;
+        bagA = rb;
+        rb = bagA;
+        Bag copy = rb;
+        copy.items[0] = 70;
+        copy.view[0] = 6;
+        print($" {bagA.items[0]} {bagA.items.length} {copy.items[0]} {copy.n} {copy.view == nums} {nums[0]} {rb.total()}");
+        nums[0] = 5;
+        bagA.view := small;
+        print(".^");
+    }
+}
+
+verb ChainsCmd {
+    grammar = {.chains};
+    void handler() {
+        evensG = nums;
+        ref array<int> r := evensG;
+        r = r.filter((int x) => x > 2);
+        r := r.orderBy();
+        r[0] = 0;
+        show(evensG);
+        show(r);
+        bagA.items.clear();
+        bagA.items += { 4, 9, 1, 6 };
+        bagA.items = bagA.items.filter((int x) => x != 9).orderBy();
+        bagA.view := evensG;
+        bagA.view = bagA.view.skip(2);
+        array<int> its = bagA.items;
+        show(its);
+        show(evensG);
+        print($" {bagA.total()} {bagA.items.orderBy((int p, int q) => q - p).first()}");
+        array<array<int>> pair = { { 1, 0, 0 }, { 2 } };
+        pair[0].length = 1;
+        pair[0] += { 7, 6, 5 };
+        pair[0] -= { 6 };
+        show(pair[0]);
+        show(zig(3));
+        show(zig(4));
+        show(zig(1));
+        bagA.view := small;
+        print(".^");
+    }
+}
+
+verb ChurnCmd {
+    grammar = {.churn};
+    void handler() {
+        int bad = 0;
+        for (int i = 0; i < 120; i++) {
+            keptRef := descend(i % 5).filter((int x) => x >= 0).orderBy((int a, int b) => b - a).skip(0);
+            uni = keptRef.filter((int x) => x % 2 == 0);
+            if (bin.length == bin.size) bin.clear();
+            bin += descend(i % 3);
+            if (pairSum(descend(4), evens(descend(5)).orderBy()) != 1006) bad++;
+        }
+        bagA.view := bin[bin.length - 1];
+        show(keptRef);
+        show((array<int>)uni);
+        for (array<int> row in bin) show(row);
+        print($" bad {bad} {bgl.gc.peak <= bgl.gc.size}.^");
+    }
+}
+
+verb UnchurnCmd {
+    grammar = {.unchurn};
+    void handler() {
+        keptRef := small;
+        uni = 0;
+        bin.clear();
+        print("cleared ");
+        show(bagA.view);
+        print(".^");
+    }
+}
+
+verb UnviewCmd {
+    grammar = {.unview};
+    void handler() {
+        bagA.view := small;
+        print("let go.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

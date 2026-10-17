@@ -1,0 +1,402 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: heap array LIFETIMES through a kit part's holders. Arrays that must outlive the routine that
+// made them, kept across many prompts and collections and then let go: a `ref` global, a `var` global, a
+// named-union global and an anonymous-union global; an `array<La41Crate>` global whose structs' `ref` members hold
+// returned grids (arrays of arrays whose rows are heap arrays, reached only through the outer array);
+// a file-scope `array<var>` whose elements hold runs and a grid; a struct global whose `ref` member, nested
+// struct's `ref` member and nested struct's `var` member hold arrays, bound through an `extend struct`
+// method; a struct returned from a routine whose `ref` member names that routine's own local array; the
+// automatic copy keeping the arrays after the source is re-pointed; a global array of those structs;
+// class instances with a `ref array<array<int>>`, a `ref` member, an owned struct member and a union
+// member; class-wide `static ref`, `static array<array<int>>` and `static var` members; an object with a
+// `ref` member, a member `array<var>`, a member array of structs and a member array of arrays fed with
+// `<linq>` results. Arrays that must NOT outlive their routine: struct locals, `ref`, `var` and union
+// locals, local arrays of arrays, chains over the holders, a recursion with a local per level.
+// `bgl.gc.used` after a collection at every checkpoint, across repeated identical commands.
+
+#beguilerSettings {
+    target = glulx;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 3000;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_41_parts/library_author_idioms_41_kit"
+
+extend extern class object {
+    string description;
+}
+
+// ---- Holders. ----
+
+ref array<int> kept;
+var loose;
+la41Cell cellG = la41None;
+array<int> | string anonG = la41None;
+array<La41Crate> vault[3];
+array<var> drawer[4];
+array<la41Cell> cells[3];
+La41Handle hG;
+La41Handle hCopy;
+La41Handle hMade;
+array<La41Handle> hands[3];
+int baseline = 0;
+int mark = 0;
+
+La41Bin binA { id = 1; cell = la41None; }
+La41Bin binB { id = 2; cell = la41None; }
+
+object desk {
+    ref array<int> pen;
+    array<var> slots[3];
+    array<La41Handle> cards[2];
+    array<array<int>> stack[3];
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+// ---- Sums over the holders. ----
+
+/// The sum of a var holding a run, a grid or nothing; grids are told apart by their tag.
+int varSum(var v, bool isGrid) {
+    if (!v) return 0;
+    if (isGrid) return la41.gridSum(v);
+    return la41.sum(v);
+}
+
+/// The sum of the global holders.
+int globalsTotal() {
+    int s = 0;
+    if (kept) s += la41.sum(kept);
+    s += varSum(loose, false);
+    if (cellG != la41None) s += la41.sum((array<int>)cellG);
+    if (anonG != la41None) s += la41.sum((array<int>)anonG);
+    for (La41Crate c in vault) s += la41.gridSum(c.grid);
+    for (int i = 0; i < drawer.length; i++) s += varSum(drawer[i], i == 3);
+    for (la41Cell c in cells) if (c != la41None) s += la41.sum((array<int>)c);
+    return s;
+}
+
+/// The sum of the struct holders.
+int handlesTotal() {
+    int s = hG.total() + hCopy.total() + hMade.total();
+    for (La41Handle t in hands) s += t.total();
+    return s;
+}
+
+/// The sum of the bins and the class-wide statics.
+int binsTotal() {
+    int s = binA.total() + binB.total();
+    if (La41Bin.lastMade) s += la41.sum(La41Bin.lastMade);
+    for (array<int> r in La41Bin.archive) s += la41.sum(r);
+    s += varSum(La41Bin.stash, true);
+    return s;
+}
+
+/// The sum of the desk.
+int deskTotal() {
+    int s = 0;
+    if (desk.pen) s += la41.sum(desk.pen);
+    for (var v in desk.slots) s += varSum(v, false);
+    for (int i = 0; i < desk.cards.length; i++) s += desk.cards[i].total();
+    for (array<int> r in desk.stack) s += la41.sum(r);
+    return s;
+}
+
+/// Prints every total and the settled heap.
+void report(string what) {
+    int used = la41.settled();
+    print($"{what}: globals {globalsTotal()}, handles {handlesTotal()}, bins {binsTotal()}, desk {deskTotal()}; used {used}.^");
+}
+
+// ---- Filling the holders. ----
+
+/// Fills the global holders; every array here is made by a routine that has returned.
+void fillGlobals(int base) {
+    kept := la41.run(base, 3);
+    loose = la41.run(base + 10, 2);
+    cellG = la41.run(base + 20, 2);
+    anonG = la41.run(base, 6).filter((int x) => x % 2 == 0);
+    La41Crate crate;
+    crate.id = 1;
+    crate.grid := la41.grid(2, base);
+    vault += crate;
+    crate.id = 2;
+    crate.grid := la41.grid(3, base + 100);
+    vault += crate;
+    drawer += la41.run(1, 1);
+    drawer += la41.run(2, 2);
+    drawer += la41.run(3, 3).skip(1);
+    drawer += la41.grid(2, base + 1);
+    cells += la41None;
+    cells += la41.run(base + 30, 2);
+    cells += la41.run(base + 40, 3).take(1);
+}
+
+/// Fills the struct holders, binding through the struct's own method.
+void fillHandles(int base) {
+    array<int> mine[4];
+    mine += {base, base};
+    hG.id = 1;
+    hG.attach(mine);
+    hG.inner.more := la41.run(base, 2);
+    hG.inner.extra = la41.run(base, 1).take(1);
+    hCopy = hG;
+    hG.attach(la41.run(base + 5, 1));
+    hMade = la41.handle(3, base);
+    for (int i = 0; i < 3; i++) {
+        La41Handle t;
+        t.id = 10 + i;
+        t.attach(la41.run(base + i, i + 1));
+        hands += t;
+    }
+}
+
+/// Fills the bins and the class statics.
+void fillBins(int base) {
+    binA.rows := la41.grid(3, base);
+    binA.tail := binA.make(base, 2);
+    binA.h.attach(la41.run(base, 2));
+    binA.cell = la41.run(base, 3).orderBy((int x, int y) => y - x);
+    binB.rows := la41.grid(1, base + 50);
+    binB.h.inner.more := binB.make(base + 1, 1);
+    for (int i = 0; i < 3; i++) binB.archiveRun(base + i, 2);
+    La41Bin.stash = la41.grid(2, base + 7);
+    binB.note(la41None);
+    binB.note(la41.run(base + 9, 2));
+}
+
+/// Fills the desk.
+void fillDesk(int base) {
+    array<int> source = la41.run(base, 6);
+    desk.pen := source.filter((int x) => x > base + 2);
+    desk.slots += source.take(2);
+    desk.slots += source.skip(4);
+    La41Handle t;
+    t.attach(source);
+    desk.cards += t;
+    desk.cards[0].inner.more := source.filter((int x) => x % 3 == 0);
+    desk.stack += source.filter((int x) => x % 2 == 0);
+    desk.stack += la41.run(base, 2).orderBy((int x, int y) => y - x);
+}
+
+// ---- Letting go. ----
+
+/// Lets go of every holder.
+void dropAll() {
+    kept := null;
+    loose = null;
+    cellG = la41None;
+    anonG = la41None;
+    vault.clear();
+    drawer.clear();
+    cells.clear();
+    hG.release();
+    hCopy.release();
+    hMade.release();
+    hands.clear();
+    binA.empty();
+    binB.empty();
+    La41Bin.lastMade := null;
+    La41Bin.archive.clear();
+    La41Bin.stash = null;
+    desk.pen := null;
+    desk.slots.clear();
+    desk.cards.clear();
+    desk.stack.clear();
+}
+
+// ---- Arrays that must not outlive their routine. ----
+
+/// Sums a level's arrays and the levels below; nothing here is kept.
+int descend(int level) {
+    array<int> mine = la41.run(level, 3);
+    La41Handle t;
+    t.attach(la41.run(level * 10, 2));
+    ref array<int> same := mine;
+    var v = la41.grid(2, level);
+    la41Cell c = mine.filter((int x) => x > level);
+    int below = 0;
+    if (level > 1) below = descend(level - 1);
+    return la41.sum(same) + t.total() + la41.gridSum(v) + la41.sum((array<int>)c) + below;
+}
+
+/// Chains over the holders, read and dropped.
+int scan() {
+    int s = 0;
+    for (La41Crate c in vault) {
+        array<array<int>> wide = c.grid.filter((array<int> r) => r.length > 1);
+        for (array<int> r in wide) s += r.filter((int x) => x % 2 == 1).count();
+    }
+    array<array<int>> both[4];
+    both += kept;
+    both += la41.run(1, 2);
+    s += la41.gridSum(both);
+    if (binA.rows) s += binA.rows.skip(1).count();
+    return s;
+}
+
+// ---- Verbs. ----
+
+verb Heap {
+    grammar = {.heapnow};
+    void handler() {
+        print($"used {la41.settled()}.^");
+    }
+}
+
+verb Stock {
+    grammar = {.stock};
+    void handler() {
+        fillGlobals(100);
+        fillHandles(200);
+        fillBins(300);
+        fillDesk(400);
+        report("filled");
+        mark = bgl.gc.used;
+    }
+}
+
+verb Totals {
+    grammar = {.totals};
+    void handler() {
+        report("totals");
+        print($"steady {bgl.gc.used == mark}.^");
+    }
+}
+
+verb Renew {
+    grammar = {.renew};
+    void handler() {
+        dropAll();
+        fillGlobals(100);
+        fillHandles(200);
+        fillBins(300);
+        fillDesk(400);
+        report("renewed");
+        int d = bgl.gc.used - mark;
+        mark = bgl.gc.used;
+        print($"near {d >= -4 && d <= 4}.^");
+    }
+}
+
+verb Repoint {
+    grammar = {.repoint};
+    void handler() {
+        int before = la41.settled();
+        kept := la41.run(7, 3);
+        hG.attach(la41.run(5, 1));
+        binB.tail := la41.run(1, 1);
+        binB.tail := null;
+        La41Bin.lastMade := binA.make(1, 2);
+        desk.pen := desk.stack[0];
+        int after = la41.settled();
+        print($"repointed: kept {la41.sum(kept)}, hG {hG.total()}, pen {la41.sum(desk.pen)}, lastMade {la41.sum(La41Bin.lastMade)}; ");
+        print($"grew {after - before}.^");
+    }
+}
+
+verb Deep {
+    grammar = {.deep};
+    void handler() {
+        int before = la41.settled();
+        int n = descend(4);
+        int s = scan();
+        print($"deep {n}, scan {s}; back {la41.settled() == before}.^");
+    }
+}
+
+verb Prune {
+    grammar = {.prune};
+    void handler() {
+        int before = la41.settled();
+        vault.remove(0);
+        drawer.remove(3);
+        desk.stack.remove(1);
+        La41Bin.archive.remove(0);
+        hands.remove(1);
+        int after = la41.settled();
+        mark = after;
+        print($"pruned: globals {globalsTotal()}, handles {handlesTotal()}, bins {binsTotal()}, desk {deskTotal()}; freed {after < before}.^");
+    }
+}
+
+verb Swap {
+    grammar = {.swap};
+    void handler() {
+        int before = la41.settled();
+        ref array<array<int>> tmp := binA.rows;
+        binA.rows := binB.rows;
+        binB.rows := tmp;
+        La41Bin.stash = binB.rows;
+        cells[0] = kept;
+        int after = la41.settled();
+        mark = after;
+        print($"swapped: A {la41.gridSum(binA.rows)}, B {la41.gridSum(binB.rows)}, stash {varSum(La41Bin.stash, true)}, cell {la41.sum((array<int>)cells[0])}; freed {before - after > 0}.^");
+    }
+}
+
+/// Builds and drops grids, chains and holders' views; nothing survives.
+int churnOnce(int i) {
+    array<array<int>> g = la41.grid(4, i);
+    var v = g.filter((array<int> r) => r.length > 2);
+    la41Cell c = la41.run(i, 5).orderBy((int x, int y) => y - x).take(2);
+    La41Handle t;
+    t.attach(g[3]);
+    ref array<int> r := g[1];
+    array<array<int>> mix[3];
+    mix += r;
+    mix += (array<int>)c;
+    return la41.gridSum(v) + la41.sum((array<int>)c) + t.total() + la41.gridSum(mix);
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        int before = la41.settled();
+        int s = 0;
+        for (int i = 0; i < 20; i++) s += churnOnce(i);
+        // Rows appended to churnOnce's local arrays of arrays wait for the collector.
+        print($"churn {s}; settled {la41.settled() == before}.^");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        dropAll();
+        int empty = la41.settled();
+        fillGlobals(100);
+        fillHandles(200);
+        fillBins(300);
+        fillDesk(400);
+        report("cycled");
+        mark = bgl.gc.used;
+        print($"empty between {empty}.^");
+    }
+}
+
+verb Unstock {
+    grammar = {.unstock};
+    void handler() {
+        dropAll();
+        int used = la41.settled();
+        print($"dropped: globals {globalsTotal()}, handles {handlesTotal()}, bins {binsTotal()}, desk {deskTotal()}; used {used}; back {used == baseline}.^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"

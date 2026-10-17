@@ -1,0 +1,138 @@
+Room A
+Room A.
+
+> mark
+baseline true peak true size true
+
+> acquire
+open 2 total 66 a 46 b 20 len 4
+
+> poll
+poll 2 46 20 36 weight 20 same true
+held true reads 3
+
+> scale
+scale a 92 b 112
+
+> poll
+poll 2 92 112 72 weight 112 same true
+held true reads 6
+
+> reopen
+reopen a 63 native 63 count 2 steady true
+
+> reopen
+reopen a 63 native 63 count 2 steady true
+
+> shut
+closed 0 total 0 back 0
+
+> park
+park 18 21 15 mine 81 old true
+
+> parked
+parked 18 21 15 count 2 held true
+
+> adopt
+adopt 141 6 parked 6 same true
+
+> adopt
+adopt 141 6 parked 6 same true
+
+> parked
+parked 6 21 15 count 2 held true
+
+> unpark
+unpark 6 count 0 back 14
+
+> leases
+lease 15 copy -1 rows 3 5 7
+
+> leases
+lease 15 copy -1 rows 3 5 7
+
+> unleases
+unlease freed true lease -1 back 0
+
+> roots
+roots 12 grid 84 22 any 3 either 17
+
+> roots
+roots 12 grid 84 22 any 3 either 17
+
+> unroot
+unroot true grid -1 either none back 0
+
+> each
+each 42 calls 4 4 kept 9 twice 7 n 2 steady true
+
+> each
+each 42 calls 8 8 kept 9 twice 7 n 2 steady true
+
+> peak
+peak true rose true freed true above true
+
+> twice
+[Beguile run-time error: bgl.gc.free(): the array was already freed]
+twice back 0
+
+> pile
+fill true sum true near true peak true after 27 28 retried true
+fill back true
+
+> pile
+fill true sum true near true peak true after 27 28 retried true
+fill back true
+
+> acquire
+open 2 total 66 a 46 b 20 len 4
+
+> mirror
+mirror 26 4 a 46 held true
+
+> poll
+poll 2 46 20 36 weight 20 same true
+held true reads 9
+
+> mirror
+mirror 26 4 a 46 held true
+
+> unmirror
+unmirror true a 46
+
+> shut
+closed 0 total 0 back 0
+
+> nest
+nest 63 rows 3 built 1
+
+> grow
+grow 166 native 166 rows 4 last 103
+
+> grow
+grow 270 native 270 rows 5 last 104
+
+> nest
+nest 63 rows 3 built 2
+
+> grow
+grow 166 native 166 rows 4 last 103
+
+> unnest
+unnest -1 back 0
+
+> park
+park 18 21 15 mine 81 old true
+
+> adopt
+adopt 141 6 parked 6 same true
+
+> unpark
+unpark 6 count 0 back 14
+
+> mark
+baseline true peak true size true
+
+> exhaust
+exhausting
+[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is 600 words)]

@@ -71,3 +71,5 @@ stdlib610_1 [--debug]                 prints the build kind
 glulx_presentation_idioms_37 [--debug] log() prints in debug builds only
 glulx_presentation_idioms_38 [--debug] log() prints in debug builds only
 data_driven_idioms_34 [-z5]            Glulx trial: its value-class instances outgrow the Z-machine's readable memory
+beginner_style_idioms_40 [-G]         heap sizes in words differ with the word size
+functional_style_idioms_42 [-G]       heap sizes in words differ with the word size

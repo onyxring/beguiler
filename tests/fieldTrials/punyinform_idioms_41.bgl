@@ -1,0 +1,883 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a forty-first PunyInform program, about `=` against `:=` for arrays. Trays of numbers in
+// globals of capacity 6, 3 and 10 copied into each other both ways (truncation, length carried), through
+// a ternary, from a row, from a member, from a call that returns a global, from a call that returns
+// either a global or its own local, from a routine that hands its parameter back, and onto themselves
+// (directly, through a `ref` bound to the same array, through a parameter and through a call). A `ref`
+// global re-pointed at globals, members' `ref`s and heap arrays, copied into and copied out of. An object
+// with an inline member array and a 40-slot member (its own table on Z) copied in, out, across and onto
+// itself, `copyFrom` beside `=`, and `= { … }` list replacement. A `Bin` class whose instances copy member
+// to member in methods, through a variable naming the instance, and through `ref` members (passable as
+// arguments, `=` copies into the referent). `array<object>` and `array<string>` copies of different
+// capacity. Locals unsized and sized declared from calls, chains, names, members, rows, `ref`s and
+// parameters, with `size` printed to show each capacity. Parameters that change the caller's array by
+// slot, by `=`, by `= { … }` and by `copyFrom`. Global and object-member arrays of arrays whose rows are
+// copied into (`rows[i] = t`, `rows[i] = rows[j]`, rows of different capacity) and stored (`+=`), a local
+// array of arrays holding a global by `+=` (written through, and not freed with the local), and a whole
+// array of arrays copied into another. A `Batch` struct with an owned array member and a `ref array`
+// member copied whole, into slots of an `array<Batch>`, member by member, and filled from an `extend
+// struct` method that copies its parameter. `bgl.gc.used` after a collection is printed after every kind
+// of command and across repeated ones.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    heapSize = 1200;
+}
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <array>
+#include <linq>
+#includeI6 "puny"
+
+extend extern class object {
+    string description;
+}
+
+// --- trays ------------------------------------------------------------------------------------------
+
+array<int>    trayA[6];
+array<int>    trayB[3];
+array<int>    trayC[10] = {1, 2, 3};
+array<int>    blank = {0};
+ref array<int> cursor;
+array<object> seen[4];
+array<object> seenFew[2];
+array<string> labels[4] = {"red", "green", "blue"};
+array<string> spare[2];
+array<array<int>> shelves[5] = { {1, 2}, {3, 4, 5}, {6} };
+array<array<int>> mirror[5];
+array<char>   word = "lamp";
+array<char>   wordBuf[8];
+array<char>   wordTiny[2];
+var           box;
+array<int> | string either2;
+bool          useA = true;
+int           picks = 0;
+array<int>    startA[6];
+array<int>    startC[4];
+int           runs = 0;
+
+void showInts(string label, array<int> xs) {
+    print(label);
+    print($" {xs.length}/{xs.size}:");
+    if (xs.length == 0) print(" none");
+    for (int x in xs) print($" {x}");
+    printLine("");
+}
+
+int total(array<int> xs) {
+    int t = 0;
+    for (int x in xs) t += x;
+    return t;
+}
+
+int rowFor(int n) {
+    picks++;
+    return n;
+}
+
+int heapNow() {
+    bgl.gc.collect();
+    return bgl.gc.used;
+}
+
+void resetTrays() {
+    trayA = {10, 11, 12, 13, 14};
+    trayB = {20, 21};
+    trayC = {1, 2, 3};
+}
+
+array<int> make(int n, int base) {
+    array<int> r[8];
+    for (int i = 0; i < n; i++) r += base + i;
+    return r;
+}
+
+array<int> pick(bool first) {
+    if (first) return trayA;
+    return trayB;
+}
+
+array<int> either(bool global, int base) {
+    array<int> mine = {base, base + 1};
+    if (global) return trayC;
+    return mine;
+}
+
+array<int> echo(array<int> a) {
+    return a;
+}
+
+void bump(array<int> a, int by) {
+    for (int i = 0; i < a.length; i++) a[i] = a[i] + by;
+}
+
+void overwrite(array<int> a, array<int> b) {
+    a = b;
+}
+
+void wipe(array<int> a) {
+    a = {0, 0};
+}
+
+void refill(array<int> a, int n) {
+    a.copyFrom(make(n, 50));
+}
+
+void selfCopy(array<int> a) {
+    a = a;
+}
+
+void keepInA(array<int> a) {
+    trayA = a;
+}
+
+// --- rooms and things -------------------------------------------------------------------------------
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {proper, light};
+}
+
+object brassKey {
+    "brass key";
+    parent = roomA;
+    name = {.brass, .key};
+    description = "A brass key.";
+}
+
+object tinBox {
+    "tin box";
+    parent = roomA;
+    name = {.tin, .box};
+    description = "A tin box.";
+}
+
+object redBall {
+    "red ball";
+    parent = roomA;
+    name = {.red, .ball};
+    description = "A red ball.";
+}
+
+object tray {
+    "tray";
+    parent = roomA;
+    name = {.tray};
+    description = "A tray.";
+    attributes = {static};
+    array<int> slots[4] = {1, 2};
+    array<int> log[40];
+    array<array<int>> racks[3];
+
+    void showSlots() {
+        array<int> v = slots;
+        showInts("slots", v);
+    }
+
+    void showLog() {
+        print($"log {log.length}/{log.size}:");
+        if (log.length == 0) print(" none");
+        for (int x in log) print($" {x}");
+        printLine("");
+    }
+
+    array<int> logCopy() {
+        array<int> c = log;
+        return c;
+    }
+
+    array<int> slotsCopy() {
+        array<int> c[4] = slots;
+        c += 0;
+        return c;
+    }
+
+    int logSum() {
+        int t = 0;
+        for (int x in log) t += x;
+        return t;
+    }
+}
+
+class Bin : object {
+    array<int> held[5];
+    ref array<int> view;
+    int moves = 0;
+
+    void takeFrom(Bin other) {
+        held = other.held;
+        moves++;
+    }
+
+    void takeArray(array<int> xs) {
+        held = xs;
+        moves++;
+    }
+
+    void giveTo(Bin other) {
+        other.held = held;
+        moves++;
+    }
+
+    void pour() {
+        view = held;
+    }
+
+    int sum() {
+        int t = 0;
+        for (int x in held) t += x;
+        return t;
+    }
+
+    void show(string label) {
+        print($"{label} {held.length}/{held.size}:");
+        if (held.length == 0) print(" none");
+        for (int x in held) print($" {x}");
+        printLine("");
+    }
+}
+
+Bin binA {
+    "bin A";
+    parent = roomA;
+    name = {.bin, .a};
+    description = "Bin A.";
+    attributes = {static};
+}
+
+Bin binB {
+    "bin B";
+    parent = roomA;
+    name = {.bin, .b};
+    description = "Bin B.";
+    attributes = {static};
+}
+
+array<Bin> allBins = {binA, binB};
+
+// --- batches ----------------------------------------------------------------------------------------
+
+struct Batch {
+    int id;
+    array<int> items[4];
+    ref array<int> src;
+}
+
+extend struct Batch {
+    void load(array<int> xs) {
+        items = xs;
+        src := xs;
+    }
+    int weight() {
+        int t = 0;
+        for (int x in items) t += x;
+        return t;
+    }
+}
+
+Batch current;
+Batch saved;
+array<Batch> batches[3];
+
+Batch currentOf() {
+    return current;
+}
+
+void spoil(Batch b) {
+    b.id = -1;
+    b.items[0] = -1;
+    b.items = trayB;
+}
+
+void mend(ref Batch b, array<int> xs) {
+    b.items = xs;
+    b.id = b.id + 10;
+}
+
+Batch fresh(int id, int base) {
+    Batch b;
+    b.id = id;
+    array<int> xs = make(3, base);
+    b.items = xs;
+    return b;
+}
+
+void showBatch(string label, Batch b) {
+    print($"{label} {b.id} w{b.weight()} items {b.items.length}/{b.items.size}");
+    if (b.src == null) printLine(" src none");
+    else printLine($" src {total(b.src)}");
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Trays {
+    meta = true;
+    grammar = {.trays};
+    void handler() {
+        showInts("A", trayA);
+        showInts("B", trayB);
+        showInts("C", trayC);
+        showInts("start A", startA);
+        showInts("start C", startC);
+    }
+}
+
+verb Reset {
+    meta = true;
+    grammar = {.reset};
+    void handler() {
+        resetTrays();
+        printLine("Reset.");
+    }
+}
+
+verb Copies {
+    meta = true;
+    grammar = {.copies};
+    void handler() {
+        resetTrays();
+        trayB = trayA;                      // 5 into 3: keeps 3
+        showInts("B<-A", trayB);
+        trayC = trayB;                      // 3 into 10
+        showInts("C<-B", trayC);
+        trayA = trayC;
+        trayA[0] = 99;
+        showInts("A<-C", trayA);
+        showInts("C", trayC);
+        trayC = useA ? trayA : trayB;
+        showInts("C<-?", trayC);
+        trayB = shelves[1];
+        showInts("B<-row", trayB);
+        trayC = tray.log;
+        showInts("C<-log", trayC);
+        trayA = trayA;
+        trayB = trayB;
+        showInts("A=A", trayA);
+        trayA = { 5, 6, 7, 8, 9, 10, 11 };  // list longer than capacity
+        showInts("A{}", trayA);
+    }
+}
+
+verb Calls {
+    meta = true;
+    grammar = {.calls};
+    void handler() {
+        resetTrays();
+        trayB = pick(true);                 // global returned as itself: copied, not freed
+        showInts("B<-pick", trayB);
+        trayA = pick(true);                 // onto itself through a call
+        showInts("A<-pick A", trayA);
+        trayC = either(true, 40);
+        showInts("C<-either C", trayC);
+        trayC = either(false, 40);
+        showInts("C<-either", trayC);
+        trayB = echo(trayA);
+        showInts("B<-echo", trayB);
+        showInts("A", trayA);
+        trayA = make(4, 30);
+        showInts("A<-make", trayA);
+        trayB = make(6, 70).filter((int x) => x % 2 == 0);
+        showInts("B<-chain", trayB);
+        trayC = trayC.orderBy((int a, int b) => b - a);
+        showInts("C<-sorted", trayC);
+        trayA = either(true, 0).skip(1);
+        showInts("A<-chain C", trayA);
+        showInts("C", trayC);
+    }
+}
+
+verb Through {
+    meta = true;
+    grammar = {.through};
+    void handler() {
+        resetTrays();
+        cursor := trayA;
+        cursor = trayC;                     // copies into trayA
+        showInts("A", trayA);
+        cursor[1] = 77;
+        showInts("A", trayA);
+        cursor = cursor;
+        trayA = cursor;
+        showInts("A", trayA);
+        cursor := trayB;
+        trayB = cursor;
+        cursor = trayA;                     // 3 from A's 3
+        showInts("B", trayB);
+        cursor := make(5, 60);
+        trayC = cursor;
+        showInts("C", trayC);
+        cursor = trayB;
+        showInts("cursor", cursor);
+        binA.view := trayA;
+        cursor := binA.view;
+        cursor = trayC;
+        showInts("A", trayA);
+        binA.view := blank;
+        cursor := blank;
+    }
+}
+
+verb Params {
+    meta = true;
+    grammar = {.params};
+    void handler() {
+        resetTrays();
+        bump(trayA, 100);
+        showInts("A", trayA);
+        overwrite(trayB, trayA);
+        showInts("B", trayB);
+        overwrite(trayA, trayC);
+        showInts("A", trayA);
+        wipe(trayC);
+        showInts("C", trayC);
+        refill(trayC, 4);
+        showInts("C", trayC);
+        selfCopy(trayC);
+        showInts("C", trayC);
+        keepInA(trayA);
+        showInts("A", trayA);
+        keepInA(trayC.take(2));
+        showInts("A", trayA);
+        array<int> loc = {1, 2, 3, 4};
+        bump(loc, 1);
+        overwrite(trayB, loc);
+        showInts("B", trayB);
+        overwrite(loc, trayB);
+        wipe(loc);
+        showInts("loc", loc);
+        array<int> back = echo(loc);
+        back[0] = 5;
+        showInts("loc", loc);
+        bump(echo(trayB), 1);
+        showInts("B", trayB);
+        overwrite(trayB, trayB);
+        overwrite(shelves[2], trayB);
+        showInts("row 2", shelves[2]);
+        overwrite(trayC, echo(loc));
+        showInts("C", trayC);
+    }
+}
+
+verb Locals {
+    meta = true;
+    grammar = {.locals};
+    void handler() {
+        resetTrays();
+        tray.log = make(8, 1);
+        array<int> fromCall = make(3, 7);
+        showInts("call", fromCall);
+        array<int> fromChain = trayA.filter((int x) => x > 11);
+        showInts("chain", fromChain);
+        array<int> fromName = trayA;
+        fromName[0] = 0;
+        showInts("name", fromName);
+        array<int> fromMember = tray.log;
+        fromMember[0] = 0;
+        showInts("member", fromMember);
+        array<int> fromRow = shelves[1];
+        fromRow[0] = 0;
+        showInts("row", fromRow);
+        cursor := trayC;
+        array<int> fromRef = cursor;
+        fromRef[0] = 0;
+        showInts("ref", fromRef);
+        array<int> fromPick = pick(false);
+        fromPick[0] = 29;
+        showInts("pick", fromPick);
+        array<int> sizedCall[2] = make(5, 3);
+        showInts("sized call", sizedCall);
+        array<int> sizedChain[7] = trayA.orderBy((int a, int b) => b - a);
+        showInts("sized chain", sizedChain);
+        array<int> sizedName[4] = trayC;
+        showInts("sized name", sizedName);
+        array<int> sizedMember[3] = tray.log;
+        showInts("sized member", sizedMember);
+        array<int> sizedPick[9] = pick(true);
+        sizedPick[0] = 0;
+        showInts("sized pick", sizedPick);
+        showInts("A", trayA);
+        showInts("B", trayB);
+        showInts("C", trayC);
+        showInts("row", shelves[1]);
+        tray.showLog();
+        cursor := blank;
+    }
+}
+
+verb Members {
+    meta = true;
+    grammar = {.members};
+    void handler() {
+        resetTrays();
+        tray.slots = trayA;                 // 5 into 4
+        tray.showSlots();
+        tray.log = trayC;
+        tray.log += 4;
+        tray.showLog();
+        tray.slots = tray.log;
+        tray.showSlots();
+        tray.log = tray.slots;
+        tray.showLog();
+        tray.log = tray.log;
+        tray.slots = tray.slots;
+        tray.log.copyFrom(trayA);
+        tray.showLog();
+        trayB = tray.log;
+        showInts("B", trayB);
+        tray.log = make(30, 100);
+        print("log ");
+        printLine($"{tray.log.length}/{tray.log.size} sum {tray.logSum()}");
+        trayC = tray.log;
+        showInts("C", trayC);
+        tray.log = tray.log.filter((int x) => x >= 125);
+        tray.showLog();
+        tray.slots = { 1, 2 };
+        tray.slots += 3;
+        tray.showSlots();
+        tray.log = {};
+        tray.showLog();
+    }
+}
+
+verb Bins {
+    meta = true;
+    grammar = {.bins};
+    void handler() {
+        resetTrays();
+        binA.moves = 0;
+        binB.moves = 0;
+        binA.held = trayA;
+        binB.held = trayB;
+        binB.takeFrom(binA);
+        binB.show("B");
+        binB.held[0] = 1;
+        binA.show("A");
+        binA.takeArray(trayC);
+        binA.show("A");
+        binA.giveTo(binB);
+        binB.show("B");
+        binA.takeArray(make(7, 200));
+        binA.show("A");
+        Bin which = binB;
+        which.held = binA.held;
+        binB.show("B");
+        binA.view := trayB;
+        binA.pour();                        // copies held into trayB
+        showInts("trayB", trayB);
+        binB.view := binA.view;
+        binB.view = trayC;                  // copies into trayB
+        showInts("trayB", trayB);
+        bump(binA.view, 1);
+        showInts("trayB", trayB);
+        binA.view := make(2, 9);
+        binB.held = binA.view;
+        binB.show("B");
+        binA.takeArray(binA.view);
+        binA.show("A");
+        binA.takeFrom(binA);
+        printLine($"Sums {binA.sum()}/{binB.sum()}, moves {binA.moves}/{binB.moves}.");
+        allBins[1].held = trayA;
+        allBins[0].takeFrom(allBins[1]);
+        trayC = allBins[0].held;
+        showInts("C", trayC);
+        for (Bin b in allBins) b.held = trayB;
+        printLine($"Sums {binA.sum()}/{binB.sum()}.");
+        binA.view := blank;
+        binB.view := blank;
+    }
+}
+
+verb Lists {
+    meta = true;
+    grammar = {.lists};
+    void handler() {
+        seen = { brassKey, tinBox, redBall };
+        seenFew = seen;
+        print($"few {seenFew.length}/{seenFew.size}:");
+        for (object o in seenFew) print($" {o}");
+        printLine("");
+        array<object> snap = seen;
+        snap.remove(0);
+        snap += brassKey;
+        print("snap:");
+        for (object o in snap) print($" {o}");
+        printLine($", seen {seen.length}, first {seen[0]}.");
+        array<object> near[3] = seen.filter((object o) => o != tinBox);
+        print("near:");
+        for (object o in near) print($" {o}");
+        printLine("");
+        spare = labels;
+        print($"spare {spare.length}/{spare.size}:");
+        for (string s in spare) print($" {s}");
+        printLine("");
+        labels = spare;
+        labels += "white";
+        print($"labels {labels.length}:");
+        for (string s in labels) print($" {s}");
+        printLine("");
+        labels = {"red", "green", "blue"};
+    }
+}
+
+verb Rows {
+    meta = true;
+    grammar = {.rows};
+    void handler() {
+        resetTrays();
+        picks = 0;
+        shelves[0] = {1, 2};
+        shelves[1] = {3, 4, 5};
+        shelves[2] = {6};
+        shelves[0] = trayA;                 // row 0 holds 2
+        shelves[2] = shelves[1];            // row 2 holds 1
+        shelves[1] = shelves[1];
+        print("shelves:");
+        for (array<int> r in shelves) print($" {r.length}/{r.size}={total(r)}");
+        printLine("");
+        shelves += make(3, 40);
+        shelves[3] = trayB;                 // row 3 holds 8
+        shelves[3][0] = 0;
+        showInts("row 3", shelves[3]);
+        showInts("B", trayB);
+        mirror = shelves;
+        int mt = 0;
+        for (array<int> r in mirror) mt += total(r);
+        printLine($"mirror {mirror.length}, total {mt}.");
+        mirror.clear();
+        tray.slots = {7, 8};
+        shelves[2] = tray.slots;
+        shelves[rowFor(1)] = trayB;
+        print("shelves:");
+        for (array<int> r in shelves) print($" {r.length}/{r.size}={total(r)}");
+        printLine($", picks {picks}.");
+        shelves.remove(3);
+        tray.racks.clear();
+        tray.racks += make(2, 5);
+        tray.racks += make(4, 8);
+        tray.racks[0] = tray.racks[1];      // row 0 holds 8
+        tray.racks[1] = trayC;
+        tray.racks += make(1, 0);
+        tray.racks[2] = tray.slots;
+        print("racks:");
+        for (array<int> r in tray.racks) print($" {r.length}/{r.size}={total(r)}");
+        printLine("");
+        for (array<int> r in tray.racks) r = trayB;
+        for (array<int> r in shelves) r = {4, 4};
+        print("racks:");
+        for (array<int> r in tray.racks) print($" {r.length}/{r.size}={total(r)}");
+        print(", shelves:");
+        for (array<int> r in shelves) print($" {r.length}/{r.size}={total(r)}");
+        printLine("");
+        array<array<int>> local[3];
+        local += trayA;
+        local += make(2, 1);
+        local[0][0] = 42;                   // trayA itself
+        local[1] = trayB;
+        showInts("A", trayA);
+        showInts("local 1", local[1]);
+        tray.racks.clear();
+    }
+}
+
+verb Packs {
+    meta = true;
+    grammar = {.batches};
+    void handler() {
+        resetTrays();
+        current.id = 1;
+        current.load(trayA);
+        showBatch("current", current);
+        saved = current;
+        saved.items[0] = 0;
+        trayA[1] = 1000;
+        showBatch("current", current);
+        showBatch("saved", saved);
+        batches.clear();
+        batches += current;
+        batches += fresh(2, 300);
+        batches[0].items = batches[1].items;
+        batches[1] = batches[1];
+        batches[0].src := trayB;
+        batches += saved;
+        batches[2] = batches[0];
+        for (Batch b in batches) showBatch("slot", b);
+        Batch local = fresh(4, 400);
+        local.items = trayC;
+        array<int> its = local.items;
+        its += 1;
+        local.load(its);
+        showBatch("local", local);
+        current = fresh(5, 500);
+        showBatch("current", current);
+        spoil(current);
+        showBatch("unspoiled", current);
+        saved = currentOf();
+        saved.items[2] = 0;
+        showBatch("saved", saved);
+        showBatch("current", current);
+        mend(saved, trayC);
+        showBatch("mended", saved);
+        mend(batches[1], trayB);
+        showBatch("slot 1", batches[1]);
+        Batch copyOf = batches[1];
+        copyOf.items.clear();
+        showBatch("slot 1", batches[1]);
+        array<Batch> few[2] = batches;
+        few[0].items = trayA;
+        showBatch("few 0", few[0]);
+        showBatch("slot 0", batches[0]);
+        current.src := blank;
+        saved.src := blank;
+        batches.clear();
+    }
+}
+
+verb Big {
+    meta = true;
+    grammar = {.big};
+    void handler() {
+        resetTrays();
+        array<int> wide[50];
+        for (int i = 0; i < 50; i++) wide += i;
+        tray.log = wide;                    // 50 into 40
+        printLine($"log {tray.log.length}/{tray.log.size} sum {tray.logSum()}");
+        wide = tray.log;
+        printLine($"wide {wide.length}/{wide.size} sum {total(wide)}");
+        tray.slots = tray.log;
+        tray.showSlots();
+        array<int> lc = tray.logCopy();
+        lc[0] = 500;
+        printLine($"copy {lc.length}/{lc.size} first {lc[0]}, sum {tray.logSum()}");
+        array<int> sc = tray.slotsCopy();
+        showInts("slots copy", sc);
+        trayC = tray.logCopy().skip(30);
+        showInts("C", trayC);
+        tray.log = tray.log.skip(35).orderBy((int a, int b) => b - a);
+        tray.showLog();
+        tray.log = tray.slotsCopy();
+        tray.showLog();
+        wide = wide.filter((int x) => x % 10 == 0);
+        showInts("wide", wide);
+    }
+}
+
+verb Loops {
+    meta = true;
+    grammar = {.loops};
+    void handler() {
+        resetTrays();
+        int sum = 0;
+        for (int i = 1; i <= 6; i++) {
+            trayB = make(i, i * 10);
+            sum += total(trayB);
+            array<int> step = trayB;
+            step += i;
+            sum += step.length;
+            array<int> wider[5] = step;
+            wider += 0;
+            sum += wider.length;
+            trayA = wider.orderBy();
+        }
+        printLine($"Sum {sum}.");
+        showInts("A", trayA);
+        showInts("B", trayB);
+        int k = 0;
+        while (trayC.length < 8) {
+            trayC = make(trayC.length + 2, k);
+            k++;
+        }
+        showInts("C", trayC);
+        for (int x in trayA) trayB = make(x % 4 + 1, x);
+        showInts("B", trayB);
+    }
+}
+
+verb Hold {
+    meta = true;
+    grammar = {.hold};
+    void handler() {
+        resetTrays();
+        cursor := make(6, 0);
+        cursor = trayA;
+        binA.view := trayA.orderBy((int a, int b) => b - a);
+        binB.view := binA.view;
+        binB.view = trayC;                  // into the chain result binA.view holds
+        if (shelves.length > 3) shelves.remove(3);
+        shelves += make(2, 80);
+        shelves[3] = binA.view;
+        box = make(3, 90);
+        either2 = trayC.take(2);
+        showInts("cursor", cursor);
+        showInts("view", binA.view);
+        showInts("row 3", shelves[3]);
+        trayB = (array<int>)box;
+        showInts("B<-box", trayB);
+        trayB = (array<int>)either2;
+        showInts("B<-union", trayB);
+    }
+}
+
+verb Unhold {
+    meta = true;
+    grammar = {.unhold};
+    void handler() {
+        cursor := blank;
+        binA.view := blank;
+        binB.view := blank;
+        if (shelves.length > 3) shelves.remove(3);
+        box = 0;
+        either2 = "none";
+        printLine("Let go.");
+    }
+}
+
+verb Chars {
+    meta = true;
+    grammar = {.chars};
+    void handler() {
+        wordBuf = word;
+        wordTiny = word;
+        wordBuf[0] = 'd';
+        print($"buf {wordBuf.length}/{wordBuf.size}: ");
+        for (int i = 0; i < wordBuf.length; i++) print(wordBuf[i]);
+        print($", tiny {wordTiny.length}/{wordTiny.size}: ");
+        for (int i = 0; i < wordTiny.length; i++) print(wordTiny[i]);
+        print(", word: ");
+        for (int i = 0; i < word.length; i++) print(word[i]);
+        printLine("");
+        wordBuf = wordTiny;
+        print($"buf {wordBuf.length}: ");
+        for (int i = 0; i < wordBuf.length; i++) print(wordBuf[i]);
+        printLine("");
+        array<char> mine[6] = word;
+        mine[0] = 'r';
+        print($"mine {mine.length}/{mine.size}: ");
+        for (int i = 0; i < mine.length; i++) print(mine[i]);
+        print(", word: ");
+        for (int i = 0; i < word.length; i++) print(word[i]);
+        printLine("");
+    }
+}
+
+verb Usage {
+    meta = true;
+    grammar = {.usage};
+    void handler() {
+        printLine($"Used {heapNow()}.");
+    }
+}
+
+bool Initialise() {
+    seen += brassKey;
+    startA = trayC;
+    startC = tray.slots;
+    rfalse;
+}

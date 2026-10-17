@@ -1,0 +1,670 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a fortieth first-time-programmer program, written after reading the heap section and
+// wanting to see that a program can run for a long time without the heap filling up. Room A has an
+// each_turn that builds arrays every turn: a rolling global history (`remove(0)` then `+=`), a `ref`
+// global bound to a `<linq>` result of it, a `var` global holding another chain, a global array of
+// arrays fed with returned rows (`+=`, oldest removed), a rolling global array of structs (with an
+// `extend struct` method) whose `ref` members name returned rows, a struct global copied from the
+// newest slot, a `ref` global bound to a returned local array of arrays, an `array<var>` of chain
+// results, an object's `ref` member bound to a row and its member array of arrays fed with chains, and
+// two class instances' `ref` members bound to each other's results. A bell timer that re-arms itself
+// from its time_out keeps a chain result in a `ref` member; a pump daemon sorts a local array, copies a
+// chain into a sized local, calls `bgl.gc.collect()` with its local arrays live and keeps a chain in a
+// `ref` member. Verbs played many times: churn (a local array declared in a loop body, `ref` and `var`
+// locals re-bound in a loop, `for … in` over chains, chains in conditions and arguments, sized locals
+// copied from chains, a local array of arrays built in a loop), flood (far more arrays in one command
+// than the heap holds, so it collects while allocating; a loop local's result kept in a union global),
+// count (`<linq>` over the struct array in loops, a loop-body local array of structs, first/last
+// copies, a sized local of structs copied from a chain), stack (a row of a local array of arrays kept
+// in the global one), tidy (an array of arrays ordered into itself, a chain over it in a loop), walk
+// (loop copies of structs vs a view that writes through), sort (a struct array ordered into itself),
+// trim (`history = history.filter(…)`), and a meta cycle verb repeated 25 times that must leave the
+// heap where it found it. A small `heapSize` so the collector runs often by itself. `bgl.gc.used` is
+// read after a `collect()` at every checkpoint, without collecting after many turns, with `peak` and
+// `size`, across `again`, save/restore, undo (of a command that collected while allocating, and of
+// letting everything go) and restart with live heap arrays, and back to the same figure after
+// everything is let go.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 700;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <linq>
+
+// ===== SIZES =====
+
+// how many numbers the history keeps
+const int KEEP = 6;
+// how many rows the shelf keeps
+const int ROW_COUNT = 4;
+// how many notes are kept
+const int NOTE_COUNT = 5;
+
+// ===== GLOBALS =====
+
+// the last few numbers, oldest first
+array<int> history[KEEP];
+// the big numbers in the history (a chain result kept between turns)
+ref array<int> bigOnes;
+// the small numbers in the history (kept in a var)
+var smallOnes;
+// rows made on earlier turns
+array<array<int>> shelf[ROW_COUNT];
+// how many turns the room has seen
+int ticks = 0;
+// the number the next tick adds
+int seed = 3;
+// how many churns there have been
+int churns = 0;
+// the newest note, copied every turn
+Note latest;
+// a grid made fresh every turn (only this global keeps its rows)
+ref array<array<int>> grid;
+// the last thing the flood made: a row or a word
+array<int> | string lastFlood;
+// rows of all kinds kept in a var array
+array<var> bag[3];
+
+// ===== STRUCTS =====
+
+// a note remembers a turn, three marks and a row made on that turn
+struct Note {
+    int turn;
+    array<int> marks[3];
+    ref array<int> link;
+}
+
+// how big a note is (all of its marks added up)
+extend struct Note {
+    int total() {
+        int t = 0;
+        for (int m in marks) {
+            t += m;
+        }
+        return t;
+    }
+}
+
+// the last few notes
+array<Note> notes[NOTE_COUNT];
+
+// ===== HELPERS =====
+
+// prints an array with a label
+void showRow(string label, array<int> a) {
+    print($"{label} [{a.length}/{a.size}]:");
+    for (int n in a) {
+        print($" {n}");
+    }
+    print("^");
+}
+
+// makes a row of three numbers starting at n
+array<int> makeRow(int n) {
+    array<int> r[3];
+    r += n;
+    r += n + 1;
+    r += n + 2;
+    return r;
+}
+
+// makes a grid of rows from the history (the rows are made here too)
+array<array<int>> makeGrid() {
+    array<array<int>> g[3];
+    for (int i = 0; i < 3 && i < history.length; i++) {
+        g += makeRow(history[i]);
+    }
+    return g;
+}
+
+// the next number (goes round and round)
+int nextNumber() {
+    seed = (seed * 7 + 4) % 23;
+    return seed;
+}
+
+// adds up an array
+int sumOf(array<int> a) {
+    int total = 0;
+    for (int n in a) {
+        total += n;
+    }
+    return total;
+}
+
+// a note for this turn
+Note makeNote(int turn, int n) {
+    Note x;
+    x.turn = turn;
+    x.marks += n;
+    x.marks += n * 2;
+    x.link := makeRow(n * 10);
+    return x;
+}
+
+// prints a note
+void showNote(Note x) {
+    print($"note {x.turn}: total {x.total()}");
+    if (x.link != null) {
+        print($", link {x.link[0]}..{x.link[x.link.length - 1]}");
+    }
+    print("^");
+}
+
+// collects and says how much of the heap is in use
+void tellUsed(string when) {
+    bgl.gc.collect();
+    print($"Used {when}: {bgl.gc.used}.^");
+}
+
+// ===== ROOM AND THINGS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. A jar and two tickers.";
+    attributes = {light};
+    void each_turn() {
+        tick();
+    }
+}
+
+// the jar keeps a row it points at and some layers of its own
+object jar {
+    "jar";
+    parent = roomA;
+    name = {.jar};
+    string description = "A jar.";
+    ref array<int> inside;
+    array<array<int>> layers[3];
+}
+
+// a ticker keeps the trail it was last given
+class Ticker : object {
+    ref array<int> trail;
+    int moves = 0;
+    string description = "A ticker.";
+
+    // takes a new trail made from what the other ticker has
+    void follow(Ticker other) {
+        if (other.trail == null) {
+            trail := makeRow(moves);
+        } else {
+            trail := other.trail.filter((int n) => n % 2 == 0);
+        }
+        moves++;
+    }
+}
+
+Ticker tickerA {
+    "first ticker";
+    parent = roomA;
+    name = {.first, .ticker};
+}
+
+Ticker tickerB {
+    "second ticker";
+    parent = roomA;
+    name = {.second, .ticker};
+}
+
+// a bell holds a chain result until it rings
+object bell {
+    "bell";
+    parent = roomA;
+    name = {.bell};
+    string description = "A bell.";
+    attributes = {static};
+    int time_left;
+    ref array<int> held;
+    int rings = 0;
+    void time_out() {
+        rings++;
+        print($"^The bell rings. It was holding {held.length} numbers adding to {sumOf(held)}.^");
+        if (rings % 3 == 0) {
+            held := null;
+        } else {
+            // it sets itself again with the even numbers
+            held := history.filter((int x) => x % 2 == 0);
+            StartTimer(bell, 2);
+        }
+    }
+}
+
+// a pump works every turn once it is started
+object pump {
+    "pump";
+    parent = roomA;
+    name = {.pump};
+    string description = "A pump.";
+    ref array<int> lastPumped;
+    int strokes = 0;
+    void daemon() {
+        strokes++;
+        // a local array of its own and a sized copy of a chain
+        array<int> work[8];
+        work = history;
+        work.sort();
+        array<int> top[2] = history.orderBy((int a, int b) => b - a);
+        // collecting here keeps the local arrays (they are declared in this routine)
+        bgl.gc.collect();
+        work += top[0];
+        lastPumped := work.skip(work.length - 3);
+        if (strokes % 4 == 0) {
+            print($"^The pump strokes ({strokes}): {lastPumped[0]} {lastPumped[1]} {lastPumped[2]}.^");
+        }
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== EVERY TURN =====
+
+// the room's work for one turn
+void tick() {
+    ticks++;
+    int n = nextNumber();
+
+    // keep the last KEEP numbers
+    if (history.length == KEEP) {
+        history.remove(0);
+    }
+    history += n;
+
+    // chains kept until next turn
+    bigOnes := history.filter((int x) => x >= 10);
+    smallOnes = history.filter((int x) => x < 10).orderBy((int a, int b) => a - b);
+
+    // a new row on the shelf
+    if (shelf.length == ROW_COUNT) {
+        shelf.remove(0);
+    }
+    shelf += makeRow(n);
+
+    // a new note
+    if (notes.length == NOTE_COUNT) {
+        notes.remove(0);
+    }
+    notes += makeNote(ticks, n);
+
+    // the jar points at the newest row and keeps layers
+    jar.inside := shelf[shelf.length - 1];
+    if (jar.layers.length == 3) {
+        jar.layers.remove(0);
+    }
+    jar.layers += history.take(2);
+
+    // the tickers follow each other
+    tickerA.follow(tickerB);
+    tickerB.follow(tickerA);
+
+    // copies of the newest note, a fresh grid and a bag of rows
+    latest = notes[notes.length - 1];
+    grid := makeGrid();
+    if (bag.length == 3) {
+        bag.remove(0);
+    }
+    bag += history.orderBy((int a, int b) => b - a).take(3);
+}
+
+// ===== VERBS =====
+
+// USED - collects and says how much of the heap is in use
+verb HeapUsed {
+    meta = true;
+    grammar = {.used};
+    void handler() {
+        tellUsed("now");
+    }
+}
+
+// RAW - how much is in use without collecting first
+verb HeapRaw {
+    meta = true;
+    grammar = {.raw};
+    void handler() {
+        int u = bgl.gc.used;
+        print($"Raw use {u} of {bgl.gc.size}, peak {bgl.gc.peak}.^");
+    }
+}
+
+// PEAK - the most the heap has had in use, and its size
+verb HeapPeak {
+    meta = true;
+    grammar = {.peak};
+    void handler() {
+        print($"Heap size {bgl.gc.size}.^");
+        if (bgl.gc.peak <= bgl.gc.size) {
+            print("The peak fits.^");
+        }
+    }
+}
+
+// LOOK AT EVERYTHING - prints what is kept
+verb ShowAll {
+    meta = true;
+    grammar = {.state};
+    void handler() {
+        print($"Ticks {ticks}, seed {seed}, churns {churns}.^");
+        showRow("history", history);
+        if (bigOnes != null) {
+            showRow("big", bigOnes);
+        }
+        if (smallOnes != null) {
+            array<int> s = smallOnes;
+            showRow("small", s);
+        }
+        for (array<int> row in shelf) {
+            showRow("shelf", row);
+        }
+        for (Note x in notes) {
+            showNote(x);
+        }
+        if (jar.inside != null) {
+            showRow("jar", jar.inside);
+        }
+        for (array<int> layer in jar.layers) {
+            showRow("layer", layer);
+        }
+        if (tickerA.trail != null) {
+            showRow("ticker A", tickerA.trail);
+        }
+        if (tickerB.trail != null) {
+            showRow("ticker B", tickerB.trail);
+        }
+        if (bell.held != null) {
+            showRow("bell", bell.held);
+        }
+        showNote(latest);
+        if (grid != null) {
+            for (array<int> row in grid) {
+                showRow("grid", row);
+            }
+        }
+        for (var v in bag) {
+            array<int> b = v;
+            showRow("bag", b);
+        }
+        if (typeof(lastFlood) == eType.string) {
+            print($"flood: {(string)lastFlood}^");
+        } else if (lastFlood != null) {
+            showRow("flood", (array<int>)lastFlood);
+        }
+    }
+}
+
+// FLOOD - makes far more arrays than the heap holds at once, in one command
+verb Flood {
+    grammar = {.flood};
+    void handler() {
+        int total = 0;
+        for (int i = 0; i < 40; i++) {
+            array<int> t = history.orderBy((int a, int b) => a - b).filter((int x) => x > i % 7);
+            total += t.length;
+            ref array<int> r := makeRow(i);
+            total += r[2];
+            if (i % 10 == 9) {
+                lastFlood = t;
+            }
+        }
+        if (total > 1060) {
+            lastFlood = "a lot";
+        }
+        print($"Flood made {total}.^");
+    }
+}
+
+// CHURN - builds and drops lots of arrays in loops
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        churns++;
+        int check = 0;
+        ref array<int> best := null;
+        var any = null;
+        for (int i = 0; i < 8; i++) {
+            // a local array declared in the loop body (emptied each time)
+            array<int> bits[4];
+            bits += i;
+            bits += i * 3;
+            bits += history.length;
+            check += sumOf(bits);
+
+            // a ref local and a var local re-bound every time round
+            best := history.filter((int x) => x > i);
+            any = best.orderBy((int a, int b) => b - a).take(2);
+
+            // a for-in over a chain result
+            for (int n in history.skip(i % 3).filter((int x) => x % 2 == 1)) {
+                check += n;
+            }
+
+            // chains in a condition and an argument
+            if (history.filter((int x) => x == i).count() > 0) {
+                check += 100;
+            }
+            check += sumOf(makeRow(i).filter((int x) => x > i));
+
+            // a sized local copied from a chain
+            array<int> few[2] = history.orderBy((int a, int b) => a - b);
+            check += few[0];
+
+            // a row taken from a call and freed straight away
+            array<int> spare = makeRow(i);
+            check += spare[1];
+            bgl.gc.free(spare);
+        }
+        // a local array of arrays built in a loop
+        array<array<int>> grid[3];
+        for (int r = 0; r < 3; r++) {
+            grid += makeRow(r * churns);
+        }
+        for (array<int> row in grid) {
+            check += row.length;
+        }
+        array<int> a = any;
+        print($"Churn {churns}: check {check}, best {best.length}, any {a.length}.^");
+    }
+}
+
+// does a bit of everything without changing anything
+int cycleOnce() {
+    int sum = 0;
+    for (int i = 0; i < 5; i++) {
+        array<int> row = makeRow(i);
+        array<array<int>> two[2];
+        two += row;
+        two += history.filter((int x) => x > i);
+        for (array<int> r in two) {
+            sum += r.length;
+        }
+        var v = history.orderBy((int a, int b) => b - a).take(2);
+        array<int> top = v;
+        sum += top[0];
+        array<Note> late = notes.filter((Note x) => x.turn > i);
+        sum += late.count();
+        Note first = notes.first();
+        sum += first.marks.length;
+    }
+    return sum;
+}
+
+// CYCLE - does a bit of everything, then reads the heap (its arrays are all gone by then)
+verb CycleAll {
+    meta = true;
+    grammar = {.cycle};
+    void handler() {
+        int sum = cycleOnce();
+        print($"Cycle sum {sum}.^");
+        tellUsed("after a cycle");
+    }
+}
+
+// COUNT - runs <linq> over the notes in loops
+verb CountNotes {
+    grammar = {.count};
+    void handler() {
+        int found = 0;
+        for (int limit = 0; limit < 40; limit += 10) {
+            array<Note> some = notes.filter((Note x) => x.total() > limit);
+            found += some.count();
+            if (some.any((Note x) => x.link != null)) {
+                found++;
+            }
+            if (notes.all((Note x) => x.turn > 0)) {
+                found++;
+            }
+        }
+        // a pair of notes made fresh for every note
+        for (int k = 0; k < notes.length; k++) {
+            array<Note> pair[2];
+            pair += notes[k];
+            pair += latest;
+            if (pair[0].turn < pair[1].turn) {
+                found++;
+            }
+            pair[0].marks[0] = 0;
+        }
+        if (notes.length > 0) {
+            array<Note> sorted = notes.orderBy((Note a, Note b) => b.total() - a.total());
+            Note top = sorted.first();
+            Note low = sorted.last();
+            top.turn = 0;
+            print($"Top total {top.total()}, low total {low.total()}.^");
+            array<Note> two = notes.skip(1).take(2);
+            print($"Skipped {two.length}.^");
+            array<Note> copies[3] = notes.filter((Note x) => x.turn > 0);
+            copies[0].marks[0] = 99;
+            print($"Copied {copies.length}, the first note still {notes[0].marks[0]}.^");
+        }
+        print($"Found {found}.^");
+    }
+}
+
+// STACK - builds a stack of rows and keeps the middle one on the shelf
+verb StackRows {
+    grammar = {.stack};
+    void handler() {
+        array<array<int>> pile[3];
+        for (int i = 1; i <= 3; i++) {
+            pile += makeRow(i * 100);
+        }
+        if (shelf.length == ROW_COUNT) {
+            shelf.remove(0);
+        }
+        shelf += pile[1];
+        pile[1][0] = 7;
+        showRow("kept", shelf[shelf.length - 1]);
+    }
+}
+
+// START - starts the pump
+verb StartPump {
+    grammar = {.start};
+    void handler() {
+        StartDaemon(pump);
+        print("The pump starts.^");
+    }
+}
+
+// SORT - puts the notes in order, smallest total first
+verb SortNotes {
+    grammar = {.sort};
+    void handler() {
+        notes = notes.orderBy((Note a, Note b) => a.total() - b.total());
+        for (Note x in notes) {
+            showNote(x);
+        }
+    }
+}
+
+// TRIM - takes the multiples of three out of the history
+verb TrimHistory {
+    grammar = {.trim};
+    void handler() {
+        history = history.filter((int x) => x % 3 != 0);
+        showRow("history", history);
+    }
+}
+
+// WALK - walks the even notes: a loop copy changes nothing, a view changes the notes
+verb WalkNotes {
+    grammar = {.walk};
+    void handler() {
+        for (Note x in notes.filter((Note n) => n.turn % 2 == 0)) {
+            x.marks[1] = 0;
+        }
+        array<Note> view = notes.filter((Note n) => n.turn % 2 == 0);
+        for (int i = 0; i < view.length; i++) {
+            view[i].marks[0] = view[i].turn;
+        }
+        int t = 0;
+        for (Note x in notes) {
+            t += x.total();
+        }
+        print($"Walked {view.length}, totals now {t}.^");
+    }
+}
+
+// TIDY - puts the shelf rows in order of their first number and counts the even ones
+verb TidyShelf {
+    grammar = {.tidy};
+    void handler() {
+        shelf = shelf.orderBy((array<int> a, array<int> b) => a[0] - b[0]);
+        int evens = 0;
+        for (array<int> row in shelf.filter((array<int> r) => r[0] % 2 == 0)) {
+            evens += row.length;
+        }
+        for (array<int> row in shelf) {
+            showRow("shelf", row);
+        }
+        print($"Even rows hold {evens} numbers.^");
+    }
+}
+
+// SET - starts the bell holding the history's odd numbers
+verb SetBell {
+    grammar = {.set};
+    void handler() {
+        bell.held := history.filter((int x) => x % 2 == 1);
+        StartTimer(bell, 3);
+        print($"The bell is set with {bell.held.length} numbers.^");
+    }
+}
+
+// LETGO - lets everything go
+verb LetAllGo {
+    grammar = {.letgo};
+    void handler() {
+        bigOnes := null;
+        smallOnes = null;
+        shelf.clear();
+        notes.clear();
+        jar.inside := null;
+        jar.layers.clear();
+        tickerA.trail := null;
+        tickerB.trail := null;
+        bell.held := null;
+        grid := null;
+        bag.clear();
+        StopDaemon(pump);
+        pump.lastPumped := null;
+        lastFlood = null;
+        latest.link := null;
+        StopTimer(bell);
+        print("Everything is let go.^");
+        tellUsed("after letting go");
+    }
+}

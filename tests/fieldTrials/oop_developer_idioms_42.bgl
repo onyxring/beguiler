@@ -1,0 +1,661 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, forty-second pass: PINS, the heap seen from
+// Inform 6. An "IDisposable" base class (`Disposable`, `default` Dispose) and a pooled `NativeBuffer[4]` whose
+// `create()` pins a constructor argument (a call's result, a chain's result) and hands it to an I6 handle
+// table, and whose `destroy()`/`Dispose()` hands it back (unpin, idempotent); `delete` + `new` reusing a slot
+// while I6 still holds the old pinned array; a `HandleTable` object whose `operator []` returns an extern
+// routine's array; a `Lease` struct with a `ref array` member pinned and released through `extend struct`
+// methods, a copy of the struct releasing the shared pin; a `Pinned()` factory helper that pins its argument
+// and returns it (chain results passed straight to I6); `bgl.gc.keep` on `var` and union locals and on a
+// returned array taken by a local; an I6 routine that pins from a `#bgl` island with its own I6 local; extern
+// typed I6 globals (`array<int>`, `array<array<int>>` whose rows are reached only through it, `var`, a union)
+// as roots without pins; an I6 routine calling a Beguile lambda per element that allocates and collects;
+// `collect()` inside a constructor, a destructor, an accessor getter, an `operator []`, a lambda given to
+// `<linq>`, and a virtual override; a method that pins a snapshot copy and stores it from an `#i6` block; a
+// pinned `array<array<int>>` held only by I6, grown through a `ref` from an extern routine's result (the new
+// rows reached only through it); `free` on a pinned array, a double `Dispose`, freeing twice (reported
+// once); `peak` against `used`; a heap filled to its limit with pinned arrays and handed back so the next
+// allocation needs the automatic collect-and-retry; `bgl.gc.used` back to the baseline after each command
+// that lets go; and last, the heap-full message.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    heapSize = 600;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int HEAPWORDS = #beguilerSettings.heapSize;
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+//-- The native side -----------------------------------------------------------------------------------------
+
+#i6 {
+    Array op_handles --> 4;
+    Global op_count = 0;
+    Global op_parkSlot = 0;
+    Global op_last = 0;
+    Global op_grid = 0;
+    Global op_any = 0;
+    Global op_either = 0;
+    Global op_calls = 0;
+
+    [ OP_Attach i a  old;
+        old = op_handles-->i;
+        op_handles-->i = a;
+        if (old == 0 && a ~= 0) op_count++;
+        if (old ~= 0 && a == 0) op_count--;
+        return old;
+    ];
+    [ OP_Handle i;  return op_handles-->i; ];
+    ! The tracked length sits in the word before the count word.
+    [ OP_Len a;  if (a == 0) return -1; return a-->(-1); ];
+    [ OP_Sum a  i s;
+        if (a == 0) return -1;
+        for (i = 1 : i <= a-->(-1) : i++) s = s + a-->i;
+        return s;
+    ];
+    [ OP_Total  i s;
+        for (i = 0 : i < 4 : i++) if (op_handles-->i) s = s + OP_Sum(op_handles-->i);
+        return s;
+    ];
+    [ OP_Scale a k  i;  for (i = 1 : i <= a-->(-1) : i++) a-->i = a-->i * k; ];
+    [ OP_Park a  old;  old = op_parkSlot; op_parkSlot = a; return old; ];
+    [ OP_Parked;  return op_parkSlot; ];
+    [ OP_SetGrid g;  op_grid = g; ];
+    [ OP_SetAny a;  op_any = a; ];
+    [ OP_GridSum  i s;
+        if (op_grid == 0) return -1;
+        for (i = 1 : i <= op_grid-->(-1) : i++) s = s + OP_Sum(op_grid-->i);
+        return s;
+    ];
+    [ OP_Each a cb  i t;
+        for (i = 1 : i <= a-->(-1) : i++) { op_calls++; t = t + cb(a-->i); }
+        return t;
+    ];
+}
+
+extern array<int> OP_Attach(int i, array<int> a);
+extern array<int> OP_Handle(int i);
+extern int OP_Len(array<int> a);
+extern int OP_Sum(array<int> a);
+extern int OP_Total();
+extern void OP_Scale(array<int> a, int k);
+extern array<int> OP_Park(array<int> a);
+extern array<int> OP_Parked();
+extern void OP_SetGrid(array<array<int>> g);
+extern void OP_SetAny(var a);
+extern int OP_GridSum();
+extern int OP_Each(array<int> a, func<int, int> cb);
+extern int op_count;
+extern int op_calls;
+extern array<int> op_last;
+extern array<array<int>> op_grid;
+extern var op_any;
+extern array<int> | string op_either;
+
+#i6 {
+    ! Adopts a: pins it from the I6 side, then parks it; the old parked array is handed back unpinned.
+    [ OP_Adopt a  old;
+        #bgl { bgl.gc.keep(a); }
+        old = op_parkSlot;
+        op_parkSlot = a;
+        if (old) { #bgl { bgl.gc.unpin(old); } }
+        return a;
+    ];
+}
+extern array<int> OP_Adopt(array<int> a);
+
+#i6 {
+    Global op_mirrorSlot = 0;
+    Global op_nestSlot = 0;
+    [ OP_Mirror;  return op_mirrorSlot; ];
+    [ OP_Unmirror  old;  old = op_mirrorSlot; op_mirrorSlot = 0; return old; ];
+    [ OP_Nest;  return op_nestSlot; ];
+    [ OP_SetNest g;  op_nestSlot = g; ];
+    [ OP_NestSum  i s;
+        if (op_nestSlot == 0) return -1;
+        for (i = 1 : i <= op_nestSlot-->(-1) : i++) s = s + OP_Sum(op_nestSlot-->i);
+        return s;
+    ];
+}
+extern array<int> OP_Mirror();
+extern array<int> OP_Unmirror();
+extern array<array<int>> OP_Nest();
+extern void OP_SetNest(array<array<int>> g);
+extern int OP_NestSum();
+
+//-- Helpers -------------------------------------------------------------------------------------------------
+
+int baseline = 0;
+
+int Collected() {
+    bgl.gc.collect();
+    return bgl.gc.used;
+}
+
+int Sum(array<int> a) {
+    int s = 0;
+    for (int v in a) s += v;
+    return s;
+}
+
+bool IsEven(int x) { return x % 2 == 0; }
+
+void Show(string label, array<int> a) {
+    print(label);
+    print(" [");
+    for (int i = 0; i < a.length; i++) {
+        if (i > 0) print(" ");
+        print(a[i]);
+    }
+    print("]");
+}
+
+array<int> seed = {1, 2, 3, 4, 5, 6, 7, 8};
+
+// A factory helper: pins what it is given and hands it back.
+array<int> Pinned(array<int> a) {
+    bgl.gc.keep(a);
+    return a;
+}
+
+object factory {
+    int made;
+
+    array<int> Make(int start, int n) {
+        array<int> r[8];
+        for (int i = 0; i < n; i++) r += start + i;
+        made++;
+        return r;
+    }
+
+    array<int> MakePinned(int start, int n) {
+        array<int> r = Make(start, n);
+        bgl.gc.keep(r);
+        return r;
+    }
+
+    // Compacts before it builds: a C# habit (GC.Collect before a big allocation).
+    array<int> MakeCompacted(int start, int n) {
+        bgl.gc.collect();
+        return Make(start, n);
+    }
+}
+
+//-- An "IDisposable" and a pooled native buffer -------------------------------------------------------------
+
+class Disposable : object {
+    bool disposed;
+    default void Dispose() { disposed = true; }
+    default int Weight() { return 0; }
+}
+
+class NativeBuffer[4] : Disposable {
+    int slot;
+    ref array<int> data;
+
+    void create(int s, array<int> init) {
+        slot = s;
+        disposed = false;
+        data := init;
+        bgl.gc.keep(data);
+        array<int> old = OP_Attach(slot, data);
+        if (old != null) bgl.gc.unpin(old);
+        bgl.gc.collect();
+    }
+
+    void destroy() {
+        Dispose();
+        bgl.gc.collect();
+    }
+
+    void Dispose() {
+        if (disposed) return;
+        OP_Attach(slot, null);
+        bgl.gc.unpin(data);
+        data := null;
+        disposed = true;
+    }
+
+    int Weight() {
+        bgl.gc.collect();
+        return OP_Sum(OP_Handle(slot));
+    }
+
+    int Managed() { return data != null ? Sum(data) : -1; }
+
+    // Hands Inform 6 a snapshot of its own, negated at the front, from inside an #i6 block.
+    void Mirror() {
+        bgl.gc.unpin(OP_Unmirror());
+        array<int> snap = data;
+        snap[0] = -snap[0];
+        bgl.gc.keep(snap);
+        #i6 { op_mirrorSlot = $i6Expr(snap); }
+    }
+}
+
+ref NativeBuffer bufA;
+ref NativeBuffer bufB;
+
+// The handle table as a C# indexer over the native table.
+object handles {
+    int reads;
+    array<int> operator [](int i) {
+        reads++;
+        bgl.gc.collect();
+        return OP_Handle(i);
+    }
+}
+
+//-- An accessor whose getter compacts -----------------------------------------------------------------------
+
+struct NativeCount {
+    int _hits;
+    int operator () {
+        _hits++;
+        bgl.gc.collect();
+        return op_count;
+    }
+}
+
+object monitor {
+    NativeCount live;
+}
+
+//-- A lease struct ------------------------------------------------------------------------------------------
+
+struct Lease {
+    int tag;
+    ref array<int> buf;
+}
+
+extend struct Lease {
+    void Take(array<int> a) {
+        buf := a;
+        bgl.gc.keep(buf);
+    }
+    void Release() {
+        if (buf != null) bgl.gc.unpin(buf);
+        buf := null;
+    }
+    int Total() { return buf != null ? Sum(buf) : -1; }
+}
+
+Lease gLease;
+array<Lease> gLeases[3];
+
+//-- Verbs ---------------------------------------------------------------------------------------------------
+
+verb Mark {
+    grammar = {.mark};
+    void handler() {
+        baseline = Collected();
+        printLine($"baseline {baseline == bgl.gc.used} peak {bgl.gc.peak >= baseline} size {bgl.gc.size <= HEAPWORDS}");
+    }
+}
+
+verb Acquire {
+    grammar = {.acquire};
+    void handler() {
+        if (bufA != null) delete bufA;
+        if (bufB != null) delete bufB;
+        bufA := new NativeBuffer(0, factory.Make(10, 4));
+        bufB := new NativeBuffer(1, seed.filter(IsEven).orderBy((int a, int b) => b - a));
+        printLine($"open {op_count} total {OP_Total()} a {bufA.Managed()} b {bufB.Managed()} len {OP_Len(OP_Handle(1))}");
+    }
+}
+
+verb Poll {
+    grammar = {.poll};
+    void handler() {
+        int c = Collected();
+        array<int> h0 = handles[0];
+        ref array<int> h1 := handles[1];
+        array<int> copy[8] = handles[0];
+        copy[0] = 0;
+        Disposable d = bufB;
+        printLine($"poll {monitor.live} {OP_Sum(h0)} {Sum(h1)} {Sum(copy)} weight {d.Weight()} same {h0 == bufA.data}");
+        printLine($"held {c - baseline > 0} reads {handles.reads}");
+    }
+}
+
+verb Scale {
+    grammar = {.scale};
+    void handler() {
+        OP_Scale(OP_Handle(0), 2);
+        bufB.data[0] = 100;
+        printLine($"scale a {bufA.Managed()} b {OP_Sum(OP_Handle(1))}");
+    }
+}
+
+verb Reopen {
+    grammar = {.reopen};
+    void handler() {
+        int before = Collected();
+        delete bufA;
+        bufA := new NativeBuffer(0, factory.MakeCompacted(20, 3));
+        int after = Collected();
+        printLine($"reopen a {bufA.Managed()} native {OP_Sum(OP_Handle(0))} count {op_count} steady {after == before}");
+    }
+}
+
+verb Shut {
+    grammar = {.shut};
+    void handler() {
+        bufA.Dispose();
+        bufA.Dispose();
+        delete bufA;
+        bufA := null;
+        delete bufB;
+        bufB := null;
+        printLine($"closed {op_count} total {OP_Total()} back {Collected() - baseline}");
+    }
+}
+
+verb Park {
+    grammar = {.park};
+    void handler() {
+        array<int> | string u = factory.Make(5, 3);
+        var v = seed.skip(5).orderBy((int a, int b) => b - a);
+        bgl.gc.keep(u);
+        bgl.gc.keep(v);
+        array<int> old = OP_Park((array<int>)u);
+        array<int> mine = factory.MakePinned(40, 2);
+        OP_Attach(2, (array<int>)v);
+        OP_Attach(3, Pinned(seed.filter((int x) => x > 6)));
+        printLine($"park {OP_Sum(OP_Parked())} {OP_Sum(OP_Handle(2))} {OP_Sum(OP_Handle(3))} mine {Sum(mine)} old {old == null}");
+        bgl.gc.unpin(mine);
+    }
+}
+
+verb Parked {
+    grammar = {.parked};
+    void handler() {
+        int c = Collected();
+        array<int> p = OP_Parked();
+        printLine($"parked {Sum(p)} {OP_Sum(OP_Handle(2))} {OP_Sum(OP_Handle(3))} count {op_count} held {c - baseline > 0}");
+    }
+}
+
+verb Adopt {
+    grammar = {.adopt};
+    void handler() {
+        array<int> a = OP_Adopt(factory.Make(70, 2));
+        ref array<int> r := OP_Adopt(seed.take(3));
+        int c = Collected();
+        printLine($"adopt {Sum(a)} {Sum(r)} parked {OP_Sum(OP_Parked())} same {r == OP_Parked()}");
+    }
+}
+
+verb Unpark {
+    grammar = {.unpark};
+    void handler() {
+        array<int> p = OP_Park(null);
+        bgl.gc.unpin(p);
+        bgl.gc.unpin(OP_Attach(2, null));
+        bgl.gc.unpin(OP_Attach(3, null));
+        printLine($"unpark {Sum(p)} count {op_count} back {Collected() - baseline}");
+    }
+}
+
+verb Leases {
+    grammar = {.leases};
+    void handler() {
+        gLease.Release();
+        for (int i = 0; i < gLeases.length; i++) gLeases[i].Release();
+        gLease.tag = 1;
+        gLease.Take(factory.Make(1, 5));
+        gLeases.clear();
+        for (int i = 0; i < 3; i++) {
+            Lease l;
+            l.tag = i + 10;
+            gLeases += l;
+            gLeases[i].Take(seed.skip(i).take(2));
+        }
+        Lease copy = gLease;
+        copy.Release();
+        int c = Collected();
+        printLine($"lease {gLease.Total()} copy {copy.Total()} rows {gLeases[0].Total()} {gLeases[1].Total()} {gLeases[2].Total()}");
+    }
+}
+
+verb Unleases {
+    grammar = {.unleases};
+    void handler() {
+        int before = Collected();
+        for (int i = 0; i < gLeases.length; i++) gLeases[i].Release();
+        int mid = Collected();
+        gLease.Release();
+        gLeases.clear();
+        printLine($"unlease freed {mid < before} lease {gLease.Total()} back {Collected() - baseline}");
+    }
+}
+
+array<array<int>> MakeGrid(int n) {
+    array<array<int>> g[4];
+    for (int i = 0; i < n; i++) g += factory.Make(i * 10, i + 1);
+    return g;
+}
+
+verb Roots {
+    grammar = {.roots};
+    void handler() {
+        op_last := factory.Make(3, 3);
+        op_grid := MakeGrid(3);
+        op_any = seed.filter((int x) => x < 3);
+        op_either = factory.Make(8, 2);
+        int c = Collected();
+        array<int> a = (array<int>)op_any;
+        array<int> e = (array<int>)op_either;
+        printLine($"roots {Sum(op_last)} grid {OP_GridSum()} {op_grid[2][2]} any {Sum(a)} either {Sum(e)}");
+    }
+}
+
+verb Unroot {
+    grammar = {.unroot};
+    void handler() {
+        int before = Collected();
+        OP_SetGrid(null);
+        OP_SetAny(null);
+        op_last := null;
+        op_either = "none";
+        printLine($"unroot {before - baseline > 0} grid {OP_GridSum()} either {(string)op_either} back {Collected() - baseline}");
+    }
+}
+
+int calls = 0;
+
+// One pass of native callbacks and compacting predicates; its arrays are gone when it returns.
+int EachPass() {
+    array<int> src = {1, 2, 3, 4};
+    int t = OP_Each(src, (int x) => {
+        calls++;
+        array<int> tmp = factory.Make(x, 3);
+        bgl.gc.collect();
+        return Sum(tmp);
+    });
+    array<int> kept = src.filter((int x) => {
+        bgl.gc.collect();
+        return x > 1;
+    });
+    array<int> twice = kept.orderBy((int a, int b) => b - a).filter((int x) => {
+        bgl.gc.collect();
+        return x > 2;
+    });
+    print($"each {t} calls {op_calls} {calls} kept {Sum(kept)} twice {Sum(twice)}");
+    return twice.length;
+}
+
+verb Each {
+    grammar = {.each};
+    void handler() {
+        int before = Collected();
+        int n = EachPass();
+        printLine($" n {n} steady {Collected() == before}");
+    }
+}
+
+verb Mirror {
+    grammar = {.mirror};
+    void handler() {
+        bufA.Mirror();
+        int c = Collected();
+        printLine($"mirror {OP_Sum(OP_Mirror())} {OP_Len(OP_Mirror())} a {bufA.Managed()} held {c - baseline > 0}");
+    }
+}
+
+verb Unmirror {
+    grammar = {.unmirror};
+    void handler() {
+        bgl.gc.unpin(OP_Unmirror());
+        int c = Collected();
+        printLine($"unmirror {OP_Mirror() == null} a {bufA.Managed()}");
+    }
+}
+
+object nester {
+    int built;
+
+    void Build(int n) {
+        array<array<int>> rows[6];
+        for (int i = 0; i < n; i++) rows += factory.Make(i * 10, 2);
+        bgl.gc.keep(rows);
+        OP_SetNest(rows);
+        built++;
+    }
+
+    int Grow(int v) {
+        ref array<array<int>> held := OP_Nest();
+        held += factory.Make(v, 1);
+        bgl.gc.collect();
+        int s = 0;
+        for (array<int> row in OP_Nest()) s += Sum(row);
+        return s;
+    }
+
+    void Drop() {
+        array<array<int>> old = OP_Nest();
+        OP_SetNest(null);
+        bgl.gc.unpin(old);
+    }
+}
+
+verb Nest {
+    grammar = {.nest};
+    void handler() {
+        if (OP_Nest() != null) nester.Drop();
+        nester.Build(3);
+        int c = Collected();
+        printLine($"nest {OP_NestSum()} rows {OP_Nest().length} built {nester.built}");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        int s = nester.Grow(100 + OP_Nest().length);
+        printLine($"grow {s} native {OP_NestSum()} rows {OP_Nest().length} last {OP_Nest()[OP_Nest().length - 1][0]}");
+    }
+}
+
+verb Unnest {
+    grammar = {.unnest};
+    void handler() {
+        nester.Drop();
+        printLine($"unnest {OP_NestSum()} back {Collected() - baseline}");
+    }
+}
+
+verb Peak {
+    grammar = {.peak};
+    void handler() {
+        int before = Collected();
+        int p0 = bgl.gc.peak;
+        array<int> big = factory.Make(0, 8);
+        array<int> big2 = big.skip(1);
+        bool rose = bgl.gc.used > before;
+        bgl.gc.free(big2);
+        bgl.gc.free(big);
+        printLine($"peak {bgl.gc.peak >= p0} rose {rose} freed {bgl.gc.used == before} above {bgl.gc.peak > bgl.gc.used}");
+    }
+}
+
+verb Twice {
+    grammar = {.twice};
+    void handler() {
+        array<int> t = factory.MakePinned(1, 2);
+        bgl.gc.free(t);
+        bgl.gc.free(t);
+        printLine($"twice back {Collected() - baseline}");
+    }
+}
+
+array<int> FillPin() {
+    array<int> r = factory.Make(1, 8);
+    bgl.gc.keep(r);
+    return r;
+}
+
+array<array<int>> pile[64];
+
+verb FillHeap {
+    grammar = {.pile};
+    void handler() {
+        pile.clear();
+        int start = Collected();
+        while (bgl.gc.size - bgl.gc.used >= 14) pile += FillPin();
+        int full = bgl.gc.used;
+        int n = pile.length;
+        int s = 0;
+        for (array<int> row in pile) s += row[7];
+        for (array<int> row in pile) bgl.gc.unpin(row);
+        pile.clear();
+        // Nothing has collected yet: these allocations need the collect-and-retry.
+        array<int> a = factory.Make(0, 8);
+        array<int> b = factory.Make(0, 8);
+        array<int> c = b.skip(2);
+        bool retried = bgl.gc.used < full;
+        printLine($"fill {n > 5} sum {s == n * 8} near {bgl.gc.size - full < 14} peak {bgl.gc.peak >= full} after {Sum(c)} {Sum(b)} retried {retried}");
+        bgl.gc.free(c);
+        bgl.gc.free(b);
+        bgl.gc.free(a);
+        printLine($"fill back {Collected() == start}");
+    }
+}
+
+verb Exhaust {
+    grammar = {.exhaust};
+    void handler() {
+        printLine("exhausting");
+        while (true) {
+            NativeBuffer nb = new NativeBuffer(0, factory.Make(1, 8));
+            if (nb == null) {
+                pile += FillPin();
+            }
+        }
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
