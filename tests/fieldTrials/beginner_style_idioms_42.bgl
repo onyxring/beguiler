@@ -1,0 +1,668 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a forty-second first-time-programmer program, a lamp room where oil lamps are filled
+// from a jug, lit, burn oil every turn while they are lit, have their wicks wear out and get trimmed,
+// run dry and go out, and light a dark room when carried into it, written the way a beginner writes
+// it after reading the spec once. Oil kept in int globals with consts for the tank sizes and the jug,
+// bool flags, an enum for the wick switched on in helpers, a class of lamps (a label, oil, a tank
+// size, a wick, a static count of lamps lit, methods to light, put out, burn and describe, a before()
+// that takes Burn, Fill, Blow and Examine, a daemon that burns oil while lit) with a subclass for a
+// lantern that replaces the cost of burning and the tank size, a struct for a refill record (default
+// copy) kept in an array of the struct sized by a const (+= / remove(0) when full / for-in), a helper
+// that throws a reason code caught in the before() and switched on, a helper with a default argument
+// called with and without it and with a named argument, a string switch on a label, give / has on
+// light and a custom attribute, a dark room lit by a carried lamp, C-style for loops with break and
+// continue, a while loop, a do/while, for-in over a lamps array and over a literal list, an int
+// array sorted and searched (sort, indexOf, contains, reverse, popEnd), <linq> filter / count / any /
+// all / orderBy / first / last, stringObj text built with += and interpolation, padded bars, left,
+// toUpper and startsWith, and verbs with no noun, one noun and a number (trim, douse, lamps, refills,
+// jug, pour, bars, darkest) that drive it.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+#include <array>
+
+// ===== NUMBERS =====
+
+// how much oil a small lamp holds
+const int SMALL_TANK = 6;
+// how much oil a lantern holds
+const int BIG_TANK = 10;
+// how much oil the jug starts with
+const int JUG_START = 20;
+// how many refills the log keeps
+const int LOG_SIZE = 4;
+// oil left in the jug
+int jugOil = JUG_START;
+// oil poured altogether
+int oilPoured = 0;
+// oil burned altogether
+int oilBurned = 0;
+// how many times a lamp has run dry
+int dryCount = 0;
+// the turn number, moved on by the clock
+int turnNo = 0;
+// has any lamp ever run dry?
+bool everDry = false;
+// has the jug ever been empty?
+bool jugWasEmpty = false;
+
+// a lamp that has burned with a bad wick
+attribute sooty;
+
+// ===== KINDS OF THINGS =====
+
+enum Wick { fresh, worn, charred }
+
+// ===== HELPER FUNCTIONS =====
+
+// a word for a wick
+string wickWord(Wick w) {
+    switch (w) {
+        case Wick.fresh: return "fresh";
+        case Wick.worn: return "worn";
+        case Wick.charred: return "charred";
+    }
+    return "?";
+}
+
+// how much oil a wick wastes each turn on top of the normal burn
+int wickWaste(Wick w) {
+    if (w == Wick.charred) {
+        return 1;
+    }
+    return 0;
+}
+
+// the next wick after some burning
+Wick wearWick(Wick w) {
+    if (w == Wick.fresh) {
+        return Wick.worn;
+    }
+    return Wick.charred;
+}
+
+// a bar like [###...] showing an amount out of a full amount
+void printBar(int amount, int full, char mark = '#') {
+    stringObj bar = "[";
+    for (int i = 0; i < full; i++) {
+        if (i < amount) {
+            bar += mark;
+        } else {
+            bar += '.';
+        }
+    }
+    bar += "]";
+    print(bar);
+}
+
+// "drop" or "drops"
+string dropWord(int n) {
+    if (n == 1) {
+        return "drop";
+    }
+    return "drops";
+}
+
+// ===== LAMPS =====
+
+class Lamp : object {
+    // the word painted on the base
+    string label;
+    // how much oil is in it
+    int oil = 0;
+    // how much it can hold
+    int tank = SMALL_TANK;
+    // the state of the wick
+    Wick wick = Wick.fresh;
+    // how many turns it has burned since the wick was trimmed
+    int burnedSinceTrim = 0;
+    // how many turns it has burned in all
+    int turnsBurned = 0;
+    string description;
+
+    // how many lamps have been lit, ever
+    static int timesLit = 0;
+
+    // how much oil a turn of burning costs
+    int burnCost() {
+        return 1 + wickWaste(wick);
+    }
+
+    // is it lit?
+    bool isLit() {
+        return has(light);
+    }
+
+    // lights it; returns false when there is no oil
+    bool lightUp() {
+        if (oil <= 0) {
+            return false;
+        }
+        give(light);
+        Lamp.timesLit++;
+        StartDaemon(self);
+        return true;
+    }
+
+    // puts it out
+    void putOut() {
+        ungive(light);
+        StopDaemon(self);
+    }
+
+    // a line about the lamp
+    void sayLine() {
+        print($"{label}: {oil}/{tank} oil, {wickWord(wick)} wick");
+        if (isLit()) {
+            print(", lit");
+        }
+        if (has(sooty)) {
+            print(", sooty");
+        }
+        print(".^");
+    }
+
+    // burns one turn of oil
+    void daemon() {
+        int cost = burnCost();
+        if (cost > oil) {
+            cost = oil;
+        }
+        oil -= cost;
+        oilBurned += cost;
+        turnsBurned++;
+        burnedSinceTrim++;
+        if (burnedSinceTrim % 3 == 0) {
+            wick = wearWick(wick);
+        }
+        if (wick == Wick.charred) {
+            give(sooty);
+        }
+        if (oil == 0) {
+            putOut();
+            dryCount++;
+            everDry = true;
+            print($"^The {label} lamp runs dry and goes out.^");
+        }
+    }
+
+    bool before() {
+        if (action == Examine) {
+            sayLine();
+            rtrue;
+        }
+        if (action == Burn) {
+            if (isLit()) {
+                print($"The {label} lamp is already lit.^");
+                rtrue;
+            }
+            if (!lightUp()) {
+                print($"The {label} lamp has no oil.^");
+                rtrue;
+            }
+            print($"The {label} lamp is now lit.^");
+            rtrue;
+        }
+        if (action == Blow) {
+            if (!isLit()) {
+                print($"The {label} lamp is not lit.^");
+                rtrue;
+            }
+            putOut();
+            print($"You blow out the {label} lamp.^");
+            rtrue;
+        }
+        if (action == Fill) {
+            int poured;
+            try {
+                poured = fillLamp(self);
+            } catch (int why) {
+                switch (why) {
+                    case 1: print("The jug is empty.^");
+                    case 2: print($"The {label} lamp is lit. Put it out first.^");
+                    case 3: print($"The {label} lamp is already full.^");
+                    default: print("No.^");
+                }
+                rtrue;
+            }
+            print($"You pour {poured} {dropWord(poured)} into the {label} lamp. The jug has {jugOil} left.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// a lantern holds more and never wastes oil
+class Lantern : Lamp {
+    replace int burnCost() {
+        return 1;
+    }
+}
+
+// ===== REFILLS =====
+
+// one refill: which lamp, how much and on which turn
+struct Refill {
+    Lamp lamp;
+    int amount;
+    int turn;
+}
+
+// the last few refills
+array<Refill> refillLog[LOG_SIZE];
+
+// every amount ever poured, for the pour list
+array<int> pours[12];
+
+// ===== ROOMS =====
+
+object roomA {
+    "Room A";
+    string description = "Room A. A bench for lamps. Room B is to the north.";
+    object n_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    string description = "Room B. Bare walls. Room A is to the south.";
+    object s_to = roomA;
+}
+
+object bench {
+    "bench";
+    parent = roomA;
+    name = {.bench};
+    string description = "A bench.";
+    attributes = {supporter, static};
+}
+
+object jug {
+    "oil jug";
+    parent = roomA;
+    name = {.oil, .jug};
+    string description = "An oil jug.";
+    bool before() {
+        if (action == Examine) {
+            print($"The jug has {jugOil} {dropWord(jugOil)} of oil in it.^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ===== THE LAMPS =====
+
+Lamp redLamp {
+    "red lamp";
+    parent = bench;
+    name = {.red, .lamp};
+    label = "red";
+    oil = 2;
+    description = "A red lamp.";
+}
+
+Lamp blueLamp {
+    "blue lamp";
+    parent = bench;
+    name = {.blue, .lamp};
+    label = "blue";
+    oil = 0;
+    description = "A blue lamp.";
+}
+
+Lantern brassLantern {
+    "brass lantern";
+    parent = bench;
+    name = {.brass, .lantern, .lamp};
+    label = "brass";
+    oil = 4;
+    tank = BIG_TANK;
+    description = "A brass lantern.";
+}
+
+// every lamp, in bench order
+array<Lamp> lamps = { redLamp, blueLamp, brassLantern };
+
+// ===== THE CLOCK =====
+
+object clock {
+    "clock";
+    parent = roomA;
+    name = {.clock};
+    string description = "A clock.";
+    attributes = {static};
+    void daemon() {
+        turnNo++;
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(clock);
+    rtrue;
+}
+
+#includeI6 "grammar"
+
+// ===== MORE HELPERS (they use the log) =====
+
+// pours oil from the jug into a lamp up to some amount; throws 1 when the jug is empty, 2 when the
+// lamp is lit, 3 when it is full. Returns how much went in.
+int fillLamp(Lamp l, int most = 99) {
+    if (jugOil == 0) {
+        jugWasEmpty = true;
+        throw 1;
+    }
+    if (l.isLit()) {
+        throw 2;
+    }
+    int room = l.tank - l.oil;
+    if (room <= 0) {
+        throw 3;
+    }
+    int amount = room;
+    if (amount > most) {
+        amount = most;
+    }
+    if (amount > jugOil) {
+        amount = jugOil;
+    }
+    l.oil += amount;
+    jugOil -= amount;
+    oilPoured += amount;
+    logRefill(l, amount);
+    return amount;
+}
+
+// keeps a record of a refill, dropping the oldest when the log is full
+void logRefill(Lamp l, int amount) {
+    if (refillLog.length >= LOG_SIZE) {
+        refillLog.remove(0);
+    }
+    Refill r;
+    r.lamp = l;
+    r.amount = amount;
+    r.turn = turnNo;
+    refillLog += r;
+    pours += amount;
+}
+
+// a note about a lamp by its label
+string labelNote(string which) {
+    switch (which) {
+        case "red": return "the first lamp on the bench";
+        case "blue": return "the second lamp on the bench";
+        default: return "the big one";
+    }
+}
+
+// ===== VERBS =====
+
+// TRIM <lamp> - trims the wick
+verb TrimWick {
+    grammar = {.trim, NOUN};
+    void handler() {
+        if (!(noun.is(Lamp))) {
+            print("That has no wick.^");
+            return;
+        }
+        Lamp l = (Lamp)noun;
+        if (l.isLit()) {
+            print($"The {l.label} lamp is lit. Put it out first.^");
+            return;
+        }
+        if (l.wick == Wick.fresh) {
+            print($"The {l.label} wick is already fresh.^");
+            return;
+        }
+        l.wick = Wick.fresh;
+        l.burnedSinceTrim = 0;
+        print($"You trim the {l.label} wick.^");
+    }
+}
+
+// DOUSE - puts out every lamp
+verb DouseAll {
+    grammar = {.douse};
+    void handler() {
+        int n = 0;
+        for (Lamp l in lamps) {
+            if (!l.isLit()) {
+                continue;
+            }
+            l.putOut();
+            n++;
+        }
+        if (n == 0) {
+            print("No lamp is lit.^");
+        } else {
+            print($"You put out {n} lamps.^");
+        }
+    }
+}
+
+// LAMPS - every lamp, with some counts
+verb ListLamps {
+    meta = true;
+    grammar = {.lamps};
+    void handler() {
+        for (Lamp l in lamps) {
+            l.sayLine();
+        }
+        int litNow = lamps.filter((Lamp l) => l.isLit()).count();
+        print($"Lit now: {litNow}. Lit ever: {Lamp.timesLit}.^");
+        if (lamps.any((Lamp l) => l.oil == 0)) {
+            print("Some lamp is empty.^");
+        }
+        if (lamps.all((Lamp l) => l.oil > 0)) {
+            print("Every lamp has oil.^");
+        }
+        array<Lamp> byOil[3];
+        byOil = lamps.orderBy((Lamp a, Lamp b) => b.oil - a.oil);
+        stringObj row = "Most oil first:";
+        for (Lamp l in byOil) {
+            row += $" {l.label}";
+        }
+        print(row);
+        print("^");
+        Lamp most = byOil.first();
+        Lamp least = byOil.last();
+        print($"Most: {most.label.toUpper()}. Least: {least.label}.^");
+    }
+}
+
+// ABOUT <lamp> - what the label means
+verb AboutLamp {
+    meta = true;
+    grammar = {.about, NOUN};
+    void handler() {
+        if (!(noun.is(Lamp))) {
+            print("That is not a lamp.^");
+            return;
+        }
+        Lamp l = (Lamp)noun;
+        print($"The {l.label} lamp is {labelNote(l.label)}.^");
+    }
+}
+
+// REFILLS - the log of refills
+verb ShowRefills {
+    meta = true;
+    grammar = {.refills};
+    void handler() {
+        if (refillLog.length == 0) {
+            print("No refills yet.^");
+            return;
+        }
+        print($"{refillLog.length} of {LOG_SIZE} refills kept:^");
+        int n = 1;
+        for (Refill r in refillLog) {
+            print($"{n}. {r.lamp.label}, {r.amount} {dropWord(r.amount)}, turn {r.turn}^");
+            n++;
+        }
+    }
+}
+
+// JUG - how the oil stands
+verb JugReport {
+    meta = true;
+    grammar = {.jug};
+    void handler() {
+        print($"Jug: {jugOil} of {JUG_START}. Poured: {oilPoured}. Burned: {oilBurned}.^");
+        int inLamps = 0;
+        int i = 0;
+        while (i < lamps.length) {
+            inLamps += lamps[i].oil;
+            i++;
+        }
+        print($"In lamps: {inLamps}.^");
+        if (jugOil + oilPoured != JUG_START) {
+            print("The jug sums are wrong.^");
+        }
+        if (everDry) {
+            print($"Lamps have run dry {dryCount} times.^");
+        }
+        if (jugWasEmpty == true) {
+            print("The jug has been empty.^");
+        }
+    }
+}
+
+// POUR <number> - pours at most that much into every lamp that is out
+verb PourEach {
+    grammar = {.pour, NUMBER};
+    void handler() {
+        int most = (int)noun;
+        if (most < 1) {
+            print("Pour at least one drop.^");
+            return;
+        }
+        int total = 0;
+        for (int i = 0; i < lamps.length; i++) {
+            Lamp l = lamps[i];
+            if (l.isLit()) {
+                continue;
+            }
+            if (jugOil == 0) {
+                break;
+            }
+            int got = 0;
+            try {
+                got = fillLamp(l, most: most);
+            } catch (int why) {
+                got = 0;
+            }
+            total += got;
+        }
+        print($"You pour {total} {dropWord(total)} in all.^");
+    }
+}
+
+// BARS - a bar for each lamp
+verb ShowBars {
+    meta = true;
+    grammar = {.bars};
+    void handler() {
+        for (Lamp l in lamps) {
+            stringObj tag = l.label;
+            while (tag.length < 6) {
+                tag += " ";
+            }
+            print(tag);
+            printBar(l.oil, l.tank);
+            print("^");
+        }
+        print("jug   ");
+        printBar(jugOil, JUG_START, '=');
+        print("^");
+        // the wicks, with a do/while
+        int k = 0;
+        stringObj wicks = "Wicks:";
+        do {
+            wicks += $" {wickWord(lamps[k].wick)}";
+            k++;
+        } while (k < lamps.length);
+        print(wicks);
+        print("^");
+    }
+}
+
+// POURS - every amount poured, sorted
+verb ShowPours {
+    meta = true;
+    grammar = {.pours};
+    void handler() {
+        if (pours.length == 0) {
+            print("Nothing poured.^");
+            return;
+        }
+        array<int> sorted[12];
+        sorted = pours;
+        sorted.sort();
+        stringObj row = "Pours:";
+        for (int p in sorted) {
+            row += $" {p}";
+        }
+        print(row);
+        print("^");
+        if (sorted.contains(4)) {
+            print($"A pour of 4 is at {sorted.indexOf(4)}.^");
+        }
+        sorted.reverse();
+        int biggest = sorted.first();
+        int smallest = sorted.popEnd();
+        print($"Biggest {biggest}, smallest {smallest}, {sorted.length} left.^");
+        print($"First pour {pours[0]} of {pours.length}.^");
+    }
+}
+
+// DARKEST - checks the lit lamps the player carries
+verb Darkest {
+    meta = true;
+    grammar = {.carried};
+    void handler() {
+        int held = 0;
+        int litHeld = 0;
+        for (object o in player.children) {
+            if (o.is(Lamp)) {
+                held++;
+                if (o.has(light)) {
+                    litHeld++;
+                }
+            }
+        }
+        print($"Carrying {held} lamps, {litHeld} lit.^");
+        // checks the first two lamps by their place in the list
+        int sooted = 0;
+        for (int i in {0, 1, 2}) {
+            if (lamps[i].has(sooty)) {
+                sooted++;
+            }
+            if (i == 1) {
+                break;
+            }
+        }
+        print($"Sooty in the first two: {sooted}.^");
+        stringObj where = "In ";
+        if (location == roomA) {
+            where += "Room A";
+        } else {
+            where += "Room B";
+        }
+        if (where.startsWith("In Room")) {
+            print(where.left(9));
+            print(".^");
+        }
+    }
+}

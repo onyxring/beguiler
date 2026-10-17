@@ -1,0 +1,247 @@
+/*  Field trial part — included by library_author_idioms_43.bgl. Not a trial on its own.  */
+
+#once
+#include <string>
+#include <linq>
+
+// ---- Configuration. ----
+
+#if !WC_HAND_LIMIT
+    #define WC_HAND_LIMIT 10
+#endif
+
+#if !WC_MAX_BAGS
+    #define WC_MAX_BAGS 3
+#endif
+
+#if WC_HAND_LIMIT > 20
+    #warning "wc: a hand limit above 20 is untried"
+#endif
+
+const int wcMaxBags = WC_MAX_BAGS;
+
+// ---- Types. ----
+
+/// How awkward a thing is to carry.
+enum eWcBulk {
+    slim, bulky, huge,
+    /// True when it needs both hands.
+    emitter bool awkward() { ($self == 3) }
+    /// A one-letter code for listings.
+    emitter char code { ($self + 'r' - 1) }
+}
+
+/// A load: mass and how many awkward things are in it.
+struct WcLoad {
+    int mass;
+    int awkward;
+
+    WcLoad operator = (WcLoad o) { mass = o.mass; awkward = o.awkward; return self; }
+
+    /// Two loads together.
+    WcLoad operator + (WcLoad o) {
+        WcLoad r;
+        r.mass = mass + o.mass;
+        r.awkward = awkward + o.awkward;
+        return r;
+    }
+
+    /// Adds another load in place.
+    void operator += (WcLoad o) {
+        mass += o.mass;
+        awkward += o.awkward;
+    }
+
+    /// Orders loads by mass.
+    int operator <=> (WcLoad o) { return mass - o.mass; }
+
+    bool operator == (WcLoad o) { return mass == o.mass && awkward == o.awkward; }
+    bool operator != (WcLoad o) { return mass != o.mass || awkward != o.awkward; }
+
+    /// Prints "mass kg" and the awkward count when there is one.
+    void show() {
+        print($"{mass} kg");
+        if (awkward > 0) print($" ({awkward} awkward)");
+    }
+}
+
+/// Anything with a mass.
+class WcThing : object {
+    /// Its mass in kilograms.
+    required inline int mass;
+    eWcBulk bulk = eWcBulk.slim;
+    /// Times any thing was weighed.
+    static int weighings = 0;
+
+    /// The thing's label in listings.
+    default string label() { return "thing"; }
+
+    /// Its own load, without anything inside it.
+    default WcLoad loadOf() {
+        WcLoad r;
+        r.mass = mass;
+        if (bulk.awkward()) r.awkward = 1;
+        return r;
+    }
+
+    /// Weighs it and everything inside it.
+    WcLoad weigh() {
+        weighings++;
+        WcLoad r = loadOf();
+        for (object o in children) {
+            if (o.is(WcThing)) r += ((WcThing)o).weigh();
+        }
+        return r;
+    }
+
+    bool before() {
+        if (action != ::Take) return false;
+        if (parent == player) return false;
+        if (wc.canTake(self)) return false;
+        wcRefusal(null, self);
+        return true;
+    }
+}
+
+/// A bag that holds things up to a mass.
+class WcBag : WcThing {
+    /// The most it holds, in kilograms.
+    required inline int limit;
+    attributes = {container, open};
+    int refused = 0;
+    /// Bags ever filled past half.
+    static int halfFull = 0;
+
+    /// The mass inside it.
+    int inside() {
+        WcLoad r = weigh();
+        return r.mass - mass;
+    }
+
+    /// True when a thing fits.
+    bool fits(WcThing t) {
+        if (t.bulk.awkward()) return false;
+        return inside() + t.weigh().mass <= limit;
+    }
+
+    /// How full it is, as a percentage.
+    int pct() { return inside() * 100 / limit; }
+
+    bool before() {
+        if (action != ::Receive) return false;
+        if (!noun.is(WcThing)) return false;
+        if (fits((WcThing)noun)) return false;
+        refused++;
+        wcRefusal(self, noun);
+        return true;
+    }
+
+    bool after() {
+        if (action != ::Receive) return false;
+        if (pct() > 50) halfFull++;
+        wc.journal += 'I';
+        return false;
+    }
+}
+
+/// Said when a bag or the hands refuse a thing; a program may set its own.
+func<void, WcBag, object> wcRefuseHook = wcQuietRefuse;
+
+void wcQuietRefuse(WcBag b, object o) { }
+
+/// Prints why a bag, or the hands when b is null, refuses a thing.
+void wcRefusal(WcBag b, object o) {
+    if (b == null) print($"You can't carry the {o} as well.^");
+    else print($"The {o} won't fit in the {b}.^");
+    wcRefuseHook(b, o);
+}
+
+/// Plain output helpers.
+emitter wcOut {
+    void rule()          { print "==^"; }
+    void kilos(int n)    { print $n, " kilo"; if ($n ~= 1) print "s"; }
+}
+
+// ---- The kit's root. ----
+
+/// The bags, the hand limit and the journal.
+object wc {
+    alias thing for WcThing;
+    alias bag   for WcBag;
+    alias load  for WcLoad;
+    alias bulk  for eWcBulk;
+    array<WcBag> bags[wcMaxBags];
+    stringObj journal;
+    int takes = 0;
+
+    /// The most the hands carry, kept between 1 and 20.
+    auto handLimit = {
+        int _kg = WC_HAND_LIMIT;
+        int  operator ()        { return _kg; }
+        void operator = (int v) {
+            if (v < 1) v = 1;
+            if (v > 20) v = 20;
+            _kg = v;
+            outer.journal += 'H';
+        }
+    }
+
+    /// Adds a bag; false when known or the list is full.
+    bool register(bag b) {
+        if (bags.contains(b)) return false;
+        return bags.append(b);
+    }
+
+    /// Everything the player carries.
+    load carried() {
+        load r;
+        for (object o in player.children) {
+            if (o.is(WcThing)) r += ((thing)o).weigh();
+        }
+        return r;
+    }
+
+    /// True when the player can take a thing as well.
+    bool canTake(thing t) {
+        load now = carried();
+        load more = t.weigh();
+        if (now.awkward + more.awkward > 1) return false;
+        if ((now + more).mass > handLimit) return false;
+        takes++;
+        journal += 'T';
+        return true;
+    }
+
+    /// Bags at or above a percentage, fullest first.
+    array<bag> fullerThan(int pct) {
+        return bags
+            .filter((bag b) => b.pct() >= pct)
+            .orderBy((bag a, bag b) => b.pct() - a.pct());
+    }
+
+    /// Takes mass out of a thing. Throws 1 when it would go below zero, 2 when it is a bag.
+    void lighten(thing t, int kg) {
+        if (t.is(WcBag)) throw 2;
+        if (t.mass - kg < 0) throw 1;
+        t.mass -= kg;
+        journal += 'L';
+    }
+
+    /// Prints one bag's line.
+    void bagLine(bag b) {
+        print($"{b.label()}: {b.inside()}/{b.limit}, {b.pct()}%, refused {b.refused}^");
+    }
+
+    /// Prints the listing of bags and hands.
+    void list() {
+        wcOut.rule();
+        for (bag b in bags) bagLine(b);
+        wcOut.rule();
+        load c = carried();
+        print("Carried ");
+        c.show();
+        print(" of ");
+        wcOut.kilos(handLimit);
+        print(".^");
+    }
+}

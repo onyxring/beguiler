@@ -1,0 +1,276 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a weights-and-bags kit and its consumer. The kit is configured by #define symbols set
+// before it (#if with a default, #if on a value, #warning); it declares an enum of bulk with emitter
+// members, a struct of load (copy operator, + and += over loads, <=> giving < and >, == and !=,
+// show()), a thing class with a required positional mass, a bulk, a static counter, default label()
+// and loadOf(), a recursive weigh() over its children and a before() that refuses Take over the hand
+// limit; a bag subclass with its own required positional limit, container attributes, a before() on
+// Receive that refuses what doesn't fit (beside the inherited before()), an after() on Receive and a
+// static counter; a global func<> hook with a kit default the consumer swaps for a lambda; a kit
+// routine the consumer replaces and chains with replaced(); an emitter namespace of output helpers.
+// The kit's root object is a namespace (alias … for the types) holding an array of bags, a stringObj
+// journal, an inline accessor that clamps the hand limit and writes the journal through outer, a
+// carried() load, a canTake() test, a <linq> fullerThan() chain and a lighten() that throws. The
+// consumer extends the thing class with a handled count and a heavier-than test, declares things and
+// bags as objects (positional mass and limit, some overriding label()), and drives them from its own
+// verbs (weigh, bags, limit N, lighten X by N, heaviest, journal) with try/catch, <linq>
+// filter/orderBy/first/any/all/count, a switch on the enum, ?: and the struct's comparisons.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define WC_HAND_LIMIT 8
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#include "library_author_idioms_43_parts/library_author_idioms_43_kit"
+
+extend extern class object {
+    string description;
+}
+
+#using wc
+
+// ---- The consumer's additions to the kit. ----
+
+/// Every thing counts how often the consumer's verbs handled it.
+extend class WcThing {
+    int handled = 0;
+
+    /// True when this weighs more than another thing.
+    bool heavierThan(WcThing o) {
+        return weigh() > o.weigh();
+    }
+}
+
+replace void wcRefusal(WcBag b, object o) {
+    print("[refused] ");
+    replaced(b, o);
+}
+
+int refusals = 0;
+
+// ---- The world. ----
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is north.";
+    attributes = {light};
+    object n_to = roomB;
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is south.";
+    attributes = {light};
+    object s_to = roomA;
+}
+
+bag sack {
+    6, 1, "cloth sack";
+    parent = roomA;
+    name = {.cloth, .sack};
+    string label() { return "sack"; }
+}
+
+bag box {
+    4, 2, "wooden box";
+    parent = roomA;
+    name = {.wooden, .box};
+    string label() { return "box"; }
+}
+
+thing ironWeight {
+    3, "iron weight";
+    parent = roomA;
+    name = {.iron, .weight};
+    string label() { return "weight"; }
+}
+
+thing feather {
+    0, "white feather";
+    parent = roomA;
+    name = {.white, .feather};
+}
+
+thing brick {
+    2, "red brick";
+    parent = roomA;
+    name = {.red, .brick};
+    string label() { return "brick"; }
+}
+
+thing plank {
+    2, "long plank";
+    parent = roomB;
+    name = {.long, .plank};
+    bulk = eWcBulk.huge;
+    string label() { return "plank"; }
+}
+
+thing crate {
+    5, "heavy crate";
+    parent = roomB;
+    name = {.heavy, .crate};
+    bulk = eWcBulk.bulky;
+    string label() { return "crate"; }
+}
+
+// ---- Verbs. ----
+
+/// The thing the noun names, or null after saying it isn't one.
+thing asThing(object o) {
+    if (!o.is(WcThing)) {
+        print("That has no weight to speak of.^");
+        return null;
+    }
+    thing t = (thing)o;
+    t.handled++;
+    return t;
+}
+
+/// Report verbs: they take no time.
+class WcInfo : verb {
+    meta = true;
+}
+
+WcInfo WcWeigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        thing t = asThing(noun);
+        if (t == null) return;
+        int w0 = thing.weighings;
+        load l = t.weigh();
+        print($"The {t.label()} weighs ");
+        l.show();
+        switch (t.bulk) {
+            case bulk.slim:  print(", slim");
+            case bulk.bulky: print(", bulky");
+            case bulk.huge:  print(", huge");
+        }
+        print($" [{t.bulk.code}], {thing.weighings - w0} weighed.^");
+    }
+}
+
+WcInfo WcBags {
+    grammar = {.bags};
+    void handler() { wc.list(); }
+}
+
+verb WcLimit {
+    grammar = {.limit, NUMBER};
+    void handler() {
+        int was = wc.handLimit;
+        wc.handLimit = (int)noun;
+        print($"Hand limit {was} -> {wc.handLimit}.^");
+    }
+}
+
+verb WcLighten {
+    grammar = {.lighten, NOUN, .by, NUMBER};
+    void handler() {
+        thing t = asThing(noun);
+        if (t == null) return;
+        try {
+            wc.lighten(t, (int)second);
+            print($"The {t.label()} now weighs {t.mass}.^");
+        } catch (int why) {
+            switch (why) {
+                case 1: print("It isn't that heavy.^");
+                case 2: print("Empty the bag instead.^");
+            }
+        }
+    }
+}
+
+WcInfo WcHeaviest {
+    grammar = {.heaviest};
+    void handler() {
+        array<thing> held[8];
+        for (object o in player.children) {
+            if (o.is(WcThing)) held += (thing)o;
+        }
+        if (held.count() == 0) {
+            print("You carry nothing.^");
+            return;
+        }
+        thing top = held.orderBy((thing a, thing b) => b.weigh().mass - a.weigh().mass).first();
+        print($"Heaviest: {top.label()}");
+        bool anyHuge = held.any((thing t) => t.bulk == bulk.huge);
+        bool allSlim = held.all((thing t) => t.bulk == bulk.slim);
+        int light = held.filter((thing t) => t.weigh().mass < 2).count();
+        print($"; huge {anyHuge}, all slim {allSlim}, light {light}");
+        if (held.count() > 1) {
+            thing other = held[0] == top ? held[1] : held[0];
+            print($"; heavier than {other.label()} {top.heavierThan(other)}");
+        }
+        print(".^");
+    }
+}
+
+WcInfo WcFull {
+    grammar = {.fuller, NUMBER};
+    void handler() {
+        array<bag> f = wc.fullerThan((int)noun);
+        if (f.length == 0) {
+            print("No bag is that full.^");
+            return;
+        }
+        print("Full:");
+        for (bag b in f) print($" {b.label()}({b.pct()}%)");
+        print("^");
+    }
+}
+
+WcInfo WcJournal {
+    grammar = {.journal};
+    void handler() {
+        print($"journal '{wc.journal}' ({wc.journal.length}), takes {wc.takes}");
+        print($", half full {bag.halfFull}, refusals {refusals}, handled");
+        for (object o in roomA.children) {
+            if (o.is(WcThing)) print($" {((thing)o).handled}");
+        }
+        print("^");
+    }
+}
+
+WcInfo WcCompare {
+    grammar = {.compare, NOUN, .with, NOUN};
+    void handler() {
+        thing a = asThing(noun);
+        if (a == null) return;
+        thing b = asThing(second);
+        if (b == null) return;
+        load la = a.weigh();
+        load lb = b.weigh();
+        string verdict = la < lb ? "lighter than" : (la > lb ? "heavier than" : "as heavy as");
+        print($"The {a.label()} is {verdict} the {b.label()}");
+        if (la == lb) print(", exactly");
+        else if (la.mass == lb.mass) print(", by mass alone");
+        print(".^");
+        load both = la + lb;
+        print("Together: ");
+        both.show();
+        print(".^");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+    wc.register(sack);
+    wc.register(box);
+    wc.register(sack);
+    wcRefuseHook = (WcBag b, object o) => {
+        refusals++;
+        if (b != null) print($"({b.label()} refuses, {b.refused} so far)^");
+    };
+    rfalse;
+}
+
+#includeI6 "grammar"

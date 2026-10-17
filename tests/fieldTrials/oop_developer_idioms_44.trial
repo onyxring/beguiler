@@ -1,0 +1,94 @@
+Room A
+Room A.
+
+> post
+pending 5
+  Alarm#5 p5 v2 !
+  Door#2 p3 v7
+  Alarm#4 p3 v9
+  Lamp#3 p2 v4
+  Tick#1 p1 v1
+alarms queued 2, doors 1
+
+> walk
+log: 0 on, subscribed
+door: 0 on, subscribed
+lamp: 0 on, not subscribed
+tally: 0 on, subscribed
+alarm: 0 on, subscribed
+relay: 0 on, subscribed
+
+> run
+  alarm ok at 2/5
+  door saw Door#2 p3 v7
+  alarm failed on Alarm#4 p3 v9: over limit (9)
+handled 17, failures 1, relay total 23
+
+> stats
+active 5, busiest log (5), any idle false
+log [5,2,4,3,1]
+tally door 1 lamp 1 alarm 2 tick 1
+alarm trips 1, raised 1, dropped 0, delivered 17
+
+> mute
+subscribers 5, log again false, lamp added true
+
+> flood
+dropped Lamp#11 p0 v2: queue full (5)
+dropped Lamp#12 p1 v3: queue full (5)
+pending 5
+  Lamp#7 p2 v-2
+  Lamp#10 p2 v1
+  Lamp#6 p1 v-3
+  Lamp#9 p1 v0
+  Lamp#8 p0 v-1
+
+> run
+  lamp: dark
+  lamp: lit
+  lamp: dark
+  lamp: dark
+  lamp: dark
+handled 15, failures 1, relay total 18
+
+> limit
+clamped 9 1, now 4
+pending 2
+  Alarm#13 p4 v4 !
+  Alarm#14 p4 v5 !
+
+> run
+  alarm ok at 4/4
+  alarm failed on Alarm#14 p4 v5: over limit (5)
+handled 5, failures 2, relay total 27
+
+> history
+history 6, urgent 2
+  Alarm#13 p4 v4
+  Alarm#14 p4 v5
+  Lamp#10 p2 v1
+latest Alarm#14 p4 v5, has #13 true, index 4
+lamps 4, all positive false
+
+> stats
+active 4, busiest log (12), any idle false
+log [5,2,4,3,1,7,10,6,9,8,13,14]
+tally door 1 lamp 1 alarm 2 tick 1
+alarm trips 2, raised 4, dropped 2, delivered 37
+
+> walk
+log: 12 on, subscribed
+door: 1 on, not subscribed
+lamp: 5 on, subscribed
+tally: 5 off, subscribed
+alarm: 4 on, subscribed
+relay: 12 on, subscribed
+
+> reset
+reset 2 stateful, log [], tally door 0
+
+> stats
+active 5, busiest log (0), any idle true
+log []
+tally door 0 lamp 0 alarm 0 tick 0
+alarm trips 2, raised 4, dropped 2, delivered 37

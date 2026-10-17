@@ -1,0 +1,636 @@
+#grids
+Room A
+Room A. Three ovens and three order cards.
+[win 1] 0: ovens cold
+[grid 1]
+|B bread 0   |
+|P pie 0     |
+|U bun 0     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: empty                       |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 0 | busy 0                          |
+> examine bread card
+A card for bread (B): bakes in 3, 0 ordered.
+[grid 1]
+|B bread 0   |
+|P pie 0     |
+|U bun 0     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: empty                       |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 1 | busy 0                          |
+> order bread
+bread ordered (queue 1).
+It is next.
+[grid 1]
+|B bread 1   |
+|P pie 0     |
+|U bun 0     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: B                           |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 2 | busy 0                          |
+> order bun
+bun ordered (queue 2).
+[grid 1]
+|B bread 1   |
+|P pie 0     |
+|U bun 1     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: B U                         |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 3 | busy 0                          |
+> order pie
+pie ordered (queue 3).
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: B U P                       |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 4 | busy 0                          |
+> rush
+The quickest go first: UPB.
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 1       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       -                 |
+|Queue: U P B                       |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 5 | busy 0                          |
+> load 1
+You load the bun into oven 1.
+The bun in oven 1 is done.
+[win 1] 5: U into 1
+[win 1] 6: bun done in 1
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 3       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| U       -       -                 |
+|Queue: P B                         |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 6 | busy 1                          |
+> load 2
+You load the pie into oven 2.
+[win 1] 6: P into 2
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 4       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| U       p1      -                 |
+|Queue: B                           |
+|0 out, 0 burnt                     |
+[grid 3]
+|Room A | turn 7 | busy 2                          |
+> unload 2
+The pie needs 1 more.
+The bun in oven 1 burns.
+The pie in oven 2 is done.
+[win 1] 8! bun burnt in 1
+[win 1] 8: pie done in 2
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 6       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       P       -                 |
+|Queue: B                           |
+|0 out, 1 burnt                     |
+[grid 3]
+|Room A | turn 8 | busy 2                          |
+> unload 1
+You take the bun out of oven 1, burnt.
+[win 1] 8: out U/1@8#
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 7       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       P       -                 |
+|Queue: B                           |
+|1 out, 1 burnt                     |
+[grid 3]
+|Room A | turn 9 | busy 1                          |
+> load 3
+You load the bread into oven 3.
+The pie in oven 2 burns.
+[win 1] 9: B into 3
+[win 1] 10! pie burnt in 2
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 9       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       #       b2                |
+|Queue: empty                       |
+|1 out, 2 burnt                     |
+[grid 3]
+|Room A | turn 10 | busy 2                         |
+> z
+Time passes.
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 9       |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       #       b1                |
+|Queue: empty                       |
+|1 out, 2 burnt                     |
+[grid 3]
+|Room A | turn 11 | busy 2                         |
+> unload 3
+The bread needs 1 more.
+The bread in oven 3 is done.
+[win 1] 12: bread done in 3
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 10      |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       #       B                 |
+|Queue: empty                       |
+|1 out, 2 burnt                     |
+[grid 3]
+|Room A | turn 12 | busy 2                         |
+> unload 1
+Oven 1 is empty.
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 10      |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       #       B                 |
+|Queue: empty                       |
+|1 out, 2 burnt                     |
+[grid 3]
+|Room A | turn 13 | busy 2                         |
+> tally
+Ticks 13; 2 busy; 2 burnt.
+1. U/1@8#
+bun: 1
+Good 0 of 1.
+Latest U/1@8#; earliest U/1@8#.
+By code: U/1@8#.
+Any burnt: yes; all from oven 1: yes.
+Like the first: 1.
+Kinds 1.
+[grid 1]
+|B bread 1   |
+|P pie 1     |
+|U bun 1     |
+|log 10      |
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       #       B                 |
+|Queue: empty                       |
+|1 out, 2 burnt                     |
+[grid 3]
+|Room A | turn 13 | busy 2                         |
+> board
+The board is closed.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       B                                |
+|Queue: empty                                      |
+|1 out, 2 burnt                                    |
+[grid 3]
+|Room A | turn 13 | busy 2                         |
+> taller
+The rail is now 5 rows.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       B                                |
+|Queue: empty                                      |
+|1 out, 2 burnt                                    |
+|row 5                                             |
+[grid 3]
+|Room A | turn 13 | busy 2                         |
+> taller
+The rail is now 6 rows.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       B                                |
+|Queue: empty                                      |
+|1 out, 2 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 13 | busy 2                         |
+> order bun
+bun ordered (queue 1).
+It is next.
+The bread in oven 3 burns.
+[win 1] 14! bread burnt in 3
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       #                                |
+|Queue: U                                          |
+|1 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 14 | busy 2                         |
+> load 2
+Oven 2 is burnt.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       #                                |
+|Queue: U                                          |
+|1 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 15 | busy 2                         |
+> z
+Time passes.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       #                                |
+|Queue: U                                          |
+|1 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 16 | busy 2                         |
+> z
+Time passes.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       #                                |
+|Queue: U                                          |
+|1 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 17 | busy 2                         |
+> z
+Time passes.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       #       #                                |
+|Queue: U                                          |
+|1 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 18 | busy 2                         |
+> unload 2
+You take the pie out of oven 2, burnt.
+[win 1] 18: out P/2@18#
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       -       #                                |
+|Queue: U                                          |
+|2 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+> tally
+Ticks 19; 1 busy; 3 burnt.
+1. U/1@8#
+2. P/2@18#
+pie: 1
+bun: 1
+Good 0 of 2.
+Latest P/2@18#; earliest U/1@8#.
+By code: P/2@18#, U/1@8#.
+Any burnt: yes; all from oven 1: no.
+Like the first: 1.
+Kinds 2.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       -       #                                |
+|Queue: U                                          |
+|2 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+> looks
+Log alert weight honored: no.
+Rail look known: no; applied no.
+Log shows alert apart: no.
+Red is C80000.
+[grid 2]
+|Oven 1  Oven 2  Oven 3                            |
+| -       -       #                                |
+|Queue: U                                          |
+|2 out, 3 burnt                                    |
+|row 5                                             |
+|row 6                                             |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+> board
+The board is open (2 times).
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       #                 |
+|Queue: U                           |
+|2 out, 3 burnt                     |
+|row 5                              |
+|row 6                              |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 12      |
+|            |
+|            |
+> shorter
+The rail is now 5 rows.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       #                 |
+|Queue: U                           |
+|2 out, 3 burnt                     |
+|row 5                              |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 12      |
+|            |
+> shorter
+The rail is now 4 rows.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       #                 |
+|Queue: U                           |
+|2 out, 3 burnt                     |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 12      |
+> shorter
+The rail stays 4 rows.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       #                 |
+|Queue: U                           |
+|2 out, 3 burnt                     |
+[grid 3]
+|Room A | turn 19 | busy 1                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 12      |
+> load 4
+There is no oven 4.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| -       -       #                 |
+|Queue: U                           |
+|2 out, 3 burnt                     |
+[grid 3]
+|Room A | turn 20 | busy 1                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 12      |
+> load 1
+You load the bun into oven 1.
+The bun in oven 1 is done.
+[win 1] 20: U into 1
+[win 1] 21: bun done in 1
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| U       -       #                 |
+|Queue: empty                       |
+|2 out, 3 burnt                     |
+[grid 3]
+|Room A | turn 21 | busy 2                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 14      |
+> order me
+That is not an order card.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| U       -       #                 |
+|Queue: empty                       |
+|2 out, 3 burnt                     |
+[grid 3]
+|Room A | turn 22 | busy 2                         |
+[grid 4]
+|B bread 1   |
+|P pie 1     |
+|U bun 2     |
+|log 14      |
+> order pie
+pie ordered (queue 1).
+It is next.
+The bun in oven 1 burns.
+[win 1] 23! bun burnt in 1
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: P                           |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 23 | busy 2                         |
+[grid 4]
+|B bread 1   |
+|P pie 2     |
+|U bun 2     |
+|log 15      |
+> order bread
+bread ordered (queue 2).
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: P B                         |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 24 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 2     |
+|U bun 2     |
+|log 15      |
+> order pie
+pie ordered (queue 3).
+It is next.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: P B P                       |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 25 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 3     |
+|U bun 2     |
+|log 15      |
+> order bun
+bun ordered (queue 4).
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: P B P U                     |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 26 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 3     |
+|U bun 3     |
+|log 15      |
+> order pie
+The queue is full.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: P B P U                     |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 27 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 3     |
+|U bun 3     |
+|log 15      |
+> cancel pie
+You cancel 2 pie orders (queue 2).
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: B U                         |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 28 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 15      |
+> cancel pie
+No pie is waiting.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: B U                         |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 29 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 15      |
+> rush
+The quickest go first: UB.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: U B                         |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 30 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 15      |
+> cancel me
+That is not an order card.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       #                 |
+|Queue: U B                         |
+|2 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 31 | busy 2                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 15      |
+> unload 3
+You take the bread out of oven 3, burnt.
+[win 1] 31: out B/3@31#
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       -                 |
+|Queue: U B                         |
+|3 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 32 | busy 1                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 16      |
+> examine pie card
+A card for pie (P): bakes in 2, 1 ordered.
+[grid 2]
+|Oven 1  Oven 2  Oven 3             |
+| #       -       -                 |
+|Queue: U B                         |
+|3 out, 4 burnt                     |
+[grid 3]
+|Room A | turn 33 | busy 1                         |
+[grid 4]
+|B bread 2   |
+|P pie 1     |
+|U bun 3     |
+|log 16      |

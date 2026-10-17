@@ -1,0 +1,448 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a room network held as tables. A Cell class of rooms with a positional index, kept in an
+// array<Cell> and named by a parallel dictionary-word table read by a general parsing routine; an Edge
+// struct table written as positional inline objects in a sized file-scope array, completed at start-up by
+// appending reverse edges built from run-time values; an enum of directions indexing parallel name,
+// word and letter tables (an array<char> from a string), turned round through casts; lock tables
+// (names, open flags) and a Key class found by the lock it opens; a breadth-first route search filling
+// caller-owned distance and previous-cell arrays, with a local array<int> queue (enqueue/dequeue) and
+// the path rebuilt with push/pop; an adjacency grid printed from a local array<array<char>>; visit
+// counts kept per cell, ranked with <linq> orderBy/take/filter/count/any/all over an index array; a
+// Trip struct updated through a ref parameter; stringObj lines built with += and interpolation; switch
+// on an enum and on an int with ranges; for-in loops with break and continue.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    string description;
+}
+
+//-- Constants and enumerations ---------------------------------------------------
+
+const int CELL_COUNT = 6;
+const int NO_CELL = -1;
+#define MAX_EDGES 20
+#define UNSEEN 99
+
+enum Dir { north, east, south, west }
+
+array<string>         dirNames   = { "north", "east", "south", "west" };
+array<dictionaryWord> dirWords   = { .north, .east, .south, .west };
+array<char>           dirLetters = "nesw";
+
+//-- Cells ----------------------------------------------------------------------------
+
+class Cell : object {
+    inline int idx;
+}
+
+Cell redRoom   { 0, "Red Room";   description = "Red Room.";   attributes = {light}; }
+Cell blueRoom  { 1, "Blue Room";  description = "Blue Room.";  attributes = {light}; }
+Cell greenRoom { 2, "Green Room"; description = "Green Room."; attributes = {light}; }
+Cell grayRoom  { 3, "Gray Room";  description = "Gray Room.";  attributes = {light}; }
+Cell goldRoom  { 4, "Gold Room";  description = "Gold Room.";  attributes = {light}; }
+Cell whiteRoom { 5, "White Room"; description = "White Room."; attributes = {light}; }
+
+array<Cell>           cells     = { redRoom, blueRoom, greenRoom, grayRoom, goldRoom, whiteRoom };
+array<string>         cellNames = { "Red", "Blue", "Green", "Gray", "Gold", "White" };
+array<dictionaryWord> cellWords = { .red, .blue, .green, .gray, .gold, .white };
+array<int>            visits[CELL_COUNT];
+
+//-- Locks and keys -------------------------------------------------------------------
+
+array<string> lockNames = { "", "iron gate", "glass door" };
+array<bool>   lockOpen  = { true, false, false };
+
+class Key : object {
+    inline int opens;
+}
+
+Key ironKey  { 1, "iron key";  name = {.iron, .key};  parent = goldRoom; }
+Key glassKey { 2, "glass key"; name = {.glass, .key}; parent = greenRoom; }
+
+array<Key> keys = { ironKey, glassKey };
+
+//-- Edges ----------------------------------------------------------------------------
+
+struct Edge {
+    inline int from;
+    inline Dir dir;
+    inline int to;
+    inline int lock;
+}
+
+// One direction of each link; the way back is added at start-up.
+array<Edge> edges[MAX_EDGES] = {
+    Edge{ 0, east,  1, 0 },     // Red -> Blue
+    Edge{ 1, east,  2, 1 },     // Blue -> Green, iron gate
+    Edge{ 0, south, 3, 0 },     // Red -> Gray
+    Edge{ 3, east,  4, 0 },     // Gray -> Gold
+    Edge{ 4, east,  5, 2 },     // Gold -> White, glass door
+    Edge{ 2, south, 5, 0 }      // Green -> White
+};
+
+//-- Running state --------------------------------------------------------------------
+
+struct Trip {
+    int steps;
+    int blocked;
+    int unlocked;
+}
+
+Trip totals;
+
+//-- Table helpers --------------------------------------------------------------------
+
+int dirIndex(Dir d) {
+    return (int)d - 1;
+}
+
+Dir opposite(Dir d) {
+    return (Dir)((dirIndex(d) + 2) % 4 + 1);
+}
+
+int here() {
+    return ((Cell)location).idx;
+}
+
+bool passable(Edge e) {
+    return lockOpen[e.lock];
+}
+
+int edgeFrom(int from, Dir d) {
+    for (int i = 0; i < edges.length; i++) {
+        if (edges[i].from == from && edges[i].dir == d) return i;
+    }
+    return NO_CELL;
+}
+
+int edgeBetween(int from, int to) {
+    for (int i = 0; i < edges.length; i++) {
+        if (edges[i].from == from && edges[i].to == to) return i;
+    }
+    return NO_CELL;
+}
+
+Key keyFor(int lock) {
+    for (Key k in keys) {
+        if (k.opens == lock) return k;
+    }
+    return null;
+}
+
+void addReverseEdges() {
+    int given = edges.length;
+    for (int i = 0; i < given; i++) {
+        Edge e = edges[i];
+        edges.append(Edge{ e.to, opposite(e.dir), e.from, e.lock });
+    }
+}
+
+string lean(Dir d) {
+    switch (d) {
+        case north, south: return "upright";
+        case east, west:   return "level";
+        default:           return "odd";
+    }
+}
+
+string distanceWord(int d) {
+    switch (d) {
+        case 0:      return "here";
+        case 1:      return "next door";
+        case 2 to 3: return "near";
+        case UNSEEN: return "unreachable";
+        default:     return "far";
+    }
+}
+
+//-- Route search ---------------------------------------------------------------------
+
+// Fills dist and prev for every cell; returns how many cells were reached.
+int search(int start, array<int> dist, array<int> prev) {
+    array<int> queue[CELL_COUNT];
+    for (int c in 0 to CELL_COUNT - 1) {
+        dist[c] = UNSEEN;
+        prev[c] = NO_CELL;
+    }
+    dist[start] = 0;
+    queue.enqueue(start);
+    int reached = 1;
+    while (queue.length > 0) {
+        int at = queue.dequeue();
+        for (Edge e in edges) {
+            if (e.from != at) continue;
+            if (!passable(e)) continue;
+            if (dist[e.to] != UNSEEN) continue;
+            dist[e.to] = dist[at] + 1;
+            prev[e.to] = at;
+            queue.enqueue(e.to);
+            reached++;
+        }
+    }
+    return reached;
+}
+
+stringObj routeText(int start, int goal, array<int> prev) {
+    array<int> path[CELL_COUNT];
+    int c = goal;
+    while (c != start) {
+        path.push(c);
+        c = prev[c];
+    }
+    stringObj s;
+    int from = start;
+    while (path.length > 0) {
+        int to = path.pop();
+        Edge e = edges[edgeBetween(from, to)];
+        if (!s.isEmpty()) s += ", ";
+        s += dirNames[dirIndex(e.dir)];
+        from = to;
+    }
+    return s;
+}
+
+array<int> gridRow(int f) {
+    array<int> row[CELL_COUNT];
+    for (int t in 0 to CELL_COUNT - 1) {
+        int at = edgeBetween(f, t);
+        if (f == t) row[t] = '+';
+        else if (at == NO_CELL) row[t] = '.';
+        else if (!passable(edges[at])) row[t] = '#';
+        else row[t] = dirLetters[dirIndex(edges[at].dir)];
+    }
+    return row;
+}
+
+//-- Trip bookkeeping -----------------------------------------------------------------
+
+void stepTaken(ref Trip t, int to) {
+    t.steps++;
+    visits[to]++;
+}
+
+void noteBlocked(ref Trip t) {
+    t.blocked++;
+}
+
+//-- Grammar helpers ------------------------------------------------------------------
+
+int parseDir() {
+    int at = dirWords.indexOf(NextWord());
+    if (at < 0) return -1;
+    parsed_number = at + 1;
+    return 1;
+}
+
+int parseCell() {
+    int at = cellWords.indexOf(NextWord());
+    if (at < 0) return -1;
+    parsed_number = at;
+    return 1;
+}
+
+//-- Verbs ----------------------------------------------------------------------------
+
+verb ExitsTest {
+    grammar = {.exits};
+    void handler() {
+        int from = here();
+        stringObj line;
+        int count = 0;
+        for (Edge e in edges) {
+            if (e.from != from) continue;
+            if (count > 0) line += ", ";
+            line += $"{dirNames[dirIndex(e.dir)]} to {cellNames[e.to]}";
+            if (e.lock != 0) {
+                line += $" ({lockNames[e.lock]}";
+                if (!lockOpen[e.lock]) line += ", locked";
+                line += ")";
+            }
+            count++;
+        }
+        printLine($"Exits {count}: {line}.");
+    }
+}
+
+verb WalkTest {
+    grammar = {.walk, parseDir};
+    void handler() {
+        Dir d = (Dir)(int)noun;
+        int from = here();
+        int at = edgeFrom(from, d);
+        if (at == NO_CELL) {
+            printLine($"No way {dirNames[dirIndex(d)]} ({lean(d)}).");
+            return;
+        }
+        if (!passable(edges[at])) {
+            noteBlocked(totals);
+            printLine($"The {lockNames[edges[at].lock]} is locked.");
+            return;
+        }
+        int to = edges[at].to;
+        stepTaken(totals, to);
+
+        PlayerTo(cells[to], 1);
+        printLine($"{cellNames[from]} -{dirLetters[dirIndex(d)]}-> {cellNames[to]}.");
+    }
+}
+
+verb UnlockTest {
+    grammar = {.unbar};
+    void handler() {
+        int from = here();
+        int tried = 0;
+        for (Edge e in edges) {
+            if (e.from != from || e.lock == 0) continue;
+            if (lockOpen[e.lock]) continue;
+            tried++;
+            Key k = keyFor(e.lock);
+            if (k == null || k.parent != player) {
+                printLine($"No key for the {lockNames[e.lock]}.");
+                continue;
+            }
+            lockOpen[e.lock] = true;
+            totals.unlocked++;
+            printLine($"Unlocked the {lockNames[e.lock]} with the {k}.");
+        }
+        if (tried == 0) printLine("Nothing locked here.");
+    }
+}
+
+verb RouteTest {
+    grammar = {.route, parseCell};
+    void handler() {
+        int goal = (int)noun;
+        int start = here();
+        array<int> dist[CELL_COUNT];
+        array<int> prev[CELL_COUNT];
+        search(start, dist, prev);
+        if (dist[goal] == 0) {
+            printLine($"Already in {cellNames[goal]}.");
+            return;
+        }
+        if (dist[goal] == UNSEEN) {
+            printLine($"No route to {cellNames[goal]}.");
+            return;
+        }
+        stringObj way = routeText(start, goal, prev);
+        printLine($"Route to {cellNames[goal]}: {way} ({dist[goal]} steps).");
+    }
+}
+
+verb ReachTest {
+    grammar = {.reach};
+    void handler() {
+        array<int> dist[CELL_COUNT];
+        array<int> prev[CELL_COUNT];
+        int reached = search(here(), dist, prev);
+        array<int> ids = { 0, 1, 2, 3, 4, 5 };
+        array<int> near = ids.filter((int c) => dist[c] != UNSEEN)
+                             .orderBy((int a, int b) => dist[a] - dist[b]);
+        print($"Reach {reached}:");
+        for (int c in near) print($" {cellNames[c]}={dist[c]}");
+        int cut = ids.filter((int c) => dist[c] == UNSEEN).count();
+        printLine($"; cut off {cut}.");
+        for (int c in ids) {
+            if (dist[c] < 2) continue;
+            printLine($"  {cellNames[c]}: {distanceWord(dist[c])}");
+        }
+    }
+}
+
+verb MapTest {
+    grammar = {.grid};
+    void handler() {
+        array<array<int>> rows[CELL_COUNT];
+        for (int f in 0 to CELL_COUNT - 1) rows += gridRow(f);
+        for (int f in 0 to CELL_COUNT - 1) {
+            print($"{cellNames[f]}:");
+            for (int t in 0 to CELL_COUNT - 1) {
+                char mark = rows[f][t];
+                print(mark);
+            }
+            print("^");
+        }
+    }
+}
+
+verb VisitsTest {
+    grammar = {.visits};
+    void handler() {
+        array<int> ids = { 0, 1, 2, 3, 4, 5 };
+        array<int> top = ids.filter((int c) => visits[c] > 0)
+                            .orderBy((int a, int b) => visits[b] - visits[a])
+                            .take(3);
+        print($"Visited {top.count()}:");
+        for (int c in top) print($" {cellNames[c]}x{visits[c]}");
+        bool all = ids.all((int c) => visits[c] > 0 || c == 0);
+        bool twice = ids.any((int c) => visits[c] >= 2);
+        printLine($". All seen: {all}. Any twice: {twice}.");
+    }
+}
+
+verb KeysTest {
+    grammar = {.keys};
+    void handler() {
+        for (Key k in keys) {
+            print($"{k} ({lockNames[k.opens]}): ");
+            if (k.parent == player) printLine("carried");
+            else if (lockOpen[k.opens]) printLine($"spent, in {k.parent}");
+            else printLine($"in {k.parent}");
+        }
+    }
+}
+
+verb TripTest {
+    grammar = {.trip};
+    void handler() {
+        int total = 0;
+        for (int v in visits) total += v;
+        int open = 0;
+        for (int l = 1; l < lockOpen.length; l++) {
+            if (lockOpen[l]) open++;
+        }
+        printLine($"Steps {totals.steps}, blocked {totals.blocked}, unlocked {totals.unlocked}; visits {total}; open {open}/{lockOpen.length - 1}; edges {edges.length}.");
+    }
+}
+
+verb FirstLockTest {
+    grammar = {.firstlock};
+    void handler() {
+        int found = NO_CELL;
+        for (int i = 0; i < edges.length; i++) {
+            if (edges[i].lock == 0) continue;
+            if (!lockOpen[edges[i].lock]) {
+                found = i;
+                break;
+            }
+        }
+        if (found == NO_CELL) {
+            printLine("No locked edges.");
+            return;
+        }
+        Edge e = edges[found];
+        printLine($"First locked: {cellNames[e.from]} {dirNames[dirIndex(e.dir)]} to {cellNames[e.to]} ({lockNames[e.lock]}).");
+    }
+}
+
+bool Initialise() {
+    location = redRoom;
+    addReverseEdges();
+    visits[0] = 1;
+    visits.length = CELL_COUNT;
+    rfalse;
+}
+
+#includeI6 "grammar"

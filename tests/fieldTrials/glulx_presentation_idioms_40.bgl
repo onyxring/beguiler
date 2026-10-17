@@ -1,0 +1,528 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: three ovens and an order queue drawn in a text grid split above the main window (the
+// rail, made taller and shorter through its Horz view's height), a text-buffer log split below with
+// its own styleSheet, both opened under a childStyles sheet on the main window, and an alert style
+// set on the screen with a color from bgl.glulx.color. A class Dish : object for three order cards
+// (code char, label, bake time, ordered count) with a before() answering Examine; a class Oven :
+// object (number, a Dish load, timer, an enum eOvenState) with methods returning char, bool and
+// stringObj; a kitchen object whose daemon() advances the ovens each turn; an <array> queue of
+// Dish (append, dequeue, peek, contains, sort, -=, length); a struct Batch (code, oven, turn, burnt, copy
+// operator, ==, a text() method) kept in a global array<Batch> and reported with <linq> filter,
+// count, orderBy with a comparator, take, map, distinct, any, all, first and last, and a
+// func<bool, Batch> held in a local; a board grid split to the right of the rail through ?. with its
+// own styleSheet, closed and opened again; verbs taking NOUN (order and cancel a dish, tested with
+// is(), cancelling with contains and -=), NUMBER (load and unload an oven) and none (rush, sorting the
+// queue with a lambda comparator; taller, shorter, a board toggle, a meta tally, a style check through
+// checkStyle, styleHonored and distinguishes); a replaced DrawStatusLine redrawing the rail; the log written behind
+// a null test with bold lines for burnt batches.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define OVEN_COUNT 3
+#define QUEUE_MAX 4
+#define BATCH_MAX 6
+#define RAIL_MIN 4
+#define RAIL_MAX 7
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <array>
+#include <linq>
+#include <glulxWindow>
+
+#using bgl.glulx;
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+}
+
+enum eOvenState { cold, baking, done, burnt }
+
+// ---- looks ---------------------------------------------------------------------------------------
+
+styleSheet panelLook = styleSheet{
+    normal = style{ fixedWidth = true; };
+};
+
+styleSheet boardLook = styleSheet{
+    normal = style{ reverse = true; };
+};
+
+styleSheet logLook = styleSheet{
+    normal = style{ indentation = 1; };
+    alert  = style{ fontWeight = 1; };
+};
+
+// ---- state ---------------------------------------------------------------------------------------
+
+textGridWindowHorz rail = null;
+textBufferWindowHorz logWin = null;
+textGridWindowVert board = null;
+
+int logLines = 0;
+int boardOpenings = 0;
+int burntTotal = 0;
+
+// ---- helpers -------------------------------------------------------------------------------------
+
+void note(stringObj text, bool alarm = false) {
+    logLines++;
+    if (logWin == null) return;
+    if (alarm) logWin.printLine($"{bold}{turns}! {text}{roman}");
+    else logWin.printLine($"{turns}: {text}");
+}
+
+string stateName(eOvenState s) {
+    switch (s) {
+        case eOvenState.cold:   return "cold";
+        case eOvenState.baking: return "baking";
+        case eOvenState.done:   return "done";
+        case eOvenState.burnt:  return "burnt";
+    }
+    return "?";
+}
+
+string countWord(int n, string one, string many) { return n == 1 ? one : many; }
+
+// ---- dishes --------------------------------------------------------------------------------------
+
+class Dish : object {
+    attributeList attributes = {scenery};
+    char code = '?';
+    string label = "dish";
+    int bakeTime = 2;
+    int ordered = 0;
+
+    bool before() {
+        switch (action) {
+            case Examine:
+                printLine($"A card for {label} ({code}): bakes in {bakeTime}, {ordered} ordered.");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+object roomA {
+    "Room A";
+    description = "Room A. Three ovens and three order cards.";
+    attributes = {light};
+}
+
+Dish bread { "bread card"; parent = roomA; name = {.bread, .card}; code = 'B'; label = "bread"; bakeTime = 3; }
+Dish pie   { "pie card";   parent = roomA; name = {.pie, .card};   code = 'P'; label = "pie";   bakeTime = 2; }
+Dish bun   { "bun card";   parent = roomA; name = {.bun, .card};   code = 'U'; label = "bun";   bakeTime = 1; }
+
+array<Dish> dishes = { bread, pie, bun };
+array<Dish> tickets[QUEUE_MAX];
+
+// ---- ovens ---------------------------------------------------------------------------------------
+
+class Oven : object {
+    int number = 0;
+    Dish load = null;
+    int timer = 0;
+    eOvenState state = eOvenState.cold;
+
+    bool isFree() { return state == eOvenState.cold; }
+
+    char glyph() {
+        switch (state) {
+            case eOvenState.cold:   return '-';
+            case eOvenState.burnt:  return '#';
+            case eOvenState.done:   return load.code;
+        }
+        return load.code + ('a' - 'A');
+    }
+
+    stringObj cell() {
+        stringObj out = "";
+        out += glyph();
+        if (state == eOvenState.baking) out += $"{load.bakeTime - timer}";
+        else out += ' ';
+        return out;
+    }
+
+    void empty() {
+        load = null;
+        timer = 0;
+        state = eOvenState.cold;
+    }
+}
+
+Oven oven1 { "oven one";   number = 1; }
+Oven oven2 { "oven two";   number = 2; }
+Oven oven3 { "oven three"; number = 3; }
+
+array<Oven> ovens = { oven1, oven2, oven3 };
+
+// ---- batches -------------------------------------------------------------------------------------
+
+struct Batch {
+    char code;
+    int oven;
+    int turn;
+    bool burnt;
+
+    Batch operator = (Batch o) {
+        code = o.code;
+        oven = o.oven;
+        turn = o.turn;
+        burnt = o.burnt;
+        return self;
+    }
+
+    bool operator == (Batch o) { return code == o.code && burnt == o.burnt; }
+    bool operator != (Batch o) { return !(self == o); }
+
+    stringObj text() {
+        stringObj out = "";
+        out += code;
+        out += $"/{oven}@{turn}";
+        if (burnt) out += '#';
+        return out;
+    }
+}
+
+array<Batch> batches[BATCH_MAX];
+
+int byTurnDesc(Batch a, Batch b) { return b.turn - a.turn; }
+int byCode(Batch a, Batch b) { return a.code - b.code; }
+
+// ---- the kitchen ---------------------------------------------------------------------------------
+
+object kitchen {
+    "kitchen";
+    int ticks = 0;
+
+    void daemon() {
+        ticks++;
+        for (Oven o in ovens) {
+            if (o.state == eOvenState.cold || o.state == eOvenState.burnt) continue;
+            o.timer++;
+            if (o.state == eOvenState.baking && o.timer >= o.load.bakeTime) {
+                o.state = eOvenState.done;
+                printLine($"The {o.load.label} in oven {o.number} is done.");
+                stringObj msg = $"{o.load.label} done in {o.number}";
+                note(msg);
+                continue;
+            }
+            if (o.state == eOvenState.done && o.timer >= o.load.bakeTime + 2) {
+                o.state = eOvenState.burnt;
+                burntTotal++;
+                printLine($"The {o.load.label} in oven {o.number} burns.");
+                stringObj msg = $"{o.load.label} burnt in {o.number}";
+                note(msg, true);
+            }
+        }
+    }
+}
+
+int busyOvens() {
+    int n = 0;
+    for (Oven o in ovens) {
+        if (!o.isFree()) n++;
+    }
+    return n;
+}
+
+// ---- the windows ---------------------------------------------------------------------------------
+
+void drawRail() {
+    if (rail == null) return;
+    rail.clear();
+    rail.moveCursor(0, 0);
+    rail.print("Oven 1  Oven 2  Oven 3");
+    rail.moveCursor(0, 1);
+    stringObj line = "";
+    for (Oven o in ovens) {
+        line += ' ';
+        line += o.cell();
+        line += "     ";
+    }
+    rail.print(line);
+    rail.moveCursor(0, 2);
+    stringObj queue = "Queue:";
+    for (Dish d in tickets) {
+        queue += ' ';
+        queue += d.code;
+    }
+    if (tickets.length == 0) queue += " empty";
+    rail.print(queue);
+    rail.moveCursor(0, 3);
+    rail.print($"{batches.length} out, {burntTotal} burnt");
+    for (int row = RAIL_MIN; row < rail.height; row++) {
+        rail.moveCursor(0, row);
+        rail.print($"row {row + 1}");
+    }
+}
+
+void drawBoard() {
+    if (board == null) return;
+    board.clear();
+    int line = 0;
+    for (Dish d in dishes) {
+        board.moveCursor(0, line);
+        board.print($"{d.code} {d.label} {d.ordered}");
+        line++;
+    }
+    board.moveCursor(0, line);
+    board.print($"log {logLines}");
+}
+
+void openBoard() {
+    board = rail?.splitRightGrid(12, fixed, border, styles: boardLook);
+    if (board != null) boardOpenings++;
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"{location} | turn {turns} | busy {busyOvens()}");
+    drawRail();
+    drawBoard();
+}
+
+bool Initialise() {
+    location = roomA;
+    bgl.ui.screen.setStyle(eGlulxStyleType.alert, style{ foreColor = color.rgb(200, 0, 0); });
+    bgl.ui.mainWin.childStyles = panelLook;
+    rail = bgl.ui.mainWin.splitUpGrid(RAIL_MIN, fixed, border);
+    logWin = bgl.ui.mainWin.splitDownBuffer(5, fixed, border, styles: logLook);
+    openBoard();
+    StartDaemon(kitchen);
+    note("ovens cold");
+    rfalse;
+}
+
+// ---- verbs ---------------------------------------------------------------------------------------
+
+Oven ovenNumber(int n) {
+    if (n < 1 || n > OVEN_COUNT) return null;
+    return ovens[n - 1];
+}
+
+verb OrderDish {
+    grammar = {.order, NOUN};
+    void handler() {
+        if (!noun.is(Dish)) {
+            printLine("That is not an order card.");
+            return;
+        }
+        Dish d = (Dish)noun;
+        if (!tickets.append(d)) {
+            printLine("The queue is full.");
+            return;
+        }
+        d.ordered++;
+        printLine($"{d.label} ordered (queue {tickets.length}).");
+        if (tickets.contains(d) && tickets.peek() == d) printLine("It is next.");
+    }
+}
+
+verb LoadOven {
+    grammar = {.load, NUMBER};
+    void handler() {
+        Oven o = ovenNumber((int)noun);
+        if (o == null) {
+            printLine($"There is no oven {(int)noun}.");
+            return;
+        }
+        if (!o.isFree()) {
+            printLine($"Oven {o.number} is {stateName(o.state)}.");
+            return;
+        }
+        if (tickets.length == 0) {
+            printLine("No orders are waiting.");
+            return;
+        }
+        Dish d = tickets.dequeue();
+        o.load = d;
+        o.timer = 0;
+        o.state = eOvenState.baking;
+        printLine($"You load the {d.label} into oven {o.number}.");
+        stringObj msg = $"{d.code} into {o.number}";
+        note(msg);
+    }
+}
+
+verb UnloadOven {
+    grammar = {.unload, NUMBER};
+    void handler() {
+        Oven o = ovenNumber((int)noun);
+        if (o == null) {
+            printLine($"There is no oven {(int)noun}.");
+            return;
+        }
+        if (o.state == eOvenState.cold) {
+            printLine($"Oven {o.number} is empty.");
+            return;
+        }
+        if (o.state == eOvenState.baking) {
+            printLine($"The {o.load.label} needs {o.load.bakeTime - o.timer} more.");
+            return;
+        }
+        Batch b;
+        b.code = o.load.code;
+        b.oven = o.number;
+        b.turn = turns;
+        b.burnt = o.state == eOvenState.burnt;
+        if (batches.length >= BATCH_MAX) batches.remove(0);
+        batches += b;
+        printLine($"You take the {o.load.label} out of oven {o.number}{b.burnt ? ", burnt" : ""}.");
+        stringObj msg = $"out {b.text()}";
+        note(msg);
+        o.empty();
+    }
+}
+
+verb CancelDish {
+    grammar = {.cancel, NOUN};
+    void handler() {
+        if (!noun.is(Dish)) {
+            printLine("That is not an order card.");
+            return;
+        }
+        Dish d = (Dish)noun;
+        if (!tickets.contains(d)) {
+            printLine($"No {d.label} is waiting.");
+            return;
+        }
+        int before = tickets.length;
+        tickets -= d;
+        int gone = before - tickets.length;
+        d.ordered -= gone;
+        printLine($"You cancel {gone} {d.label} {countWord(gone, "order", "orders")} (queue {tickets.length}).");
+    }
+}
+
+stringObj queueText() {
+    stringObj out = "";
+    for (Dish d in tickets) out += d.code;
+    return out;
+}
+
+verb RushQueue {
+    grammar = {.rush};
+    void handler() {
+        if (tickets.length < 2) {
+            printLine("There is nothing to reorder.");
+            return;
+        }
+        tickets.sort((Dish a, Dish b) => a.bakeTime - b.bakeTime);
+        printLine($"The quickest go first: {queueText()}.");
+    }
+}
+
+verb ToggleBoard {
+    grammar = {.board};
+    meta = true;
+    void handler() {
+        if (board != null) {
+            board.close();
+            board = null;
+            printLine("The board is closed.");
+            return;
+        }
+        openBoard();
+        if (board == null) {
+            printLine("There is no room for the board.");
+            return;
+        }
+        printLine($"The board is open ({boardOpenings} {countWord(boardOpenings, "time", "times")}).");
+    }
+}
+
+void resizeRail(int delta) {
+    if (rail == null) return;
+    int h = rail.height + delta;
+    if (h < RAIL_MIN || h > RAIL_MAX) {
+        printLine($"The rail stays {rail.height} {countWord(rail.height, "row", "rows")}.");
+        return;
+    }
+    rail.height = h;
+    printLine($"The rail is now {rail.height} rows.");
+}
+
+verb Taller {
+    grammar = {.taller};
+    meta = true;
+    void handler() { resizeRail(1); }
+}
+
+verb Shorter {
+    grammar = {.shorter};
+    meta = true;
+    void handler() { resizeRail(-1); }
+}
+
+verb Tally {
+    grammar = {.tally};
+    meta = true;
+    void handler() {
+        printLine($"Ticks {kitchen.ticks}; {busyOvens()} busy; {burntTotal} burnt.");
+        if (batches.length == 0) {
+            printLine("Nothing out yet.");
+            return;
+        }
+        int n = 0;
+        for (Batch b in batches) {
+            n++;
+            printLine($"{n}. {b.text()}");
+        }
+        for (Dish d in dishes) {
+            int got = batches.filter((Batch b) => b.code == d.code).count();
+            if (got > 0) printLine($"{d.label}: {got}");
+        }
+        func<bool, Batch> isGood = (Batch b) => !b.burnt;
+        int good = batches.filter(isGood).count();
+        printLine($"Good {good} of {batches.length}.");
+        array<Batch> latest[BATCH_MAX];
+        latest = batches.orderBy(byTurnDesc);
+        printLine($"Latest {latest.first().text()}; earliest {latest.last().text()}.");
+        array<Batch> lead[BATCH_MAX];
+        lead = batches.orderBy(byCode).take(2);
+        stringObj firstTwo = "";
+        for (Batch b in lead) {
+            if (!firstTwo.isEmpty()) firstTwo += ", ";
+            firstTwo += b.text();
+        }
+        printLine($"By code: {firstTwo}.");
+        bool anyBurnt = batches.any((Batch b) => b.burnt);
+        bool allOne = batches.all((Batch b) => b.oven == 1);
+        printLine($"Any burnt: {anyBurnt ? "yes" : "no"}; all from oven 1: {allOne ? "yes" : "no"}.");
+        Batch firstOut = batches[0];
+        int same = batches.filter((Batch b) => b == firstOut).count();
+        printLine($"Like the first: {same}.");
+        int kinds = batches.map((Batch b) => b.code).distinct().count();
+        printLine($"Kinds {kinds}.");
+    }
+}
+
+verb CheckLooks {
+    grammar = {.looks};
+    meta = true;
+    void handler() {
+        if (logWin == null || rail == null) {
+            printLine("No windows to check.");
+            return;
+        }
+        bool honored = logWin.styleHonored(eGlulxStyleType.alert, eGlulxStyleHint.fontWeight);
+        printLine($"Log alert weight honored: {honored ? "yes" : "no"}.");
+        eStyleCheck r = rail.checkStyle(eGlulxStyleType.normal, panelLook.normal);
+        printLine($"Rail look known: {r.known ? "yes" : "no"}; applied {r.isApplied ? "yes" : "no"}.");
+        printLine($"Log shows alert apart: {logWin.distinguishes(eGlulxStyleType.normal, eGlulxStyleType.alert) ? "yes" : "no"}.");
+        printLine($"Red is {color.rgb(200, 0, 0) == $C80000 ? "C80000" : "other"}.");
+    }
+}
+
+#includeI6 "grammar"

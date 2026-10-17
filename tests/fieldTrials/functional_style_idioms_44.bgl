@@ -1,0 +1,496 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a shelf-and-till model written in a functional style on z5. Goods are objects of a class
+// with an enum kind, a price in cents, a stock count and a taxed flag, held in a global array; a basket
+// container they are moved into, and a global history array used as a stack (`push`/`pop`/`peek`) to
+// put the last one back. A Money struct with `operator +`, `operator *` by an int, a static `<=>` named
+// by an operator reference (`Money::operator <=>`) as a sort comparator, and a method returning a
+// stringObj. Price rules as named functions and lambdas: a global `array<func<int, int>>` folded over,
+// a function returning a func value from a switch, a two-rule compose applied through parameters, and
+// a predicate kept in a member of verbs derived from a shared verb class. Hand-written forEach over a
+// `func<void, Good>` with a lambda that captures and changes a local, foldInt over `func<int, int, int>`,
+// zipWith returning a local array, indexWhere, a partition returning a local `array<array<Good>>` of
+// two `filter` results (one predicate negated in a capturing lambda), a recursive applyN with a
+// defaulted count, a local `array<func<int, int>>` built with `prepend`, a recursive digit sum and a
+// recursive best-subset under a budget over `take`/`skip` views. `<array>` sort with a comparator on a local copy, sort with
+// `string::operator <=>` on an array of strings, reverse, indexOf, contains; `<linq>`
+// filter/map/orderBy/take/skip/first/last/count/any/all/distinct/takeWhile; named arguments and
+// defaults; `?.`/`??` on a maybe-null search result; verbs reading noun and parsed_number.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <linq>
+#include <string>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+const int MAXG = 8;
+
+//-- World ------------------------------------------------------------------------------------------
+
+enum eKind { food, tool, cloth }
+
+class Good : object {
+    string tag;
+    int price;
+    int stock;
+    eKind kind;
+    bool taxed;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+object basket {
+    "basket";
+    parent = roomA;
+    name = {.basket};
+    attributes = {scenery, container, open};
+}
+
+Good gBread  { "bread loaf";  parent = roomA; name = {.bread, .loaf};  tag = "bread";  price = 250; stock = 4; kind = eKind.food; }
+Good gKey    { "brass key";   parent = roomA; name = {.brass, .key};   tag = "key";    price = 120; stock = 2; kind = eKind.tool; taxed = true; }
+Good gRope   { "rope";        parent = roomA; name = {.rope};          tag = "rope";   price = 480; stock = 1; kind = eKind.tool; taxed = true; }
+Good gCandle { "candle";      parent = roomA; name = {.candle};        tag = "candle"; price = 75;  stock = 9; kind = eKind.food; }
+Good gBolt   { "cloth bolt";  parent = roomA; name = {.cloth, .bolt};  tag = "bolt";   price = 900; stock = 3; kind = eKind.cloth; taxed = true; }
+Good gCup    { "tin cup";     parent = roomA; name = {.tin, .cup};     tag = "cup";    price = 60;  stock = 5; kind = eKind.tool; }
+
+array<Good> goods = {gBread, gKey, gRope, gCandle, gBolt, gCup};
+array<Good> history[MAXG];
+
+//-- Money ------------------------------------------------------------------------------------------
+
+struct Money {
+    int cents;
+}
+
+extend struct Money {
+    Money operator + (Money o) {
+        Money m;
+        m.cents = cents + o.cents;
+        return m;
+    }
+
+    Money operator * (int n) {
+        Money m;
+        m.cents = cents * n;
+        return m;
+    }
+
+    static int operator <=> (Money a, Money b) {
+        if (a.cents < b.cents) return -1;
+        if (a.cents > b.cents) return 1;
+        return 0;
+    }
+
+    stringObj text() {
+        stringObj s;
+        s = $"{cents / 100}.";
+        if (cents % 100 < 10) s += "0";
+        s += $"{cents % 100}";
+        return s;
+    }
+}
+
+Money cents(int c) {
+    Money m;
+    m.cents = c;
+    return m;
+}
+
+//-- Small pure helpers -----------------------------------------------------------------------------
+
+int sign(int a, int b) { return a < b ? -1 : (a > b ? 1 : 0); }
+
+int digitSum(int n) {
+    if (n < 10) return n;
+    return n % 10 + digitSum(n / 10);
+}
+
+string kindName(eKind k) {
+    switch (k) {
+        case eKind.food: return "food";
+        case eKind.tool: return "tool";
+        default:         return "cloth";
+    }
+}
+
+bool inBasket(Good g) { return g.parent == basket; }
+bool isTaxed(Good g) { return g.taxed; }
+bool isCheap(Good g) { return g.price < 200; }
+
+int priceOf(Good g) { return g.price; }
+int stockOf(Good g) { return g.stock; }
+
+//-- Higher-order helpers ---------------------------------------------------------------------------
+
+void forEach(array<Good> xs, func<void, Good> f) {
+    for (Good g in xs) f(g);
+}
+
+int foldInt(array<int> xs, int seed, func<int, int, int> f) {
+    int acc = seed;
+    for (int x in xs) acc = f(acc, x);
+    return acc;
+}
+
+array<int> zipWith(array<int> a, array<int> b, func<int, int, int> f) {
+    array<int> out[MAXG];
+    int n = a.length < b.length ? a.length : b.length;
+    for (int i = 0; i < n; i++) out += f(a[i], b[i]);
+    return out;
+}
+
+int indexWhere(array<Good> xs, func<bool, Good> pred) {
+    for (int i = 0; i < xs.length; i++) {
+        if (pred(xs[i])) return i;
+    }
+    return -1;
+}
+
+Good findFirst(array<Good> xs, func<bool, Good> pred) {
+    int i = indexWhere(xs, pred);
+    if (i < 0) return null;
+    return xs[i];
+}
+
+array<int> keysOf(array<Good> xs, func<int, Good> key) {
+    array<int> out[MAXG];
+    for (Good g in xs) out += key(g);
+    return out;
+}
+
+stringObj tagsOf(array<Good> xs, string sep = " ") {
+    stringObj s;
+    for (Good g in xs) {
+        if (!s.isEmpty()) s += sep;
+        s += g.tag;
+    }
+    if (s.isEmpty()) s = "-";
+    return s;
+}
+
+stringObj intsOf(array<int> xs, string sep = ",") {
+    stringObj s;
+    for (int i = 0; i < xs.length; i++) {
+        if (i > 0) s += sep;
+        s += $"{xs[i]}";
+    }
+    return s;
+}
+
+int addInt(int a, int b) { return a + b; }
+int maxInt(int a, int b) { return a > b ? a : b; }
+
+// Best total price of a subset of xs that stays within budget.
+int bestUnder(array<Good> xs, int budget) {
+    if (xs.length == 0) return 0;
+    Good head = xs.first();
+    int without = bestUnder(xs.skip(1), budget);
+    if (head.price > budget) return without;
+    int with = head.price + bestUnder(xs.skip(1), budget - head.price);
+    return maxInt(with, without);
+}
+
+//-- Price rules ------------------------------------------------------------------------------------
+
+int plain(int c) { return c; }
+int withTax(int c) { return c + c / 5; }
+int tenOff(int c) { return c - c / 10; }
+int roundFive(int c) { return (c + 2) / 5 * 5; }
+
+array<func<int, int>> rules = { tenOff, withTax, (int c) => c - 10, roundFive };
+
+func<int, int> ruleNamed(int n) {
+    switch (n) {
+        case 1: return tenOff;
+        case 2: return withTax;
+        case 3: return (int c) => c / 2;
+        default: return plain;
+    }
+}
+
+string ruleLabel(int n) {
+    switch (n) {
+        case 1: return "ten off";
+        case 2: return "tax";
+        case 3: return "half";
+        default: return "plain";
+    }
+}
+
+int compose(func<int, int> f, func<int, int> g, int x) { return g(f(x)); }
+
+int runRules(array<func<int, int>> fs, int c) {
+    int v = c;
+    for (func<int, int> f in fs) v = f(v);
+    return v;
+}
+
+int applyN(func<int, int> f, int x, int times = 1) {
+    if (times <= 0) return x;
+    return applyN(f, f(x), times - 1);
+}
+
+// Rows: [0] the goods that pass, [1] the rest.
+array<array<Good>> partition(array<Good> xs, func<bool, Good> pred) {
+    array<array<Good>> out[2];
+    out += xs.filter(pred);
+    out += xs.filter((Good g) => !pred(g));
+    return out;
+}
+
+// The price one good costs at the till.
+int tillPrice(Good g) {
+    func<int, int> tax = g.taxed ? withTax : plain;
+    return compose(tax, roundFive, g.price);
+}
+
+//-- Verb helpers -----------------------------------------------------------------------------------
+
+Good asGood(object o) {
+    if (o == null || !o.is(Good)) {
+        printLine("That is not a good.");
+        return null;
+    }
+    return (Good)o;
+}
+
+array<Good> inBasketNow() { return goods.filter(inBasket); }
+
+Money basketTotal() {
+    Money t;
+    for (Good g in inBasketNow()) t = t + cents(tillPrice(g));
+    return t;
+}
+
+//-- Verbs ------------------------------------------------------------------------------------------
+
+verb ShelfVerb {
+    grammar = {{.shelf}};
+    void handler() {
+        for (Good g in goods) {
+            print($"{g.tag} {cents(g.price).text()} x{g.stock} {kindName(g.kind)}");
+            if (g.taxed) print(" taxed");
+            if (inBasket(g)) print(" (basket)");
+            print("^");
+        }
+        array<int> stock = keysOf(goods, stockOf);
+        printLine($"stock {intsOf(stock)}, total {foldInt(stock, 0, addInt)}, most {foldInt(stock, 0, maxInt)}");
+    }
+}
+
+verb CheapestVerb {
+    grammar = {{.cheapest, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        array<Good> low = goods.orderBy((Good a, Good b) => sign(a.price, b.price)).take(n);
+        printLine($"cheapest {n}: {tagsOf(low)}; first {low.first().tag}, last {low.last().tag}, count {low.count()}");
+        array<Good> rest = goods.orderBy((Good a, Good b) => sign(a.price, b.price)).skip(n);
+        printLine($"rest {tagsOf(rest, sep: "/")}, all over a pound {rest.all((Good g) => g.price > 100)}");
+    }
+}
+
+verb SortedVerb {
+    grammar = {{.sorted}};
+    void handler() {
+        array<Good> c = goods;
+        c.sort((Good a, Good b) => sign(b.stock, a.stock));
+        printLine($"by stock down: {tagsOf(c)}");
+        c.reverse();
+        printLine($"reversed: {tagsOf(c)}; rope at {c.indexOf(gRope)}, has cup {c.contains(gCup)}");
+        array<string> tags[MAXG];
+        for (Good g in goods) tags += g.tag;
+        tags.sort(string::operator <=>);
+        print("tags:");
+        for (string t in tags) print($" {t}");
+        print("^");
+    }
+}
+
+verb PricesVerb {
+    grammar = {{.prices}};
+    void handler() {
+        array<Money> ms[MAXG];
+        for (Good g in goods) ms += cents(tillPrice(g));
+        ms.sort(Money::operator <=>);
+        print("till prices:");
+        for (Money m in ms) print($" {m.text()}");
+        print("^");
+        Money sum;
+        for (Money m in ms) sum = sum + m;
+        printLine($"sum {sum.text()}, top {ms[ms.length - 1].text()}, doubled low {(ms[0] * 2).text()}");
+    }
+}
+
+verb RuleVerb {
+    grammar = {{.rule, NUMBER}};
+    void handler() {
+        int n = parsed_number;
+        func<int, int> r = ruleNamed(n);
+        array<int> ps = keysOf(goods, priceOf);
+        array<int> after = ps.map((var p) => r(p));
+        printLine($"{ruleLabel(n)}: {intsOf(after)}");
+        array<int> saved = zipWith(ps, after, (int a, int b) => a - b);
+        printLine($"saved {intsOf(saved)}, total {foldInt(saved, 0, addInt)}, distinct {saved.distinct().count()}");
+    }
+}
+
+verb ChainVerb {
+    grammar = {{.chain, NUMBER}};
+    void handler() {
+        int c = parsed_number;
+        print($"{c}");
+        int v = c;
+        for (func<int, int> f in rules) {
+            v = f(v);
+            print($" -> {v}");
+        }
+        printLine($"; runRules {runRules(rules, c)}, compose tax then ten off {compose(withTax, tenOff, c)}, digits {digitSum(c)}");
+    }
+}
+
+class OfferVerb : verb {
+    func<bool, Good> pick;
+    string label;
+
+    void handler() {
+        array<Good> hits = goods.filter(pick);
+        Good first = findFirst(goods, pick);
+        printLine($"{label}: {tagsOf(hits)} ({hits.count()}), first {first?.tag ?? "none"}, any in basket {hits.any(inBasket)}");
+    }
+}
+
+OfferVerb TaxedVerb { grammar = {{.taxed}}; pick = isTaxed; label = "taxed"; }
+OfferVerb CheapVerb { grammar = {{.cheap}}; pick = isCheap; label = "cheap"; }
+OfferVerb ScarceVerb { grammar = {{.scarce}}; pick = (Good g) => g.stock < 2; label = "scarce"; }
+OfferVerb ClothVerb { grammar = {{.cloths}}; pick = (Good g) => g.kind == eKind.cloth && g.stock > 5; label = "cloth in bulk"; }
+
+verb BuyVerb {
+    grammar = {{.buy, NOUN}};
+    void handler() {
+        Good g = asGood(noun);
+        if (g == null) return;
+        if (inBasket(g)) {
+            printLine($"The {g.tag} is already in the basket.");
+            return;
+        }
+        if (g.stock == 0) {
+            printLine($"No {g.tag} left.");
+            return;
+        }
+        g.stock--;
+        g.parent = basket;
+        history.push(g);
+        printLine($"Bought {g.tag}. Basket: {tagsOf(inBasketNow())}, total {basketTotal().text()}.");
+    }
+}
+
+verb PutBackVerb {
+    grammar = {{.putback}};
+    void handler() {
+        if (history.length == 0) {
+            printLine("Nothing to put back.");
+            return;
+        }
+        Good g = history.pop();
+        g.parent = roomA;
+        g.stock++;
+        Good next = history.peek();
+        printLine($"Put back {g.tag}. Last now {next?.tag ?? "none"}, basket {tagsOf(inBasketNow())}.");
+    }
+}
+
+verb TillVerb {
+    grammar = {{.till}};
+    void handler() {
+        array<Good> b = inBasketNow();
+        if (b.count() == 0) {
+            printLine("The basket is empty.");
+            return;
+        }
+        Money total;
+        for (Good g in b.orderBy((Good x, Good y) => sign(tillPrice(x), tillPrice(y)))) {
+            Money m = cents(tillPrice(g));
+            total = total + m;
+            printLine($"  {g.tag} {cents(g.price).text()} -> {m.text()}");
+        }
+        printLine($"total {total.text()}, best under 5.00 {cents(bestUnder(b, 500)).text()}");
+    }
+}
+
+verb CountVerb {
+    grammar = {{.count}};
+    void handler() {
+        int units = 0;
+        int taxedUnits = 0;
+        forEach(goods, (Good g) => {
+            units += g.stock;
+            if (g.taxed) taxedUnits += g.stock;
+        });
+        array<int> kinds = goods.map((var g) => (int)((Good)g).kind);
+        printLine($"units {units}, taxed {taxedUnits}, kinds {intsOf(kinds.distinct().orderBy())}");
+        array<int> ps = keysOf(goods, priceOf).orderBy();
+        printLine($"prices up {intsOf(ps)}; under 2.00 {intsOf(ps.takeWhile((int p) => p < 200))}");
+    }
+}
+
+verb BudgetVerb {
+    grammar = {{.budget, NUMBER}};
+    void handler() {
+        int b = parsed_number;
+        printLine($"best spend under {cents(b).text()}: {cents(bestUnder(goods, b)).text()}");
+        int cheapAt = indexWhere(goods, (Good g) => g.price <= b);
+        printLine($"first affordable at {cheapAt}, tag {findFirst(goods, (Good g) => g.price <= b)?.tag ?? "none"}");
+    }
+}
+
+verb MixVerb {
+    grammar = {{.mix, NUMBER}};
+    void handler() {
+        array<func<int, int>> steps[4];
+        int n = parsed_number;
+        stringObj names;
+        while (n > 0 && steps.length < 4) {
+            int d = n % 10;
+            steps.prepend(ruleNamed(d));
+            if (!names.isEmpty()) names = names.prepend(", ");
+            names = names.prepend(ruleLabel(d));
+            n = n / 10;
+        }
+        printLine($"steps {names}: 1000 -> {runRules(steps, 1000)}, ten off twice {applyN(tenOff, 1000, times: 2)}, once {applyN(tenOff, 1000)}");
+    }
+}
+
+verb SplitVerb {
+    grammar = {{.split, NUMBER}};
+    void handler() {
+        int limit = parsed_number;
+        array<array<Good>> parts = partition(goods, (Good g) => tillPrice(g) <= limit);
+        array<Good> yes = parts[0];
+        array<Good> no = parts[1];
+        printLine($"at most {cents(limit).text()}: {tagsOf(yes)}; over: {tagsOf(no)}");
+        int spend = foldInt(keysOf(yes, tillPrice), 0, addInt);
+        printLine($"all of them {cents(spend).text()}, rows {parts.length}, sizes {yes.count()}+{no.count()}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    bglInit();
+    location = roomA;
+    rfalse;
+}

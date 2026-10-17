@@ -1,0 +1,147 @@
+Red Room
+> exits
+Exits 2: east to Blue, south to Gray.
+> grid
+Red:+e.s..
+Blue:w+#...
+Green:.#+..s
+Gray:n..+e.
+Gold:...w+#
+White:..n.#+
+> reach
+Reach 4: Red=0 Blue=1 Gray=1 Gold=2; cut off 2.
+  Green: unreachable
+  Gold: near
+  White: unreachable
+> route white
+No route to White.
+> walk east
+Red -e-> Blue.
+> walk east
+The iron gate is locked.
+> unbar
+No key for the iron gate.
+> walk west
+Blue -w-> Red.
+> walk south
+Red -s-> Gray.
+> walk east
+Gray -e-> Gold.
+> take key
+Taken.
+> walk north
+No way north (upright).
+> walk north
+No way north (upright).
+> walk west
+Gold -w-> Gray.
+> walk north
+Gray -n-> Red.
+> walk east
+Red -e-> Blue.
+> unbar
+Unlocked the iron gate with the iron key.
+> walk east
+Blue -e-> Green.
+> route white
+Route to White: south (1 steps).
+> reach
+Reach 6: Green=0 Blue=1 White=1 Red=2 Gray=3 Gold=4; cut off 0.
+  Red: near
+  Gray: near
+  Gold: far
+> grid
+Red:+e.s..
+Blue:w+e...
+Green:.w+..s
+Gray:n..+e.
+Gold:...w+#
+White:..n.#+
+> visits
+Visited 3: Redx3 Bluex2 Grayx2. All seen: false. Any twice: true.
+> keys
+iron key (iron gate): carried
+glass key (glass door): in Green Room
+> trip
+Steps 8, blocked 1, unlocked 1; visits 9; open 1/2; edges 12.
+> firstlock
+First locked: Gold east to White (glass door).
+> walk south
+Green -s-> White.
+> take key
+You already have the iron key.
+> route red
+Route to Red: north, west, west (3 steps).
+> walk north
+White -n-> Green.
+> walk north
+No way north (upright).
+> route gray
+Route to Gray: west, west, south (3 steps).
+> walk south
+Green -s-> White.
+> walk east
+No way east (level).
+> unbar
+No key for the glass door.
+> route red
+Route to Red: north, west, west (3 steps).
+> grid
+Red:+e.s..
+Blue:w+e...
+Green:.w+..s
+Gray:n..+e.
+Gold:...w+#
+White:..n.#+
+> firstlock
+First locked: Gold east to White (glass door).
+> visits
+Visited 3: Redx3 Bluex2 Greenx2. All seen: true. Any twice: true.
+> trip
+Steps 11, blocked 1, unlocked 1; visits 12; open 1/2; edges 12.
+> walk up
+You can't go that way.
+> route nowhere
+I didn't understand that sentence.
+> walk north
+White -n-> Green.
+> take glass key
+Taken.
+> exits
+Exits 2: south to White, west to Blue (iron gate).
+> keys
+iron key (iron gate): carried
+glass key (glass door): carried
+> walk south
+Green -s-> White.
+> unbar
+Unlocked the glass door with the glass key.
+> exits
+Exits 2: west to Gold (glass door), north to Green.
+> route gold
+Route to Gold: west (1 steps).
+> walk west
+White -w-> Gold.
+> route red
+Route to Red: west, north (2 steps).
+> reach
+Reach 6: Gold=0 Gray=1 White=1 Red=2 Green=2 Blue=3; cut off 0.
+  Red: near
+  Blue: near
+  Green: near
+> grid
+Red:+e.s..
+Blue:w+e...
+Green:.w+..s
+Gray:n..+e.
+Gold:...w+e
+White:..n.w+
+> firstlock
+No locked edges.
+> keys
+iron key (iron gate): carried
+glass key (glass door): carried
+> visits
+Visited 3: Redx3 Greenx3 Whitex3. All seen: true. Any twice: true.
+> trip
+Steps 14, blocked 1, unlocked 2; visits 15; open 2/2; edges 12.

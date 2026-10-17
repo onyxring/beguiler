@@ -1,0 +1,132 @@
+Room A
+Room A. Room B is north.
+You can see a cloth sack (which is empty), a wooden box (which is empty), an iron weight, a white feather and a red brick here.
+> bags
+==
+sack: 0/6, 0%, refused 0
+box: 0/4, 0%, refused 0
+==
+Carried 0 kg of 8 kilos.
+> weigh sack
+The sack weighs 1 kg, slim [r], 1 weighed.
+> weigh feather
+The thing weighs 0 kg, slim [r], 1 weighed.
+> weigh room
+You can't see any such thing.
+> take weight
+Taken.
+> take brick
+Taken.
+> take feather
+Taken.
+> heaviest
+Heaviest: weight; huge false, all slim true, light 1; heavier than thing true.
+> put weight in box
+You put the iron weight into the wooden box.
+> put brick in box
+[refused] The red brick won't fit in the wooden box.
+(box refuses, 1 so far)
+> put feather in box
+You put the white feather into the wooden box.
+> bags
+==
+sack: 0/6, 0%, refused 0
+box: 3/4, 75%, refused 1
+==
+Carried 2 kg of 8 kilos.
+> fuller 50
+Full: box(75%)
+> take box
+Taken.
+> weigh box
+The box weighs 5 kg, slim [r], 3 weighed.
+> journal
+journal 'TTTIIT' (6), takes 4, half full 2, refusals 1, handled 1
+> limit 30
+Hand limit 8 -> 20.
+> limit 0
+Hand limit 20 -> 1.
+> limit 12
+Hand limit 1 -> 12.
+> take box
+You already have the wooden box.
+> n
+Room B
+Room B. Room A is south.
+You can see a long plank and a heavy crate here.
+> weigh crate
+The crate weighs 5 kg, bulky [s], 1 weighed.
+> weigh plank
+The plank weighs 2 kg (1 awkward), huge [t], 1 weighed.
+> take crate
+Taken.
+> take plank
+[refused] You can't carry the long plank as well.
+> compare crate with box
+The crate is as heavy as the box, exactly.
+Together: 10 kg.
+> compare box with crate
+The box is as heavy as the crate, exactly.
+Together: 10 kg.
+> lighten crate by 1
+The crate now weighs 4.
+> compare crate with box
+The crate is lighter than the box.
+Together: 9 kg.
+> lighten box by 1
+Empty the bag instead.
+> lighten feather by 2
+It isn't that heavy.
+> take crate
+You already have the heavy crate.
+> heaviest
+Heaviest: box; huge false, all slim false, light 0; heavier than crate true.
+> s
+Room A
+Room A. Room B is north.
+You can see a cloth sack (which is empty) here.
+> put crate in sack
+You put the heavy crate into the cloth sack.
+> put box in sack
+[refused] The wooden box won't fit in the cloth sack.
+(sack refuses, 1 so far)
+> put brick in sack
+You put the red brick into the cloth sack.
+> weigh sack
+The sack weighs 7 kg, slim [r], 3 weighed.
+> take sack
+Taken.
+> n
+Room B
+Room B. Room A is south.
+You can see a long plank here.
+> weigh crate
+The crate weighs 4 kg, bulky [s], 1 weighed.
+> weigh plank
+The plank weighs 2 kg (1 awkward), huge [t], 1 weighed.
+> take plank
+[refused] You can't carry the long plank as well.
+> limit 20
+Hand limit 12 -> 20.
+> take plank
+Taken.
+> bags
+==
+sack: 6/6, 100%, refused 1
+box: 3/4, 75%, refused 1
+==
+Carried 14 kg (1 awkward) of 20 kilos.
+> heaviest
+Heaviest: sack; huge true, all slim false, light 0; heavier than plank true.
+> compare sack with box
+The sack is heavier than the box.
+Together: 12 kg.
+> put plank in box
+[refused] The long plank won't fit in the wooden box.
+(box refuses, 2 so far)
+> fuller 50
+Full: sack(100%) box(75%)
+> fuller 101
+No bag is that full.
+> journal
+journal 'TTTIITHHHTLIITHT' (16), takes 7, half full 4, refusals 5, handled

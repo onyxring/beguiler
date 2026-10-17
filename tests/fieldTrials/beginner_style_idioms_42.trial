@@ -1,0 +1,162 @@
+Room A
+Room A. A bench for lamps. Room B is to the north.
+You can see a bench (on which are a red lamp, a blue lamp and a brass lantern), an oil jug and a clock here.
+> lamps
+red: 2/6 oil, fresh wick.
+blue: 0/6 oil, fresh wick.
+brass: 4/10 oil, fresh wick.
+Lit now: 0. Lit ever: 0.
+Some lamp is empty.
+Most oil first: brass red blue
+Most: BRASS. Least: blue.
+> bars
+red   [##....]
+blue  [......]
+brass [####......]
+jug   [====================]
+Wicks: fresh fresh fresh
+> jug
+Jug: 20 of 20. Poured: 0. Burned: 0.
+In lamps: 6.
+> refills
+No refills yet.
+> pours
+Nothing poured.
+> about red lamp
+The red lamp is the first lamp on the bench.
+> about brass lantern
+The brass lamp is the big one.
+> x jug
+The jug has 20 drops of oil in it.
+> light blue lamp
+The blue lamp has no oil.
+> light red lamp
+The red lamp is now lit.
+> lamps
+red: 1/6 oil, fresh wick, lit.
+blue: 0/6 oil, fresh wick.
+brass: 4/10 oil, fresh wick.
+Lit now: 1. Lit ever: 1.
+Some lamp is empty.
+Most oil first: brass red blue
+Most: BRASS. Least: blue.
+> fill red lamp
+The red lamp is lit. Put it out first.
+The red lamp runs dry and goes out.
+> blow red lamp
+(first taking the red lamp)
+The red lamp is not lit.
+> blow red lamp
+The red lamp is not lit.
+> fill red lamp
+You pour 6 drops into the red lamp. The jug has 14 left.
+> fill red lamp
+The red lamp is already full.
+> fill blue lamp
+You pour 6 drops into the blue lamp. The jug has 8 left.
+> x blue lamp
+blue: 6/6 oil, fresh wick.
+> take brass lantern
+Taken.
+> light lantern
+The brass lamp is now lit.
+> n
+Room B
+Room B. Bare walls. Room A is to the south.
+> carried
+Carrying 2 lamps, 1 lit.
+Sooty in the first two: 0.
+In Room B.
+> wait
+Time passes.
+> wait
+Time passes.
+The brass lamp runs dry and goes out.
+It is now pitch dark in here.
+> wait
+Time passes.
+> wait
+Time passes.
+> x lantern
+brass: 0/10 oil, worn wick.
+> s
+Room A
+Room A. A bench for lamps. Room B is to the north.
+You can see a bench (on which is a blue lamp), an oil jug and a clock here.
+> blow lantern
+The brass lamp is not lit.
+> trim lantern
+You trim the brass wick.
+> trim lantern
+The brass wick is already fresh.
+> pour 3
+You pour 3 drops in all.
+> refills
+3 of 4 refills kept:
+1. red, 6 drops, turn 6
+2. blue, 6 drops, turn 8
+3. brass, 3 drops, turn 22
+> pours
+Pours: 3 6 6
+Biggest 6, smallest 3, 2 left.
+First pour 6 of 3.
+> jug
+Jug: 5 of 20. Poured: 15. Burned: 6.
+In lamps: 15.
+Lamps have run dry 2 times.
+> light red lamp
+The red lamp is now lit.
+> light blue lamp
+The blue lamp is now lit.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+The red lamp runs dry and goes out.
+> wait
+Time passes.
+> lamps
+red: 0/6 oil, charred wick, sooty.
+blue: 1/6 oil, worn wick, lit.
+brass: 3/10 oil, fresh wick.
+Lit now: 1. Lit ever: 4.
+Some lamp is empty.
+Most oil first: brass blue red
+Most: BRASS. Least: red.
+> douse
+You put out 1 lamps.
+> douse
+No lamp is lit.
+> bars
+red   [......]
+blue  [#.....]
+brass [###.......]
+jug   [=====...............]
+Wicks: charred worn fresh
+> pour 2
+You pour 5 drops in all.
+> pour 5
+You pour 0 drops in all.
+> fill blue lamp
+The jug is empty.
+> jug
+Jug: 0 of 20. Poured: 20. Burned: 17.
+In lamps: 9.
+Lamps have run dry 3 times.
+The jug has been empty.
+> refills
+4 of 4 refills kept:
+1. brass, 3 drops, turn 22
+2. red, 2 drops, turn 31
+3. blue, 2 drops, turn 31
+4. brass, 1 drop, turn 31
+> pours
+Pours: 1 2 2 3 6 6
+Biggest 6, smallest 1, 5 left.
+First pour 6 of 6.
+> carried
+Carrying 2 lamps, 0 lit.
+Sooty in the first two: 1.
+In Room A.

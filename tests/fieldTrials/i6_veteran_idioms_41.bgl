@@ -1,0 +1,504 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a small Inform 6-style program on z5 as a veteran would write it: a post counter, a
+// sorting room behind a locked door and a dark cellar below it. A Parcel class (an int weight
+// member, an int stamps member, a per-object dictionaryWord ownWord read by a class parse_name with
+// NextWord, a class description naming its postage band, a before rule on Receive refusing
+// anything put on a parcel) with three parcels; postage bands chosen by a switch with ranges; a
+// counter scale (supporter) whose description sums the weights of what is on it with a for-in loop;
+// a Coin class (an int value member, list_together, a plural string) with three coins in a purse
+// container; a clerk (animate) whose life rule takes coins on Give (adding to a credit global),
+// answers Ask/Tell by consult_from and NextWord (handing over a brass key once) and whose orders
+// rule weighs a parcel on command; a locked door between the counter and the sorting room (door_to,
+// door_dir, found_in, with_key, when_open/when_closed); a lantern (switchable) with a fuel member
+// burnt by a daemon started and stopped from after rules on SwitchOn/SwitchOff, going out at zero;
+// a dark cellar under the sorting room; a posting slot (container) whose before rule on Receive
+// takes only properly stamped parcels, logs each in a global array<object> and scores it; native
+// Weigh (NOUN), Stamp (NOUN) and BuyStamps (NUMBER, sharing the library word buy) verbs; a LibraryMessages override of Sing; a meta
+// Ledger verb listing posted parcels; deadflag at MAX_SCORE.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+const int MAX_SCORE = 3;
+const int LEDGER_SIZE = 4;          // parcels the ledger can hold
+const int FUEL = 5;             // turns of lamp oil
+
+#includeI6 "parser"
+
+object LibraryMessages {
+    bool before() {
+        switch (action) {
+            case Sing:
+                rtrue("The clerk gives you a look over his spectacles.^");
+        }
+        rfalse;
+    }
+}
+
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+
+#using bgl.printRules;
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+array<string> bandName = {"letter", "small packet", "parcel", "heavy parcel"};
+
+array<object> posted[LEDGER_SIZE];  // parcels posted, in order
+int nPosted;
+int g_credit;                   // pence handed to the clerk and not yet spent
+int g_stamps;                   // stamps bought and not yet stuck on
+bool g_keyGiven;
+
+void Award() {
+    score++;
+    if (score >= MAX_SCORE) deadflag = 2;
+}
+
+// The postage band for a weight in ounces: 0 letter, 1 small packet, 2 parcel, 3 heavy parcel.
+int Band(int w) {
+    switch (w) {
+        case 0 to 1: return 0;
+        case 2 to 4: return 1;
+        case 5 to 8: return 2;
+    }
+    return 3;
+}
+
+// Stamps wanted for a weight: one per band, a letter takes one.
+int Postage(int w) {
+    return Band(w) + 1;
+}
+
+// The total weight of everything inside o, however deep.
+int WeightIn(object o) {
+    int total = 0;
+    for (object c in o.children) {
+        if (c.is(Parcel)) total += ((Parcel)c).weight;
+        total += WeightIn(c);
+    }
+    return total;
+}
+
+// ---------------------------------------------------------------- rooms
+
+object counterRoom {
+    short_name = "Counter Room";
+    description = "Counter Room. A long counter runs across the room. A door leads north.";
+    object n_to = sortingDoor;
+    attributes = {light};
+}
+
+object sortingRoom {
+    short_name = "Sorting Room";
+    description = "Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.";
+    object s_to = sortingDoor;
+    object d_to = cellar;
+    attributes = {light};
+}
+
+object cellar {
+    short_name = "Cellar";
+    description = "Cellar. Damp brick and an old mail sack. A ladder goes up.";
+    object u_to = sortingRoom;
+}
+
+object sortingDoor {
+    short_name = "sorting room door";
+    name = {.sorting, .room, .door};
+    rawArray<object> found_in = {counterRoom, sortingRoom};
+    description = "A plain door with a brass lock.";
+    string when_open = "The sorting room door is open.";
+    string when_closed = "The sorting room door is closed.";
+    object with_key = brassKey;
+    object door_to() {
+        if (location == counterRoom) return sortingRoom;
+        return counterRoom;
+    }
+    property door_dir() {
+        if (location == counterRoom) return (property)n_to;
+        return (property)s_to;
+    }
+    attributes = {door, openable, lockable, locked, static};
+}
+
+// ---------------------------------------------------------------- parcels
+
+class Parcel : object {
+    int weight;
+    int stamps;
+    dictionaryWord ownWord;
+
+    int parse_name() {
+        int n = 0;
+        bool own = false;
+        while (true) {
+            dictionaryWord w = NextWord();
+            if (w == .parcel || w == .packet || w == .letter) {
+                n++;
+                continue;
+            }
+            if (!own && w != null && w == ownWord) {
+                own = true;
+                n++;
+                continue;
+            }
+            return n;
+        }
+    }
+
+    // True when enough stamps are on it.
+    bool Paid() {
+        return stamps >= Postage(weight);
+    }
+
+    void description() {
+        print($"Wrapped in brown paper and tied with string. By its heft, a {bandName[Band(weight)]}");
+        if (stamps == 0) print(", with no stamps on it");
+        else if (stamps == 1) print(", with one stamp on it");
+        else print($", with {stamps} stamps on it");
+        print(".^");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                rtrue("Nothing stays on the string.^");
+        }
+        rfalse;
+    }
+}
+
+Parcel redParcel {
+    short_name = "red parcel";
+    parent = counterRoom;
+    weight = 1;
+    ownWord = .red;
+}
+
+Parcel blueParcel {
+    short_name = "blue parcel";
+    parent = sortingRoom;
+    weight = 3;
+    ownWord = .blue;
+}
+
+Parcel greyParcel {
+    short_name = "grey parcel";
+    parent = cellar;
+    weight = 9;
+    ownWord = .grey;
+}
+
+// ---------------------------------------------------------------- coins
+
+class Coin : object {
+    int value;
+    string list_together = "coins";
+    string plural = "coins";
+    void description() {
+        print($"A coin worth {value} pence.^");
+    }
+}
+
+Coin coin1 {
+    short_name = "penny";
+    name = {.penny, .coin, .copper};
+    parent = purse;
+    value = 1;
+}
+
+Coin coin2 {
+    short_name = "twopenny piece";
+    name = {.twopenny, .piece, .coin, .copper};
+    parent = purse;
+    value = 2;
+}
+
+Coin coin3 {
+    short_name = "sixpence";
+    name = {.sixpence, .coin, .silver};
+    parent = purse;
+    value = 6;
+}
+
+object purse {
+    short_name = "leather purse";
+    name = {.leather, .purse};
+    description = "A small leather purse.";
+    attributes = {container, openable, open};
+}
+
+// ---------------------------------------------------------------- the counter
+
+object counter {
+    short_name = "counter";
+    name = {.long, .counter};
+    parent = counterRoom;
+    description = "A long wooden counter, worn smooth.";
+    attributes = {static, scenery, supporter};
+}
+
+object scale {
+    short_name = "letter scale";
+    name = {.letter, .scale, .scales, .pan};
+    parent = counterRoom;
+    void description() {
+        int w = WeightIn(self);
+        if (w == 0) {
+            print("A brass letter scale. Its pan is empty.^");
+            return;
+        }
+        print($"A brass letter scale. The needle points to {w} ounces.^");
+    }
+    bool after() {
+        switch (action) {
+            case Receive:
+                print($"The needle swings to {WeightIn(self)} ounces.^");
+                return true;
+        }
+        rfalse;
+    }
+    attributes = {static, supporter};
+}
+
+object clerk {
+    short_name = "clerk";
+    name = {.clerk, .man, .postmaster};
+    parent = counterRoom;
+    description = "A thin clerk in sleeve garters.";
+    string describe = "^The clerk waits behind the counter.";
+
+    bool life() {
+        dictionaryWord w;
+        switch (action) {
+            case Give:
+                if (!noun.is(Coin)) rtrue("~I can't take that over the counter.~^");
+                Coin c = (Coin)noun;
+                g_credit += c.value;
+                c.parent = self;
+                print($"The clerk drops {the(noun)} in the till. ~You have {g_credit} pence with me.~^");
+                return true;
+            case Ask, Tell:
+                wn = consult_from;
+                w = NextWord();
+                if (w == .key || w == .door) {
+                    if (g_keyGiven) rtrue("~You have the key already.~^");
+                    g_keyGiven = true;
+                    brassKey.parent = player;
+                    rtrue("~Mind you bring it back,~ says the clerk, handing you a brass key.^");
+                }
+                if (w == .stamp || w == .stamps || w == .postage)
+                    rtrue("~Penny a stamp. One for a letter, one more for each band.~^");
+                if (w == .lamp || w == .lantern || w == .cellar)
+                    rtrue("~The cellar's dark. Take the lantern.~^");
+                rtrue("The clerk shrugs.^");
+        }
+        rfalse;
+    }
+
+    bool orders() {
+        switch (action) {
+            case Weigh:
+                if (!noun.is(Parcel)) rtrue("~That's not post.~^");
+                Parcel p = (Parcel)noun;
+                print($"The clerk weighs {the(noun)}: {p.weight} ounces, a {bandName[Band(p.weight)]}, ");
+                print($"{Postage(p.weight)} stamps.^");
+                return true;
+            case Give:
+                rtrue("~Buy them, then.~^");
+        }
+        rtrue("The clerk shakes his head.^");
+    }
+    attributes = {animate, static};
+}
+
+object brassKey {
+    short_name = "brass key";
+    name = {.brass, .key};
+    description = "A small brass key.";
+}
+
+// ---------------------------------------------------------------- sorting room
+
+object lantern {
+    short_name = "lantern";
+    name = {.lantern, .lamp, .oil};
+    parent = sortingRoom;
+    int fuel = FUEL;
+
+    void description() {
+        print("A tin oil lantern");
+        if (has(on)) print(", burning");
+        if (fuel == 0) print(", its oil gone");
+        else print($", with {fuel} turns of oil");
+        print(".^");
+    }
+
+    void daemon() {
+        if (hasnt(on)) return;
+        fuel--;
+        if (fuel > 0) {
+            if (fuel == 1) print("^The lantern gutters.^");
+            return;
+        }
+        ungive(on);
+        ungive(light);
+        StopDaemon(self);
+        print("^The lantern goes out.^");
+    }
+
+    bool before() {
+        switch (action) {
+            case SwitchOn:
+                if (fuel <= 0) rtrue("The lantern is out of oil.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case SwitchOn:
+                give(light);
+                StartDaemon(self);
+                print("The lantern flares up.^");
+                return true;
+            case SwitchOff:
+                ungive(light);
+                StopDaemon(self);
+                print("You turn the wick down and the lantern goes out.^");
+                return true;
+        }
+        rfalse;
+    }
+    attributes = {switchable};
+}
+
+object slot {
+    short_name = "posting slot";
+    name = {.posting, .slot, .box};
+    parent = sortingRoom;
+    description = "A brass slot in the wall marked POSTED.";
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Parcel)) rtrue("Only post goes in the slot.^");
+                Parcel p = (Parcel)noun;
+                if (!p.Paid()) {
+                    print($"{cThe(noun)} needs {Postage(p.weight)} stamps and has {p.stamps}.^");
+                    return true;
+                }
+                if (nPosted < LEDGER_SIZE) posted[nPosted] = noun;
+                nPosted++;
+                noun.remove();
+                print($"{cThe(noun)} drops through the slot.^");
+                Award();
+                return true;
+        }
+        rfalse;
+    }
+    attributes = {static, container, open};
+}
+
+// ---------------------------------------------------------------- verbs
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (noun.is(Parcel)) {
+            if (scale.parent != location) {
+                print("You'd want the scale for that.^");
+                return;
+            }
+            Parcel p = (Parcel)noun;
+            print($"You weigh {the(noun)}: {p.weight} ounces.^");
+            return;
+        }
+        if (noun == purse) {
+            int total = 0;
+            for (object o in purse.children)
+                if (o.is(Coin)) total += ((Coin)o).value;
+            print($"The purse holds {total} pence.^");
+            return;
+        }
+        print("You can't weigh that.^");
+    }
+}
+
+verb Stamp {
+    grammar = {.stamp, NOUN};
+    void handler() {
+        if (!noun.is(Parcel)) {
+            print("Only post takes stamps.^");
+            return;
+        }
+        Parcel p = (Parcel)noun;
+        int want = Postage(p.weight) - p.stamps;
+        if (want <= 0) {
+            print($"{cThe(noun)} has enough stamps.^");
+            return;
+        }
+        if (g_stamps == 0) {
+            print("You have no stamps.^");
+            return;
+        }
+        if (want > g_stamps) want = g_stamps;
+        p.stamps += want;
+        g_stamps -= want;
+        print($"You lick {want} stamps and stick them on {the(noun)}.^");
+    }
+}
+
+verb BuyStamps {
+    grammar = {{.buy, NUMBER}, {.buy, NUMBER, .stamps}};
+    void handler() {
+        int n = (int)noun;
+        if (clerk.parent != location) {
+            print("There is nobody here to sell you anything.^");
+            return;
+        }
+        if (n <= 0) {
+            print("~How many?~^");
+            return;
+        }
+        if (n > g_credit) {
+            print($"~That's {n} pence. You have {g_credit} with me.~^");
+            return;
+        }
+        g_credit -= n;
+        g_stamps += n;
+        print($"The clerk tears off {n} stamps. ~{g_credit} pence left.~^");
+    }
+}
+
+verb Ledger {
+    grammar = {.ledger};
+    meta = true;
+    void handler() {
+        print($"Posted {nPosted}:");
+        if (nPosted == 0) print(" none");
+        for (int i = 0; i < nPosted && i < LEDGER_SIZE; i++) {
+            Parcel p = (Parcel)posted[i];
+            print(" ");
+            printName(p);
+            print($" ({p.weight} oz)");
+        }
+        print(".^");
+        print($"Credit {g_credit}, stamps {g_stamps}, lamp oil {lantern.fuel}. Score {score} of {MAX_SCORE}.^");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = counterRoom;
+    purse.parent = player;
+    rfalse;
+}

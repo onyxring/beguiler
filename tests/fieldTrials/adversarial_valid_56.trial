@@ -1,0 +1,91 @@
+bank ready
+Room A
+Room A.
+> panel
+S7:10>6 A1:0>0 L2:0>0 w3 pos 0/5 armed 0.
+> cycle
+all off, wash, spot, half, *** blink (5, armed 1).
+> panel
+S7:25>13 A1:30>30 L2:20>4 w3 pos 0/5 armed 1.
+> advance
+cue 1: all off.
+> advance
+cue 2: wash.
+> advance
+cue 3: spot.
+> panel
+S7:50>26 A1:60>60 L2:40>16 w3 pos 3/5 armed 1.
+> level 70
+set 3: 26 70 49.
+> level 300
+set 3: 26 100 64.
+> arm 1
+armed (2).
+> fire
+fire: spot.
+> arm 2
+armed (3).
+> fire
+fire: noop.
+> arm 3
+armed (5).
+> fire
+fire: k5.
+> arm 6
+armed (6).
+> fire
+fire: wash.
+> arm 0
+armed (7).
+> fire
+fire: all off.
+> level 45
+set 3: 23 45 20.
+> store
+stored 45,45,45; live 99; one 10; scratch 161 135.
+> recall 1
+recalled 1: 10 20 30, same true.
+> panel
+S7:30>16 A1:10>10 L2:20>4 w3 pos 3/5 armed 7.
+> rank
+rank -1: 2=4 1=10 7=16, top 7.
+> recall 2
+recalled 2: 45 45 45, same false.
+> probe
+ch 7 lv 45 bl 3 marks 3/9 extra 3 six 6 spare true false rack 4.
+> rank
+rank -1: 2=20 7=23 1=45, top 1.
+> spell
+LAMP._IG v2 8.
+> wrap
+u true big true sum 2 true true sign -1 pow 64 max 45.
+> labels
+[pre][5 cues][post] calls 1 last false.
+> tour
+total 10 last lamp B 2 3, j 9 front bank.
+> blink
+***~H*L* 152 max 100 lamp false.
+> swap
+swapped: A 23 C 45 armed 8, weight 12.
+> fire
+fire: all off.
+> panel
+S7:0>0 A1:0>1 L2:0>0 w3 pos 3/5 armed 8.
+> probe
+ch 7 lv 0 bl 5 marks 3/9 extra 3 six 6 spare true false rack 4.
+> advance
+cue 4: half.
+> advance
+cue 5: *** blink.
+> advance
+cue 1: all off.
+> panel
+S7:0>0 A1:0>1 L2:0>0 w3 pos 1/5 armed 8.
+> hook
+spot;half; 2 3 true.
+> panel
+S7:25>25 A1:0>1 L2:0>0 w3 pos 1/5 armed 8.
+> hook
+spot;half;half; 3 3 true.
+> hook
+spot;half;half; 3 3 false.

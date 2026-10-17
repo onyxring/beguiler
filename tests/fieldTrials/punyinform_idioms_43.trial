@@ -1,0 +1,238 @@
+Room A
+Room A. A scale and four pigeonholes. A door leads east.
+You can see a red letter, a blue letter, a green letter, a parcel, a scale, a north pigeonhole (which is empty), a south pigeonhole (which is empty), an east pigeonhole (which is empty) and a west pigeonhole (which is empty) here.
+> tally
+Score 0 of 4. Sorted 0, missorted 0.
+Coins 80, stamps 0, bought 0, ticks 0.
+Clerk asked 0, called 0.
+> post
+By weight: 20 45 120 300.
+4 not ready.
+Lightest red letter, heaviest parcel.
+Stamps needed: 1 1 2 3.
+Some are unstamped.
+> weighings
+Nothing weighed.
+> plan
+Need 7 more stamps, can buy 8, have 0.
+1 trips to the machine.
+> log
+The log is empty.
+> letters
+red letter in Room A: Addressed to the north zone, 20 grams, unstamped.
+blue letter in Room A: Addressed to the south zone, 45 grams, unstamped.
+green letter in Room A: Addressed to the east zone, 120 grams, unstamped.
+parcel in Room A: Addressed to the west zone, 300 grams, unstamped.
+> holes
+north: - (held 0)
+south: - (held 0)
+east: - (held 0)
+west: - (held 0)
+> examine red letter
+Addressed to the north zone, 20 grams, unstamped.
+> examine east pigeonhole
+The east pigeonhole is empty.
+> weigh red letter
+The red letter weighs 20 grams and needs 1 stamps.
+> take red letter
+Taken.
+> put red letter in north pigeonhole
+The red letter needs 1 more stamps first.
+> put scale in north pigeonhole
+(first taking the scale)
+That's fixed in place.
+> take all
+blue letter: Taken.
+green letter: Taken.
+parcel: Taken.
+> i
+You're carrying a parcel, a green letter, a blue letter and a red letter.
+> weigh parcel
+The parcel weighs 300 grams and needs 3 stamps.
+> weigh green letter
+The green letter weighs 120 grams and needs 2 stamps.
+> weigh blue letter
+The blue letter weighs 45 grams and needs 1 stamps.
+> weigh red letter
+The red letter weighs 20 grams and needs 1 stamps.
+> put parcel on scale
+You put the parcel on the scale.
+> put green letter on scale
+You put the green letter on the scale.
+> examine scale
+A postal scale. It reads 420 grams.
+> take parcel
+Taken.
+> take green letter
+Taken.
+> weigh scale
+The scale won't fit on the scale.
+> weighings
+Weighed: 20 300 120 45 20.
+Heaviest 300, 2 over fifty, 4 different.
+First two: 20 300.
+> post
+By weight: 20 45 120 300.
+4 not ready.
+Lightest red letter, heaviest parcel.
+Stamps needed: 1 1 2 3.
+Some are unstamped.
+> plan
+Need 7 more stamps, can buy 8, have 0.
+1 trips to the machine.
+> east
+Room B
+Room B. A stamp machine, a bell and a clock. A door leads west.
+You can see a stamp book, a stamp machine, a clock, a clerk and a bell here.
+> weigh parcel
+There is no scale here.
+> buy 3 stamps
+The machine drops 3 stamps into the book. 50 coins left.
+> take book
+Taken.
+> buy 3 stamps
+The machine drops 3 stamps into the book. 20 coins left.
+> buy 20 stamps
+The stamp book holds 8 stamps.
+> buy 5 stamps
+The stamp book holds 8 stamps.
+> buy 0 stamps
+The stamp book holds 8 stamps.
+> examine book
+A stamp book with 6 stamps.
+> ask clerk about stamps
+The clerk says: ten coins each, from the machine.
+> ask clerk about parcel
+The clerk says: parcels are weighed like letters.
+> ask clerk about zones
+The clerk says: north, south, east and west.
+> ask clerk about cheese
+The clerk says nothing.
+> give red letter to clerk
+The clerk says: sort it yourself.
+> give book to clerk
+The clerk says: those are yours.
+> stamp red letter
+You put 1 stamps on the red letter. It is ready.
+> stamp red letter
+The red letter has enough stamps.
+> stamp parcel
+You put 3 stamps on the parcel. It is ready.
+> stamp blue letter
+You put 1 stamps on the blue letter. It is ready.
+> stamp green letter
+You put 1 stamps on the green letter. It needs 1 more.
+> stamp clock
+You can't stamp the clock.
+> examine book
+An empty stamp book.
+> stamp green letter
+The stamp book is empty.
+> buy 2 stamps
+The machine drops 2 stamps into the book. 0 coins left.
+> buy 1 stamp
+You have 0 coins, not 10.
+> plan
+Need 1 more stamps, can buy 0, have 2.
+0 trips to the machine.
+> ring clock
+The clock doesn't ring.
+> ring bell
+Ding. The clerk looks up.
+> wait
+Nothing happens.
+> tally
+Score 0 of 4. Sorted 0, missorted 0.
+Coins 0, stamps 2, bought 8, ticks 46.
+Clerk asked 4, called 0.
+> west
+Room A
+You can see a scale, a north pigeonhole (which is empty), a south pigeonhole (which is empty), an east pigeonhole (which is empty) and a west pigeonhole (which is empty) here.
+The clerk comes in from Room B.
+> ring bell
+You can't see any such thing.
+> put red letter in north pigeonhole
+You file the red letter in the north pigeonhole.
+[The score has just gone up by 1 point.]
+> put blue letter in east pigeonhole
+You file the blue letter, but it belongs in the south pigeonhole.
+> take blue letter
+Taken.
+> put blue letter in south pigeonhole
+You file the blue letter in the south pigeonhole.
+[The score has just gone up by 1 point.]
+> put parcel in west pigeonhole
+You file the parcel in the west pigeonhole.
+[The score has just gone up by 1 point.]
+> put parcel in west pigeonhole
+Already there.
+> holes
+north: red letter (held 1)
+south: blue letter (held 1)
+east: - (held 1)
+west: parcel (held 1)
+> tally
+Score 3 of 4. Sorted 3, missorted 1.
+Coins 0, stamps 2, bought 8, ticks 53.
+Clerk asked 4, called 1.
+> post
+By weight: 20 45 120 300.
+1 not ready.
+Lightest red letter, heaviest parcel.
+Stamps needed: 1 1 2 3.
+> examine east pigeonhole
+The east pigeonhole is empty.
+> put green letter in east pigeonhole
+The green letter needs 1 more stamps first.
+> stamp green letter
+You put 1 stamps on the green letter. It is ready.
+> put green letter in east pigeonhole
+You file the green letter in the east pigeonhole.
+The clerk checks the pigeonholes and nods.
+[The score has just gone up by 1 point.]
+> holes
+north: red letter (held 1)
+south: blue letter (held 1)
+east: green letter (held 2)
+west: parcel (held 1)
+> look
+Room A
+Room A. A scale and four pigeonholes. A door leads east.
+You can see a scale, a north pigeonhole (which contains a red letter), a south pigeonhole (which contains a blue letter), an east pigeonhole (which contains a green letter) and a west pigeonhole (which contains a parcel) here.
+> tally
+Score 4 of 4. Sorted 4, missorted 1.
+Coins 0, stamps 1, bought 8, ticks 58.
+Clerk asked 4, called 1.
+> post
+By weight: 20 45 120 300.
+0 not ready.
+Lightest red letter, heaviest parcel.
+Stamps needed: 1 1 2 3.
+Every letter is ready.
+> weighings
+Weighed: 20 300 120 45 20.
+Heaviest 300, 2 over fifty, 4 different.
+First two: 20 300.
+> log
+Log (20): weighed 20; weighed 300; weighed 120; weighed 45; weighed 20; bought 3; bought 3; stamped 1; stamped 3; stamped 1; stamped 1; bought 2; clerk came; sorted 1; missorted 2; took back; sorted 2; sorted 4; stamped 1; sorted 3;
+Something was missorted.
+WEIGHE
+> letters
+red letter in north pigeonhole: Addressed to the north zone, 20 grams, 1 stamps, enough.
+blue letter in south pigeonhole: Addressed to the south zone, 45 grams, 1 stamps, enough.
+green letter in east pigeonhole: Addressed to the east zone, 120 grams, 2 stamps, enough.
+parcel in west pigeonhole: Addressed to the west zone, 300 grams, 3 stamps, enough.
+> east
+Room B
+You can see a clerk, a stamp machine, a clock and a bell here.
+> examine clock
+The clock shows 4:55.
+> ring bell
+Ding. The clerk looks up.
+> plan
+Need 0 more stamps, can buy 0, have 1.
+0 trips to the machine.
+> tally
+Score 4 of 4. Sorted 4, missorted 1.
+Coins 0, stamps 1, bought 8, ticks 61.
+Clerk asked 4, called 1.

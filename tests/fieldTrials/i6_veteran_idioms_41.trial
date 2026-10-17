@@ -1,0 +1,212 @@
+Counter Room
+Counter Room. A long counter runs across the room. A door leads north.
+The sorting room door is closed.
+The clerk waits behind the counter.
+You can also see a red parcel and a letter scale here.
+> ledger
+Posted 0: none.
+Credit 0, stamps 0, lamp oil 5. Score 0 of 3.
+> sing
+The clerk gives you a look over his spectacles.
+> x clerk
+A thin clerk in sleeve garters.
+> i
+You're carrying:
+  a leather purse (which is open)
+    three coins:
+      a penny
+      a twopenny piece
+      a sixpence
+> look in purse
+In the leather purse are three coins (a penny, a twopenny piece and a sixpence).
+> weigh purse
+The purse holds 9 pence.
+> x red parcel
+Wrapped in brown paper and tied with string. By its heft, a letter, with no stamps on it.
+> weigh red
+You weigh the red parcel: 1 ounces.
+> put red parcel on scale
+(first taking the red parcel)
+The needle swings to 1 ounces.
+> x scale
+A brass letter scale. The needle points to 1 ounces.
+> weigh red
+You weigh the red parcel: 1 ounces.
+> take red
+Taken.
+> x sixpence
+A coin worth 6 pence.
+> take all from purse
+penny: Removed.
+twopenny piece: Removed.
+sixpence: Removed.
+> i
+You're carrying:
+  three coins:
+    a sixpence
+    a twopenny piece
+    a penny
+  a red parcel
+  a leather purse (which is open but empty)
+> give penny to clerk
+The clerk drops the penny in the till. "You have 1 pence with me."
+> give sixpence to clerk
+The clerk drops the sixpence in the till. "You have 7 pence with me."
+> give red parcel to clerk
+"I can't take that over the counter."
+> buy 3
+The clerk tears off 3 stamps. "4 pence left."
+> buy 10
+"That's 10 pence. You have 4 with me."
+> buy 0
+"How many?"
+> buy 2 stamps
+The clerk tears off 2 stamps. "2 pence left."
+> ask clerk about stamps
+"Penny a stamp. One for a letter, one more for each band."
+> ask clerk about weather
+The clerk shrugs.
+> clerk, weigh red parcel
+The clerk weighs the red parcel: 1 ounces, a letter, 1 stamps.
+> clerk, take parcel
+The clerk shakes his head.
+> stamp red
+You lick 1 stamps and stick them on the red parcel.
+> stamp red
+The red parcel has enough stamps.
+> x red parcel
+Wrapped in brown paper and tied with string. By its heft, a letter, with one stamp on it.
+> put twopenny on red parcel
+Nothing stays on the string.
+> n
+You can't, since the sorting room door is in the way.
+> open door
+The sorting room door seems to be locked.
+> ask clerk about key
+"Mind you bring it back," says the clerk, handing you a brass key.
+> ask clerk about key
+"You have the key already."
+> unlock door with key
+You unlock the sorting room door.
+> open door
+You open the sorting room door.
+> n
+Sorting Room
+Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.
+The sorting room door is open.
+You can also see a blue parcel, a lantern and a posting slot (which is empty) here.
+> put red parcel in slot
+The red parcel drops through the slot.
+[The score has just gone up by one point.]
+> take blue parcel
+Taken.
+> put blue in slot
+The blue parcel needs 2 stamps and has 0.
+> x lantern
+A tin oil lantern, with 5 turns of oil.
+The lantern is currently switched off.
+> take lantern
+Taken.
+> d
+Darkness
+It is pitch dark, and you can't see a thing.
+> look
+Darkness
+It is pitch dark, and you can't see a thing.
+> u
+Sorting Room
+Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.
+The sorting room door is open.
+You can also see a posting slot (which is empty) here.
+> turn on lantern
+The lantern flares up.
+> d
+Cellar
+Cellar. Damp brick and an old mail sack. A ladder goes up.
+You can see a grey parcel here.
+> take grey parcel
+Taken.
+> x grey
+Wrapped in brown paper and tied with string. By its heft, a heavy parcel, with no stamps on it.
+The lantern gutters.
+> u
+Sorting Room
+Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.
+The sorting room door is open.
+You can also see a posting slot (which is empty) here.
+The lantern goes out.
+> turn off lantern
+The lantern is already off.
+> x lantern
+A tin oil lantern, its oil gone.
+The lantern is currently switched off.
+> s
+Counter Room
+Counter Room. A long counter runs across the room. A door leads north.
+The sorting room door is open.
+The clerk waits behind the counter.
+You can also see a letter scale here.
+> put blue on scale
+The needle swings to 3 ounces.
+> put grey on scale
+The needle swings to 12 ounces.
+> x scale
+A brass letter scale. The needle points to 12 ounces.
+> clerk, weigh grey
+The clerk weighs the grey parcel: 9 ounces, a heavy parcel, 4 stamps.
+> buy 4
+"That's 4 pence. You have 2 with me."
+> give twopenny to clerk
+The clerk drops the twopenny piece in the till. "You have 4 pence with me."
+> buy 5
+"That's 5 pence. You have 4 with me."
+> stamp grey
+You lick 4 stamps and stick them on the grey parcel.
+> stamp blue
+You have no stamps.
+> stamp blue
+You have no stamps.
+> weigh lantern
+You can't weigh that.
+> ledger
+Posted 1: red parcel (1 oz).
+Credit 4, stamps 0, lamp oil 0. Score 1 of 3.
+> take all from scale
+grey parcel: Removed.
+blue parcel: Removed.
+> n
+Sorting Room
+Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.
+The sorting room door is open.
+You can also see a posting slot (which is empty) here.
+> put grey in slot
+The grey parcel drops through the slot.
+[The score has just gone up by one point.]
+> put blue in slot
+The blue parcel needs 2 stamps and has 0.
+> ledger
+Posted 2: red parcel (1 oz) grey parcel (9 oz).
+Credit 4, stamps 0, lamp oil 0. Score 2 of 3.
+> s
+Counter Room
+Counter Room. A long counter runs across the room. A door leads north.
+The sorting room door is open.
+The clerk waits behind the counter.
+You can also see a letter scale here.
+> buy 2
+The clerk tears off 2 stamps. "2 pence left."
+> stamp blue
+You lick 2 stamps and stick them on the blue parcel.
+> x blue
+Wrapped in brown paper and tied with string. By its heft, a small packet, with 2 stamps on it.
+> n
+Sorting Room
+Sorting Room. Pigeonholes line the walls. A door leads south and a ladder goes down.
+The sorting room door is open.
+You can also see a posting slot (which is empty) here.
+> put blue in slot
+The blue parcel drops through the slot.
+[The score has just gone up by one point.]
+    *** You have won ***
+In that game you scored 3 out of a possible 3, in 73 turns.
+Would you like to RESTART, RESTORE a saved game or QUIT?

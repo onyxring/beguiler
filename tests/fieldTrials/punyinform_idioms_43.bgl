@@ -1,0 +1,599 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: a forty-third PunyInform program, written plainly: two rooms (Room A with a scale and
+// four pigeonholes, Room B east with a stamp machine, a bell, a clock and a clerk) and
+// OPTIONAL_SCORED; an enum zone; a `Letter` class with a zone, a weight, a stamp count and a static
+// method giving the stamps a weight needs (a `switch` over ranges), its description a routine; a `Pigeonhole` class (open static container) whose `before`
+// refuses unstamped letters and other things and whose `after` takes `Receive`, scores a letter put in
+// its own zone and logs it; a `Wallet` struct (`operator ()`, `+=`, `-=`, a `bool` method) as a global;
+// a stamp book whose count is a member; a `weigh NOUN` verb that records weighings in a rolling
+// `array<int>`; `buy NUMBER stamps` whose helper throws a fault enum caught with `try`/`catch` and
+// switched on; `stamp NOUN` taking stamps from the book; a bell whose `ring` starts a timer whose
+// `time_out` brings the clerk over; a clerk with `life` (Ask through NextWord, Give) and `each_turn`;
+// a clock with a daemon; a `stringObj` log built with interpolated `+=`, `contains`, `left`,
+// `toUpper`; `bgl.world.instances` with and without a predicate; `<linq>` `filter`, `orderBy` with a
+// comparator, `map`, `first`, `last`, `count`, `any`, `all`, `take`, `distinct`; `children` loops and
+// `.length`; `for`, `for … in`, `while` and `do`/`until` loops; and meta verbs reporting state.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+}
+
+#defineI6 OPTIONAL_SCORED
+
+const int    MAX_SCORE              = 4;
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <linq>
+#include <string>
+
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend extern class object {
+    string description;
+    ref object e_to;
+    ref object w_to;
+}
+
+// --- shared state -----------------------------------------------------------------------------------
+
+enum eZone { north, south, east, west }
+enum eFault { noMoney, tooMany, noMachine }
+
+const int STAMP_PRICE = 10;
+const int BOOK_MAX    = 8;
+const int LOG_SIZE    = 6;
+
+struct Wallet {
+    int _coins = 0;
+
+    int  operator ()         { return _coins; }
+    void operator += (int v) { _coins = _coins + v; }
+    void operator -= (int v) {
+        _coins = _coins - v;
+        if (_coins < 0) _coins = 0;
+    }
+
+    bool canPay(int amount) {
+        return _coins >= amount;
+    }
+}
+
+Wallet    purse;
+stringObj postLog;
+int       logged    = 0;
+int       sorted    = 0;
+int       missorted = 0;
+int       bought    = 0;
+int       clockTicks = 0;
+
+array<int> weighings[LOG_SIZE];
+
+void note(string what, int n = -1) {
+    logged++;
+    if (n < 0) postLog += $"{what}; ";
+    else postLog += $"{what} {n}; ";
+}
+
+string zoneName(eZone z) {
+    switch (z) {
+        case eZone.north: return "north";
+        case eZone.south: return "south";
+        case eZone.east:  return "east";
+        case eZone.west:  return "west";
+    }
+    return "nowhere";
+}
+
+// --- letters ----------------------------------------------------------------------------------------
+
+class Letter : object {
+    eZone zone   = eZone.north;
+    int   weight = 10;
+    int   stamps = 0;
+    name = {.letter, .letters};
+
+    static int stampsFor(int grams) {
+        switch (grams) {
+            case 0 to 50:    return 1;
+            case 51 to 150:  return 2;
+            case 151 to 400: return 3;
+            case > 400:      return 5;
+        }
+        return 1;
+    }
+
+    int needs() {
+        int n = stampsFor(weight) - stamps;
+        if (n < 0) n = 0;
+        return n;
+    }
+
+    bool ready() {
+        return needs() == 0;
+    }
+
+    void description() {
+        print($"Addressed to the {zoneName(zone)} zone, {weight} grams");
+        if (stamps == 0) printLine(", unstamped.");
+        else if (ready()) printLine($", {stamps} stamps, enough.");
+        else printLine($", {stamps} stamps, {needs()} short.");
+    }
+}
+
+Letter redLetter {
+    "red letter";
+    parent = roomA;
+    name = {.red};
+    zone = eZone.north;
+    weight = 20;
+}
+
+Letter blueLetter {
+    "blue letter";
+    parent = roomA;
+    name = {.blue};
+    zone = eZone.south;
+    weight = 45;
+}
+
+Letter greenLetter {
+    "green letter";
+    parent = roomA;
+    name = {.green};
+    zone = eZone.east;
+    weight = 120;
+}
+
+Letter parcel {
+    "parcel";
+    parent = roomA;
+    name = {.parcel, .package};
+    zone = eZone.west;
+    weight = 300;
+}
+
+// --- rooms ------------------------------------------------------------------------------------------
+
+class Room : object {
+    attributes = {proper, light};
+}
+
+Room roomA {
+    "Room A";
+    description = "Room A. A scale and four pigeonholes. A door leads east.";
+    e_to = roomB;
+}
+
+Room roomB {
+    "Room B";
+    description = "Room B. A stamp machine, a bell and a clock. A door leads west.";
+    w_to = roomA;
+}
+
+// --- room A -----------------------------------------------------------------------------------------
+
+object scale {
+    "scale";
+    parent = roomA;
+    name = {.scale};
+    attributes = {supporter, static};
+
+    void description() {
+        int total = 0;
+        for (object o in children) {
+            if (o.is(Letter)) total += ((Letter)o).weight;
+        }
+        printLine($"A postal scale. It reads {total} grams.");
+    }
+}
+
+class Pigeonhole : object {
+    eZone zone = eZone.north;
+    int   held = 0;
+    name = {.pigeonhole, .hole};
+    attributes = {container, open, static};
+
+    void description() {
+        int n = children.length;
+        if (n == 0) printLine($"The {zoneName(zone)} pigeonhole is empty.");
+        else printLine($"The {zoneName(zone)} pigeonhole holds {n}.");
+    }
+
+    bool before() {
+        switch (action) {
+            case Receive:
+                if (!noun.is(Letter)) rtrue("Only post goes in the pigeonholes.^");
+                Letter l = (Letter)noun;
+                if (!l.ready()) rtrue($"{cThe(l)} needs {l.needs()} more stamps first.^");
+        }
+        rfalse;
+    }
+
+    bool after() {
+        switch (action) {
+            case Receive:
+                Letter l = (Letter)noun;
+                held++;
+                if (l.zone == zone) {
+                    sorted++;
+                    score++;
+                    note("sorted", (int)zone);
+                    rtrue($"You file {the(l)} in the {zoneName(zone)} pigeonhole.^");
+                }
+                missorted++;
+                note("missorted", (int)l.zone);
+                rtrue($"You file {the(l)}, but it belongs in the {zoneName(l.zone)} pigeonhole.^");
+            case LetGo:
+                note("took back");
+        }
+        rfalse;
+    }
+}
+
+Pigeonhole northHole {
+    "north pigeonhole";
+    parent = roomA;
+    name = {.north};
+    zone = eZone.north;
+}
+
+Pigeonhole southHole {
+    "south pigeonhole";
+    parent = roomA;
+    name = {.south};
+    zone = eZone.south;
+}
+
+Pigeonhole eastHole {
+    "east pigeonhole";
+    parent = roomA;
+    string article = "an";
+    name = {.east};
+    zone = eZone.east;
+}
+
+Pigeonhole westHole {
+    "west pigeonhole";
+    parent = roomA;
+    name = {.west};
+    zone = eZone.west;
+}
+
+// --- room B -----------------------------------------------------------------------------------------
+
+object stampBook {
+    "stamp book";
+    parent = roomB;
+    name = {.stamp, .book, .stamps};
+    int count = 0;
+
+    void description() {
+        if (count == 0) printLine("An empty stamp book.");
+        else if (count == 1) printLine("A stamp book with one stamp left.");
+        else printLine($"A stamp book with {count} stamps.");
+    }
+}
+
+object stampMachine {
+    "stamp machine";
+    parent = roomB;
+    name = {.stamp, .machine};
+    description = "A stamp machine. Stamps cost ten coins each.";
+    attributes = {static};
+}
+
+object clock {
+    "clock";
+    parent = roomB;
+    name = {.clock};
+    attributes = {static};
+
+    void description() {
+        int minutes = clockTicks * 5;
+        printLine($"The clock shows {minutes / 60}:{(minutes % 60) / 10}{minutes % 10}.");
+    }
+
+    void daemon() {
+        clockTicks++;
+    }
+}
+
+object clerk {
+    "clerk";
+    parent = roomB;
+    name = {.clerk};
+    description = "A clerk in a gray jacket.";
+    int asked  = 0;
+    int called = 0;
+    int time_left;
+    attributes = {animate};
+
+    bool life() {
+        switch (action) {
+            case Ask:
+                asked++;
+                wn = consult_from;
+                dictionaryWord w = NextWord();
+                if (w == .stamps || w == .stamp) rtrue("The clerk says: ten coins each, from the machine.^");
+                if (w == .parcel) rtrue("The clerk says: parcels are weighed like letters.^");
+                if (w == .zones || w == .zone) rtrue("The clerk says: north, south, east and west.^");
+                rtrue("The clerk says nothing.^");
+            case Give:
+                if (noun.is(Letter)) rtrue("The clerk says: sort it yourself.^");
+                if (noun == stampBook) rtrue("The clerk says: those are yours.^");
+                rtrue("The clerk shakes his head.^");
+        }
+        rfalse;
+    }
+
+    void each_turn() {
+        if (parent == roomA && sorted == 4) {
+            printLine("The clerk checks the pigeonholes and nods.");
+            parent = roomB;
+        }
+    }
+
+    void time_out() {
+        called++;
+        parent = roomA;
+        note("clerk came");
+        if (location == roomA) printLine("The clerk comes in from Room B.");
+    }
+}
+
+object bell {
+    "bell";
+    parent = roomB;
+    name = {.bell};
+    description = "A small brass bell.";
+    attributes = {static};
+}
+
+// --- helpers ----------------------------------------------------------------------------------------
+
+// Takes the coins for some stamps; throws why it can't.
+void buyStamps(int n) {
+    if (stampMachine.parent != location) throw eFault.noMachine;
+    if (n < 1 || stampBook.count + n > BOOK_MAX) throw eFault.tooMany;
+    if (!purse.canPay(n * STAMP_PRICE)) throw eFault.noMoney;
+    purse -= n * STAMP_PRICE;
+    stampBook.count += n;
+    bought += n;
+}
+
+void recordWeight(int grams) {
+    if (weighings.length == weighings.size) weighings.remove(0);
+    weighings += grams;
+}
+
+int byWeight(object a, object b) {
+    return ((Letter)a).weight - ((Letter)b).weight;
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Weigh {
+    grammar = {.weigh, NOUN};
+    void handler() {
+        if (scale.parent != location) {
+            printLine("There is no scale here.");
+            return;
+        }
+        if (!noun.is(Letter)) {
+            printLine($"{cThe(noun)} won't fit on the scale.");
+            return;
+        }
+        Letter l = (Letter)noun;
+        recordWeight(l.weight);
+        note("weighed", l.weight);
+        printLine($"{cThe(l)} weighs {l.weight} grams and needs {Letter.stampsFor(l.weight)} stamps.");
+    }
+}
+
+verb Buy {
+    grammar = { {.buy, NUMBER, .stamps}, {.buy, NUMBER, .stamp} };
+    void handler() {
+        int n = parsed_number;
+        try {
+            buyStamps(n);
+        } catch (eFault f) {
+            switch (f) {
+                case eFault.noMachine: printLine("There is no stamp machine here.");
+                case eFault.tooMany:   printLine($"The stamp book holds {BOOK_MAX} stamps.");
+                case eFault.noMoney:   printLine($"You have {(int)purse} coins, not {n * STAMP_PRICE}.");
+            }
+            return;
+        }
+        note("bought", n);
+        if (n == 1) printLine($"The machine drops one stamp into the book. {(int)purse} coins left.");
+        else printLine($"The machine drops {n} stamps into the book. {(int)purse} coins left.");
+    }
+}
+
+verb Affix {
+    grammar = { {.stamp, NOUN} };
+    void handler() {
+        if (!noun.is(Letter)) {
+            printLine($"You can't stamp {the(noun)}.");
+            return;
+        }
+        if (stampBook.parent != player) {
+            printLine("You have no stamps.");
+            return;
+        }
+        Letter l = (Letter)noun;
+        int want = l.needs();
+        if (want == 0) {
+            printLine($"{cThe(l)} has enough stamps.");
+            return;
+        }
+        if (stampBook.count == 0) {
+            printLine("The stamp book is empty.");
+            return;
+        }
+        int used = 0;
+        while (want > 0 && stampBook.count > 0) {
+            stampBook.count--;
+            l.stamps++;
+            want--;
+            used++;
+        }
+        note("stamped", used);
+        if (l.ready()) printLine($"You put {used} stamps on {the(l)}. It is ready.");
+        else printLine($"You put {used} stamps on {the(l)}. It needs {l.needs()} more.");
+    }
+}
+
+verb Ring {
+    grammar = {.ring, NOUN};
+    void handler() {
+        if (noun != bell) {
+            printLine($"{cThe(noun)} doesn't ring.");
+            return;
+        }
+        if (clerk.parent == roomA) {
+            printLine("The clerk is already in Room A.");
+            return;
+        }
+        printLine("Ding. The clerk looks up.");
+        StartTimer(clerk, 2);
+    }
+}
+
+verb Tally {
+    meta = true;
+    grammar = {.tally};
+    void handler() {
+        printLine($"Score {score} of {MAX_SCORE}. Sorted {sorted}, missorted {missorted}.");
+        printLine($"Coins {(int)purse}, stamps {stampBook.count}, bought {bought}, ticks {clockTicks}.");
+        printLine($"Clerk asked {clerk.asked}, called {clerk.called}.");
+    }
+}
+
+verb Holes {
+    meta = true;
+    grammar = {.holes};
+    void handler() {
+        for (object o in bgl.world.instances(Pigeonhole)) {
+            Pigeonhole p = (Pigeonhole)o;
+            print($"{zoneName(p.zone)}:");
+            if (p.children.length == 0) print(" -");
+            for (object c in p.children) print($" {c}");
+            printLine($" (held {p.held})");
+        }
+    }
+}
+
+verb Post {
+    meta = true;
+    grammar = {.post};
+    void handler() {
+        array<object> all[6];
+        all = bgl.world.instances(Letter).orderBy(byWeight);
+        print("By weight:");
+        for (object o in all) print($" {((Letter)o).weight}");
+        printLine(".");
+        int unready = bgl.world.instances(Letter, (object o) => !((Letter)o).ready()).length;
+        printLine($"{unready} not ready.");
+        Letter light = (Letter)all.first();
+        Letter heavy = (Letter)all.last();
+        printLine($"Lightest {light}, heaviest {heavy}.");
+        array<var> need = all.map((object o) => Letter.stampsFor(((Letter)o).weight));
+        print("Stamps needed:");
+        for (var n in need) print($" {n}");
+        printLine(".");
+        if (all.all((object o) => ((Letter)o).ready())) printLine("Every letter is ready.");
+        if (all.any((object o) => ((Letter)o).stamps == 0)) printLine("Some are unstamped.");
+    }
+}
+
+verb ShowWeighings {
+    meta = true;
+    grammar = {.weighings};
+    void handler() {
+        if (weighings.length == 0) {
+            printLine("Nothing weighed.");
+            return;
+        }
+        print("Weighed:");
+        for (int g in weighings) print($" {g}");
+        printLine(".");
+        int heavy = weighings.filter((int g) => g > 50).count();
+        array<int> uniq = weighings.distinct();
+        printLine($"Heaviest {weighings.orderBy().last()}, {heavy} over fifty, {uniq.length} different.");
+        print("First two:");
+        for (int g in weighings.take(2)) print($" {g}");
+        printLine(".");
+    }
+}
+
+verb Plan {
+    meta = true;
+    grammar = {.plan};
+    void handler() {
+        int stamps = 0;
+        for (object o in bgl.world.instances(Letter)) stamps += ((Letter)o).needs();
+        int coins = (int)purse;
+        int affordable = 0;
+        while (coins >= STAMP_PRICE) {
+            coins -= STAMP_PRICE;
+            affordable++;
+        }
+        printLine($"Need {stamps} more stamps, can buy {affordable}, have {stampBook.count}.");
+        int left = stamps - stampBook.count;
+        int trips = 0;
+        if (left > 0) {
+            do {
+                left -= BOOK_MAX;
+                trips++;
+            } until (left <= 0);
+        }
+        printLine($"{trips} trips to the machine.");
+    }
+}
+
+verb ReadLog {
+    meta = true;
+    grammar = {.log};
+    void handler() {
+        if (postLog.length == 0) {
+            printLine("The log is empty.");
+            return;
+        }
+        printLine($"Log ({logged}): {postLog}");
+        if (postLog.contains("missorted")) printLine("Something was missorted.");
+        stringObj head = postLog.left(6);
+        printLine(head.toUpper());
+    }
+}
+
+verb ListLetters {
+    meta = true;
+    grammar = {.letters};
+    void handler() {
+        for (int i = 0; i < 4; i++) {
+            ref Letter l;
+            switch (i) {
+                case 0: l := redLetter;
+                case 1: l := blueLetter;
+                case 2: l := greenLetter;
+                case 3: l := parcel;
+            }
+            print($"{l} in {l.parent}: ");
+            l.description();
+        }
+    }
+}
+
+bool Initialise() {
+    purse += 80;
+    StartDaemon(clock);
+    rfalse;
+}

@@ -1,0 +1,497 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: valid but unusual code in a small lamp cue-board program, on the Z-machine.
+// Conditional compilation: a `#define` redefined with `#redef`, a flag `#undef`d before an `#if` that
+// tests it, an excluded branch holding text that would not compile, `#elif` defining a symbol, an `#if`
+// above a `#declare` at the end of the file comparing the declared string, `#if` inside a class body, an
+// object body, an `extend` body and a function body. `literal` storage: a global `literal func<void>`
+// re-pointed through a `literal` parameter (a named function, a capture-free lambda, a lambda capturing
+// a `const` local), a `literal func<int, int>` class member given a named function by one object and a
+// lambda by another, an `array<literal func<void>>` of named functions edited by `extend` (inject first,
+// inject after, move before) and walked by index and by for-in. A base class with `required` data, a
+// `required` routine and a `required default` routine, met partly by a subclass and partly by each
+// object (one object overriding the subclass's routine); a `const` member re-given by an object; an
+// object extended with a new member, a `replace` method and `+=` on its member array; an array of
+// objects reordered by `extend` (`move … first`). A reference class with a copy operator: a file-scope
+// owning global, a `ref` global re-bound with `:=` and copied into with `=`. A named union of string and
+// function with a static member and a program print() overload, called through a cast in a statement.
+// Computed property access through a `property` parameter (bare member names as arguments) and
+// provides() through it. A struct with positional members and a static `<=>` handed to sort() as an
+// operator reference, built by inline objects appended to a sized local array. `uint` wrap and logical
+// shift; `bgl.util.math`; char classification over a byte array; a superposed object reached once and a
+// superposed function never reached; a for-in whose loop variable is a `ref` local declared earlier; a
+// range for-in whose bounds are expressions over a `#define`; nested ternaries; `do … until` in a switch.
+// A `literal` member re-assigned from another object's `literal` member through a `literal` local; a member
+// `array<literal func<void>>` appended past its capacity; an object of the base class meeting every requirement
+// itself (a printed `\~`), reached with the subclass's objects through a for-in over an inline list; an owning
+// local of the copying class filled from a returned instance and passed (shared) to a routine; an operator
+// reference held in a `func<>` local; an `extend` adding a static member to the named union.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#define STEPS 4
+#redef STEPS 6
+#define FADE
+#undef FADE
+
+#if FADE
+    int WIDE = "never compiled";
+#elif STEPS > 5 && !FADE
+    #define WIDE 3
+#else
+    #define WIDE 1
+#endif
+
+#if RIG == "front"
+    #define RIGNAME "front bank"
+#else
+    #define RIGNAME "other bank"
+#endif
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    string description;
+}
+
+// ---- routines, above the types they use ------------------------------------------------------------------
+
+int straight(int v) { return v; }
+int squared(int v) { return v * v / 100; }
+
+void cueAllOff() {
+    for (Lamp l in bank) l.level = 0;
+    print("all off");
+}
+void cueWash() {
+    lampA.level = 60;
+    lampB.level = 40;
+    print("wash");
+}
+void cueSpot() {
+    lampC.level = lampC.maxLevel;
+    print("spot");
+}
+void cueHalf() {
+    for (Lamp l in bank) l.level = l.level / 2;
+    print("half");
+}
+void cueBlink() {
+    for (int i in 1 to WIDE) lampB.blink();
+    print(" blink");
+}
+void sayCues() { print($"{cues.length} cues"); }
+
+void setArmed(literal func<void> f) {
+    armed = f;
+    armCount++;
+}
+void armTwice(literal func<void> f) {
+    setArmed(f);
+    setArmed(f);
+}
+
+int sumOf(Preset p) { return p.a + p.b + p.c; }
+Preset pick(int n) { return n == 1 ? presetOne : presetTwo; }
+void bumpFirst(Preset p) { p.b += 100; }
+
+int readOf(Lamp l, property p) { return l.p; }
+bool holds(object o, property p) { return o.provides(p); }
+
+void eachLamp(func<void, Lamp> fn) {
+    for (int i = bank.length - 1; i >= 0; i--) fn(bank[i]);
+}
+
+superposed int neverCalled() { return neverCalled() + 1; }
+
+// ---- types -----------------------------------------------------------------------------------------------
+
+class Fixture : object {
+    required int channel;
+    required string tag();
+    required default void blink() { print("-"); }
+    const int maxLevel = 100;
+}
+
+class Lamp : Fixture {
+    inline int level;
+    literal func<int, int> curve = straight;
+    int blinks;
+#if WIDE > 2
+    int width = WIDE;
+#else
+    int width = 1;
+#endif
+    string tag() { return "L"; }
+    void blink() {
+        blinks++;
+        print("*");
+    }
+    int out() { return curve(bgl.util.math.clamp(level, 0, maxLevel)); }
+}
+
+class Preset : object {
+    int a;
+    int b;
+    int c;
+    Preset operator = (Preset o) {
+        a = o.a;
+        b = o.b;
+        c = o.c;
+        return self;
+    }
+}
+
+struct Reading {
+    inline int ch;
+    inline int v;
+    static int operator <=> (Reading x, Reading y) { return x.v - y.v; }
+}
+
+union cueLabel = string | func<void> {
+    static bool isCall(cueLabel x) { return typeof(x) == eType.routine; }
+}
+
+void print(cueLabel x) {
+    if (cueLabel.isCall(x)) ((func<void>)x)();
+    else print((string)x);
+}
+
+// ---- data ------------------------------------------------------------------------------------------------
+
+literal func<void> armed = cueAllOff;
+int armCount = 0;
+int pos = 0;
+
+array<literal func<void>> cues = { cueWash, cueSpot, cueHalf };
+extend cues {
+    inject cueAllOff first;
+    inject cueBlink after cueSpot;
+    move cueHalf before cueBlink;
+}
+
+array<Lamp> bank = { lampA, lampB, lampC };
+extend bank {
+    move lampC first;
+}
+
+array<cueLabel> marquee = { "pre", sayCues, "post" };
+
+Preset presetOne { a = 10; b = 20; c = 30; }
+Preset presetTwo { }
+Preset live;
+ref Preset chosen := presetOne;
+
+array<char> word = "Lamp-Rig";
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+Lamp lampA {
+    0, "lamp A";
+    channel = 1;
+    parent = roomA;
+    attributes = scenery;
+    array<int> marks = {1, 2};
+    array<literal func<void>> hooks[3] = { cueSpot };
+}
+
+Lamp lampB {
+    0, "lamp B";
+    channel = 2;
+    curve = squared;
+    maxLevel = 80;
+    parent = roomA;
+    attributes = {scenery};
+#if WIDE == 3
+    int spare = 33;
+#endif
+}
+
+Lamp lampC {
+    level = 10;
+    instanceName = "lamp C";
+    channel = 7;
+    curve = (int v) => v / 2 + 1;
+    maxLevel = 50;
+    parent = roomA;
+    attributes = scenery;
+    string tag() { return "S"; }
+}
+
+extend lampA {
+    int extra = 3;
+    replace string tag() { return "A"; }
+    marks += {9};
+#if STEPS == 6
+    int six = STEPS;
+#endif
+}
+
+Fixture hazer {
+    channel = 9;
+    instanceName = "hazer";
+    parent = roomA;
+    attributes = scenery;
+    string tag() { return "H"; }
+    void blink() { print("\~"); }
+}
+
+superposed object spareRack {
+    int slots = 4;
+}
+
+// ---- verbs -----------------------------------------------------------------------------------------------
+
+verb Panel {
+    grammar = {.panel};
+    meta = true;
+    void handler() {
+        for (Lamp l in bank) {
+            print($"{l.tag()}{l.channel}:{l.level}>{l.out()} ");
+        }
+        printLine($"w{lampA.width} pos {pos}/{cues.length} armed {armCount}.");
+    }
+}
+
+verb Advance {
+    grammar = {.advance};
+    void handler() {
+        print($"cue {pos + 1}: ");
+        cues[pos]();
+        pos = pos + 1 == cues.length ? 0 : pos + 1;
+        printLine(".");
+    }
+}
+
+verb Cycle {
+    grammar = {.cycle};
+    void handler() {
+        int n = 0;
+        for (literal func<void> f in cues) {
+            if (n > 0) print(", ");
+            f();
+            if (n == cues.length - 1) setArmed(f);
+            n++;
+        }
+        printLine($" ({n}, armed {armCount}).");
+    }
+}
+
+verb SetAll {
+    grammar = {.level, NUMBER};
+    void handler() {
+        int target = (int)noun;
+        int seen = 0;
+        eachLamp((Lamp l) => {
+            l.level = target > l.maxLevel ? l.maxLevel : target < 0 ? 0 : target;
+            seen++;
+        });
+        print($"set {seen}:");
+        for (Lamp l in bank) print($" {l.out()}");
+        printLine(".");
+    }
+}
+
+verb Arm {
+    grammar = {.arm, NUMBER};
+    void handler() {
+        const int k = 5;
+        switch ((int)noun) {
+            case 1: setArmed(cueSpot);
+            case 2: setArmed(=> print("noop"));
+            case 3:      armTwice(=> print($"k{k}"));
+            case 4 to 9: setArmed(cues[(int)noun % cues.length]);
+            default: setArmed(cueAllOff);
+        }
+        printLine($"armed ({armCount}).");
+    }
+}
+
+verb Fire {
+    grammar = {.fire};
+    void handler() {
+        print("fire: ");
+        armed();
+        printLine(".");
+    }
+}
+
+verb Store {
+    grammar = {.store};
+    void handler() {
+        live.a = lampA.level;
+        live.b = lampB.level;
+        live.c = lampC.level;
+        chosen := presetTwo;
+        chosen = live;
+        live.a = 99;
+        Preset scratch;
+        scratch = pick(1);
+        scratch.a++;
+        bumpFirst(scratch);
+        printLine($"stored {presetTwo.a},{presetTwo.b},{presetTwo.c}; live {live.a}; one {presetOne.a}; scratch {sumOf(scratch)} {sumOf(pick(scratch.a))}.");
+    }
+}
+
+verb Recall {
+    grammar = {.recall, NUMBER};
+    void handler() {
+        if ((int)noun == 1) chosen := presetOne;
+        else chosen := presetTwo;
+        lampA.level = chosen.a;
+        lampB.level = chosen.b;
+        lampC.level = chosen.c;
+        printLine($"recalled {(int)noun}: {lampA.level} {lampB.level} {lampC.level}, same {chosen == presetOne}.");
+    }
+}
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        print($"ch {readOf(lampC, channel)} lv {readOf(lampA, level)} bl {readOf(lampB, blinks)}");
+        print($" marks {lampA.marks.length}/{lampA.marks[2]} extra {lampA.extra} six {lampA.six}");
+        printLine($" spare {holds(lampB, spare)} {holds(lampC, spare)} rack {spareRack.slots}.");
+    }
+}
+
+verb Rank {
+    grammar = {.rank};
+    void handler() {
+        array<Reading> snap[3];
+        for (Lamp l in bank) snap += Reading{ l.channel, l.out() };
+        snap.sort(Reading::operator <=>);
+        func<int, Reading, Reading> cmp = Reading::operator <=>;
+        print($"rank {bgl.util.math.sign(cmp(snap[0], snap[snap.length - 1]))}:");
+        for (Reading r in snap) print($" {r.ch}={r.v}");
+        printLine($", top {snap[snap.length - 1].ch}.");
+    }
+}
+
+verb Spell {
+    grammar = {.spell};
+    void handler() {
+        stringObj out;
+        int vowels = 0;
+        for (char c in word) {
+            if (c.isVowel()) vowels++;
+            out += c.isAlpha() ? (c =~ 'r' ? '_' : c.toUpper()) : '.';
+        }
+        printLine($"{out} v{vowels} {word.length}.");
+    }
+}
+
+verb Wrap {
+    grammar = {.wrap};
+    void handler() {
+        uint u = (uint)-3;
+        uint big = u;
+        u >>= 1;
+        uint sum = big + 5;
+        int s = bgl.util.math.sign(-(int)u);
+        print($"u {u == ((uint)-1) / 2 - 1} big {big + 3 == 0} sum {sum} {u > 30000} {(int)big < 0} sign {s}");
+        printLine($" pow {bgl.util.math.pow(2, STEPS)} max {bgl.util.math.max(lampA.level, lampB.level)}.");
+    }
+}
+
+verb Labels {
+    grammar = {.labels};
+    void handler() {
+        for (cueLabel x in marquee) {
+            print("[");
+            print(x);
+            print("]");
+        }
+        cueLabel tail = marquee[marquee.length - 1];
+        printLine($" calls {marquee.filter((cueLabel x) => cueLabel.isCall(x)).count()} last {cueLabel.isCall(tail)}.");
+    }
+}
+
+verb Tour {
+    grammar = {.tour};
+    void handler() {
+        ref Lamp cur;
+        int total = 0;
+        for (cur in bank) total += cur.channel;
+        print($"total {total} last {cur}");
+        for (int i in STEPS - 4 to STEPS / 2) print($" {i}");
+        int j = 0;
+        switch (total % 4) {
+            case 2:
+                do {
+                    j += 3;
+                } until (j > 7);
+            default:
+                j = -1;
+        }
+        printLine($", j {j} {RIGNAME}.");
+    }
+}
+
+verb Swap {
+    grammar = {.swap};
+    void handler() {
+        literal func<int, int> held = lampA.curve;
+        lampA.curve = lampC.curve;
+        lampC.curve = held;
+        literal func<void> was = armed;
+        setArmed(was);
+        print($"swapped: A {lampA.out()} C {lampC.out()} armed {armCount}");
+        printLine($", weight {cueLabel.weight(marquee[0])}{cueLabel.weight(marquee[1])}.");
+    }
+}
+
+verb Blink {
+    grammar = {.blink};
+    void handler() {
+        for (Lamp l in bank) l.blink();
+        for (Fixture fx in { hazer, lampB }) {
+            fx.blink();
+            print(fx.tag());
+        }
+        Fixture one = lampC;
+        one.blink();
+        printLine($" {lampA.blinks}{lampB.blinks}{lampC.blinks} max {hazer.maxLevel} lamp {holds(hazer, level)}.");
+    }
+}
+
+verb Hook {
+    grammar = {.hook};
+    void handler() {
+        bool added = lampA.hooks.append(cueHalf);
+        int n = 0;
+        for (func<void> h in lampA.hooks) {
+            h();
+            print(";");
+            n++;
+        }
+        printLine($" {n} {lampA.hooks.size} {added}.");
+    }
+}
+
+bool Initialise() {
+    location = roomA;
+#if RIG == "front" && STEPS > 4
+    print("bank ready^");
+#endif
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+extend cueLabel {
+    static int weight(cueLabel x) { return isCall(x) ? 2 : 1; }
+}
+
+#declare RIG "front"

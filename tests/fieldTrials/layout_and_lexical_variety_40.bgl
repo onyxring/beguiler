@@ -1,0 +1,508 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: layout and lexical habits in a small program with two rooms, three seed trays, a pool of
+// sprouts, a watering can and a seed box. An enum stage shown through a `switch` with a multi-value
+// case, a bnum of needs set with `|=`, tested with `&` and cleared with `^=`; a struct reading with a
+// copy operator, `==`, an instance `<=>` (orderings derived) and a method returning a `stringObj`; a
+// pooled sprout class sized by a #define with `create`, `destroy`, a static counter, a `short_name`
+// routine and a `grow()` that `throw`s an int when it wilts; a tray class with positional members
+// (`inline instanceName` re-listed, an `inline int` capacity), a member array of sprouts, a method that
+// throws a string when full and a computed description; a can with an inline `auto` accessor that
+// clamps through `outer`; a daemon that ages sprouts each turn and logs readings into a global array,
+// reported through <linq> `filter`, `count`, `any`, `max`-by-`orderBy` and `first`; a `func<int,int>`
+// global picking a growth rule; a `stringObj` log built with `+=` of chars, strings and interpolations
+// and shown through `replaceAll` and `left`; a `NUMBER` grammar token; `#define` values under
+// `#if`/`#else`; hex and binary literals, `<<`, `>>` and `%`; a raw string, `~` quotes and char
+// escapes; `while` with `continue`, `do`/`while`; mixed-case keywords, Allman, K&R and one-line braces,
+// comments between tokens and in argument lists, a routine with no optional spaces and declarations
+// split over several lines.
+
+#beguilerSettings
+{
+    target       = z5 ;
+    includePaths = "../../../inform6/stdlib" ;
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+#using bgl.printRules ;
+
+#define SPROUTS    6          // pool size
+#define TRAY_CAP   2
+#define WATER_CAP  $0A        // ten measures
+#define FAST       1
+
+const int   THIRST_LIMIT = $$11 ;        // three turns dry and a sprout wilts
+CONST INT   LOG_SIZE     = 8 ;
+const   int
+    SHOOT_AT = 2 ;
+
+enum eStage { seed , shoot , /* the green one */ leaf , bloom }
+
+bnum bNeed
+{
+    dry ,
+    cold ,      // set by the daemon on even turns
+    crowded
+}
+
+char stageChar ( eStage s )
+{
+    switch ( s )
+    {
+        case eStage.seed           : return '.' ;
+        case eStage.shoot          : return '\'' ;
+        case eStage.leaf , eStage.bloom : return '*' ;
+    }
+    return '?' ;
+}
+
+string stageWord(eStage s){switch(s){case eStage.seed:return "seed";case eStage.shoot:return "shoot";case eStage.leaf:return "leaf";default:return "bloom";}}
+
+// ---- growth rules ---------------------------------------------------------------------------------
+
+int slowRule ( int age ) { return age / 3 ; }
+int fastRule ( int age ) { return age >> 1 ; }      // half the age, rounded down
+
+#if FAST
+func< int , int > growthRule = fastRule ;
+#else
+func< int , int > growthRule = slowRule ;
+#endif
+
+// ---- readings -------------------------------------------------------------------------------------
+
+/// One reading of the shed: temperature and dampness.
+struct Reading
+{
+    int temp ;
+    int damp ;
+
+    Reading operator = ( Reading o ) { temp = o.temp ; damp = o.damp ; return self ; }
+    bool operator == ( Reading o ) { return temp == o.temp && damp == o.damp ; }
+    bool operator != ( Reading o ) { return !( self == o ) ; }
+
+    /// Damper first counts as greater; ties by temperature.
+    int operator <=> ( Reading o )
+    {
+        if ( damp != o.damp ) return damp - o.damp ;
+        return temp - o.temp ;
+    }
+
+    stringObj show ()
+    {
+        stringObj s = $"{temp}C/" ;
+        s += $"{damp}" ;
+        s += '%' ;
+        return s ;
+    }
+}
+
+array<Reading> readings[ LOG_SIZE ] ;
+Reading        lastReading ;
+
+stringObj      shedLog ;
+
+void note ( string what ,
+            int    n )          // the count or the id it applies to
+{
+    if ( shedLog.length > 0 ) shedLog += ';' ;
+    shedLog += ' ' ;
+    shedLog += what ;
+    shedLog += $" {n}" ;
+}
+
+// ---- rooms ----------------------------------------------------------------------------------------
+
+class Room : object { attributeList attributes = { light } ; string description ; }
+
+Room roomA
+{
+    "Room A" ;
+    description = "Room A. A bench with three trays. Room B is north." ;
+    object n_to = roomB ;
+}
+
+Room roomB {
+    "Room B" ;
+    description = "Room B. A seed box and a tap. Room A is south." ;
+    object s_to = roomA ;
+}
+
+object card
+{
+    "card" ;
+    parent     = roomA ;
+    name       = { .card , .white } ;
+    void description ()
+    {
+        printLine( "The card reads: ~Water daily; two to a tray.~" ) ;
+        printLine( @"Pencilled below: tray\1 is by the door." ) ;
+    }
+}
+
+// ---- sprouts --------------------------------------------------------------------------------------
+
+class Sprout[ SPROUTS ] : object
+{
+    int    id ;
+    eStage stage = eStage.seed ;
+    int    age   = 0 ;
+    int    dryFor = 0 ;
+    bNeed  needs ;
+    name = { .sprout , .plant } ;
+    string description = "A small sprout." ;
+
+    static int sown   = 0 ;
+    static int pulled = 0 ;
+
+    void create ( int n ) { id = n ; Sprout.sown++ ; }
+    void destroy () { Sprout.pulled++ ; }
+
+    bool short_name () { print( $"sprout {id}" ) ; rtrue ; }
+
+    /// Ages the sprout one turn; throws the id when it wilts.
+    void grow ()
+    {
+        age++ ;
+        if ( needs & bNeed.dry )
+        {
+            dryFor++ ;
+            if ( dryFor >= THIRST_LIMIT ) throw id ;
+            return ;
+        }
+        if ( age < SHOOT_AT ) return ;          // nothing shows the first turn
+        int g = growthRule( age ) ;
+        if ( g > ( int ) eStage.bloom - 1 ) g = ( int ) eStage.bloom - 1 ;
+        stage = ( eStage ) ( g + 1 ) ;
+    }
+
+    stringObj tag ()
+    {
+        stringObj s = $"{id}" ;
+        s += stageChar( stage ) ;
+        if ( needs & bNeed.dry ) s += '!' ;
+        return s ;
+    }
+}
+
+int nextId = $01 ;
+
+// ---- trays ----------------------------------------------------------------------------------------
+
+class Tray : object
+{
+    inline instanceName ;
+    inline int cap = TRAY_CAP ;
+    array<Sprout> held[ TRAY_CAP ] ;
+    name = { .tray } ;
+    attributeList attributes = { static } ;
+    int number = 0 ;
+
+    bool full () { return held.length >= cap ; }
+
+    /// Sows a new sprout here; throws when the tray is full or the pool is empty.
+    Sprout sow ()
+    {
+        if ( full() ) throw "full" ;
+        Sprout s = new Sprout( nextId ) ;
+        if ( s == null ) throw "out of seed" ;
+        nextId++ ;
+        held += s ;
+        s.parent = self ;
+        return s ;
+    }
+
+    void description ()
+    {
+        if ( held.length == 0 ) { printLine( $"Tray {number} is empty." ) ; return ; }
+        print( $"Tray {number} holds" ) ;
+        for ( Sprout s in held ) print( $" {s.tag()}" ) ;
+        printLine( "." ) ;
+    }
+}
+
+Tray tray1 { "first tray" , 2 ; name = { .first , .one } ; parent = roomA ; number = 1 ; }
+Tray tray2
+{
+    "second tray" ,
+    TRAY_CAP ;                       // capacity by position
+    name   = { .second , .two } ;
+    parent = roomA ;
+    number = 2 ;
+}
+Tray tray3 { "third tray" , 1 ; name = { .third , .three } ; parent = roomA ; number = 3 ; }
+
+array<Tray> trays = { tray1 , tray2 , tray3 } ;
+
+Tray trayAt ( int n )
+{
+    if ( n < 1 || n > trays.length ) return null ;
+    return trays[ n - 1 ] ;
+}
+
+int sproutCount () { int n = 0 ; for ( Tray t in trays ) n += t.held.length ; return n ; }
+
+// ---- the can --------------------------------------------------------------------------------------
+
+object can
+{
+    "watering can" ;
+    parent   = roomA ;
+    name     = { .can , .watering } ;
+    int cap  = WATER_CAP ;
+    int pours = 0 ;
+    auto level = {
+        int _l = 0 ;
+        int  operator () { return _l ; }
+        void operator = ( int v )
+        {
+            if ( v < 0 ) v = 0 ;
+            if ( v > outer.cap ) v = outer.cap ;   // clamp to the can
+            _l = v ;
+        }
+    }
+    void description ()
+    {
+        printLine( $"The can holds {level} of {cap} measures." ) ;
+    }
+}
+
+object seedBox
+{
+    "seed box" ;
+    parent     = roomB ;
+    name       = { .seed , .box } ;
+    attributes = { static } ;
+    void description ()
+    {
+        int left = SPROUTS - ( Sprout.sown - Sprout.pulled ) ;
+        printLine( $"The seed box has room for {left} more sprout{left == 1 ? "" : "s"} in the trays." ) ;
+    }
+}
+
+// ---- the daemon -----------------------------------------------------------------------------------
+
+object bench
+{
+    "bench" ;
+    parent     = roomA ;
+    name       = { .bench } ;
+    attributes = { static , scenery } ;
+    int turn   = 0 ;
+
+    void daemon ()
+    {
+        turn++ ;
+        Reading r ;
+        r.temp = 12 + ( turn % 3 ) ;
+        r.damp = 40 - sproutCount() * 5 ;
+        if ( r != lastReading )
+        {
+            if ( !readings.append( r ) )
+            {
+                readings.remove( 0 ) ;
+                readings += r ;
+            }
+            lastReading = r ;
+        }
+        for ( Tray t in trays )
+        {
+            int i = 0 ;
+            while ( i < t.held.length )
+            {
+                Sprout s = t.held[ i ] ;
+                if ( turn % 2 == 0 ) s.needs |= bNeed.cold ; else if ( s.needs & bNeed.cold ) s.needs ^= bNeed.cold ;
+                try
+                {
+                    s.grow() ;
+                }
+                catch ( int which )
+                {
+                    t.held.remove( i ) ;
+                    s.parent = null ;
+                    delete s ;
+                    note( "wilted" , which ) ;
+                    if ( location == roomA ) printLine( $"^Sprout {which} wilts." ) ;
+                    continue ;
+                }
+                i++ ;
+            }
+        }
+    }
+}
+
+// ---- startup --------------------------------------------------------------------------------------
+
+bool Initialise ()
+{
+    location = roomA ;
+    lastReading.temp = 0 ;
+    lastReading.damp = 0 ;
+    StartDaemon( bench ) ;
+    rfalse ;
+}
+
+#includeI6 "grammar"
+
+// ---- commands -------------------------------------------------------------------------------------
+
+verb SowTray
+{
+    grammar = { .sow , NUMBER } ;
+    void handler ()
+    {
+        if ( location != roomA ) { printLine( "The trays are in Room A." ) ; return ; }
+        Tray t = trayAt( ( int ) noun ) ;
+        if ( t == null ) { printLine( $"Trays run 1 to {trays.length}." ) ; return ; }
+        Sprout s ;
+        TRY
+        {
+            s = t.sow() ;
+        }
+        CATCH ( string why )
+        {
+            printLine( $"Tray {t.number} is {why}." ) ;
+            return ;
+        }
+        s.needs |= bNeed.dry ;                 // new soil is dry
+        if ( t.full() ) s.needs |= bNeed.crowded ;
+        note( "sowed" , /* id */ s.id ) ;
+        printLine( $"You sow {the( s )} in tray {t.number}." ) ;
+    }
+}
+
+verb WaterTrays
+{
+    grammar = { { .water } , { .water , .trays } } ;
+    void handler ()
+    {
+        if ( location != roomA ) { printLine( "The trays are in Room A." ) ; return ; }
+        if ( can.parent != player ) { printLine( "You have no can." ) ; return ; }
+        int n = 0 ;
+        for ( Tray t in trays )
+        {
+            for ( Sprout s in t.held )
+            {
+                if ( ( s.needs & bNeed.dry ) == 0 ) continue ;
+                if ( can.level == 0 ) break ;
+                can.level = can.level - 1 ;
+                s.needs ^= bNeed.dry ;
+                s.dryFor = 0 ;
+                n++ ;
+            }
+        }
+        can.pours += n ;
+        if ( n == 0 ) { printLine( can.level == 0 ? "The can is empty." : "Nothing needs water." ) ; return ; }
+        note( "watered" , n ) ;
+        printLine( $"You water {n} sprout{n == 1 ? "" : "s"}; {can.level} left." ) ;
+    }
+}
+
+verb FillCan {
+    grammar = { { .fill } , { .fill , .can } } ;
+    void handler () {
+        if ( location != roomB ) { printLine( "The tap is in Room B." ) ; return ; }
+        if ( can.parent != player ) { printLine( "You have no can." ) ; return ; }
+        int before = can.level ;
+        can.level = can.level + 99 ;           // the setter clamps
+        printLine( $"You fill the can ({before} to {can.level})." ) ;
+    }
+}
+
+verb PullTray
+{
+    grammar = { .pull , NUMBER } ;
+    void handler ()
+    {
+        Tray t = trayAt( ( int ) noun ) ;
+        if ( t == null ) { printLine( $"Trays run 1 to {trays.length}." ) ; return ; }
+        if ( t.held.length == 0 ) { printLine( $"Tray {t.number} is empty." ) ; return ; }
+        int n = 0 ;
+        do
+        {
+            Sprout s = t.held.pop() ;
+            s.parent = null ;
+            delete s ;
+            n++ ;
+        }
+        while ( t.held.length > 0 ) ;
+        note( "pulled" , n ) ;
+        printLine( $"You pull {n} from tray {t.number}." ) ;
+    }
+}
+
+verb Survey
+{
+    meta    = true ;
+    grammar = { .survey } ;
+    void handler ()
+    {
+        stringObj row = "" ;
+        for ( Tray t in trays )
+        {
+            row += $"{t.number}:" ;
+            if ( t.held.length == 0 ) row += '-' ;
+            for ( Sprout s in t.held ) row += s.tag() ;
+            row += ' ' ;
+        }
+        row = row.trimRight() ;
+        row.print() ;
+        printLine( $" (sown {Sprout.sown}, pulled {Sprout.pulled}, can {can.level})" ) ;
+        int mask = ( 1 << 3 ) - 1 ;            // all three needs
+        int seen = 0 ;
+        for ( Tray t in trays ) for ( Sprout s in t.held ) seen |= ( int ) s.needs ;
+        printLine( $"Needs seen: {seen & mask}." ) ;
+    }
+}
+
+verb Stages
+{
+    meta    = TRUE ;
+    grammar = { .stages } ;
+    void handler ()
+    {
+        array<Sprout> all[ SPROUTS ] ;
+        for ( Tray t in trays ) for ( Sprout s in t.held ) all += s ;
+        if ( all.length == 0 ) { printLine( "No sprouts." ) ; return ; }
+        for ( Sprout s in all.orderBy( ( Sprout a , Sprout b ) => ( int ) b.stage - ( int ) a.stage ) )
+            printLine( $"Sprout {s.id}: {stageWord( s.stage )}, age {s.age}." ) ;
+        int green = all.filter( ( Sprout s ) => s.stage >= eStage.leaf ).count() ;
+        printLine( $"{green} in leaf; any dry: {all.any( ( Sprout s ) => ( s.needs & bNeed.dry ) != 0 )}." ) ;
+    }
+}
+
+verb ShowReadings
+{
+    meta    = true ;
+    grammar = { .readings } ;
+    void handler ()
+    {
+        if ( readings.length == 0 ) { printLine( "No readings." ) ; return ; }
+        stringObj line = "Readings:" ;
+        for ( Reading r in readings ) { line += ' ' ; line += r.show() ; }
+        printLine( line ) ;
+        Reading damp = readings.orderBy( ( Reading a , Reading b ) => b <=> a ).first() ;
+        printLine( $"Dampest: {damp.show()}." ) ;
+        int warm = readings.filter( ( Reading r ) => r.temp > 12 ).count() ;
+        printLine( $"Warm readings: {warm}; first above last: {readings[ 0 ] > readings[ readings.length - 1 ]}." ) ;
+    }
+}
+
+verb ShowLog
+{
+    meta    = true ;
+    grammar = { .log } ;
+    void handler ()
+    {
+        if ( shedLog.length == 0 ) { printLine( "The log is empty." ) ; return ; }
+        stringObj s = shedLog.trim() ;
+        printLine( s.replaceAll( ';' , " /" ) ) ;
+        if ( s.length > 20 ) printLine( $"Starts: {s.left( 10 )}..." ) ;
+    }
+}

@@ -1,0 +1,122 @@
+Room A
+Room A. A bench with three trays. Room B is north.
+You can see a card, a first tray, a second tray, a third tray and a watering can here.
+> survey
+1:- 2:- 3:- (sown 0, pulled 0, can 0)
+Needs seen: 0.
+> log
+The log is empty.
+> readings
+No readings.
+> stages
+No sprouts.
+> x card
+The card reads: "Water daily; two to a tray."
+Pencilled below: tray\1 is by the door.
+> take can
+Taken.
+> x can
+The can holds 0 of 10 measures.
+> water
+The can is empty.
+> sow 1
+You sow the sprout 1 in tray 1.
+> fill
+The tap is in Room B.
+> n
+Room B
+Room B. A seed box and a tap. Room A is south.
+You can see a seed box here.
+> fill
+You fill the can (0 to 10).
+> x box
+The seed box has room for 6 more sprouts in the trays.
+> fill can
+You fill the can (10 to 10).
+> s
+Room A
+Room A. A bench with three trays. Room B is north.
+You can see a card, a first tray, a second tray and a third tray here.
+> sow 1
+You sow the sprout 2 in tray 1.
+> sow 1
+You sow the sprout 3 in tray 1.
+> sow 1
+Tray 1 is full.
+Sprout 2 wilts.
+> sow 3
+You sow the sprout 4 in tray 3.
+Sprout 3 wilts.
+> sow 9
+Trays run 1 to 3.
+> survey
+1:- 2:- 3:4.! (sown 4, pulled 3, can 10)
+Needs seen: 7.
+> water
+You water 1 sprout; 9 left.
+> water
+Nothing needs water.
+> x first tray
+Tray 1 is empty.
+> wait
+Time passes.
+> wait
+Time passes.
+> wait
+Time passes.
+> stages
+Sprout 4: bloom, age 8.
+1 in leaf; any dry: false.
+> survey
+1:- 2:- 3:4* (sown 4, pulled 3, can 9)
+Needs seen: 6.
+> sow 2
+You sow the sprout 5 in tray 2.
+> wait
+Time passes.
+> wait
+Time passes.
+Sprout 5 wilts.
+> survey
+1:- 2:- 3:4* (sown 5, pulled 4, can 9)
+Needs seen: 4.
+> sow 2
+You sow the sprout 6 in tray 2.
+> sow 2
+You sow the sprout 7 in tray 2.
+> stages
+Sprout 4: bloom, age 13.
+Sprout 6: seed, age 2.
+Sprout 7: seed, age 1.
+1 in leaf; any dry: true.
+> water
+You water 2 sprouts; 7 left.
+> survey
+1:- 2:6'7' 3:4* (sown 7, pulled 4, can 7)
+Needs seen: 6.
+> pull 2
+You pull 2 from tray 2.
+> pull 1
+Tray 1 is empty.
+> pull 3
+You pull 1 from tray 3.
+> survey
+1:- 2:- 3:- (sown 7, pulled 7, can 7)
+Needs seen: 0.
+> stages
+No sprouts.
+> readings
+Readings: 12C/30% 13C/30% 14C/30% 12C/25% 13C/25% 14C/35% 12C/35% 13C/40%
+Dampest: 13C/40%.
+Warm readings: 5; first above last: false.
+> x can
+The can holds 7 of 10 measures.
+> n
+Room B
+Room B. A seed box and a tap. Room A is south.
+You can see a seed box here.
+> x box
+The seed box has room for 6 more sprouts in the trays.
+> log
+sowed 1 / wilted 1 / sowed 2 / sowed 3 / wilted 2 / sowed 4 / wilted 3 / watered 1 / sowed 5 / wilted 5 / sowed 6 / sowed 7 / watered 2 / pulled 2 / pulled 1
+Starts: sowed 1; w...

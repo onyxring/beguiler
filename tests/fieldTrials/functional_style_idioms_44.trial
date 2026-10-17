@@ -1,0 +1,105 @@
+Room A
+Room A.
+
+> shelf
+bread 2.50 x4 food
+key 1.20 x2 tool taxed
+rope 4.80 x1 tool taxed
+candle 0.75 x9 food
+bolt 9.00 x3 cloth taxed
+cup 0.60 x5 tool
+stock 4,2,1,9,3,5, total 24, most 9
+> cheapest 3
+cheapest 3: cup candle key; first cup, last key, count 3
+rest bread/rope/bolt, all over a pound true
+> sorted
+by stock down: candle cup bread bolt key rope
+reversed: rope key bolt bread cup candle; rope at 0, has cup true
+tags: bolt bread candle cup key rope
+> prices
+till prices: 0.60 0.75 1.45 2.50 5.75 10.80
+sum 21.85, top 10.80, doubled low 1.20
+> rule 1
+ten off: 225,108,432,68,810,54
+saved 25,12,48,7,90,6, total 188, distinct 6
+> rule 2
+tax: 300,144,576,90,1080,72
+saved -50,-24,-96,-15,-180,-12, total -377, distinct 6
+> rule 3
+half: 125,60,240,37,450,30
+saved 125,60,240,38,450,30, total 943, distinct 6
+> rule 4
+plain: 250,120,480,75,900,60
+saved 0,0,0,0,0,0, total 0, distinct 1
+> chain 1000
+1000 -> 900 -> 1080 -> 1070 -> 1070; runRules 1070, compose tax then ten off 1080, digits 1
+> chain 37
+37 -> 34 -> 40 -> 30 -> 30; runRules 30, compose tax then ten off 40, digits 10
+> taxed
+taxed: key rope bolt (3), first key, any in basket false
+> cheap
+cheap: key candle cup (3), first key, any in basket false
+> scarce
+scarce: rope (1), first rope, any in basket false
+> cloths
+cloth in bulk: - (0), first none, any in basket false
+> count
+units 24, taxed 6, kinds 1,2,3
+prices up 60,75,120,250,480,900; under 2.00 60,75,120
+> budget 500
+best spend under 5.00: 4.80
+first affordable at 0, tag bread
+> budget 50
+best spend under 0.50: 0.00
+first affordable at -1, tag none
+> till
+The basket is empty.
+> buy bread
+Bought bread. Basket: bread, total 2.50.
+> buy rope
+Bought rope. Basket: bread rope, total 8.25.
+> buy key
+Bought key. Basket: bread key rope, total 9.70.
+> buy bread
+The bread is already in the basket.
+> buy basket
+That is not a good.
+> till
+  key 1.20 -> 1.45
+  bread 2.50 -> 2.50
+  rope 4.80 -> 5.75
+total 9.70, best under 5.00 4.80
+> taxed
+taxed: key rope bolt (3), first key, any in basket true
+> putback
+Put back key. Last now rope, basket bread rope.
+> till
+  bread 2.50 -> 2.50
+  rope 4.80 -> 5.75
+total 8.25, best under 5.00 4.80
+> putback
+Put back rope. Last now bread, basket bread.
+> putback
+Put back bread. Last now none, basket -.
+> putback
+Nothing to put back.
+> shelf
+bread 2.50 x4 food
+key 1.20 x2 tool taxed
+rope 4.80 x1 tool taxed
+candle 0.75 x9 food
+bolt 9.00 x3 cloth taxed
+cup 0.60 x5 tool
+stock 4,2,1,9,3,5, total 24, most 9
+> mix 12
+steps ten off, tax: 1000 -> 1080, ten off twice 810, once 900
+> mix 3141
+steps half, ten off, plain, ten off: 1000 -> 405, ten off twice 810, once 900
+> mix 0
+steps : 1000 -> 1000, ten off twice 810, once 900
+> split 200
+at most 2.00: key candle cup; over: bread rope bolt
+all of them 2.80, rows 2, sizes 3+3
+> split 50
+at most 0.50: -; over: bread key rope candle bolt cup
+all of them 0.00, rows 2, sizes 0+6

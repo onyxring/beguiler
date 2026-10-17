@@ -1,0 +1,469 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: code written the way a C#/Java developer writes it, forty-fourth pass: an event bus.
+// The Observer pattern: a `Listener` base class with `default` `Accepts`/`Handle` and a template method
+// `Deliver` that calls them; subclasses for a topic filter (itself `default`, overridden again by an alarm
+// subclass), a logger appending to a `stringObj`, a tally with a member `array<int>` indexed by an enum,
+// and a relay holding a `literal func<void, int>` callback member set to a named function; a "mixin"
+// second parent (`Resettable`) reached with `is()` and a cast; objects overriding a class method in their
+// body. A `Message` struct with `<=>` (priority first, then sequence), `==`/`!=` and its own `print()`
+// used inside interpolation; a fluent builder object (methods returning `self`) over an owned struct
+// member and a static sequence counter; a bus object whose `array<Message>` queue is kept sorted with
+// `sort()`, drained with `remove(0)`, and that throws a pooled error (`throw new …`) when full; dispatch
+// in a `for … in` over an `array<Listener>` with try/catch per listener; `+=`/`-=`/`contains` on the
+// subscriber array; a named property accessor struct clamping an alarm limit; an iterator class over
+// a `ref array<Listener>` bound with `:=`; `<linq>` `filter`/`count`/`any`/`all`/`orderBy` (with and without a
+// comparator)/`take`/`first`/`last` with lambdas capturing a parameter, and `contains`/`indexOf` on a struct array
+// through its `==`; a bounded history array trimmed with `remove(0)`; enum switches and `?:` in interpolation.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#i6 { Constant bglStringPoolReserve 16; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <string>
+#include <linq>
+
+extend extern class object {
+    stringOrRoutine description;
+}
+
+object roomA {
+    "Room A";
+    description = "Room A.";
+    attributes = {light};
+}
+
+enum eTopic { Door, Lamp, Alarm, Tick }
+
+string TopicName(eTopic t) {
+    switch (t) {
+        case eTopic.Door:  return "Door";
+        case eTopic.Lamp:  return "Lamp";
+        case eTopic.Alarm: return "Alarm";
+        case eTopic.Tick:  return "Tick";
+    }
+    return "?";
+}
+
+string OnOff(bool b) {
+    if (b) return "on";
+    return "off";
+}
+
+//-- The message ------------------------------------------------------------------------------------------------
+
+struct Message {
+    eTopic Topic;
+    int Priority;
+    int Payload;
+    int Seq;
+
+    // Higher priority sorts first; equal priorities keep posting order.
+    int operator <=> (Message other) {
+        if (Priority != other.Priority) return other.Priority - Priority;
+        return Seq - other.Seq;
+    }
+    bool operator == (Message other) { return Seq == other.Seq; }
+    bool operator != (Message other) { return Seq != other.Seq; }
+
+    bool IsUrgent() { return Priority >= 4; }
+
+    void print() {
+        print($"{TopicName(Topic)}#{Seq} p{Priority} v{Payload}");
+    }
+}
+
+//-- The builder ------------------------------------------------------------------------------------------------
+
+class MessageBuilder : object {
+    Message Draft;
+    static int NextSeq = 1;
+
+    MessageBuilder About(eTopic t) {
+        Draft.Topic = t;
+        return self;
+    }
+    MessageBuilder WithPriority(int p) {
+        Draft.Priority = p;
+        return self;
+    }
+    MessageBuilder Carrying(int v) {
+        Draft.Payload = v;
+        return self;
+    }
+    void Reset() {
+        Draft.Topic = eTopic.Tick;
+        Draft.Priority = 1;
+        Draft.Payload = 0;
+        Draft.Seq = 0;
+    }
+    Message Build() {
+        Draft.Seq = NextSeq++;
+        Message m = Draft;
+        Reset();
+        return m;
+    }
+}
+
+MessageBuilder builder { }
+
+//-- Errors -----------------------------------------------------------------------------------------------------
+
+class BusError[2] : object {
+    string Reason;
+    int Code;
+    static int Raised;
+
+    void create(string why, int errorCode) {
+        Reason = why;
+        Code = errorCode;
+        BusError.Raised++;
+    }
+
+    void print() { print($"{Reason} ({Code})"); }
+}
+
+//-- Listeners --------------------------------------------------------------------------------------------------
+
+class Resettable : object {
+    default void ResetState() { }
+}
+
+class Listener : object {
+    string Label;
+    int Received;
+    bool Enabled = true;
+
+    default bool Accepts(Message m) { return true; }
+    default void Handle(Message m) { }
+
+    // Template method: the subclasses supply Accepts and Handle.
+    bool Deliver(Message m) {
+        if (!Enabled) return false;
+        if (!Accepts(m)) return false;
+        Received++;
+        Handle(m);
+        return true;
+    }
+
+    void print() { print(Label); }
+}
+
+class TopicFilter : Listener {
+    eTopic Wanted;
+    default bool Accepts(Message m) { return m.Topic == Wanted; }
+    default void Handle(Message m) { printLine($"  {Label} saw {m}"); }
+}
+
+struct Clamped {
+    int _value;
+    int operator () { return _value; }
+    void operator = (int v) {
+        if (v < 1) v = 1;
+        if (v > 9) v = 9;
+        _value = v;
+    }
+}
+
+class Alarm : TopicFilter {
+    Clamped Limit;
+    int Trips;
+
+    void Handle(Message m) {
+        if (m.Payload > Limit) {
+            Trips++;
+            throw new BusError("over limit", m.Payload);
+        }
+        printLine($"  {Label} ok at {m.Payload}/{Limit}");
+    }
+}
+
+class Logger : Listener, Resettable {
+    stringObj Log;
+
+    void Handle(Message m) {
+        if (Log.length > 0) Log += ",";
+        Log += $"{m.Seq}";
+    }
+    void ResetState() { Log = ""; }
+}
+
+class Tally : Listener, Resettable {
+    array<int> PerTopic[4];
+
+    void Handle(Message m) { PerTopic[(int)m.Topic - 1]++; }
+
+    int Count(eTopic t) { return PerTopic[(int)t - 1]; }
+
+    void ResetState() {
+        PerTopic.clear();
+        PerTopic.length = 4;
+    }
+}
+
+class Relay : Listener {
+    literal func<void, int> Callback;
+    void Handle(Message m) { Callback(m.Payload); }
+}
+
+int relayTotal = 0;
+void AddToTotal(int v) { relayTotal += v; }
+
+Logger logAll { Label = "log"; }
+
+TopicFilter doorWatch {
+    Label = "door";
+    Wanted = eTopic.Door;
+}
+
+TopicFilter lampWatch {
+    Label = "lamp";
+    Wanted = eTopic.Lamp;
+    void Handle(Message m) {
+        string state = m.Payload > 0 ? "lit" : "dark";
+        printLine($"  {Label}: {state}");
+    }
+}
+
+Tally topicTally { Label = "tally"; }
+
+Alarm alarmWatch {
+    Label = "alarm";
+    Wanted = eTopic.Alarm;
+}
+
+Relay relayOut {
+    Label = "relay";
+    Callback = AddToTotal;
+}
+
+array<Listener> registry = { logAll, doorWatch, lampWatch, topicTally, alarmWatch, relayOut };
+
+//-- The bus ----------------------------------------------------------------------------------------------------
+
+object bus {
+    array<Listener> Subscribers[6];
+    array<Message> Queue[5];
+    array<Message> History[6];
+    int Dropped;
+    int Failures;
+    int Delivered;
+
+    bool Subscribe(Listener l) {
+        if (Subscribers.contains(l)) return false;
+        Subscribers += l;
+        return true;
+    }
+
+    void Unsubscribe(Listener l) { Subscribers -= l; }
+
+    void Post(Message m) {
+        if (Queue.length == Queue.size) {
+            Dropped++;
+            throw new BusError("queue full", Queue.size);
+        }
+        Queue += m;
+        Queue.sort();
+    }
+
+    Message Next() {
+        Message m = Queue[0];
+        Queue.remove(0);
+        return m;
+    }
+
+    int CountOf(eTopic t) {
+        return Queue.filter((Message m) => m.Topic == t).count();
+    }
+
+    int Dispatch() {
+        int handled = 0;
+        while (Queue.length > 0) {
+            Message m = Next();
+            if (History.length == History.size) History.remove(0);
+            History += m;
+            for (Listener l in Subscribers) {
+                try {
+                    if (l.Deliver(m)) handled++;
+                } catch (BusError e) {
+                    Failures++;
+                    printLine($"  {l} failed on {m}: {e}");
+                    delete e;
+                }
+            }
+        }
+        Delivered += handled;
+        return handled;
+    }
+
+    void ShowQueue() {
+        printLine($"pending {Queue.length}");
+        for (Message m in Queue) printLine($"  {m}{m.IsUrgent() ? " !" : ""}");
+    }
+}
+
+//-- An iterator ------------------------------------------------------------------------------------------------
+
+class ListenerIterator : object {
+    ref array<Listener> Source;
+    int Index;
+
+    void Over(array<Listener> src) {
+        Source := src;
+        Index = 0;
+    }
+    bool HasNext() { return Index < Source.length; }
+    Listener Next() {
+        Listener l = Source[Index];
+        Index++;
+        return l;
+    }
+}
+
+ListenerIterator iter { }
+
+//-- Verbs ------------------------------------------------------------------------------------------------------
+
+void PostOrReport(Message m) {
+    try {
+        bus.Post(m);
+    } catch (BusError e) {
+        printLine($"dropped {m}: {e}");
+        delete e;
+    }
+}
+
+verb Post {
+    grammar = {.post};
+    void handler() {
+        bus.Post(builder.About(eTopic.Tick).Carrying(1).Build());
+        bus.Post(builder.About(eTopic.Door).WithPriority(3).Carrying(7).Build());
+        bus.Post(builder.About(eTopic.Lamp).WithPriority(2).Carrying(4).Build());
+        bus.Post(builder.About(eTopic.Alarm).WithPriority(3).Carrying(9).Build());
+        bus.Post(builder.About(eTopic.Alarm).WithPriority(5).Carrying(2).Build());
+        bus.ShowQueue();
+        printLine($"alarms queued {bus.CountOf(eTopic.Alarm)}, doors {bus.CountOf(eTopic.Door)}");
+    }
+}
+
+verb Run {
+    grammar = {.run};
+    void handler() {
+        int n = bus.Dispatch();
+        printLine($"handled {n}, failures {bus.Failures}, relay total {relayTotal}");
+    }
+}
+
+verb Stats {
+    grammar = {.stats};
+    void handler() {
+        int active = bus.Subscribers.filter((Listener l) => l.Enabled).count();
+        Listener busiest = bus.Subscribers.orderBy((Listener a, Listener b) => b.Received - a.Received).first();
+        bool idle = bus.Subscribers.any((Listener l) => l.Received == 0);
+        printLine($"active {active}, busiest {busiest} ({busiest.Received}), any idle {idle}");
+        printLine($"log [{logAll.Log}]");
+        printLine($"tally door {topicTally.Count(eTopic.Door)} lamp {topicTally.Count(eTopic.Lamp)} alarm {topicTally.Count(eTopic.Alarm)} tick {topicTally.Count(eTopic.Tick)}");
+        printLine($"alarm trips {alarmWatch.Trips}, raised {BusError.Raised}, dropped {bus.Dropped}, delivered {bus.Delivered}");
+    }
+}
+
+verb Walk {
+    grammar = {.walk};
+    void handler() {
+        iter.Over(registry);
+        while (iter.HasNext()) {
+            Listener l = iter.Next();
+            string sub = bus.Subscribers.contains(l) ? "subscribed" : "not subscribed";
+            printLine($"{l}: {l.Received} {OnOff(l.Enabled)}, {sub}");
+        }
+    }
+}
+
+verb Mute {
+    grammar = {.mute};
+    void handler() {
+        bus.Unsubscribe(doorWatch);
+        topicTally.Enabled = false;
+        bool again = bus.Subscribe(logAll);
+        bool lamp = bus.Subscribe(lampWatch);
+        printLine($"subscribers {bus.Subscribers.length}, log again {again}, lamp added {lamp}");
+    }
+}
+
+verb Flood {
+    grammar = {.flood};
+    void handler() {
+        for (int i = 1; i <= 7; i++) {
+            PostOrReport(builder.About(eTopic.Lamp).WithPriority(i % 3).Carrying(i - 4).Build());
+        }
+        bus.ShowQueue();
+    }
+}
+
+verb Limit {
+    grammar = {.limit};
+    void handler() {
+        alarmWatch.Limit = 20;
+        int high = alarmWatch.Limit;
+        alarmWatch.Limit = -3;
+        int low = alarmWatch.Limit;
+        alarmWatch.Limit = 4;
+        printLine($"clamped {high} {low}, now {alarmWatch.Limit}");
+        PostOrReport(builder.About(eTopic.Alarm).WithPriority(4).Carrying(4).Build());
+        PostOrReport(builder.About(eTopic.Alarm).WithPriority(4).Carrying(5).Build());
+        bus.ShowQueue();
+    }
+}
+
+verb History {
+    grammar = {.history};
+    void handler() {
+        array<Message> urgent = bus.History.filter((Message m) => m.IsUrgent());
+        printLine($"history {bus.History.length}, urgent {urgent.length}");
+        for (Message m in bus.History.orderBy().take(3)) printLine($"  {m}");
+        Message latest = bus.History.last();
+        Message probe = builder.About(eTopic.Alarm).Build();
+        probe.Seq = 13;
+        printLine($"latest {latest}, has #13 {bus.History.contains(probe)}, index {bus.History.indexOf(probe)}");
+        int lamps = bus.History.filter((Message m) => m.Topic == eTopic.Lamp).count();
+        printLine($"lamps {lamps}, all positive {bus.History.all((Message m) => m.Payload > 0)}");
+    }
+}
+
+verb Reset {
+    grammar = {.reset};
+    void handler() {
+        int done = 0;
+        for (Listener l in registry) {
+            if (l.is(Resettable)) {
+                ((Resettable)l).ResetState();
+                done++;
+            }
+            l.Received = 0;
+            l.Enabled = true;
+        }
+        printLine($"reset {done} stateful, log [{logAll.Log}], tally door {topicTally.Count(eTopic.Door)}");
+    }
+}
+
+#includeI6 "grammar"
+
+bool Initialise() {
+    location = roomA;
+    builder.Reset();
+    alarmWatch.Limit = 5;
+    topicTally.ResetState();
+    bus.Subscribe(logAll);
+    bus.Subscribe(doorWatch);
+    bus.Subscribe(topicTally);
+    bus.Subscribe(alarmWatch);
+    bus.Subscribe(relayOut);
+    rfalse;
+}
