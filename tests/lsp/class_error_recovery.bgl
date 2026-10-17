@@ -1,0 +1,6 @@
+#beguilerSettings { target = glulx; }
+class lspCharacter : object {
+    int x = undefinedThing;
+    int y = 1;
+}
+void main(){ int w = 1; w = 2; print(w); }

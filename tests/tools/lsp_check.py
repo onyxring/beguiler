@@ -21,6 +21,10 @@ CASES = [
     dict(name='recovery after an interpolation error', doc='tests/lsp/interp_error_recovery.bgl', at=(1, 0), diagnostics=1),
     # A compiler warning reaches the editor as a diagnostic, as an error does.
     dict(name='warning as a diagnostic', doc='tests/lsp/warning_diagnostic.bgl', at=(1, 0), diagnostics=1),
+    # A class found through #beguilerSettings includePaths is registered before the pre-scan, as in a compile.
+    dict(name='includePaths class', doc='tests/lsp/include_path_class.bgl', at=(1, 0), no_diagnostics=True),
+    # An error inside a class body is the only diagnostic: recovery leaves the class and the rest intact.
+    dict(name='recovery inside a class body', doc='tests/lsp/class_error_recovery.bgl', at=(1, 0), diagnostics=1),
 ]
 
 def run_case(case):

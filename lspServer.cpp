@@ -546,6 +546,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
             int depth = 1; size_t cur = open + 1;
             while(cur < text.size() && depth > 0) { if(text[cur]=='{') depth++; else if(text[cur]=='}') depth--; cur++; }
             string block = text.substr(open + 1, cur - open - 2);
+            preReadIncludePaths(block, entryPointPath);   // as the compiler does before its pre-scan
             string lower = block;
             transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             size_t k = lower.find("target");
@@ -727,6 +728,7 @@ void LspServer::parseDocument(const string& uri) {
                 cur++;
             }
             string block = text.substr(open + 1, cur - open - 2);
+            preReadIncludePaths(block, path);   // as the compiler does before its pre-scan
             string lower = block;
             transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             size_t k = lower.find("target");

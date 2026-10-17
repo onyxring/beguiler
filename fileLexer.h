@@ -70,7 +70,7 @@ class fileLexer{
         std::string lastTokenFile;
 
         // A position in the current stream, to look ahead raw and then return to it.
-        struct mark_t { std::streampos pos; int line; int col; };
+        struct mark_t { std::streampos pos; int line; int col; int braceDepth; std::vector<int> braceLines; };
         mark_t mark();
         void rewind(const mark_t& m);
         void open(std::string);

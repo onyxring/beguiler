@@ -136,6 +136,71 @@ string rewritePathSeps(const string& path){
     return result;
 }
 
+// A #beguilerSettings block's `includePaths = "a,b"` lines (all of them), added to the include search
+// set before the pre-scan, so a file reached through them has its types registered in pass 1 — in the
+// compiler and in the language server alike. Relative paths are relative to the file the block is in.
+void preReadIncludePaths(const string& rawBlock, const string& settingsFile){
+    string block;   // without whole-line comments
+    {
+        istringstream lines(rawBlock);
+        string line;
+        while(getline(lines, line)){
+            size_t s = line.find_first_not_of(" \t");
+            if(s != string::npos && line.size() > s + 1 && line[s] == '/' && line[s+1] == '/') continue;
+            block += line + "\n";
+        }
+    }
+    string blockLower = block;
+    transform(blockLower.begin(), blockLower.end(), blockLower.begin(), ::tolower);
+    {
+        size_t k = blockLower.find("includepaths");
+        while(k != string::npos){
+            size_t eq = block.find('=', k + 12);
+            if(eq != string::npos){
+                size_t vs = block.find_first_not_of(" \t\r\n", eq + 1);
+                if(vs != string::npos){
+                    bool isRaw = (block[vs] == '@');
+                    size_t q1 = block.find('"', vs);
+                    size_t q2 = (q1 == string::npos) ? string::npos : block.find('"', q1 + 1);
+                    if(q1 != string::npos && q2 != string::npos){
+                        string strVal = block.substr(q1 + 1, q2 - q1 - 1);
+                        filesystem::path settingsFileDir = filesystem::path(settingsFile).parent_path();
+                        if(!settingsFileDir.empty())
+                            settingsFileDir = filesystem::absolute(settingsFileDir);
+                        size_t i = 0;
+                        while(i < strVal.size()){
+                            size_t comma = strVal.find(',', i);
+                            string entry = strVal.substr(i, comma == string::npos ? string::npos : comma - i);
+                            size_t a = entry.find_first_not_of(" \t");
+                            size_t b = entry.find_last_not_of(" \t");
+                            if(a != string::npos){
+                                string path;
+                                if(isRaw){
+                                    path = entry.substr(a, b - a + 1);
+                                } else {
+                                    path = rewritePathSeps(entry.substr(a, b - a + 1));
+                                    filesystem::path pathObj(path);
+                                    if(pathObj.is_relative() && !settingsFileDir.empty())
+                                        pathObj = settingsFileDir / pathObj;
+                                    std::error_code ec;
+                                    filesystem::path canon = filesystem::weakly_canonical(pathObj, ec);
+                                    if(!ec) pathObj = canon;
+                                    path = pathObj.string();
+                                }
+                                if(find(beguilerSettings.includePaths.begin(), beguilerSettings.includePaths.end(), path) == beguilerSettings.includePaths.end())
+                                    beguilerSettings.includePaths.push_back(path);
+                            }
+                            if(comma == string::npos) break;
+                            i = comma + 1;
+                        }
+                    }
+                }
+            }
+            k = blockLower.find("includepaths", k + 12);  // advance to the next includePaths line
+        }
+    }
+}
+
 // Case-insensitive file lookup: returns the first directory entry whose
 // lowercased filename equals the lowercased form of `target`. Falls back
 // to `target` itself (which will produce a normal "file not found" error)

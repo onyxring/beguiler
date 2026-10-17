@@ -1,0 +1,4 @@
+#once
+class lspIncThing : object {
+    int n = 1;
+}

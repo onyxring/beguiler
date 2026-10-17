@@ -615,13 +615,15 @@ token fileLexer::getBasicToken(bool suppressBleed){
 }
 fileLexer::mark_t fileLexer::mark(){
     auto& [s, n, ln, cc] = files.top(); (void)n;
-    return { s->tellg(), ln, cc };
+    return { s->tellg(), ln, cc, braceDepth, braceLines };
 }
 void fileLexer::rewind(const mark_t& m){
     auto& [s, n, ln, cc] = files.top(); (void)n;
     s->clear();
     s->seekg(m.pos);
     ln = m.line; cc = m.col;
+    braceDepth = m.braceDepth;   // braces read past the mark are read again
+    braceLines = m.braceLines;
 }
 string fileLexer::getRawTextToStatementEnd(int depth){
     string text;

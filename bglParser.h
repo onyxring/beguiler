@@ -1581,3 +1581,4 @@ class bglParser {
 };
 
 extern bglParser parser;
+void preReadIncludePaths(const std::string& rawBlock, const std::string& settingsFile);

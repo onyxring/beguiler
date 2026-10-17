@@ -205,65 +205,8 @@ void beguiler::extractBlorbSettings(const string& filename) {
             }
         }
 
-        // Extract: includePaths = "a,b,c"  (or raw @"a,b,c").  Mirrors the parser's directive
-        // handler (bglParserDirectives.cpp), but runs HERE — before preScanFile — so that
-        // search-path includes resolve identically during PRE-SCAN.  The parser populates
-        // includePaths too late for pass 1; without this, a class declared in a .bgl resolved
-        // via the search path is never pre-registered as a type, so its `class <name>` fails to
-        // parse ("expected type name") while source-relative/direct includes work.
-        //
-        // Loop over EVERY `includePaths = "..."` line in the block — the main-pass directive
-        // handler accumulates across all of them (bglParserDirectives.cpp), so a single `find`
-        // here (only the first line) silently drops later paths from the PRE-SCAN search set,
-        // reintroducing the "expected type name" failure for any binding reachable only via a
-        // 2nd/3rd includePaths line.
-        {
-            size_t k = blockLower.find("includepaths");
-            while(k != string::npos){
-                size_t eq = block.find('=', k + 12);
-                if(eq != string::npos){
-                    size_t vs = block.find_first_not_of(" \t\r\n", eq + 1);
-                    if(vs != string::npos){
-                        bool isRaw = (block[vs] == '@');
-                        size_t q1 = block.find('"', vs);
-                        size_t q2 = (q1 == string::npos) ? string::npos : block.find('"', q1 + 1);
-                        if(q1 != string::npos && q2 != string::npos){
-                            string strVal = block.substr(q1 + 1, q2 - q1 - 1);
-                            filesystem::path settingsFileDir = filesystem::path(filename).parent_path();
-                            if(!settingsFileDir.empty())
-                                settingsFileDir = filesystem::absolute(settingsFileDir);
-                            size_t i = 0;
-                            while(i < strVal.size()){
-                                size_t comma = strVal.find(',', i);
-                                string entry = strVal.substr(i, comma == string::npos ? string::npos : comma - i);
-                                size_t a = entry.find_first_not_of(" \t");
-                                size_t b = entry.find_last_not_of(" \t");
-                                if(a != string::npos){
-                                    string path;
-                                    if(isRaw){
-                                        path = entry.substr(a, b - a + 1);
-                                    } else {
-                                        path = rewritePathSeps(entry.substr(a, b - a + 1));
-                                        filesystem::path pathObj(path);
-                                        if(pathObj.is_relative() && !settingsFileDir.empty())
-                                            pathObj = settingsFileDir / pathObj;
-                                        std::error_code ec;
-                                        filesystem::path canon = filesystem::weakly_canonical(pathObj, ec);
-                                        if(!ec) pathObj = canon;
-                                        path = pathObj.string();
-                                    }
-                                    if(find(beguilerSettings.includePaths.begin(), beguilerSettings.includePaths.end(), path) == beguilerSettings.includePaths.end())
-                                        beguilerSettings.includePaths.push_back(path);
-                                }
-                                if(comma == string::npos) break;
-                                i = comma + 1;
-                            }
-                        }
-                    }
-                }
-                k = blockLower.find("includepaths", k + 12);  // advance to the next includePaths line
-            }
-        }
+        // includePaths, here before preScanFile, so search-path includes resolve in pass 1 too.
+        preReadIncludePaths(block, filename);
 
         pos = cur;
     }
