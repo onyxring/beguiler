@@ -1,4 +1,4 @@
-/*  run_array_extension_emitters — emitters added to every array through `extend extern class array`.
+/*  run_array_extension_emitters — emitters added to every array through `extend class array`.
     A body reaches elements with $i6Expr($self[i]), which must address a global and a member array
     alike, bind T per element type, and leave the outer stream lexing `.member` after the call. An
     emitter's result used as a receiver — a field read, a field write, a routine method sent to it as
@@ -11,7 +11,7 @@
 // EXPECT_OUTPUT: stmt=5
 // EXPECT_OUTPUT: written=7
 #beguilerSettings { target = z5; informName = "none"; }
-extend extern class array {
+extend class array {
     emitter T second()    { $i6Expr($self[1]) }
     emitter T secondRaw() { $self-->2 }
 }

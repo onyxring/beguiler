@@ -3,12 +3,12 @@
 
 // Exercises: a fourteenth PunyInform program, built on area triples among primitive classes, static
 // member arrays, arithmetic operator overloads, <buf>, try/catch/throw, extern declarations and
-// replace/default: a `primitive class` over int whose `extend extern class` adds static arrays (of int,
+// replace/default: a `primitive class` over int whose `extend class` adds static arrays (of int,
 // of the primitive itself, a tracked `array<char>`), a `replace`d emitter `operator +` (which every later
 // `+` and `+=` on the type uses), new emitter operators, and static methods that throw, catch and
 // capture into a static buf; an I6 class bound with `extern class` (members, static arrays of strings
 // and chars, emitter operators taking another instance, static methods), its extern instances, and an
-// `extend extern class` adding a static array, a `replace`d emitter operator and a `replace`d static
+// `extend class` adding a static array, a `replace`d emitter operator and a `replace`d static
 // method; a struct with arithmetic operators returning the class, a static history array filled
 // under try/catch and a static method summing it; a class with `default` methods, an `operator +` that
 // records into a static array and shows into a static buf, a subclass `replace`-ing a default method
@@ -39,7 +39,7 @@ primitive class grams {
     emitter grams operator * (int n)    { ($self * $n) }
 }
 
-extend extern class grams {
+extend class grams {
     static array<int> marks = {100, 250, 500};
     static array<grams> tare = {0, 40, 75, 120};
     static array<char> note[16];
@@ -119,7 +119,7 @@ extern Crate crateA;
 extern Crate crateB;
 extern Crate crateC;
 
-extend extern class Crate {
+extend class Crate {
     static array<grams> limits = {500, 800, 1000};
     replace emitter grams operator * (int n) { ($self.heft * $n / 2) }
     emitter grams operator - (Crate o) { ($self.heft - $o.heft) }

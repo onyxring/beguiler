@@ -4,7 +4,7 @@
 // Exercises: an eighth first-time-programmer program, the one where the author reads the "odd corners"
 // of the spec and tries each one. An enum and a bnum with emitter methods and emitter values (in the body
 // and added by extend enum / extend bnum), used on bare members, on variables, on a class member and on a
-// call's result, inside interpolation; an emitter value in an object body; extend extern class
+// call's result, inside interpolation; an emitter value in an object body; extend class
 // intLiteral and a method called on a string literal; raw strings with backslashes, ^ and ~ and an
 // escaped quote; char literals with escapes counted in an array<char>; dictionary word literals singular
 // and plural (a plural name on a class so "take stamps" takes them all, ask/tell topics compared with
@@ -54,7 +54,7 @@ extend bnum perm {
 }
 
 // ===== NUMBERS GET METHODS TOO =====
-extend extern class intLiteral {
+extend class intLiteral {
     emitter void twice() { print $val * 2; }
 }
 

@@ -95,7 +95,7 @@ struct Tally {
     Tally operator = (Tally o) { items = o.items; total = o.total; best = o.best; return self; }
 }
 
-extend extern class object {
+extend class object {
     string description;
 }
 

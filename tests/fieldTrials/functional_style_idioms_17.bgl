@@ -38,7 +38,7 @@ Global gaugeChecks = 0;
 
 extern int gaugeChecks;
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
@@ -162,7 +162,7 @@ extern class Gauge : object, Tagged {
 }
 
 //-- The I6 class extended: a recursive sweep through a union of text and func<> -------------------
-extend extern class Gauge {
+extend class Gauge {
     static string | func<int, int> plan(Gauge g) {
         if (g.reading > g.limit) return "over";
         if (g.reading % 2 == 0) return (int v) => { return v / 2; };

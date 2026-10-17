@@ -61,7 +61,7 @@ AREAS = [
     ('enums',          'enums and bnums',                                     [r'\benum\s+\w', r'\bbnum\s+\w'], False),
     ('union_var',      'unions, var and typeof',                              [r'\bunion\s+\w', r'\btypeof\s*\(', r'\bvar\s+\w'], False),
     ('namespaces',     'namespaces: alias … for, #using, dotted type paths',  [r'\balias\s+\w+\s+for\b', r'#using\b'], False),
-    ('extension',      'extend class / extend extern class / extend object',  [r'\bextend\s+(extern\s+)?(class\s+)?\w'], False),
+    ('extension',      'extend class / extend class / extend object',  [r'\bextend\s+(extern\s+)?(class\s+)?\w'], False),
     ('replace',        'replace / default / replaced()',                      [r'\breplace\b', r'\bdefault\s+\w+\s+\w+\s*\(', r'\breplaced\s*\('], False),
     ('i6_island',      'I6 islands: #i6 and #bgl blocks',                     [r'#i6\b', r'#bgl\b'], False),
     ('extern',         'extern declarations',                                 [r'\bextern\s'], False),

@@ -5,7 +5,7 @@
 // island and bound with `extern class`: emitter `+`, `-`, `<`, `>` operators and a static fold that
 // imports a type alias with `#using`, walks a nested literal table of bands, reads a meter through
 // `?.`, holds a struct local, switches with ranges and guards on `meter + n`, adjusts a local in
-// an `#i6` island and runs a verb with `perform`. An `extend extern class` of it adding `==` and `!=`,
+// an `#i6` island and runs a verb with `perform`. An `extend class` of it adding `==` and `!=`,
 // a `replace` of a static label routine, and a static profile that folds an array of float arrays
 // through a block lambda into a struct local, stamps an array<char> code from an enum, builds a
 // stringObj and runs a verb. A dial object whose inline float accessor keeps a static array of marks
@@ -31,7 +31,7 @@
 #define DIAL_TRACE
 #define DIAL_SLOTS 4
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
@@ -110,7 +110,7 @@ Meter meterB { "meter B"; reading = 8; limit = 5; }
 Meter meterC { "meter C"; reading = 0; limit = 5; }
 
 //-- Cluster 1: the extern class extended ---------------------------------------------------------
-extend extern class Meter {
+extend class Meter {
     emitter bool operator == (int v) { ($self.reading == $v) }
     emitter bool operator != (int v) { ($self.reading ~= $v) }
 

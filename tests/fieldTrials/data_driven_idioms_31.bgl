@@ -142,7 +142,7 @@ array<string> ruleNames = { "sum", "product", "to corner", "inside" };
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

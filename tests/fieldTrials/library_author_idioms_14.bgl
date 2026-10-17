@@ -12,7 +12,7 @@
 // pass), and a stringObj built after an #i6 print; #using the namespace before the extern class,
 // whose static members are an array of arrays, new/give/has against the pool, an array of the alias
 // type, delete in a for-in, an #i6 island and a ref lease parameter. The consumer's #using before an
-// extend extern class adding a static method that takes an array of arrays, holds a lease for its
+// extend class adding a static method that takes an array of arrays, holds a lease for its
 // whole body, makes chips through a dotted alias path until the pool runs out and prints from I6; a
 // report object with a type alias, an array of arrays of string, new through a dotted alias, a lease
 // per loop pass, has with an #i6 island and stringObj lines; verbs nesting leases in an inner block.
@@ -28,7 +28,7 @@
 
 #include "library_author_idioms_14_parts/library_author_idioms_14_kit"
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -91,7 +91,7 @@ array<array<int>> la14Table = { {1, 5, 2}, {7, 3, 6, 4} };
 // ---- The consumer's additions to the chip. ----
 
 #using la14
-extend extern class La14Chip {
+extend class La14Chip {
     /// Stocks each row of a table with one chip held back by a lease, wearing those over a limit; a
     /// mark per chip (* worn, - not, ! when the pool ran out), with the count out printed from I6.
     static stringObj sortRows(array<array<int>> table, int limit) {

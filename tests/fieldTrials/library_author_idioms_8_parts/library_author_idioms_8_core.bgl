@@ -96,12 +96,12 @@ string la8Band(int n) {
 
 // ---- Additions every array and every int literal get. ----
 
-extend extern class array {
+extend class array {
     /// The last element in use.
     emitter T la8Tail() { $i6Expr($self[$self.length - 1]) }
 }
 
-extend extern class intLiteral {
+extend class intLiteral {
     /// The literal times ten.
     emitter int la8Tens() { ($self * 10) }
 }

@@ -11,7 +11,7 @@
 
 #using bgl.printRules;
 
-extend extern class object {
+extend class object {
     int time_left;
 }
 

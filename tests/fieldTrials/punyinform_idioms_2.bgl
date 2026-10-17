@@ -51,7 +51,7 @@ bool LibraryMessages(int msg, var arg1, var arg2) {
 
 #includeI6 "puny"
 
-extend extern class object {
+extend class object {
     string description;
     ref object ne_to;
     ref object sw_to;

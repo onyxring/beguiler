@@ -67,7 +67,7 @@ array<string> transformNames = { "upper", "reverse", "angle", "swap a", "short" 
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

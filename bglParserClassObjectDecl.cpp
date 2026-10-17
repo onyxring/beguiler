@@ -766,7 +766,7 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
     return &arr;
 }
 
-bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias, bool extendIsExtern){
+bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias){
     rejectMemberBindingMismatch(q.isRef, tok, returnType, name);
     if(tok.is(token::bindAssignment)) tok.value = token::assignment;   // a `ref` member's value, bound
     bool isReplace = q.isReplace;
@@ -999,13 +999,13 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
             if(vd && vd->name == varDef.name){ existing = m; break; }
         }
         bool existingIsStub = existing != nullptr && existing->isPrePassStub;
-        // Inform 6 owns an extern class's instances (the library's objects among them), so a new field
-        // could never be given to all of them. `extend extern class` describes one Inform 6 already provides.
-        if(newClass.isExternal && !extendIsExtern && !isMemberStatic && !isEmitter && !varDef.isAlias && (existing == nullptr || existingIsStub))
-            parsingError(format("extend class '{0}': '{0}' is an extern class, so 'extend' can add only emitters and "
-                                "static members to it. To give the type of a property Inform 6 already provides, write "
-                                "`extend extern class {0}`; for a new one, declare '{1}' on a class of your own.",
-                                newClass.dName(), varDef.dName()));
+        // Inform 6 owns an extern class's instances (the library's objects among them), so a variable here types
+        // a property Inform 6 already provides; a value for it could never be given to all of them.
+        if(newClass.isExternal && !isMemberStatic && !isEmitter && !varDef.isAlias && varDef.declaredExpressionValue != nullptr
+           && (existing == nullptr || existingIsStub))
+            parsingError(format("extend class '{0}': '{0}' is an extern class, whose instances Inform 6 owns, so '{1}' "
+                                "names a property Inform 6 provides and can't be given a value here; set it on the objects, "
+                                "or declare '{1}' on a class of your own.", newClass.dName(), varDef.dName()));
         if(existing && !existingIsStub && !isReplace)
             parsingError(format("extend class '{0}': member '{1}' is already defined; use 'replace' to override", newClass.dName(), varDef.dName()));
         if(!existing && isReplace)
@@ -1230,7 +1230,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
     }
     else{
         if(isOperator==true) parsingError("Operators must be functions.");
-        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend, memberI6Alias, isExternal)) return;
+        if(parseClassVariableMember(newClass, tok, name, returnType, q, isEmitter, isExtend, memberI6Alias)) return;
     }
     tok=file.getToken();
 }
@@ -1257,6 +1257,9 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
             parsingError(format("'{0}' is a class, not a struct; extend it with `extend class {0}`.", shown));
         if(!isStruct && classPtr->isValue && !classPtr->isEmitterClass)
             parsingError(format("'{0}' is a struct; extend it with `extend struct {0}`.", shown));
+        // Whether a class is extern is its declaration's to say; an extension takes it from there.
+        if(isExternal)
+            parsingError(format("'extern' belongs on the declaration of '{0}', not on an extension; write `extend class {0}`.", shown));
     } else {
         //create an empty class definition object and register it immediately, so that we can refer to this type within its own definition (e.g. comparison operators)
         classPtr = &languageService.registerClass((string)nameTok, isExternal, nameTok.originalValue);
@@ -1304,7 +1307,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     if(!newClass.typeParameters.empty() && !isExtend && newClass.name != "array" && newClass.name != "rawarray")
         parsingError(format(kindWord(&newClass) + " '{0}': Beguile has no generic classes; a type parameter belongs to "
             "`array<T>` and `rawArray<T>` only. Declare the member types directly; to give arrays "
-            "a method that uses T, write it in `extend extern class array {{ … }}`.",
+            "a method that uses T, write it in `extend class array {{ … }}`.",
             newClass.dName()));
     // A struct has no subclasses.
     if(!isExtend && !newClass.isEmitterClass && !newClass.isAlias)

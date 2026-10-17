@@ -11,7 +11,7 @@
 // I6 array and routines, one of them holding an in-routine `#bgl { }` island in loose mode; the object
 // bound with a body-form `extern object` (typed member, method with a default argument), its I6-only
 // property with `extern property` and provides(), and a routine with `extern … asBgl`; an
-// `extend extern class array` emitter handing `$opref(==)` of a class with a static `==` to an I6
+// `extend class array` emitter handing `$opref(==)` of a class with a static `==` to an I6
 // routine; extensions of the literal pseudo-types intLiteral (a method and an emitter value),
 // negativeIntLiteral, charLiteral and dictionaryWordLiteral, and overloads on intLiteral vs
 // negativeIntLiteral; a global emitter overloaded on `interpolatedStringLiteral`; an emitter namespace
@@ -161,17 +161,17 @@ extern const string BUILD_TARGET;
 
 // --- literal pseudo-types, a global emitter overload and an emitter namespace ---------------------
 
-extend extern class intLiteral {
+extend class intLiteral {
     emitter void boxed() { print "[", $val, "]"; }
     emitter int  squared { ($val * $val) }
 }
-extend extern class negativeIntLiteral {
+extend class negativeIntLiteral {
     emitter int flipped() { (-($val)) }
 }
-extend extern class charLiteral {
+extend class charLiteral {
     emitter int upperCode() { ($val - 32) }
 }
-extend extern class dictionaryWordLiteral {
+extend class dictionaryWordLiteral {
     emitter bool isVerbWord() { (($val->#dict_par1) & 1 ~= 0) }
 }
 
@@ -202,7 +202,7 @@ class FineGauge : Gauge {
     int reading = 4;
 }
 
-extend extern class array {
+extend class array {
     emitter int countEq(T item) { CountEq($self, $item, $opref(==)) }
 }
 

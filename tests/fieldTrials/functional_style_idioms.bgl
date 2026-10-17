@@ -22,7 +22,7 @@
 #includeI6 "verblib"
 #include <linq>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

@@ -42,7 +42,7 @@
     Swatch blackSwatch "black swatch" with swatch_rgb $101010;
 }
 
-extend extern class object {
+extend class object {
     string description;
 }
 

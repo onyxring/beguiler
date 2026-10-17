@@ -46,7 +46,7 @@ object LibraryMessages {
 #include <string>
 #include <array>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

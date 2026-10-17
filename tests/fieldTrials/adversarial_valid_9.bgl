@@ -37,7 +37,7 @@
 #define DIAL_COUNT 3
 #define TRACE_TURNS
 
-extend extern class object {
+extend class object {
     string description;
 }
 

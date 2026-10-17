@@ -1,5 +1,5 @@
 /* A class-typed member of an extern class is the library's property: it refers to an instance or is empty. */
 // EXPECT_ERROR: 'n_to' is the library's property, which refers to an instance or is empty: declare it `ref object n_to`.
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
-extend extern class object { object n_to; }
+extend class object { object n_to; }
 void main(){ }

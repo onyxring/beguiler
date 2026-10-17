@@ -395,7 +395,7 @@ emitter void print(stringOrRoutine v){
     else print (string)$v;
 }
 // The library lets every object override its instanceName with the short_name property.
-extend extern class object {
+extend class object {
     stringOrRoutine short_name;
 }
 

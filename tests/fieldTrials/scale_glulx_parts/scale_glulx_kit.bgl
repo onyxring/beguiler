@@ -12,7 +12,7 @@
 
 // ---- array emitters ------------------------------------------------------------------------------------
 
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
     emitter T penultimate() { $i6Expr($self[$self.length - 2]) }
 }

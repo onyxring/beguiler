@@ -104,7 +104,7 @@ array<string> surchargeNames = { "fragile", "urgent", "signed" };
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

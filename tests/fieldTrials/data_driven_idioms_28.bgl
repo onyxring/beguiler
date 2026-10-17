@@ -130,7 +130,7 @@ array<int> queryLog[LOG_MAX];
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

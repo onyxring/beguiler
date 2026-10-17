@@ -412,7 +412,7 @@ class bglParser {
         // Parse one method member of a class body (`tok` is its '('); true = member fully handled.
         bool parseClassMethodMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExternal, bool isExtend, const string& i6alias = "");
         // Parse one variable/alias member of a class body (`tok` is its '=' or ';'); true = handled.
-        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias = "", bool extendIsExtern = false);
+        bool parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias = "");
         // Parse one member of a class body; on return `tok` is the next member's first token (or '}').
         void parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend);
         // Parse one member of an `extern object` body; on return `tok` is the next member's first token.

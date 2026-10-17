@@ -40,7 +40,7 @@
     #define SIDE_COLS 10
 #endif
 
-extend extern class object {
+extend class object {
     string description;
 }
 

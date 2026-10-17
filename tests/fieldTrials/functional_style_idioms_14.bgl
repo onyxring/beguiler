@@ -6,7 +6,7 @@
 // with emitter `+=`, `++`, `[]` and `[]=`, whose static methods hold emitter-class locals, <linq>
 // chains (filter/count, orderBy/first/last, any, map), float ratios, try/catch around a throw over
 // its own subscripts, and in-routine `#i6` islands reading Beguile locals through `$i6Expr`; an
-// `extend extern class` adding `-=` and a static drain of the same shape; a reference class with
+// `extend class` adding `-=` and a static drain of the same shape; a reference class with
 // non-emitter `+=`, `-=`, `++`, `[]` and `[]=` that throw, called from methods that catch inside
 // <linq> loops and print from `#i6` islands, with a float member; free functions folding arrays
 // into floats under try/catch, with a `#bgl` island inside an `#i6` island.
@@ -21,7 +21,7 @@
 #includeI6 "verblib"
 #include <linq>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
@@ -101,7 +101,7 @@ extern class GaugeClass : object {
 extern GaugeClass gaugeA;
 extern GaugeClass gaugeB;
 
-extend extern class GaugeClass {
+extend class GaugeClass {
     emitter GaugeClass operator -= (int v) { $self.level = $self.level - $v; }
 
     static int drain(GaugeClass g, int n) {

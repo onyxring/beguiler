@@ -72,7 +72,7 @@ void printFlags(codeSpace c) {
 
 //-- World ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

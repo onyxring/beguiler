@@ -31,7 +31,7 @@
 
 #include "library_author_idioms_43_parts/library_author_idioms_43_kit"
 
-extend extern class object {
+extend class object {
     string description;
 }
 

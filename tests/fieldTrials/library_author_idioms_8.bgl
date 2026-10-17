@@ -10,8 +10,8 @@
 // member called directly and reassigned to a lambda; a static method as a function value; replace
 // of a kit function calling replaced(), reached from a kit routine written before it, and replace
 // of a kit emitter; an emitter overloaded on interpolatedStringLiteral and string;
-// a switch mixing guards, ranges and value lists; extend extern class array with an emitter used
-// on nested arrays, and extend extern class intLiteral; an extern object with a defaulted method
+// a switch mixing guards, ranges and value lists; extend class array with an emitter used
+// on nested arrays, and extend class intLiteral; an extern object with a defaulted method
 // parameter and a typed member, bound to an I6 object; a method given an asI6 name and sent
 // from an I6 objectloop through $i6Name; array extend with inject before/first, move, remove by
 // index and an inline object; a pool sized by a const; bare inline objects as positional and
@@ -33,7 +33,7 @@
 
 #using bgl.printRules
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -1183,7 +1183,7 @@ against one may be called directly on a literal.
 ```bgl
 "hello".print();       // a method on stringLiteral
 
-extend extern class intLiteral {
+extend class intLiteral {
     emitter void twice(){ print $val * 2; }
 }
 42.twice();            // → 84
@@ -4136,7 +4136,7 @@ Beguile has no generic classes. The `<T>` form belongs to the two array types, `
 compile-time error. `array<Room>` binds `T` to `Room` in the array's method signatures, so
 `rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
 
-An `extend extern class array` block adds emitters to every array, and `T` in their signatures binds
+An `extend class array` block adds emitters to every array, and `T` in their signatures binds
 the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
 array's own layout. For a global, local or member array, `$self` is the array, element `i` is
 `$self-->(i+1)`, and `$prop` is `0` (§7.3). An `array<dictionaryWord>` member is its property's data
@@ -4146,7 +4146,7 @@ read can instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right
 **Example**
 
 ```bgl
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
 }
 array<int> scores = {4, 9, 2};
@@ -4935,7 +4935,7 @@ when it has none.
 
 Inform 6 owns an `extern` class's instances, including objects the library declares, so no
 extension can give them new storage. `extend class` on an `extern` class adds only emitters and
-`static` members; a variable declaration there is a compile-time error. `extend extern class`
+`static` members; a variable declaration there is a compile-time error. `extend class`
 accepts what an `extern class` declaration does (§8.2.2): it gives the types of properties Inform 6
 already provides, as well as emitters and `static` members. `extend class` may not change a type parameter (§8.1.1), a pool size
 (§8.2.6) or the class's form (`primitive`, `superposed`). A struct is extended with `extend struct`. An `inline` member or
@@ -4959,10 +4959,10 @@ class Counter { int value; }
 extend class Counter {
     emitter bool isZero(){ $self.value == 0 }
 }
-extend extern class int {
+extend class int {
     emitter string asHex(){ $self.toHexString() }
 }
-extend extern class object {
+extend class object {
     string description;       // the library's property, typed for Beguile
 }
 ```
@@ -12074,7 +12074,7 @@ Beyond the routines it documents, each binding declares every other routine the 
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
-A declaration on an `extern` class, the binding's or a program's `extend extern class object { … }` (§8.7.1),
+A declaration on an `extern` class, the binding's or a program's `extend class object { … }` (§8.7.1),
 only gives a library property its type; it gives no object the property. An object holds a property
 only when its class, or the object itself, declares or sets it, so writing one on an object that
 doesn't hold it fails at run time, not when the program is compiled: `with_key = k;` in a class that

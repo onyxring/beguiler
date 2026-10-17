@@ -18,7 +18,7 @@
 #includeI6 "parser"
 #includeI6 "verblib"
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

@@ -31,7 +31,7 @@ const int RING = 4;
 #include <bindings/i6StandardLibrary>
 #using bgl.printRules;
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
     ref object e_to;
     ref object w_to;

@@ -38,7 +38,7 @@ const int FLOOR = 0;
 
 #using bgl.printRules;
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

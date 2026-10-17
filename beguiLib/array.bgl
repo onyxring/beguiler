@@ -50,7 +50,7 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 //     ($self.&$prop-->n, size $self.#$prop/WORDSIZE).
 //   • global/local array     → $self is the array address, $prop a 0 sentinel
 //     (tracked layout). The compiler fills $self/$prop per call site.
-extend extern class array {
+extend class array {
     // Member and global arrays alike, through the dual-form helpers.
     /// How many elements the array can hold. Fixed at declaration.
     replace emitter int  size             { _bglArray.size($self, $prop) }
@@ -131,7 +131,7 @@ extend extern class array {
 }
 
 /// With `<array>`, an array's `length` is assignable: set it to say how many elements are in use.
-extend extern class arrayLength {
+extend class arrayLength {
     /// How many elements are in use. `append` and friends move it; `size` does not change.
     replace emitter int  operator()       { _bglArray.length($self, $prop) }
     /// Set how many elements are in use, at most `size`. Growing it exposes slots that were never written.

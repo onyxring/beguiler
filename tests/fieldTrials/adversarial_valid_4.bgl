@@ -32,7 +32,7 @@
 #include <array>
 #include <string>
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -292,7 +292,7 @@ extern class Registry {
     }
 }
 
-extend extern class Registry {
+extend class Registry {
     static array<int> spare[4];
 
     replace static int depth(int n) {

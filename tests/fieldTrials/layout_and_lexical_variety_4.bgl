@@ -34,7 +34,7 @@
  *  Banner made of stars: the closing delimiter is the last two characters.
  *****************************************************************************/
 
-extend extern class object { string description; }
+extend class object { string description; }
 
 // /* this block opener sits in a line comment and opens nothing
 const int AFTER_LINE_COMMENT = 1;

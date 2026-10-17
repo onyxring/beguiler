@@ -10,7 +10,7 @@
 // through, passed by ref and by copy, and stored in an array<theme> whose slot is bound by a ref
 // local; a primitive class packing a grid cell (col, line) with emitter accessors, an emitter
 // operator +, += and ++ fallbacks and its own print(), interpolated, and used as a positional inline
-// member of objects placed in a text grid; an extend extern class array emitter (secondItem) on
+// member of objects placed in a text grid; an extend class array emitter (secondItem) on
 // array<string>, array<cellPos>, array<int> and an object's member array; a file-scope menu
 // array<string> reshaped at compile time by extend (inject / remove / move by index); a link menu
 // printed into a child text-buffer window with targets chosen by a string switch, a link printed by a
@@ -42,7 +42,7 @@
 
 #declare PANEL_KIT
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -223,7 +223,7 @@ void placeAt(textGridWindow g, cellPos p, string text) {
     g.print(text);
 }
 
-extend extern class array {
+extend class array {
     emitter T secondItem() { $i6Expr($self[1]) }
 }
 

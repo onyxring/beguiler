@@ -28,7 +28,7 @@
 #include <linq>
 #include <buf>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

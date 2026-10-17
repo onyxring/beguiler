@@ -8,8 +8,8 @@
 // before an index, `move`, `remove`, one line under `#if`), run in order, re-sorted by a member and
 // toggled through a subscript; `#if` inside a method body; reflection through `property` parameters
 // and locals (`provides`, computed reads and message sends, a free-standing `property`, an
-// `array<property>`); extension methods: `extend extern class array` emitters through `$i6Expr` on
-// global, member, nested and value-returning arrays, and `extend extern class int` emitters called on
+// `array<property>`); extension methods: `extend class array` emitters through `$i6Expr` on
+// global, member, nested and value-returning arrays, and `extend class int` emitters called on
 // literals, sums, subscripts and call results; a composite pattern over the object tree (positional
 // `inline instanceName`, `children` in declarations, recursion over `children` in a method, `parent`
 // walks, `children +=`, moving with `parent =`, a `bgl.world.inParent` snapshot,
@@ -32,19 +32,19 @@
 #define TRACE_PIPELINE
 #define MAX_STEPS 6
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
 //-- Extension methods -----------------------------------------------------------------------------
 
-extend extern class array {
+extend class array {
     emitter T Last()           { $i6Expr($self[$self.length - 1]) }
     emitter bool IsEmpty()     { ($i6Expr($self.length) == 0) }
     emitter int Capacity()     { $i6Expr($self.size) }
 }
 
-extend extern class int {
+extend class int {
     emitter bool IsEven()      { ($self % 2 == 0) }
     emitter int Squared()      { ($self * $self) }
 }

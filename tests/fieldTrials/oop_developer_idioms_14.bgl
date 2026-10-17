@@ -24,7 +24,7 @@
 #define AUDIT_LEVEL 2
 #define STRICT_MASS
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
@@ -149,7 +149,7 @@ extern object counterI6 {
 
 //-- More statics, added to the extern class later --------------------------------------------------------
 
-extend extern class Crate {
+extend class Crate {
     // The heaviest unsealed crate across the rows, or the fallback label when none qualifies.
     static Label Heaviest(Label fallback) {
         AuditScope scope;

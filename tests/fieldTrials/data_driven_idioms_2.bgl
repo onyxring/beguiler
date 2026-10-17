@@ -34,7 +34,7 @@ bnum ePerm { enter, take, craft, talk }
 
 //-- World ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

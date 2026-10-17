@@ -43,7 +43,7 @@ extern int TrialLockTop();
 extern int TrialAppendTop();
 extern var _bglFrameTop;
 
-extend extern class object {
+extend class object {
     string description;
 }
 

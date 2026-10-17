@@ -28,7 +28,7 @@
 #INCLUDE <linq>         // brings <array>
 #Include <string>
 
-extend extern class object { string description; }
+extend class object { string description; }
 
 //-- Raw I6 placement --------------------------------------------------------------------------------
 

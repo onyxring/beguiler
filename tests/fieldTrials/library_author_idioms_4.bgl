@@ -23,7 +23,7 @@
 
 #defineI6 LA4_CAP 4
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -4,7 +4,7 @@
 // Exercises: a catalog of objects read column by column through an array<property> and computed
 // property access (obj.p on a property local and parameter), a method sent through a property value
 // so it dispatches to subclass overrides of default methods, an ancestor call through a cast, emitter
-// methods added to every array with extend extern class array and used on global, local and member
+// methods added to every array with extend class array and used on global, local and member
 // arrays, filter rules parsed at startup from strings with s[i], char classification and =~ into
 // struct records, a table of comparison lambdas chosen by an operator char, a sort column held
 // in a global and read by a named comparator, float statistics (means, a weighted mean, a standard
@@ -33,14 +33,14 @@ const int STOCK_MAX = 20;
 
 //-- Array extensions ----------------------------------------------------------
 
-extend extern class array {
+extend class array {
     emitter T head() { $i6Expr($self[0]) }
     emitter T second() { $i6Expr($self[1]) }
 }
 
 //-- World ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

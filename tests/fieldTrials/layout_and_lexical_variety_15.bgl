@@ -38,7 +38,7 @@
 #include <linq>
 #include <string>
 
-extend extern class object { string description ; }
+extend class object { string description ; }
 
 object roomA { "Room A" ; description = "A plain room." ; attributes = light ; }
 
@@ -148,7 +148,7 @@ extern class CrateI6 : BinI6  { int crate_weight ; }
 extern CrateI6 crateA ;
 extern CrateI6 crateB ;
 
-extend extern class CrateI6
+extend class CrateI6
 {
     static array<int> loads = { 4 , 7 , 2 , 9 , 5 } ;
     static int survey ( CrateI6 c , var extra )
@@ -177,7 +177,7 @@ object kit
 }
 
 #using kit
-extend extern class CrateI6
+extend class CrateI6
 {
     static int label ( crate c , Hint hint )
     {

@@ -96,7 +96,7 @@ array<int> tray[TRAY_MAX];
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

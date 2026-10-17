@@ -21,7 +21,7 @@
     ];
 }
 
-extend extern class array {
+extend class array {
     /// The least element by the element type's <=>; global and local arrays only.
     emitter T least() { La7_Least($self, $i6Expr($self.length), $oprefReq(<=>)) }
 }

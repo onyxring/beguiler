@@ -559,7 +559,7 @@ emitter void print(stringOrRoutine v){
     else print (string)$v;
 }
 // The stdLib allows all objects to override their instanceName via the short_name property.
-extend extern class object {
+extend class object {
     stringOrRoutine short_name;
 }
 

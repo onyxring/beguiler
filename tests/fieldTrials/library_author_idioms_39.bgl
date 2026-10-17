@@ -27,7 +27,7 @@
 
 #include "library_author_idioms_39_parts/library_author_idioms_39_kit"
 
-extend extern class object {
+extend class object {
     string description;
 }
 

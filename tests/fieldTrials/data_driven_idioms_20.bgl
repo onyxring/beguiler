@@ -78,7 +78,7 @@ array<int> ring[RING_SIZE];
 
 //-- Records -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

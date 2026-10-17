@@ -49,7 +49,7 @@ object LibraryMessages {
 
 extern void PrintDigits(int n, int w);
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
     ref object n_to;
     ref object s_to;

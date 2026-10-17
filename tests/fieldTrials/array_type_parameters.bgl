@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: the array type parameter T (§8.1.1) — emitters added to every array and rawArray through
-// `extend extern class`, reaching elements with $i6Expr($self[i]), with T in return and parameter
+// `extend class`, reaching elements with $i6Expr($self[i]), with T in return and parameter
 // positions, bound per element type (int, string, object, a user class), on file-scope arrays, a class
 // member array, an object member array and a local array; a T result read, written and called through
 // as a receiver, passed as an argument and compared; alongside <array>'s own T-typed methods.
@@ -17,16 +17,16 @@
 #include <bindings/i6StandardLibrary>
 #include <array>
 
-extend extern class array {
+extend class array {
     emitter T    second()            { $i6Expr($self[1]) }
     emitter bool firstIs(T v)        { $i6Expr($self[0] == $v) }
 }
 
-extend extern class rawArray {
+extend class rawArray {
     emitter T    third()             { $i6Expr($self[2]) }
 }
 
-extend extern class object {
+extend class object {
     string description;
 }
 

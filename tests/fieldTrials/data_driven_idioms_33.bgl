@@ -177,7 +177,7 @@ class Crate : object {
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

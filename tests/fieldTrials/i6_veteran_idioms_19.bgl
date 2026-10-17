@@ -50,7 +50,7 @@ object LibraryMessages {
 extern int weighings;
 extern void PrintGrams(int n);
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
     ref object n_to;
     ref object s_to;

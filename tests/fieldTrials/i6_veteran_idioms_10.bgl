@@ -11,8 +11,8 @@
 // live count kept by create/destroy, pool exhaustion and slot reuse; a struct with distinct
 // postfix ++ and prefix++ and an explicit regular-method conversion; a class with non-emitter
 // operator [] and []= over a member array, with ?. and ?? on the subscript result; an alias class
-// for object with a typed member, an emitter and a static method; extend extern class int and
-// extend extern class array emitters (T bound to the element type); operator references
+// for object with a typed member, an emitter and a static method; extend class int and
+// extend class array emitters (T bound to the element type); operator references
 // (cell::operator <=>) passed to sort and held in a func<>; & of an array handed to an I6 routine
 // with bgl.wordsize; an I6 routine with a #bgl island calling a Beguile routine; uint ordering,
 // division and printing; bgl.util.math helpers; += and |= on primitive members of a pooled instance;
@@ -183,12 +183,12 @@ place roomB {
 
 // ---------------------------------------------------------------- extensions of built-ins
 
-extend extern class int {
+extend class int {
     emitter int hiByte() { ($self / 256) }
     emitter int loByte() { ($self & 255) }
 }
 
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
 }
 

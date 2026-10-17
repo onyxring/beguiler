@@ -237,7 +237,7 @@ array<string> adjusterNames = { "even", "plus one", "at least 8", "fives" };
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -37,7 +37,7 @@
 
 #define MAX_ROWS 6
 
-extend extern class object {
+extend class object {
     string description;
 }
 

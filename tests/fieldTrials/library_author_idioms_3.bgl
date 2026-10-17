@@ -31,7 +31,7 @@
 
 // --- Consumer code ahead of the kit. ---
 
-extend extern class object {
+extend class object {
     string description;
 }
 

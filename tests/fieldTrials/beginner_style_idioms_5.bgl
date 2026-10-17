@@ -185,7 +185,7 @@ string kindOf(stringObj word) {
 }
 
 // the room
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -29,7 +29,7 @@ const int DOOR_TURNS = 2;       // the doors stay open this many turns
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

@@ -136,7 +136,7 @@ against one may be called directly on a literal.
 ```bgl
 "hello".print();       // a method on stringLiteral
 
-extend extern class intLiteral {
+extend class intLiteral {
     emitter void twice(){ print $val * 2; }
 }
 42.twice();            // → 84

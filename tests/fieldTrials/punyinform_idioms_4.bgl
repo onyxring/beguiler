@@ -72,7 +72,7 @@ const int F_TIED   = 2;
 const int F_BURNT  = 3;
 const int F_FILLED = 4;
 
-extend extern class object {
+extend class object {
     string description;
     ref object e_to;
     ref object w_to;

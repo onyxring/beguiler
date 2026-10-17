@@ -115,7 +115,7 @@ array<string> breakerNames = { "points", "difference", "scored", "order" };
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

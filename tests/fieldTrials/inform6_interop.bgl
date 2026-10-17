@@ -44,7 +44,7 @@ extern int I6ReadTally();
     [ LateValue; return i6Tally + 100; ];
 }
 
-extend extern class object {
+extend class object {
     string description;
 }
 

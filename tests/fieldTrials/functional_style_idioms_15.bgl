@@ -29,7 +29,7 @@
 #define PANEL_TRACE
 #define PANEL_STEP 0.5
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

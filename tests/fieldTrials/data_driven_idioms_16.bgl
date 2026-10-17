@@ -26,7 +26,7 @@
 
 #define WIDE_ROWS
 
-extend extern class object {
+extend class object {
     string description;
 }
 

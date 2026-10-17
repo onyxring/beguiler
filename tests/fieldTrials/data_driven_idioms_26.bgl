@@ -121,7 +121,7 @@ array<string | func<void>> cropNotes = { "Climbs.", carrotNote, "Slow to ripen."
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

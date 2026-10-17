@@ -14,7 +14,7 @@
 // emitter member, a replace override, recursion, <buf>, <linq>, an #i6 island, attributes, switch,
 // typeof and postfix ?; an `extend class Swatch` under a second namespace adding another accessor
 // and the same mix. An I6 class Gauge with two I6 parents bound as an extern class and extended
-// (`extend extern class Gauge`) with a static array, a replaced emitter conversion,
+// (`extend class Gauge`) with a static array, a replaced emitter conversion,
 // a comparison operator and static routines that recurse, throw, take an array<int> and a func<>,
 // use block lambdas, nested literals, enums, switch ranges, ?., typeof, an #i6 island with $i6Expr,
 // the object tree and perform(). A pooled class Cell[4] with two parents under a third namespace,
@@ -50,7 +50,7 @@
     [ MarkSum g i n; for (i = 0: i < 4: i++) n = n + (g.&gauge_marks)-->i; return n; ];
 }
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -417,7 +417,7 @@ extern class Gauge : Dial, Tinted {
 extern Gauge gaugeA;
 extern Gauge gaugeB;
 
-extend extern class Gauge {
+extend class Gauge {
     static array<float> trail[4];
     static int checks = 0;
 

@@ -29,7 +29,7 @@
 #include <bindings/i6StandardLibrary>
 #include <linq>
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -103,7 +103,7 @@ array<int> chainNext = { 2, NONE, 5, 1, NONE, 6, 2 };
 
 //-- World ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

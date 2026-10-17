@@ -1,0 +1,9 @@
+// run_extend_extern_plain — `extend class` on an extern class types properties Inform 6 provides;
+// a class-typed one is a `ref`.
+// EXPECT_OUTPUT: 7 3 lid
+#beguilerSettings { target = z5; informName = "none"; }
+extend class object { int weight; ref object part; }
+object lid { "lid"; }
+object box { weight = 7; part = lid; }
+object pan { weight = 3; }
+void main(){ object o = box; object p = pan; print($"{o.weight} {p.weight} "); print(box.part == lid ? "lid" : "?"); }

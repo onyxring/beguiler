@@ -34,7 +34,7 @@
 
 #define PROBE_LEVEL 2
 
-extend extern class object {
+extend class object {
     string description;
 }
 

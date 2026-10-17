@@ -196,7 +196,7 @@ array<string> mixerNames = { "sum", "difference", "heavier", "mean" };
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -26,7 +26,7 @@
 
 #define SHOW_DEPTH
 
-extend extern class object {
+extend class object {
     string description;
 }
 

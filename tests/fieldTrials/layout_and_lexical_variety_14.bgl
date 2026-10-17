@@ -5,7 +5,7 @@
 // compound operators, `#if`/`#define`, `extern`, namespaces, `?.`, `replace`/`default`, `operator []`
 // and verbs. An extern class over a raw I6 word array with emitter `operator []`/`[]=`/`?`/`+=` and an
 // `operator ++` under `#if`, plus a static method that subscripts its parameter, walks a chain with `?.`
-// and performs a verb; an `extend extern class` written straight after `#using` that `replace`s the
+// and performs a verb; an `extend class` written straight after `#using` that `replace`s the
 // subscript, adds `operator -=`, and holds static methods typed through the imported aliases that use
 // `+=`, `++`, `?.`, `#if` and `perform()`. A reference class with non-emitter `operator []`/`[]=`/
 // `+=`/`++`, an emitter `operator ?` that `?.` consults, `#if`/`#else` members, a `default` method and
@@ -37,7 +37,7 @@
 #include <bindings/i6StandardLibrary>
 #include <array>
 
-extend extern class object { string description; }
+extend class object { string description; }
 
 object roomA { "Room A"; description = "A plain room."; attributes = light; }
 
@@ -105,7 +105,7 @@ object kit
 }
 
 #using kit
-extend extern class wordTab
+extend class wordTab
 {
     replace emitter int operator /* wraps */ [] ( int i ) { ($val-->($i % 4)) }
     emitter void operator -= ( int v ) { $val-->0 = $val-->0 - $v; }

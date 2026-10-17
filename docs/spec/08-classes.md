@@ -97,7 +97,7 @@ Beguile has no generic classes. The `<T>` form belongs to the two array types, `
 compile-time error. `array<Room>` binds `T` to `Room` in the array's method signatures, so
 `rooms.push(lamp)` is rejected when `lamp` is not a `Room`.
 
-An `extend extern class array` block adds emitters to every array, and `T` in their signatures binds
+An `extend class array` block adds emitters to every array, and `T` in their signatures binds
 the same way. The extension does not repeat the `<T>`. A body is raw I6, so it works with the
 array's own layout. For a global, local or member array, `$self` is the array, element `i` is
 `$self-->(i+1)`, and `$prop` is `0` (§7.3). An `array<dictionaryWord>` member is its property's data
@@ -107,7 +107,7 @@ read can instead be written `$i6Expr($self[i])` (§7.3.4), which emits the right
 **Example**
 
 ```bgl
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
 }
 array<int> scores = {4, 9, 2};
@@ -885,7 +885,7 @@ class FlyingFish : Flyer, Swimmer {
 **Syntax**
 
 ```syntax
-extend [ extern ] class ⟨name⟩ { ⟨member⟩ … }
+extend class ⟨name⟩ { ⟨member⟩ … }
 ```
 
 **Description**
@@ -895,10 +895,10 @@ member, and every instance gets each new variable with its initializer, or the t
 when it has none.
 
 Inform 6 owns an `extern` class's instances, including objects the library declares, so no
-extension can give them new storage. `extend class` on an `extern` class adds only emitters and
-`static` members; a variable declaration there is a compile-time error. `extend extern class`
-accepts what an `extern class` declaration does (§8.2.2): it gives the types of properties Inform 6
-already provides, as well as emitters and `static` members. `extend class` may not change a type parameter (§8.1.1), a pool size
+extension can give them new storage. A variable declared in an `extend` of an `extern` class gives the
+type of a property Inform 6 already provides, as one in an `extern class` declaration does (§8.2.2); it
+can't take a value there, since the instances aren't Beguile's to initialize. Whether a class is
+`extern` is its declaration's to say: `extern` on an `extend` is a compile-time error. `extend class` may not change a type parameter (§8.1.1), a pool size
 (§8.2.6) or the class's form (`primitive`, `superposed`). A struct is extended with `extend struct`. An `inline` member or
 `inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
 member; a `replace` that names no existing member is a warning, and the member is added.
@@ -920,10 +920,10 @@ class Counter { int value; }
 extend class Counter {
     emitter bool isZero(){ $self.value == 0 }
 }
-extend extern class int {
+extend class int {
     emitter string asHex(){ $self.toHexString() }
 }
-extend extern class object {
+extend class object {
     string description;       // the library's property, typed for Beguile
 }
 ```

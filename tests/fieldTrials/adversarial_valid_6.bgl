@@ -33,7 +33,7 @@
 
 #define SORT_PASSES 2
 
-extend extern class object {
+extend class object {
     string description;
 }
 

@@ -28,7 +28,7 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 #includeI6 "puny"
 
-extend extern class object {
+extend class object {
     string description;
 }
 

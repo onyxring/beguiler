@@ -6,7 +6,7 @@
 // that I6 class carries static methods whose bodies bind ref locals to file-scope string tables
 // (:=), switch with values, ranges and guards, walk an object's children, narrow a var to the
 // extern class, and write an I6 global from an in-routine #i6 line; extern routines and an extern
-// variable read back what the island holds; extend extern class object adds a static zone lookup
+// variable read back what the island holds; extend class object adds a static zone lookup
 // and a second extend replaces it with one that switches on typeof of a var and on an object,
 // binds a string table and calls an I6 routine through #i6; a global tag routine is replaced by
 // one that switches on typeof and on string content, rebinds a string table, reads the tree and
@@ -51,7 +51,7 @@ extern int DepthOf(object o);
 extern int lastSweep;
 extern void ListTags(object o);
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -130,14 +130,14 @@ extern class Crate : object {
 
 //-- Zones: a lookup added to every object, then replaced ---------------------------
 
-extend extern class object {
+extend class object {
     static int zoneOf(object o) {
         if (o.parent == null) return 3;
         return 0;
     }
 }
 
-extend extern class object {
+extend class object {
     replace static int zoneOf(object o) {
         var where = o.parent;
         ref array<string> names := zoneNames;

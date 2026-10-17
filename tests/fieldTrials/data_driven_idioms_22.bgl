@@ -89,7 +89,7 @@ int collected = 0;
 
 //-- Objects -------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

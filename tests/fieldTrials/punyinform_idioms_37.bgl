@@ -45,7 +45,7 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 #using bgl.printRules;
 
-extend extern class object {
+extend class object {
     string description;
     ref object e_to;
     ref object w_to;

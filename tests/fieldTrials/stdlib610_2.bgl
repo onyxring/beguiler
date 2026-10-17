@@ -27,7 +27,7 @@ const int AMUSING_PROVIDED = 0;   // 6/10 reads 0 as "Amusing provided"
 #include <array>
 #include <linq>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

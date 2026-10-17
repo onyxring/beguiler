@@ -59,7 +59,7 @@ float la10Tare(float v) { return v / 10; }
 
 // ---- More on every float. ----
 
-extend extern class float {
+extend class float {
     /// The nearest whole number.
     emitter int nearest() { la10Round($val) }
     /// The value one kit step up.

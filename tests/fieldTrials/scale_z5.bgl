@@ -28,7 +28,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

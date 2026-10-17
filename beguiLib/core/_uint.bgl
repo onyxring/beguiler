@@ -51,15 +51,15 @@ primitive class uint {
     explicit emitter int  operator() { $val }                                /// Convert to an `int`, keeping the bits.
 }
 
-extend extern class int {
+extend class int {
     explicit emitter uint operator() { $val }   /// Convert to a `uint`, keeping the bits.
 }
 
-extend extern class intLiteral {
+extend class intLiteral {
     emitter uint operator() { $val }   /// Convert a literal to a `uint`.
 }
 
-extend extern class negativeIntLiteral {
+extend class negativeIntLiteral {
     explicit emitter uint operator() { $val }   /// Convert a negative literal to a `uint`; it needs an explicit cast.
 }
 

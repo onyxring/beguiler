@@ -168,7 +168,7 @@ extern class Chip[] : object {
 
 extern Chip chipK;
 
-extend extern class Chip {
+extend class Chip {
     replace emitter eBool operator == (Chip v) { ($self.chip_val == $v.chip_val) }
     emitter eBool operator != (Chip v) { ($self.chip_val ~= $v.chip_val) }
     emitter int operator <=> (Chip v) { ($self.chip_val - $v.chip_val) }

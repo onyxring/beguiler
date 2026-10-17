@@ -1,7 +1,7 @@
 /*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
     A hardening test: not a game, not an example, not for reuse.  */
 
-// Exercises: a kit split over kit and verbs parts; extend extern class array with T-typed emitters,
+// Exercises: a kit split over kit and verbs parts; extend class array with T-typed emitters,
 // $i6Expr subscripts, $opref(==) handed to an I6 routine (static and instance operators) and an emitter
 // value reading $prop, used on global, local and inline member arrays; a separately stored member
 // array on z5; a class re-listing instanceName as positional, extended by the consumer with a further
@@ -28,7 +28,7 @@
 
 #using bgl.printRules
 
-extend extern class object {
+extend class object {
     string description;
 }
 

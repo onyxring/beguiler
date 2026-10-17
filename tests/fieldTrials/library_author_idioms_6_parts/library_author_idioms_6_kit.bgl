@@ -25,7 +25,7 @@
 
 extern int La6_SumRaw(int addr, int n) asBgl la6SumRaw;
 
-extend extern class array {
+extend class array {
     /// The element after the first.
     emitter T second()          { $i6Expr($self[1]) }
     /// The last element in use.

@@ -1,0 +1,5 @@
+/* `extern` is the class declaration's to say; an extension doesn't repeat it. */
+// EXPECT_ERROR: 'extern' belongs on the declaration of 'object', not on an extension; write `extend class object`.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+extend extern class object { int weight; }
+void main(){ }

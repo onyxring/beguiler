@@ -10,7 +10,7 @@
 // primitive class over int (operator = from int, conversion to int, its own +); a struct with
 // regular-method operator [] and []= over a member array, used in loops and with += on an element; a
 // struct with only + and a copy operator so += and -= fall back, separate ++ and prefix++, an
-// explicit string conversion, operator ! and operator ?=; extend extern class array with a T emitter
+// explicit string conversion, operator ! and operator ?=; extend class array with a T emitter
 // called on int, string and member arrays; inline members re-listed and appended by extend class,
 // with nested { } aggregates for an array member; attributes with ! on a class's attribute, give / ungive
 // / has at run time, counted from I6; rtrue( ) and rfalse( ) with interpolated text (one in a before()
@@ -87,7 +87,7 @@ superposed int neverUsed(int n) {
 }
 
 // ===== EVERY ARRAY GETS A second() =====
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
 }
 

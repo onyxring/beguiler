@@ -8,7 +8,7 @@
 // through `for`, with the qualifiers, name and `for` on separate lines and an emitter value and a static
 // method on the alias; a `typesealed` member re-initialized without a type keyword; a primitive newtype
 // over int with `operator auto()` (so `auto` infers int), a conversion, a replaced `print()`,
-// operators written with and without spaces, overloads told apart from int; `extend extern class
+// operators written with and without spaces, overloads told apart from int; `extend class
 // array` with an emitter whose `T` binds per array, written token per line; `uint` arithmetic, unsigned
 // comparison, logical against arithmetic shift and the `(uint)-1` cast; `bgl.util.math` helpers reached
 // through a namespace path split across lines; `<buf>` set, append, case, search, replace and nested
@@ -50,7 +50,7 @@
 #include ?<noSuchExtension>         // skipped: not found
 #include ?"noSuchFile"              // skipped too
 
-extend extern class object { string description; }
+extend class object { string description; }
 
 //-- Rooms ---------------------------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ string kindOf(Notch n) { return "notch"; }
 
 //-- An emitter on every array -------------------------------------------------------------------------
 
-extend extern class array
+extend class array
 {
     emitter
         T

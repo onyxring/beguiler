@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: valid but unusual code in a small breaker-panel program, on Glulx.
-// An `extend extern class array` emitter (second()) called on a global array, a member array, an
+// An `extend class array` emitter (second()) called on a global array, a member array, an
 // inner row of an array of arrays and an array of objects; an array<array<int>> with rows of different
 // lengths walked by for-in and written through a double subscript; a struct with an `inline`
 // member, two static `==` overloads picked by an operator reference with an operand list, `<=>` handed
@@ -34,11 +34,11 @@
 #define LOAD_SLOTS 4
 #define TRACE_TRIPS
 
-extend extern class object {
+extend class object {
     string description;
 }
 
-extend extern class array {
+extend class array {
     emitter T second() { $i6Expr($self[1]) }
 }
 

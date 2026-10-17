@@ -28,7 +28,7 @@
 
 #using bgl.printRules
 
-extend extern class object {
+extend class object {
     string description;
 }
 

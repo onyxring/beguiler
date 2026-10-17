@@ -110,7 +110,7 @@ array<int> _bglBufGlulxStreams[16];
 //=============================================================================
 /// `<buf>` gives an `array<char>` a length separate from its capacity, so a text buffer can report
 /// how much of it is in use.
-extend extern class byteArray {
+extend class byteArray {
     /// How many bytes the buffer can hold.
     replace emitter int  size             { _bglBuf.size($val) }
     /// True when this buffer carries a length. A buffer built outside `<buf>` does not.
@@ -120,7 +120,7 @@ extend extern class byteArray {
 }
 
 /// With `<buf>`, a buffer's `length` is assignable.
-extend extern class byteArrayLength {
+extend class byteArrayLength {
     /// How many bytes are in use.
     replace emitter int  operator()       { _bglBuf.length($self) }
     /// Set how many bytes are in use, after writing into the buffer through some other route.

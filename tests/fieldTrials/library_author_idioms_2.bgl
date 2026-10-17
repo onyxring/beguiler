@@ -23,7 +23,7 @@
 
 // --- Consumer code that comes before the kit is included. ---
 
-extend extern class object {
+extend class object {
     string description;
 }
 

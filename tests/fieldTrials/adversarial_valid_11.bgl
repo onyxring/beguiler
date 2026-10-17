@@ -38,7 +38,7 @@
 
 #define TRACE_STEPS
 
-extend extern class object {
+extend class object {
     string description;
 }
 

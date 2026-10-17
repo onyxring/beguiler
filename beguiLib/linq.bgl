@@ -36,7 +36,7 @@ superposed void _bglLinqLeave(){
 }
 
 // LINQ-style fluent operations surface on array<T> (moved from <array>).
-extend extern class array {
+extend class array {
     // LINQ-style fluent operations. Each non-terminal returns a new array.
     // filter/distinct/orderBy etc. are type-preserving; map returns array<var>
     // because the mapper's output type can't be statically tracked.

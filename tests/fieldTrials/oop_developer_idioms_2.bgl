@@ -24,7 +24,7 @@
 #include <bindings/i6StandardLibrary>
 #include <array>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

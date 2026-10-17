@@ -42,7 +42,7 @@
 #define SHOW_BANDS
 #undef SHOW_BANDS
 
-extend extern class object {
+extend class object {
     string description;
 }
 

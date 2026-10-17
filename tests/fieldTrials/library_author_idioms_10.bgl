@@ -4,7 +4,7 @@
 // Exercises: a float kit on Glulx split over units and kit parts, guarded by #error on the target,
 // with a float #define the consumer sets before it (used in an expression) and a #defineI6 the kit
 // defaults and reads from an emitter body; const float, a float emitter value written in I6 float
-// syntax, extend extern class float with emitters calling kit routines; a primitive newtype over float
+// syntax, extend class float with emitters calling kit routines; a primitive newtype over float
 // with its own and replacing operators, an explicit conversion, a static <=> and a global print
 // overload, as a global, a member and an array element sorted by a comparator; a struct of floats
 // with a method print(), copy, == and !=, ref and by-copy parameters, filled by an extern I6 routine
@@ -28,7 +28,7 @@
 
 #using bgl.printRules
 
-extend extern class object {
+extend class object {
     string description;
 }
 

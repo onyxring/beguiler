@@ -32,7 +32,7 @@
 #include <string>
 #include <linq>
 
-extend extern class object {
+extend class object {
     string description;
 }
 

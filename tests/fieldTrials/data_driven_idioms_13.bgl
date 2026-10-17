@@ -34,7 +34,7 @@
 
 const int NONE = -1;
 
-extend extern class object {
+extend class object {
     string description;
 }
 

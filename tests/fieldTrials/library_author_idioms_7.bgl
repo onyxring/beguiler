@@ -27,7 +27,7 @@
 
 #using bgl.printRules
 
-extend extern class object {
+extend class object {
     string description;
 }
 
@@ -120,7 +120,7 @@ extend bnum la7Packing {
     emitter int wrapBits { ($self & 12) }
 }
 
-extend extern class La7_Chit {
+extend class La7_Chit {
     emitter bool big { ($self.la7_amount > 6) }
 }
 

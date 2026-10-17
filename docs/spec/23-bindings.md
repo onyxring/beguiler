@@ -127,7 +127,7 @@ Beyond the routines it documents, each binding declares every other routine the 
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
 
-A declaration on an `extern` class, the binding's or a program's `extend extern class object { … }` (§8.7.1),
+A declaration on an `extern` class, the binding's or a program's `extend class object { … }` (§8.7.1),
 only gives a library property its type; it gives no object the property. An object holds a property
 only when its class, or the object itself, declares or sets it, so writing one on an object that
 doesn't hold it fails at run time, not when the program is compiled: `with_key = k;` in a class that

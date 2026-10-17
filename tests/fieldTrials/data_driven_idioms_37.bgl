@@ -134,7 +134,7 @@ array<string> wayNames = { "lightest first", "heaviest first", "by grams" };
 
 //-- Objects ---------------------------------------------------------------------
 
-extend extern class object {
+extend class object {
     string description;
 }
 

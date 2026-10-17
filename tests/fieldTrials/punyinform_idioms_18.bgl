@@ -8,7 +8,7 @@
 // with postfix `?`, `?.` and `??`, fill an `array<Crate>`, sort and `popEnd()` an `array<int>`, sum an
 // array of arrays, bind a `ref` alias-typed struct with `:=`, use emitter-class and primitive
 // locals, a `stringObj`, a tracked `array<char>` driven by `bgl.util.buf` under `#if`, and a cast
-// dispatch to a Beguile class's base method; an `extend extern class` that `replace`s the conversion,
+// dispatch to a Beguile class's base method; an `extend class` that `replace`s the conversion,
 // adds `operator >`, and a static method taking an `array<int>` that maps it through a block lambda
 // held in `func<>`, filters it with `<linq>`, makes and deletes a pooled instance, moves the crate in
 // the object tree, walks `children` and an `array<Crate>` with `for … in` and uses `has()`/`give()`;
@@ -212,7 +212,7 @@ extern Crate crateC;
 
 // --- cluster 2 and 4: extending the extern class ---------------------------------------------------
 
-extend extern class Crate {
+extend class Crate {
     replace emitter int operator ()    { ($self.heft + $self.mark) }
     emitter bool operator > (Crate c)  { ($self.heft > $c.heft) }
 

@@ -30,7 +30,7 @@
 #define   VERBOSE                // defined, no value
 #redef      LEVEL       4        // now 4
 
-extend /* the root */ extern class object
+extend /* the root */ class object
 {
     string description;
 }

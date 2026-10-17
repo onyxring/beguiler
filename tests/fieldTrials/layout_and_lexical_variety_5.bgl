@@ -26,7 +26,7 @@
 #include <bindings/i6StandardLibrary>
 #include <array>
 
-extend extern class object { string description; }
+extend class object { string description; }
 
 Object roomA { "Room A"; description = "A plain room."; attributes = { light }; }
 

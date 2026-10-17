@@ -48,7 +48,7 @@ primitive class steps {
     emitter steps operator + (int v) { ($val + $v) }
 }
 
-extend extern class array {
+extend class array {
     emitter int used() { $i6Expr($self.length) }
     emitter int cap()  { $i6Expr($self.size) }
     emitter T Last()   { $i6Expr($self[$self.length - 1]) }

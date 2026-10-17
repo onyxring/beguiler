@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: code written the way a C#/C++ developer writes it, seventeenth pass: eighteen features meeting
-// inside one declaration, twice. An `extend extern class` (like a C# extension class over a type from
+// inside one declaration, twice. An `extend class` (like a C# extension class over a type from
 // another assembly) adds to an I6 class an emitter `operator []=` and `operator *`, a `static
 // array<string>` of tags and a `static array<int>` of visit counts, and a recursive static walk that takes
 // a `func<>` step, holds an emitter-class scope guard and a pooled instance per level (falling back with
@@ -29,7 +29,7 @@
 #include <linq>
 #include <buf>
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 
@@ -116,7 +116,7 @@ extern Rack rackB;
 int WalkMisses;
 int WalkPeak;
 
-extend extern class Rack {
+extend class Rack {
     static array<string> Tags[4] = { "zero", "low", "high" };
     static array<int> Visits[4] = { 0, 0, 0, 0 };
 

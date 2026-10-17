@@ -43,7 +43,7 @@ const int MAX_SCORE = 3;
 
 #using bgl.printRules;
 
-extend extern class object {
+extend class object {
     stringOrRoutine description;
 }
 

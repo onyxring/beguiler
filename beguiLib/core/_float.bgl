@@ -71,7 +71,7 @@ primitive class float {
 }
 
 //-- Conversions and mixed arithmetic ----------------------------------------
-extend extern class int {
+extend class int {
     explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 
     emitter float operator + (float v){ _bglFloatFadd(_bglFloatNumtof($val), $v) }  /// The sum.
@@ -86,10 +86,10 @@ extend extern class int {
     emitter bool  operator >  (float v){ _bglFloatGt(_bglFloatNumtof($val), $v) }   /// True when this is greater than `v`.
     emitter bool  operator >= (float v){ _bglFloatGe(_bglFloatNumtof($val), $v) }   /// True when this is at least `v`.
 }
-extend extern class intLiteral {
+extend class intLiteral {
     explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 }
-extend extern class negativeIntLiteral {
+extend class negativeIntLiteral {
     explicit emitter float operator(){ _bglFloatNumtof($val) }  /// Convert to a `float`.
 }
 
