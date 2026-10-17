@@ -313,6 +313,10 @@ private:
     // standalone) corrupts the state that completion in the dependent file reads. See
     // ensureParsedForRequest().
     std::string lastParsedUri;
+    std::vector<nlohmann::json> pendingMessages;   // read ahead of handling, so stale edits can be skipped
+    std::set<std::string> staleUris;               // edited since their last parse
+    bool inputPending(int timeoutMs);
+    bool newerChangeQueued(const std::string& uri);
 
     // If `uri` is open but not the last-parsed document, reparse it so the shared symbol table
     // reflects the file the request targets. No-op when it already matches.

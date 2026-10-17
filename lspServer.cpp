@@ -17,6 +17,10 @@
 #include "typeDef.h"
 #include <iostream>
 #include <fstream>
+#ifndef _WIN32
+#include <poll.h>
+#include <unistd.h>
+#endif
 #include <sstream>
 #include <set>
 #include <filesystem>
@@ -99,17 +103,65 @@ void LspServer::sendNotification(const string& method, const json& params) {
 //=============================================================================
 
 void LspServer::run() {
+    // cin's own buffer, so inputPending() can see messages already read from the pipe.
+    std::ios::sync_with_stdio(false);
     // Redirect stderr for logging (stdout is the LSP channel)
     cerr << "Beguile LSP server starting..." << endl;
 
+    // A parse takes a noticeable time on a large program, so edits that arrive while one runs are queued and
+    // only the newest edit to a document is parsed; a request on a document edited since reparses it first.
     while(true) {
-        json msg = readMessage();
-        if(msg.is_null()) break;  // EOF
+        if(pendingMessages.empty()){
+            json msg = readMessage();
+            if(msg.is_null()) break;  // EOF
+            pendingMessages.push_back(msg);
+        }
+        while(inputPending(0)){
+            json more = readMessage();
+            if(more.is_null()) break;
+            pendingMessages.push_back(more);
+        }
+        json msg = pendingMessages.front();
+        pendingMessages.erase(pendingMessages.begin());
+        if(msg.value("method", "") == "textDocument/didChange"){
+            string uri = msg["params"]["textDocument"]["uri"];
+            // A burst of typing: wait briefly for the next keystroke before parsing this one.
+            while(!newerChangeQueued(uri) && inputPending(80)){
+                json more = readMessage();
+                if(more.is_null()) break;
+                pendingMessages.push_back(more);
+            }
+            if(newerChangeQueued(uri)){
+                const json& params = msg["params"];
+                if(params.contains("contentChanges") && !params["contentChanges"].empty())
+                    openDocuments[uri] = params["contentChanges"][0]["text"];
+                staleUris.insert(uri);
+                continue;
+            }
+        }
         handleMessage(msg);
         if(shutdownRequested) break;
     }
 
     cerr << "Beguile LSP server exiting." << endl;
+}
+
+// True when another message can be read within `timeoutMs` (0: already waiting).
+bool LspServer::inputPending(int timeoutMs) {
+    if(cin.rdbuf()->in_avail() > 0) return true;
+#ifndef _WIN32
+    struct pollfd p = { STDIN_FILENO, POLLIN, 0 };
+    return poll(&p, 1, timeoutMs) > 0 && (p.revents & POLLIN);
+#else
+    return false;
+#endif
+}
+
+// True when a later edit to `uri` is already queued, which makes parsing this one wasted work.
+bool LspServer::newerChangeQueued(const string& uri) {
+    for(const json& m : pendingMessages)
+        if(m.value("method", "") == "textDocument/didChange" && m["params"]["textDocument"]["uri"] == uri) return true;
+    return false;
 }
 
 void LspServer::handleMessage(const json& msg) {
@@ -846,8 +898,9 @@ void LspServer::parseDocument(const string& uri) {
 // so completing/hovering in file B right after editing included file A would otherwise resolve
 // against A's parse. Reparsing B here restores a self-consistent view. No-op if already current.
 void LspServer::ensureParsedForRequest(const string& uri) {
-    if(uri == lastParsedUri) return;
+    if(uri == lastParsedUri && !staleUris.count(uri)) return;
     if(openDocuments.find(uri) == openDocuments.end()) return;
+    staleUris.erase(uri);
     parser.reset();
     languageService.reset();
     parseDocument(uri);
@@ -4051,6 +4104,7 @@ json LspServer::handleSignatureHelp(const json& params) {
 
 void LspServer::resetAndReparse(const string& uri) {
     // Reset both parser and language service state, then re-parse
+    staleUris.erase(uri);
     parser.reset();
     languageService.reset();
     parseDocument(uri);
