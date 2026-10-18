@@ -1,0 +1,21 @@
+/*  run_superposed_object_methods — a `superposed` method of an object stays only if it is called:
+    from outside as obj.method, or through self from another method that stays. A method called only by
+    a dropped method drops too, as does one whose name another object happens to use. Unmarked methods
+    always stay.  */
+// EXPECT_OUTPUT: 41 used=true helper=true dead=false deadHelper=false plain=true
+#beguilerSettings { target = z5; informName = "none"; }
+
+object util {
+    superposed int used(int x){ return self.helper(x) + 1; }
+    superposed int helper(int x){ return x * 2; }
+    superposed int dead(int x){ return self.deadHelper(x); }
+    superposed int deadHelper(int x){ return x; }
+    int plain(){ return 7; }
+}
+object other { int dead(){ return 0; } }
+
+void main(){
+    print(util.used(20));
+    print($" used={util.provides(used)} helper={util.provides(helper)} dead={util.provides(dead)}");
+    print($" deadHelper={util.provides(deadHelper)} plain={util.provides(plain)}^");
+}

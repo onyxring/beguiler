@@ -1,0 +1,136 @@
+//===================================================================================================
+// remoteLook.bgl — look in a direction, and see into the room next door.
+//---------------------------------------------------------------------------------------------------
+// "look north", "look to the north" and "examine north" describe what lies that way, trying in turn:
+//   - the room's own `<direction>_look` (`n_look`, `u_look`, …);
+//   - the library's `compass_look`;
+//   - the room next door: its `remoteDescription`, through a door that is open or transparent;
+//     a closed door shows its `remoteClosed`;
+//   - the room's `cant_look` (the eight compass directions) or `cant_look_alt` (up, down, in and out);
+//   - the library's own message.
+// A `remoteDescription` routine is told the direction it is seen from. Each property is a string, or a
+// routine that prints.
+//
+// Include it after the library's verblib: its verbs use the library's globals.
+//
+// Ported from orLibrary's orRemoteLook.
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+property n_look;  property s_look;  property e_look;  property w_look;
+property ne_look; property nw_look; property se_look; property sw_look;
+property u_look;  property d_look;  property in_look; property out_look;
+property cant_look; property cant_look_alt; property remoteClosed; property remoteDescription;
+
+extend class object {
+    stringOrRoutine n_look;  stringOrRoutine s_look;  stringOrRoutine e_look;  stringOrRoutine w_look;
+    stringOrRoutine ne_look; stringOrRoutine nw_look; stringOrRoutine se_look; stringOrRoutine sw_look;
+    stringOrRoutine u_look;  stringOrRoutine d_look;  stringOrRoutine in_look; stringOrRoutine out_look;
+    stringOrRoutine cant_look;           /// Nothing to see that way, for the eight compass directions.
+    stringOrRoutine cant_look_alt;       /// Nothing to see that way, for up, down, in and out.
+    stringOrRoutine remoteClosed;        /// A closed door seen from its room.
+    stringOrRoutine remoteDescription;   /// This room seen from next door; a routine is told the direction.
+}
+
+verb LookDirection {
+    // Bare "look" comes first so it isn't taken for a "look <direction>" missing its direction.
+    grammar = { {.look}, {.look, NOUN(ADirection)}, {.look, .to, NOUN(ADirection)}, {.examine, NOUN(ADirection)} };
+
+    void handler() {
+        if(noun == null) { Look.perform(); return; }
+        object room = actor.parent;
+        property seen = _remoteLookProperty(noun);
+        if(seen != null && room.provides(seen) && room.seen != 0) {
+            PrintOrRun(room, seen);
+            return;
+        }
+        property compassLook = (property)compass_look;
+        if(location.provides(compassLook) && location.compassLook(noun)) return;
+        // What lies that way: a room, or a door to look through.
+        property way = noun.door_dir;
+        var next = room.provides(way) ? room.way : 0;
+        if(next != 0 && typeof(next) == eType.object) {
+            object adjacent = (object)next;
+            if(adjacent.has(door)) {
+                if(!adjacent.has(open) && !adjacent.has(transparent)) {
+                    if(adjacent.provides((property)remoteClosed)) PrintOrRun(adjacent, (property)remoteClosed);
+                    else print($"{bgl.printRules.cThe(adjacent)} {adjacent.has(pluralname) ? "are" : "is"} closed, and you can’t see through {adjacent.has(pluralname) ? "them" : "it"}.^");
+                    return;
+                }
+                adjacent = (object)ValueOrRun(adjacent, (property)door_to);
+            }
+            if(adjacent != null && adjacent.provides((property)remoteDescription)) {
+                ExamineAdjacentRoom.perform(adjacent);
+                return;
+            }
+        }
+        property cantLook = (property)cant_look;
+        if(noun == u_obj || noun == d_obj || noun == in_obj || noun == out_obj) cantLook = (property)cant_look_alt;
+        if(room.provides(cantLook) && room.cantLook != 0) {
+            _remoteLookPrint(room, cantLook, noun);
+            print("^");
+            return;
+        }
+        L__M(Look, 7, noun);
+    }
+}
+
+/// The view of the room in `noun`, from the room next to it.
+verb ExamineAdjacentRoom {
+    void handler() {
+        if(!noun.provides((property)remoteDescription)) return;
+        _remoteLookPrint(noun, (property)remoteDescription, _remoteLookDirectionTo(location, noun));
+        print("^");
+    }
+}
+
+// The `<direction>_look` property for a direction, or null.
+superposed property _remoteLookProperty(object dir) {
+    switch(dir) {
+        case n_obj:  return (property)n_look;
+        case s_obj:  return (property)s_look;
+        case e_obj:  return (property)e_look;
+        case w_obj:  return (property)w_look;
+        case ne_obj: return (property)ne_look;
+        case nw_obj: return (property)nw_look;
+        case se_obj: return (property)se_look;
+        case sw_obj: return (property)sw_look;
+        case u_obj:  return (property)u_look;
+        case d_obj:  return (property)d_look;
+        case in_obj: return (property)in_look;
+        case out_obj: return (property)out_look;
+    }
+    return null;
+}
+
+// Print obj.prop when it is a string; run it with `dir` when it is a routine.
+superposed void _remoteLookPrint(object obj, property prop, object dir) {
+    var v = obj.prop;
+    if(typeof(v) == eType.routine) obj.prop(dir);
+    else print((string)v);
+}
+
+// The direction leading from the room holding `from` to the room holding `to`, or null.
+superposed object _remoteLookDirectionTo(object from, object to) {
+    object start = _remoteLookRoomOf(from);
+    object target = _remoteLookRoomOf(to);
+    for(object d in bgl.world.inParent(Compass)) {
+        property way = d.door_dir;
+        if(!start.provides(way)) continue;
+        var exit = start.way;
+        if(exit == target) return d;
+        if(exit != 0 && typeof(exit) == eType.object) {
+            object door = (object)exit;
+            if(door.provides((property)door_to) && ValueOrRun(door, (property)door_to) == target) return d;
+        }
+    }
+    return null;
+}
+
+// The outermost object holding `o`: its room.
+superposed object _remoteLookRoomOf(object o) {
+    if(o == null) return null;
+    while(o.parent != null) o = o.parent;
+    return o;
+}

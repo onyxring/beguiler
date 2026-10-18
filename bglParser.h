@@ -542,6 +542,7 @@ class bglParser {
         set<string> startupFiles;     // absolute paths of files whose #startup blocks have been registered
         vector<classDef*>  usingImports;         // imported class scopes from #using directives (file-scoped)
         bool objectMemberIsConst = false;        // the object-body member being parsed was declared `const`
+        bool objectMemberIsSuperposed = false;   // the object-body method being parsed was declared `superposed`
         vector<objectDef*> usingObjectImports;   // imported object scopes from #using directives (file-scoped)
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
@@ -1419,6 +1420,7 @@ class bglParser {
         class classDef* ownOperatorOperand = nullptr;   // parsing the right operand of this class's own operator
         long declInjectionStart = -1;   // where the declaration being registered had its initializer's set-up flushed
         bool inMemberInitializer = false;   // a member's initializer: its bare names are globals
+        bool memberBodyForm = false;        // `Type name { … }` member: its value is the instance the body describes
         string localBeingInitialized;   // the local whose initializer is being parsed
         // True while parsing the operand of `return ...;` inside a void function. Permits a
         // void function call to appear as the return expression — the C/I6 idiom

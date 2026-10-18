@@ -63,6 +63,7 @@ extern property          article;
 extern property          articles;
 extern property          cant_go;
 extern property          capacity;
+extern property          compass_look;   /// a room's or direction's routine for looking that way; true when it printed something
 extern property          daemon;
 extern property          door_dir;
 extern property          door_to;
@@ -200,6 +201,9 @@ extern const object se_obj;                /// southeast
 extern const object sw_obj;                /// southwest
 extern const object u_obj;                 /// up
 extern const object d_obj;                 /// down
+extern const object in_obj;                /// in
+extern const object out_obj;               /// out
+extern const object Compass;               /// the parent of the direction objects
 extern int          gg_statuswin_cursize;  /// current status-window height, in lines
 extern int          gg_statuswin_size;     /// the height DrawStatusLine restores on every redraw
 extern eScopeReason scope_reason;          /// why the parser is searching scope now
@@ -230,6 +234,9 @@ extern object LibraryExtensions {  /// parent of library extension objects; runs
 
 //-- Global routines ------------------------------------------------
 extern int  RunRoutines(object obj, property prop);                         /// run obj.prop() and return its value
+extern bool ADirection();                                                   /// grammar filter: true when noun is a direction
+extern void L__M(verb action, int n, var x1 = 0);                          /// print the library's message n for action
+extern var  ValueOrRun(object obj, property prop);                          /// obj.prop's value, or what it returns when it is a routine
 extern int  PrintOrRun(object obj, property prop);                          /// if obj.prop is a routine, run it; if a string, print it
 extern int  PrintOrRunVar(stringOrRoutine v);                               /// if v is a routine, run it; if a string, print it
 extern dictionaryWord NextWord();                                          /// the word at `wn`, then advance; null for a word not in the dictionary
@@ -576,6 +583,23 @@ extend class object {
 
 // Substitute the stdLib's backings for status bar and main window, replacing Beguile's core behavior for this.
 #if(TARGET_GLULX)
+    // Pause and resume the library's line input around a link handler clicked at the prompt.
+    #emitlast { Array _bglLineEvent --> 4; }
+    replace int _bglSuspendLineInput(var buffer){
+        int typed = 0;
+        #i6 {
+            glk_cancel_line_event(gg_mainwin, _bglLineEvent);
+            typed = _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
+        }
+        return typed;
+    }
+    replace void _bglResumeLineInput(var buffer, int typed){
+        #i6 {
+            DrawStatusLine();
+            L__M(##Prompt);
+            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
+        }
+    }
     superposed array<int> _bglArrangeBuf[1];
     // The library's StatusLineHeight re-arranges the status window's own parent, which is wrong once
     // the status bar has been split: its parent is then the new pair. The height belongs to the first

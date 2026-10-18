@@ -147,7 +147,7 @@ a general member-array-mutation gap, orthogonal to func members.
 
 ## Layout
 
-Lives at `beguiler/beguiLib/bglStdLib/`, i.e. a subfolder of the Beguile
+Lives at `beguiler/beguiLib/libraries/bglStdLib/`, i.e. a subfolder of the Beguile
 Language Runtime tree (`beguiLib/`). Because `#include <name>` searches that
 tree recursively, the library is pulled with `#include <bglStdLib>` (the
 umbrella) - no `includePaths` entry needed.

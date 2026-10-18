@@ -1503,6 +1503,17 @@ bool bglParser::parseInlineAccessor(variableDeclaration& prop, const string& typ
 }
 
 void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
+    if(memberBodyForm){
+        memberBodyForm = false;
+        string anon = format("_bglanon{0}", anonObjectCounter++);
+        bakeInlineObjectAggregate(languageService.findClass(typeName), typeName, anon, nullptr, nullptr);
+        expression* expr = new expression();
+        expr->tokens.push_back(anon);
+        expr->resolvedType = typeName;
+        prop.declaredExpressionValue = expr;
+        if(file.peekToken().is(token::endStatement)) file.getToken();
+        return;
+    }
     // Inline accessor declaration: `auto name = { <member decls + operators> }`. The braces hold a
     // CLASS BODY (backing fields + get/set operators), not an initializer list. Synthesize an
     // anonymous (non-`object`) class from the body — registered globally, so the emitter bakes a
@@ -2139,6 +2150,8 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     functionDef& funcDef = *(new functionDef());
     funcDef.name = (string)name;
     funcDef.displayName = name.originalValue;
+    funcDef.isSuperposed = objectMemberIsSuperposed;
+    objectMemberIsSuperposed = false;
     // `Type method(...) as <i6name>` — emit the routine under a chosen I6 name. Skip operators,
     // whose i6name is assigned by the operator/overload mangler; a manual alias there would fight it.
     if(!i6alias.empty() && name.value.rfind("operator", 0) != 0)
@@ -2272,6 +2285,10 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
 
 
 void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias, bool isRef, string docComment){
+    if(objectMemberIsSuperposed){
+        objectMemberIsSuperposed = false;
+        parsingError(format("'superposed' on '{0}': in an object body it applies to a method, which is dropped unless something calls it.", name));
+    }
     variableDeclaration& prop = *(new variableDeclaration());
     prop.name = name;
     prop.docComment = docComment;
@@ -2495,12 +2512,20 @@ void bglParser::processTypedMember(objectDef& obj, token typeTok, bool isReplace
         token aliasTok = file.getToken(eTokenType::identifier);
         i6alias = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
     }
-    token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen, token::bindAssignment});
+    token sym = file.getToken({token::assignment, token::endStatement, token::parenOpen, token::bindAssignment, token::braceOpen});
+    // `loopArray hints { … }`: a class-typed member given its instance the way a file-scope one is (§11.2).
+    if(sym.is(token::braceOpen)){
+        classDef* bc = languageService.findClass(typeTok.value);
+        if(bc == nullptr || isRef || isWordArrayType(typeTok.value) || !isInlineConstructible(bc))
+            parsingError(format("'{0} {1} {{ … }}': only a member of a class type takes a body; give its value with '='.",
+                typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue, propName.value));
+        memberBodyForm = true;
+    }
     if(sym.is(token::parenOpen))
         processMemberMethod(obj, typeTok, propName, isReplace, i6alias);
     else {
         rejectMemberBindingMismatch(isRef, sym, typeTok, propName);
-        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment) || sym.is(token::bindAssignment),
+        processMemberVariable(obj, typeTok.value, propName.value, sym.is(token::assignment) || sym.is(token::bindAssignment) || sym.is(token::braceOpen),
                               isReplace, i6alias, isRef, typeTok.docComment.empty() ? propName.docComment : typeTok.docComment);
     }
 }
@@ -3479,6 +3504,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
     }
     if(!assignsMember) typeFromMemberAliasOrPath(newObj, tok);
     objectMemberIsConst = q.isConst;   // a `const` member, as in a class body (§8.3.2)
+    objectMemberIsSuperposed = q.isSuperposed;   // a method dropped unless something calls it (§3.12)
     if(q.isStatic)  memberError("'static' is not valid inside an object body");
     if(q.isDefault) memberError("'default' is only valid in class declarations, not object instances");
     if(q.isEmitter){

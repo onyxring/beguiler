@@ -693,9 +693,8 @@ bool beguiler::runInform6() {
                  "The program, with what it includes, uses more global variables than the Z-machine's 233 (compiler temporaries "
                  "such as lambda captures count too). Keep some values in an object or an array, or target Glulx."},
                 {"properties already declared",
-                 "The program, with what it includes, declares more common properties than the Z-machine's 61 (a `property` "
-                 "declaration, and an extern property a class declares, is one). Make some members individual "
-                 "(declared on a class or object instead), or target Glulx."},
+                 "The program, with what it includes, declares more common properties than the Z-machine's 61 (an "
+                 "`additive property`, and an extern property the included Inform 6 code declares, is one), or target Glulx."},
                 {"overflowed the maximum readable-memory size",
                  "The program's data is larger than the Z-machine's 64K of readable memory. Shrink pooled classes "
                  "(`class X[N]`: every slot copies all its properties), the <string> pool (bglStringPoolReserve x "

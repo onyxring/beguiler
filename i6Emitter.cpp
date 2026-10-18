@@ -1856,13 +1856,29 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
         }
         return n;
     };
+    // Methods declared `superposed` (§3.12), per object: kept only when called — `obj.m` outside the
+    // method, or `self.m` in another kept method of the object. Unmarked methods follow the rule above,
+    // and only in a superposed object.
+    map<string, set<string>> explicitMethods;
+    for(auto* g : languageService.globals)
+        if(auto* od = dynamic_cast<objectDef*>(g))
+            for(typeMember* m : od->members)
+                if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->isSuperposed && !fd->isStatic && !fd->isEmitter)
+                    explicitMethods[lc(od->i6name.empty() ? od->dName() : od->i6name)].insert(lc(fd->i6name.empty() ? fd->name : fd->i6name));
+    set<string> objects(splicedSuperposedObjects.begin(), splicedSuperposedObjects.end());
+    for(auto& [obj, ms] : explicitMethods){
+        bool known = false;
+        for(const string& n : objects) if(lc(n) == obj){ known = true; break; }
+        if(!known) objects.insert(obj);
+    }
+    set<string> droppedNames;   // dropped `superposed` methods, as written in the output
     bool changed = true;
     while(changed){
         changed = false;
         string lower = lc(buf);
-        for(const string& name : splicedSuperposedObjects){
-            string head = "\nobject " + name + "\n";
-            size_t start = buf.find(head);
+        for(const string& name : objects){
+            string head = "\nobject " + lc(name) + "\n";
+            size_t start = lc(buf).find(head);
             if(start == string::npos) continue;
             start += 1;
             size_t end = buf.find("\n;\n", start);
@@ -1893,11 +1909,21 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
             for(size_t k = 0; k + 1 < items.size(); k++) if(items[k].last + 1 != items[k+1].first) onlyItems = false;
             if(!onlyItems || items.front().first != 1 || items.back().last + 2 != lines.size()) continue;
             vector<bool> keep(items.size(), true);
+            vector<string> itemTexts(items.size());
+            for(size_t k = 0; k < items.size(); k++)
+                for(size_t i = items[k].first; i <= items[k].last; i++) itemTexts[k] += lc(lines[i]) + "\n";
+            auto explicitIt = explicitMethods.find(lc(name));
+            bool isSuperposedObject = splicedSuperposedObjects.count(name) > 0;
             for(size_t k = 0; k < items.size(); k++){
-                string itemText;
-                for(size_t i = items[k].first; i <= items[k].last; i++) itemText += lines[i] + "\n";
                 string w = lc(items[k].name);
-                if(countWord(lower, w) - countWord(lc(itemText), w) <= 0) keep[k] = false;
+                if(explicitIt != explicitMethods.end() && explicitIt->second.count(w)){
+                    string qualified = lc(name) + "." + w;
+                    int uses = countWord(lower, qualified) - countWord(itemTexts[k], qualified);
+                    for(size_t j = 0; j < items.size() && uses <= 0; j++)
+                        if(j != k) uses += countWord(itemTexts[j], "self." + w);
+                    if(uses <= 0){ keep[k] = false; droppedNames.insert(items[k].name); }
+                }
+                else if(isSuperposedObject && countWord(lower, w) - countWord(itemTexts[k], w) <= 0) keep[k] = false;
             }
             if(all_of(keep.begin(), keep.end(), [](bool b){ return b; })) continue;
             // Rebuild the block from the kept items, mapping old block lines to new ones.
@@ -1937,6 +1963,30 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
             changed = true;
             break;   // positions moved; rescan from the top
         }
+    }
+    // A dropped method's name may still be named (`obj provides m`): declare it, so it stays a property
+    // that nothing provides. Ahead of every object, so an object that does provide it uses this one.
+    string decls;
+    string code;   // the output without string text and comments: a name only there is no use
+    code.reserve(buf.size());
+    for(size_t i = 0; i < buf.size(); i++){
+        char c = buf[i];
+        if(c == '"'){ size_t e = buf.find('"', i + 1); if(e == string::npos) break; i = e; code += ' '; continue; }
+        if(c == '!'){ size_t e = buf.find('\n', i); if(e == string::npos) break; i = e - 1; continue; }
+        code += (char)tolower((unsigned char)c);
+    }
+    // Inform 6 defines these messages itself; they need no declaration and can't take one.
+    static const set<string> i6Messages = {"create", "recreate", "destroy", "remaining", "copy", "call",
+                                           "print", "print_to_array"};
+    for(const string& n : droppedNames)
+        if(!i6Messages.count(lc(n)) && countWord(code, lc(n)) > 0) decls += "Property individual " + n + ";\n";
+    if(!decls.empty()){
+        size_t at = 0;
+        while(buf.compare(at, 2, "!%") == 0){ size_t e = buf.find('\n', at); if(e == string::npos) break; at = e + 1; }
+        int added = (int)std::count(decls.begin(), decls.end(), '\n');
+        int atLine = (int)std::count(buf.begin(), buf.begin() + at, '\n') + 1;
+        for(auto& e : sourceMap) if(std::get<0>(e) >= atLine) std::get<0>(e) += added;
+        buf.insert(at, decls);
     }
 }
 
@@ -4323,9 +4373,9 @@ void i6Emitter::emitGlobal(variableDeclaration* varNode){
         return;
     }
     if(varNode->type.name == "property"){
-        // `additive` marks the slot so I6 accumulates values across the class hierarchy
-        // (obj + ancestors) instead of the descendant overriding — `Property additive foo;`.
-        out << format("property {0}{1}", varNode->isAdditive ? "additive " : "",
+        // An individual property, which the Z-machine doesn't limit. `additive` stays common: I6
+        // accumulates values across the class hierarchy only for a common property.
+        out << format("property {0}{1}", varNode->isAdditive ? "additive " : "individual ",
                       varNode->i6name.empty() ? varNode->dName() : varNode->i6name);
         out << ";\n";
         return;

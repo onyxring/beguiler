@@ -286,7 +286,7 @@ These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replac
 **Example**
 
 ```bgl
-#include <i6StandardLibrary>
+#include <bindings/i6StandardLibrary>
 
 grammar extraLines {
     grammarRule hang = { PutOn, {.hang, HELD, .on, NOUN} };   // a verb and a pattern of pattern elements
@@ -437,7 +437,7 @@ print( ⟨value⟩ ) ;
 **Example**
 
 ```bgl
-#include <i6StandardLibrary>
+#include <bindings/i6StandardLibrary>
 void describeLamp() { print("It flickers."); }
 object lamp { stringOrRoutine description; }
 

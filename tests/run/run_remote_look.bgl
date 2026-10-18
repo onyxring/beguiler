@@ -1,0 +1,54 @@
+// run_remote_look — <extensions/stdlib/remoteLook>: a room's <direction>_look, the room next door's
+// remoteDescription (a routine is told the direction), a closed door and then an open one, cant_look and
+// cant_look_alt; bare "look" still looks around.
+// EXPECT_OUTPUT: A long corridor stretches north.
+// EXPECT_OUTPUT: Through the doorway you glimpse a cozy study (looking east).
+// EXPECT_OUTPUT: The oak door is closed, and you can't see through it.
+// EXPECT_OUTPUT: Sunlight on roses.
+// EXPECT_OUTPUT: Just wall.
+// EXPECT_OUTPUT: Nothing above or below.
+// EXPECT_OUTPUT: You can see an oak door here.
+// INPUT: look north
+// INPUT: examine east
+// INPUT: look west
+// INPUT: open door
+// INPUT: look to the west
+// INPUT: look south
+// INPUT: look up
+// INPUT: look
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/remoteLook>
+object hall {
+    short_name = "Hall"; string description = "A hall.";
+    attributes = {light};
+    string n_look = "A long corridor stretches north.";
+    object e_to = study;
+    object w_to = oakDoor;
+    string cant_look = "Just wall.";
+    string cant_look_alt = "Nothing above or below.";
+}
+object study {
+    short_name = "Study"; string description = "A study.";
+    attributes = {light};
+    object w_to = hall;
+    void remoteDescription(object dir) { print($"Through the doorway you glimpse a cozy study (looking {dir.short_name})."); }
+}
+object oakDoor {
+    short_name = "oak door"; string description = "An oak door."; name = {.oak, .door};
+    attributes = {door, openable, static};
+    object door_to = garden;
+    door_dir = w_to;
+    parent = hall;
+}
+object garden {
+    short_name = "Garden"; string description = "A garden.";
+    attributes = {light};
+    string remoteDescription = "Sunlight on roses.";
+}
+void initialise() { location = hall; }
+#includeI6 "grammar"

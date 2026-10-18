@@ -1,6 +1,13 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
+Property individual append;
+Property individual insert;
+Property individual isTracked;
+Property individual prepend;
+Property individual reverse;
+Property individual setLength;
+Property individual size;
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
    Array _bglFramePool --> 64;
@@ -1701,40 +1708,9 @@ object _bglArray
             obj-->(n+1) = _l_v;
         
   ],
-       copy [dobj dprop sobj sprop assign n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n=cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
-    }
-    self.setlength(dobj, dprop, n);
-  ],
-       isTracked [obj prop;
-     if(metaclass(obj)==object) rfalse; 
-    return _bglarrtracked(obj);
-  ],
-       size [obj prop;
-     if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
-    return _bglarrsize(obj);
-  ],
        length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
-  ],
-       setLength [obj prop n cap;
-    if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
-         quit; 
-    }
-    cap=self.size(obj,prop);
-    if (n > cap) {
-        n=cap;
-    }
-     if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
-    _bglarrsetlength(obj, n);
   ],
        indexOf [obj prop val op len t e;
     len=self.length(obj,prop);
@@ -1748,90 +1724,6 @@ object _bglArray
             
     }
     return -1;
-  ],
-       setOwned [obj prop n _l_v assign cur;
-    if (assign==0) {
-        self.set(obj, prop, n, _l_v);
-        return;
-    }
-    cur = self.get(obj,prop,n);
-    if (self.owneddtor(obj,prop,1)==0) {
-        if (cur~=0) {
-            assign(cur, _l_v);
-        }
-        else {
-            if ((~~self.refusesstruct(_l_v))) {
-                self.set(obj, prop, n, _l_v);
-            }
-        }
-        return;
-    }
-    self.set(obj, prop, n, assign(cur,_l_v));
-  ],
-       refusesStruct [_l_v;
-     if(metaclass(_l_v) ~= Object) rfalse; 
-    print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
-    return true;
-  ],
-       swap [obj prop pos1 pos2 tmp;
-    tmp = self.get(obj,prop,pos1);
-    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
-    self.set(obj, prop, pos2, tmp);
-  ],
-       reverse [obj prop len half i;
-    len=self.length(obj,prop);
-    half=len / 2;
-    for (i = 0 : i < half : i++) {
-        self.swap(obj, prop, i, len - 1 - i);
-    }
-  ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    if (assign~=0 && self.owneddtor(obj,prop,1)==0) {
-        if (self.refusesstruct(val)) {
-            return false;
-        }
-        self.set(obj, prop, len, val);
-    }
-    else {
-        self.setOwned(obj, prop, len, val, assign);
-    }
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       insert [obj prop pos val assign len i;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
-        return false;
-    }
-    if (pos < 0 || pos > len) {
-        return false;
-    }
-    if (assign~=0 && self.owneddtor(obj,prop,1)==0&&self.refusesstruct(val)) {
-        return false;
-    }
-    for (i = len : i > pos : i--) {
-        self.set(obj, prop, i, self.get(obj,prop,i - 1));
-    }
-    self.set(obj, prop, pos, 0);
-    self.setOwned(obj, prop, pos, val, assign);
-    self.setLength(obj, prop, len + 1);
-    return true;
-  ],
-       prepend [obj prop val assign;
-    return self.insert(obj,prop,0,val,assign);
-  ],
-       ownedDtor [obj prop dtor b;
-    b = 0;
-    
-            if(dtor == 0 || metaclass(obj) == object) return dtor;
-            b = _bglHeapBlockOf(obj);
-            if(b ~= 0 && (b-->2 & 64)) return 0;
-            return dtor;
-        
   ],
        sortDefault [obj prop cmp;
     if (cmp==0) {

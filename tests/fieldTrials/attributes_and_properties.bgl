@@ -25,9 +25,6 @@ property weight_kg;                 // a member of one object only
 property never_used;                // a member of nothing
 additive property tags;
 
-// The library's compass object, which holds the direction objects.
-extern object compass;
-
 class Gem : object {
     attributeList attributes = {polished};
     int carats = 2;

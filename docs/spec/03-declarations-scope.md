@@ -522,10 +522,13 @@ array, a whole object declaration, or a whole class declaration.
   test, or any typed use. Reference matching is case-insensitive, like all Beguile identity.
 - **Transitive.** A materialized declaration's own references materialize in turn; a superposed
   declaration may freely reference other superposed declarations.
-- **Whole declarations, plus `static` methods.** `superposed` applies to a function, global, object or
-  class. Inside a class body it applies only to a `static` method (`static superposed ⟨type⟩ ⟨name⟩(…)`),
+- **Whole declarations, plus methods.** `superposed` applies to a function, global, object or class.
+  Inside a class body it applies only to a `static` method (`static superposed ⟨type⟩ ⟨name⟩(…)`),
   which then materializes only when referenced (§8.4); on a non-`static` method it has no effect and
-  the compiler issues a warning.
+  the compiler issues a warning. Inside an object body it applies to a method, which stays in the object
+  only if it is called: as `⟨object⟩.⟨method⟩` from code that is part of the program, or from another of
+  the object's methods that stays. A method called only from Inform 6 code that the compiler doesn't
+  emit is not seen, and drops. On an object's data member it is a compile-time error.
 - **Rejected on** `extern`, `emitter` and `alias` classes, which have no definition to withhold, and
   on `extend class`, where it belongs to the original declaration.
 - `superposed` may appear in any position among the qualifiers.
@@ -545,7 +548,8 @@ superposed bool charIsVowel(char c){
 }
 
 superposed object worldHelpers {
-    array<object> getAll() { … }
+    superposed array<object> getAll() { … }      // dropped unless something calls worldHelpers.getAll
+    superposed int count() { … }
 }
 extend bgl { alias world = worldHelpers; }   // bgl.world.getAll() materializes worldHelpers
 ```

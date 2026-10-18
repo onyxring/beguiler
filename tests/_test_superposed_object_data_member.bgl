@@ -1,0 +1,5 @@
+/*  In an object body `superposed` applies to a method; on a data member it is an error.  */
+// EXPECT_ERROR: in an object body it applies to a method
+#beguilerSettings { target = z5; informName = "none"; }
+object box { superposed int count = 1; }
+void main() { }

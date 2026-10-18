@@ -1,0 +1,44 @@
+/*  run_property_forms — a function returning `property` called above its declaration; a computed property
+    call and a static func<> member call as the body of an unbraced `if` with an `else`; a property compared
+    with null; and `property x;` declaring an individual property (so many fit on the Z-machine).  */
+// EXPECT_OUTPUT: 5 else-ok wide none 70
+#beguilerSettings { target = z5; informName = "none"; }
+
+property p01; property p02; property p03; property p04; property p05; property p06; property p07; property p08;
+property p09; property p10; property p11; property p12; property p13; property p14; property p15; property p16;
+property p17; property p18; property p19; property p20; property p21; property p22; property p23; property p24;
+property p25; property p26; property p27; property p28; property p29; property p30; property p31; property p32;
+property p33; property p34; property p35; property p36; property p37; property p38; property p39; property p40;
+property p41; property p42; property p43; property p44; property p45; property p46; property p47; property p48;
+property p49; property p50; property p51; property p52; property p53; property p54; property p55; property p56;
+property p57; property p58; property p59; property p60; property p61; property p62; property p63; property p64;
+property p65; property p66; property p67; property p68; property p69; property p70;
+
+object box {
+    void m(int x){ print(x); }
+    int width = 70;
+}
+class Policy { static func<void, int> step; }
+void show(int n){ print(n); }
+
+void call(object obj, property prop, int k){
+    if(k == 1) obj.prop(5);
+    else print("no");
+}
+
+void main(){
+    call(box, pick(1), 1);
+    Policy.step = show;
+    int k = 2;
+    if(k == 1) Policy.step(5);
+    else print(" else-ok");
+    print(pick(2) != null ? " wide" : " ?");
+    print(pick(3) == null ? " none" : " ?");
+    print($" {box.width}^");
+}
+
+property pick(int n){
+    if(n == 1) return (property)m;
+    if(n == 2) return (property)width;
+    return null;
+}

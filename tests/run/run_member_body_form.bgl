@@ -1,0 +1,17 @@
+/*  run_member_body_form — a class-typed member is given its instance with a body, as a file-scope
+    instance is (`Pet rex { … }`): positional values, named values, and a trailing `;` or none.  */
+// EXPECT_OUTPUT: rex 3 | tom 4 | 2
+#beguilerSettings { target = z5; informName = "none"; }
+
+class Pet { inline string title; inline int legs; }
+class Pair { inline Pet first; int count; }
+
+object house {
+    Pet dog { "rex", 3; }
+    Pet cat { title = "tom"; legs = 4; };
+    Pair both { count = 2; }
+}
+
+void main() {
+    print($"{house.dog.title} {house.dog.legs} | {house.cat.title} {house.cat.legs} | {house.both.count}^");
+}

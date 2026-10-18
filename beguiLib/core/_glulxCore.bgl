@@ -57,28 +57,10 @@ extern default int HandleGlkEvent(var event, var context, var buffer);
     ];
 }
 
-// Pause and resume line input around a link handler clicked at the prompt.
-#if I6_STANDARD_LIBRARY
-    // TODO: library dependency in core — gg_mainwin, DrawStatusLine, the ##Prompt message and
-    // INPUT_BUFFER_LEN belong to the I6 standard library; core should get them from the binding.
-    extern int  _bglSuspendLineInput(var buffer);
-    extern void _bglResumeLineInput(var buffer, int typed);
-    #emitlast {
-        Array _bglLineEvent --> 4;
-        [ _bglSuspendLineInput;   ! no buffer local: Glk reports the count
-            glk_cancel_line_event(gg_mainwin, _bglLineEvent);
-            return _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
-        ];
-        [ _bglResumeLineInput buffer typed;
-            DrawStatusLine();
-            L__M(##Prompt);
-            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
-        ];
-    }
-#else
-    int  _bglSuspendLineInput(var buffer){ return 0; }
-    void _bglResumeLineInput(var buffer, int typed){ }
-#endif
+// Pause and resume line input around a link handler clicked at the prompt. The library's binding
+// replaces these with its own; without one there is no line input to pause.
+int  _bglSuspendLineInput(var buffer){ return 0; }
+void _bglResumeLineInput(var buffer, int typed){ }
 
 // The BLR's share of HandleGlkEvent: true when it handled the event.
 bool _bglGlkEvent(var event, int context, var buffer){

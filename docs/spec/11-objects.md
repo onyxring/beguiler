@@ -10,6 +10,7 @@
   - [11.3.4 Constant and Run-time Members](#1134-constant-and-run-time-members)
   - [11.3.5 Nested Aggregates](#1135-nested-aggregates)
   - [11.3.6 Standalone Declarations](#1136-standalone-declarations)
+  - [11.3.7 Members Declared with a Body](#1137-members-declared-with-a-body)
 - [11.4 Members and Type Inference](#114-members-and-type-inference)
 - [11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`](#115-special-members-parent-children-attributes-instancename)
   - [11.5.1 `parent`](#1151-parent)
@@ -311,6 +312,32 @@ object, reachable only by an object-tree walk (§21.9).
 menu{ root, "text to display", {.type, .kind} };
 ```
 
+### 11.3.7 Members Declared with a Body
+
+**Syntax**
+
+```syntax
+⟨class-type⟩ ⟨name⟩ { ⟨positional and named members⟩ } [ ; ]
+```
+
+**Description**
+
+A member of a class type may be given its instance with a body, as a file-scope instance is (§11.2):
+`Pet dog { "rex", 3; }` in an object body means `Pet dog = Pet{ "rex", 3 };`. The body takes the same
+positional and named members as an inline object (§11.3.1). A member of any other type, or a `ref`
+member, takes its value with `=`.
+
+**Example**
+
+```bgl
+class Pet { inline string title; inline int legs; }
+
+object house {
+    Pet dog { "rex", 3; }
+    Pet cat { title = "tom"; legs = 4; }
+}
+```
+
 ## 11.4 Members and Type Inference
 
 **Description**
@@ -578,7 +605,8 @@ is needed for a member of a declared class.
 A `property` declaration introduces a property name that is not a member of any Beguile class,
 typically because it lives in I6 code, or because it is a run-time flag with no compile-time owner.
 The plain form defines the property; the `extern` form refers to one defined in I6. Both make the name
-available to `obj.provides(name)`.
+available to `obj.provides(name)`. A defined property is an Inform 6 *individual* property, which the
+Z-machine places no limit on; only an `additive` property (§11.7.2) is a common one.
 
 A property declaration carries no type. The type lives at each use site: every class or object member
 that contributes to the property declares its own type there. A non-additive property is

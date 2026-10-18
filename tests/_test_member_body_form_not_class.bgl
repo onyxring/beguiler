@@ -1,0 +1,5 @@
+/*  A body belongs to a class-typed member; a member of another type takes its value with `=`.  */
+// EXPECT_ERROR: only a member of a class type takes a body
+#beguilerSettings { target = z5; informName = "none"; }
+object box { int count { 2; } }
+void main() { }

@@ -1,6 +1,9 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
+Property individual indexOf;
+Property individual isTracked;
+Property individual reverse;
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 
@@ -1398,21 +1401,6 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop assign n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n=cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
-    }
-    self.setlength(dobj, dprop, n);
-  ],
-       isTracked [obj prop;
-     if(metaclass(obj)==object) rfalse; 
-    return _bglarrtracked(obj);
-  ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
@@ -1432,19 +1420,6 @@ object _bglArray
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
-  ],
-       indexOf [obj prop val op len t e;
-    len=self.length(obj,prop);
-    for (t = 0 : t < len : t++) {
-        e = self.get(obj,prop,t);
-        if (e==val) {
-            return t;
-        }
-        
-                if(op ~= 0 && e ~= 0 && val ~= 0 && op(e, val)) return t;
-            
-    }
-    return -1;
   ],
        setOwned [obj prop n v assign cur;
     if (assign==0) {
@@ -1480,18 +1455,6 @@ object _bglArray
         self.set(obj, prop, t, 0);
     }
     self.setLength(obj, prop, 0);
-  ],
-       swap [obj prop pos1 pos2 tmp;
-    tmp = self.get(obj,prop,pos1);
-    self.set(obj, prop, pos1, self.get(obj,prop,pos2));
-    self.set(obj, prop, pos2, tmp);
-  ],
-       reverse [obj prop len half i;
-    len=self.length(obj,prop);
-    half=len / 2;
-    for (i = 0 : i < half : i++) {
-        self.swap(obj, prop, i, len - 1 - i);
-    }
   ],
        append [obj prop val assign len;
     len=self.length(obj,prop);

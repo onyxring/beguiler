@@ -214,6 +214,21 @@ object _bglVerb_pour
         ];
 verb 'pour'
     * container noun=alwaysallowed -> pour;
+[_bglSuspendLineInput buffer typed;
+    typed = 0;
+    
+            glk_cancel_line_event(gg_mainwin, _bglLineEvent);
+            typed = _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
+        
+    return typed;
+];
+[_bglResumeLineInput buffer typed;
+    
+            DrawStatusLine();
+            L__M(##Prompt);
+            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
+        
+];
 [_bgl_float__oplteqgt a b;
     
             if(_bglFloatLt(a, b)) return -1;
@@ -229,20 +244,9 @@ verb 'pour'
     ];
 
 
-        Array _bglLineEvent --> 4;
-        [ _bglSuspendLineInput;   ! no buffer local: Glk reports the count
-            glk_cancel_line_event(gg_mainwin, _bglLineEvent);
-            return _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
-        ];
-        [ _bglResumeLineInput buffer typed;
-            DrawStatusLine();
-            L__M(##Prompt);
-            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
-        ];
-    
-
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
+ Array _bglLineEvent --> 4; 
 
         [main;
             bglInit();

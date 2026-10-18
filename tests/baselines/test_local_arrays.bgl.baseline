@@ -243,17 +243,6 @@ object _bglArray
             obj-->(n+1) = v;
         
   ],
-       copy [dobj dprop sobj sprop assign n cap i;
-    n=self.length(sobj,sprop);
-    cap=self.size(dobj,dprop);
-    if (n > cap) {
-        n=cap;
-    }
-    for (i = 0 : i < n : i++) {
-        self.setowned(dobj, dprop, i, self.get(sobj,sprop,i), assign);
-    }
-    self.setlength(dobj, dprop, n);
-  ],
        size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);

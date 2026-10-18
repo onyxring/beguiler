@@ -111,7 +111,7 @@ the text printed. Program output appears in blocks tagged `text`. Inform 6 appea
 `i6`, and only in sections about emission (Part II and §15); emitter bodies, which are raw I6 by
 definition, are exempt. Examples use real keywords and real library names, and `Main` as the entry
 point, so that they compile in principle. An example that uses a name declared by the Inform 6
-Standard Library (`location`, `player`, `light`, `selfobj`, …) assumes `#include <i6StandardLibrary>`
+Standard Library (`location`, `player`, `light`, `selfobj`, …) assumes `#include <bindings/i6StandardLibrary>`
 (§23.2) and leaves the name undeclared.
 
 ### Asides
