@@ -3,13 +3,15 @@
 // property of the source, not of how you invoke the compiler.
 //
 //   isnumber      BSD extension (macOS). Replaced at its one call site with isdigit.
-//   strncasecmp   POSIX. The MS CRT spells it _strnicmp.
+//   strcasecmp,   POSIX. The MS CRT spells them _stricmp and _strnicmp.
+//   strncasecmp
 //   popen/pclose  POSIX. The MS CRT spells them _popen/_pclose.
 
 // Standard headers that libc++ happens to pull in transitively but libstdc++ does not.
 // Relying on that difference is how a tree builds on macOS and fails on Linux with
 // "'uint32_t' was not declared". Included here so every translation unit gets them.
 #include <cstdint>     // uint32_t, int64_t
+#include <climits>     // INT_MAX
 #include <cstdlib>     // exit, getenv
 #include <cstring>     // strlen, memcpy
 #include <cctype>      // isdigit, isalpha
@@ -23,11 +25,14 @@
   #ifndef strncasecmp
     #define strncasecmp _strnicmp
   #endif
+  #ifndef strcasecmp
+    #define strcasecmp _stricmp
+  #endif
   #ifndef popen
     #define popen  _popen
     #define pclose _pclose
   #endif
 #else
   #include <cstdio>
-  #include <strings.h>   // strncasecmp
+  #include <strings.h>   // strcasecmp, strncasecmp
 #endif
