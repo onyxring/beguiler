@@ -3690,6 +3690,11 @@ bglParser::ExprStep bglParser::parseExprSelfMember(ExprParseState& st, token& me
         st.castType = "";
         return ExprStep::Advance;
     }
+    // `(T)self.b.get()`: the path goes on as a chain off the value read; the cast waits for its end.
+    if(!st.castType.empty() && !st.receiverCast && pathGoesOn && st.chainResultCast.empty()){
+        st.chainResultCast = st.castType;
+        st.castType = "";
+    }
     if(expr->resolvedType.empty() && !memberType.empty()) expr->resolvedType = memberType;
     expr->tokens.push_back(accessText);
     // Capture host for $self substitution in rvalue property-class operators
@@ -4177,6 +4182,11 @@ bglParser::ExprStep bglParser::parseExprMemberSubscript(ExprParseState& st, toke
                 expr->tokens.push_back(recv + "." + routine + "(" + indexExpr->text() + ")");
             }
             expr->resolvedType = g->returnType.name;
+            if(!st.castType.empty() && !file.peekToken().is(token::period) && !file.peekToken().is(token::bracketOpen)){
+                expr->tokens.back() = applyCastConversion(expr->tokens.back(), expr->resolvedType, st.castType);
+                expr->resolvedType = st.castType;
+                st.castType = "";
+            }
             return ExprStep::Advance;
         }
     if(getMethod == nullptr) {
@@ -4295,6 +4305,11 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                     auto* v = dynamic_cast<variableDeclaration*>(m); return v && v->name == member.value; })))
                 propType = vd->type.name;
     bool castGoesOn = st.prefetched ? st.prefetched->is(token::period) : file.peekToken().is(token::period);
+    // `(T)holder.b.get()`: the path goes on as a chain off the value read; the cast waits for its end.
+    if(!castType.empty() && castGoesOn && st.chainResultCast.empty() && !st.receiverCast){
+        st.chainResultCast = castType;
+        castType = "";
+    }
     if(!objText.empty() && (castType.empty() || !castGoesOn)){
         string veRet;
         string veText = expandMemberValueEmitter(objText, cur.value, recvType, member.value, func, body, veRet);

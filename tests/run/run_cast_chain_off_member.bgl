@@ -1,0 +1,38 @@
+/*  run_cast_chain_off_member — a cast before a call or a class subscript reached through a member
+    (`(T)holder.b.get()`, `(T)holder.b[0]`, `(T)self.b.get()`) applies to the result; and an emitter that names its argument twice is given a routine,
+    so `print(x.next())` with a stringOrRoutine evaluates the call once.  */
+// EXPECT_OUTPUT: hello a b R a hello
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser";
+#includeI6 "verblib";
+
+class box : object {
+    array<var> items[3];
+    int pos;
+    var get() { return "hello"; }
+    var operator[](int i) { return self.items[i]; }
+    var next() { var v = self.items[self.pos]; self.pos++; return v; }
+}
+object holder { box b = box{}; void show() { print((stringOrRoutine)self.b.get()); } }
+object room { short_name = "Room"; string description = "A room."; attributes = {light}; }
+
+void initialise() {
+    location = room;
+    holder.b.items[0] = "a";
+    holder.b.items[1] = "b";
+    holder.b.items[2] = () => { print("R"); };
+    print((stringOrRoutine)holder.b.get());
+    print(" ");
+    print((stringOrRoutine)holder.b.next());
+    print(" ");
+    print((stringOrRoutine)holder.b.next());
+    print(" ");
+    print((stringOrRoutine)holder.b.next());
+    print(" ");
+    print((stringOrRoutine)holder.b[0]);
+    print(" ");
+    holder.show();
+    print("^");
+}
+#includeI6 "grammar";

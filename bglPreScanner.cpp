@@ -614,7 +614,9 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
     while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
         bool memberIsEmitter = false;
         bool memberIsReplace = false;
+        if(t.is("superposed")) t = file.getToken();
         if(t.is("replace")){ memberIsReplace = true; t = file.getToken(); }
+        if(t.is("superposed")) t = file.getToken();
         if(t.is("explicit")) t = file.getToken();
         if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
         bool memberIsRef = false;
@@ -1285,9 +1287,11 @@ void bglParser::preScanClassBody(classDef* cls){
               bt = file.getToken();
               continue;
           }
+          if(bt.is("superposed") && file.peekToken().is("static") && cls != nullptr) bt = file.getToken();
           if(bt.is("static") && cls != nullptr){
               // static TYPE NAME [= expr] ;
               token typeTok = file.getToken();
+              if(typeTok.is("superposed")) typeTok = file.getToken();
               string typePath = typeTok.is(eTokenType::identifier) ? preScanTypePath(typeTok, nullptr) : typeTok.value;
               bool pathType = typePath.find('.') != string::npos;
               if(pathType) typeTok.value = typePath;
@@ -1826,7 +1830,9 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             token t = file.getToken();
             while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
                 bool memberIsEmitter = false;
+                if(t.is("superposed")) t = file.getToken();
                 if(t.is("replace")) t = file.getToken();   // `replace void report()`: a member like any other here
+                if(t.is("superposed")) t = file.getToken();
                 if(t.is("explicit")) t = file.getToken(); // skip explicit qualifier
                 if(t.is("emitter")){ memberIsEmitter = true; t = file.getToken(); }
                 bool memberIsRef = false;
@@ -2498,7 +2504,7 @@ void bglParser::preScanGlobalLoop(){
             preScanSkipBody();
             continue;
         }
-        if(tok.is("property")){ preScanProperty(isExtern); continue; }
+        if(tok.is("property") && !file.peekToken(2).is(token::parenOpen)){ preScanProperty(isExtern); continue; }   // `property f(…)` is a function
         if(tok.is("attribute") && !file.peekToken(2).is(token::parenOpen)){ preScanAttribute(isExtern); continue; }   // `attribute f(…)` is a function
 
         // Named union declaration: `union Name = A | B [ { … } | ; ]`. Register Name as an emitter

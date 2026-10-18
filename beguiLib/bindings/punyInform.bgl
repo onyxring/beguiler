@@ -390,9 +390,13 @@ extern verb OopsCorrection { }  /// replace the mistyped word with second (meta)
 union stringOrRoutine = string | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }
 }
-emitter void print(stringOrRoutine v){
-    if(metaclass($v) == Routine) $v();
-    else print (string)$v;
+emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }
+// A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
+superposed void _bglPrintOrRun(stringOrRoutine v){
+    #i6 {
+        if(metaclass(v) == Routine) v();
+        else print (string)v;
+    }
 }
 // The library lets every object override its instanceName with the short_name property.
 extend class object {

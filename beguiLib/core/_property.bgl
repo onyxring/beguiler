@@ -14,4 +14,6 @@ primitive class property {
     emitter property operator = (property v) { $target = $v; }  /// Assignment: the variable takes the property name.
     emitter bool     operator == (property v){ $val == $v }     /// True when both name the same property.
     emitter bool     operator != (property v){ $val ~= $v }     /// True when they name different properties.
+    emitter bool     operator == (_bglObject v){ $val == $v }   /// True when there is no property (`null`).
+    emitter bool     operator != (_bglObject v){ $val ~= $v }   /// True when there is a property.
 }

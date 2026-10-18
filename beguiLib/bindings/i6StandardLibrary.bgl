@@ -554,13 +554,18 @@ extern verb NotUnderstood { }   /// Runs when a command to a character is not un
 union stringOrRoutine = string | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }
 }
-emitter void print(stringOrRoutine v){
-    if(metaclass($v) == Routine) $v();
-    else print (string)$v;
+emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }
+// A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
+superposed void _bglPrintOrRun(stringOrRoutine v){
+    #i6 {
+        if(metaclass(v) == Routine) v();
+        else print (string)v;
+    }
 }
 // The stdLib allows all objects to override their instanceName via the short_name property.
 extend class object {
     stringOrRoutine short_name;
+    property door_dir;   /// On a direction object, the exit property it reads (`n_to`, …); on a door, the way it leads.
 }
 
 // The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata.  Let's reuse these and keep their definitions all the same.

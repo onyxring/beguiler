@@ -1,0 +1,12 @@
+/*  run_static_superposed_forward — a static superposed method called above its declaration in the
+    class, with the qualifiers in either order.  */
+// EXPECT_OUTPUT: 42 43
+#beguilerSettings { target = z5; informName = "none"; }
+
+class K {
+    static superposed int a() { return K.b() + 1; }
+    superposed static int c() { return K.a() + 1; }
+    static superposed int b() { return 41; }
+}
+
+void main() { print(K.a()); print(" "); print(K.c()); print("^"); }

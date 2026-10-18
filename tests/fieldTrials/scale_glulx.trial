@@ -46,7 +46,7 @@ Audit 1: 150 crates, 13 rooms with sealed crates; weights n 150, low 2, high 30,
 > tally
 Now: n 150, low 2, high 30, mean 11.9.
 Before: n 150, low 2, high 30, mean 11.9.
-Spread 14.0; load 83.0%.
+Spread 14.0; load 83.3%.
 > kit
 Second 8, penultimate 23, second crate crate 2.
 --------------------

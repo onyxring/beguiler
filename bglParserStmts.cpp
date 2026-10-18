@@ -5083,6 +5083,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
                 raw.text = emitObjectPath + ".(" + qualifyIdentifier(methodName, func, body)
                          + ")(" + argText + ");";
                 if(body != nullptr) body->statements.push_back(&raw);
+                if(file.peekToken().is(token::endStatement)) file.getToken();   // the statement's own ';'
                 return true;
             }
         }
@@ -5098,6 +5099,7 @@ bool bglParser::bindMethodCallStatement(functionCallStatement& callStmt, token t
                 raw.text = "_bgl_" + sc->declaringClass(sv)->name + "_" + sv->name + "(" + argText + ");";
                 raw.cooked = true;
                 if(body != nullptr) body->statements.push_back(&raw);
+                if(file.peekToken().is(token::endStatement)) file.getToken();   // the statement's own ';'
                 return true;
             }
         functionDef* method = bindMethodCall(objectType, objectPath, methodName,
