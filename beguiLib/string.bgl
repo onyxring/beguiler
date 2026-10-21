@@ -16,6 +16,10 @@
 //   #emitfirst { Constant bglStringDefaultSize 800; }   ! per-string capacity in chars
 //-----------------------------------------------------------------------------
 #once
+#declare BGL_STRING_POOL
+#if BGL_STRING_HEAP
+    #error "<string> and <stringObj> both provide stringObj; include one of them."
+#endif
 
 #include <buf>
 // bglAllocated is now auto-loaded in core (no include needed); _bglString inherits it.
@@ -29,6 +33,7 @@
 // Beguile-native (see string.bgl's port note).
 //------------------------------------------------------------------------------
 #i6 {
+    Constant _bglOverrunSetting "bglStringDefaultSize";        ! what <buf> names when printed text overruns its room
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -40,7 +45,7 @@
 
     Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
 
-    class _bglBufferWrapper(bglBufferPoolReserve) with buf 0;   ! buffer-as-object so it can move between sentinel containers
+    class _bglBufferWrapper(bglBufferPoolReserve) with _bglText_buf 0;   ! buffer-as-object so it can move between sentinel containers
 
     object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
     object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
@@ -88,15 +93,15 @@
         ]
         !find the allocated object wrapper for the given buffer
     ,	_findAllocatedObjFromBuffer[b o;
-            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
             !find the unallocated object wrapper for the given buffer
     ,	_findAvailableObjFromBuffer[b o;
-            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
-    ,	isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
+    ,	_bglText_isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
             if(self._findAllocatedObjFromBuffer(b)==0) rfalse;
             rtrue;
         ]
@@ -115,42 +120,42 @@
             objectloop(o in _bglObjectHeap) if(o==b) return o;
             return 0;
         ]
-    with allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
+    with _bglText_allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
             retval = self._allocateObj(_bglString);
-            retval.getBuf(); !force initilization
+            retval._bglText_getBuf(); !force initilization
             return retval;
         ]
-    ,	freeString[str; !take a specific allocated string, and free it for later use
-            self.freeBuffer(self._findAllocatedObj(str));
+    ,	_bglText_freeString[str; !take a specific allocated string, and free it for later use
+            self._bglText_freeBuffer(self._findAllocatedObj(str));
             self._freeObj(self._findAllocatedObj(str));
 
             return str;
         ]
-    ,	reclaimString[b retval; !take a previously freed string and lock it again
+    ,	_bglText_reclaimString[b retval; !take a previously freed string and lock it again
             retval = self._reclaimObj(self._findAvailableObj(b));
-            if(retval~=0) self.reclaimBuffer(retval.getBuf(true));
+            if(retval~=0) self._bglText_reclaimBuffer(retval._bglText_getBuf(true));
             return retval;
         ]
-    ,	allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
-            retval = self._allocateObj(_bglBufferWrapper).buf;
-            _bglBuf.setLength(retval,0);
+    ,	_bglText_allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+            retval = self._allocateObj(_bglBufferWrapper)._bglText_buf;
+            _bglBuf._bglText_setLength(retval,0);
             return retval;
         ]
-    ,	freeBuffer[b; !take a specific buffer and free it for later allocation
+    ,	_bglText_freeBuffer[b; !take a specific buffer and free it for later allocation
             self._freeObj(self._findAllocatedObjFromBuffer(b));
             return b;
         ]
-    ,	reclaimBuffer[b retval;
+    ,	_bglText_reclaimBuffer[b retval;
             retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
-            if(retval~=0) return retval.buf;
+            if(retval~=0) return retval._bglText_buf;
             return 0;
         ]
-    , 	isLocked[obj;
+    , 	_bglText_isLocked[obj;
             if(self._findAllocatedObj(obj)) return true;
             if(self._findAllocatedObjFromBuffer(obj)) return true;
             return false;
         ]
-    ,	isFree[obj;
+    ,	_bglText_isFree[obj;
             if(self._findAvailableObj(obj)) return true;
             if(self._findAvailableObjFromBuffer(obj)) return true;
             return false;
@@ -165,14 +170,14 @@
             i obj;
         for(i=0:_bglBufferWrapper.remaining()>0:i++){
             obj=_bglBufferWrapper.create();
-            obj.buf=_bglDsbuf+(i*bglStringDefaultSize);
-            obj.buf=_bglConvertToSizedBuffer(obj.buf,bglStringDefaultSize);
+            obj._bglText_buf=_bglDsbuf+(i*bglStringDefaultSize);
+            obj._bglText_buf=_bglConvertToSizedBuffer(obj._bglText_buf,bglStringDefaultSize);
             move obj to _bglObjectHeap;
         }
 
         for(i=0:_bglString.remaining()>0:i++){
             obj=_bglString.create();
-            obj.getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
+            obj._bglText_getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
             move obj to _bglObjectHeap;
         }
     ];
@@ -230,15 +235,15 @@ object _bglStr {
     // an unlocked string from the pool. Early orLib testing showed removing
     // this lock() caused premature deallocation. Left in place pending a
     // full lifecycle test that proves it's redundant.
-    var new(var unkStr = 0) {
+    var new(var unkStr = 0) asI6 _bglText_new {
         var retval; var lck;
         #i6 {
-            lck    = self.ambiguousLock(unkStr);
-            retval = _bglStringPool.allocateString();
-            if(unkStr ~= 0) retval.set(unkStr);
-            else retval.setLength(0);   ! a pooled buffer still holds its last text
-            self.ambiguousFree(unkStr, lck);
-            retval = retval.lock();
+            lck    = self._bglText_ambiguousLock(unkStr);
+            retval = _bglStringPool._bglText_allocateString();
+            if(unkStr ~= 0) retval._bglText_set(unkStr);
+            else retval._bglText_setLength(0);   ! a pooled buffer still holds its last text
+            self._bglText_ambiguousFree(unkStr, lck);
+            retval = retval._bglText_lock();
         }
         return retval;
     }
@@ -247,16 +252,16 @@ object _bglStr {
     // the other results here. A char array is laid out as a buffer is — a length word, then the
     // characters — but nothing at run time tells it from a packed literal, so it is converted
     // where its type is still known.
-    var fromChars(var chars) {
+    var fromChars(var chars) asI6 _bglText_fromChars {
         var retval = self.new();
         int n; int i;
         #i6 {
             n = chars-->0;
-            i = _bglBuf.size(retval.getBuf());   ! -1 when the buffer carries no capacity
+            i = _bglBuf._bglText_size(retval._bglText_getBuf());   ! -1 when the buffer carries no capacity
             if(i >= 0 && n > i) n = i;
-            for(i = 0 : i < n : i++) retval.setChar(i, chars->(i + WORDSIZE));
-            retval.setLength(n);
-            retval = retval.free();
+            for(i = 0 : i < n : i++) retval._bglText_setChar(i, chars->(i + WORDSIZE));
+            retval._bglText_setLength(n);
+            retval = retval._bglText_free();
         }
         return retval;
     }
@@ -266,14 +271,14 @@ object _bglStr {
     // the receiver-facing emitters route here as `_bglStr.format($val, …)` so the
     // bare `string` value type works, not just `stringObj`. `s` may be a literal,
     // a `string`, or a `_bglString` — `self.new` canonicalizes it.
-    var format(var s, var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+    var format(var s, var pattern, var p1 = 0, var p2 = 0, var p3 = 0) asI6 _bglText_format {
         bool lk_pattern = self.ambiguousLock(pattern);   // an ephemeral argument must outlive the copies made below
         bool lk_p1 = self.ambiguousLock(p1);
         bool lk_p2 = self.ambiguousLock(p2);
         bool lk_p3 = self.ambiguousLock(p3);
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.format(pattern, p1, p2, p3); str.free(); }
+        #i6 { tmp = str._bglText_format(pattern, p1, p2, p3); str._bglText_free(); }
         self.ambiguousFree(p3, lk_p3);
         self.ambiguousFree(p2, lk_p2);
         self.ambiguousFree(p1, lk_p1);
@@ -286,24 +291,24 @@ object _bglStr {
     // the underlying buffer is locked; if a literal/raw, a freshly allocated
     // (and freed) buffer is returned. Callers MUST use ambiguousLock/Free to
     // safely operate on the return value.
-    var toAmbiguousBuffer(var unkStr) {
+    var toAmbiguousBuffer(var unkStr) asI6 _bglText_toAmbiguousBuffer {
         var retval;
         #i6 {
-            if(unkStr ofclass _bglString) return unkStr.getBuf();
+            if(unkStr ofclass _bglString) return unkStr._bglText_getBuf();
             ! A null string reads as the empty one.
             if(unkStr == 0){
-                retval = _bglStringPool.allocateBuffer();
-                _bglBuf.setLength(retval, 0);
-                return _bglStringPool.freeBuffer(retval);
+                retval = _bglStringPool._bglText_allocateBuffer();
+                _bglBuf._bglText_setLength(retval, 0);
+                return _bglStringPool._bglText_freeBuffer(retval);
             }
             ! Phase B safety: at this point we KNOW unkStr is not a _bglString
             ! (ofclass check failed), so it's a packed string literal in practice.
             ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
             ! Eliminates the residual isTracked-collision bug for all callers of
             ! toAmbiguousBuffer (insert, replace, indexOf, startsWith, etc.).
-            retval = _bglStringPool.allocateBuffer();
-            _bglBuf.setFromLiteral(retval, unkStr);
-            retval = _bglStringPool.freeBuffer(retval);
+            retval = _bglStringPool._bglText_allocateBuffer();
+            _bglBuf._bglText_setFromLiteral(retval, unkStr);
+            retval = _bglStringPool._bglText_freeBuffer(retval);
         }
         return retval;
     }
@@ -311,12 +316,12 @@ object _bglStr {
     // If buf is currently in the pool's free list (ephemeral), temporarily
     // lock it. Returns true iff this call performed the lock — caller MUST
     // pass that bool back to ambiguousFree() to restore the prior state.
-    bool ambiguousLock(var buf) {
+    bool ambiguousLock(var buf) asI6 _bglText_ambiguousLock {
         bool retval = false;
         #i6 {
-            if(_bglStringPool.isFree(buf)) {
-                _bglStringPool.reclaimBuffer(buf);
-                _bglStringPool.reclaimString(buf);
+            if(_bglStringPool._bglText_isFree(buf)) {
+                _bglStringPool._bglText_reclaimBuffer(buf);
+                _bglStringPool._bglText_reclaimString(buf);
                 retval = true;
             }
         }
@@ -324,11 +329,11 @@ object _bglStr {
     }
 
     // Restore prior lock state — only frees if ambiguousLock returned true.
-    void ambiguousFree(var buf, bool val) {
+    void ambiguousFree(var buf, bool val) asI6 _bglText_ambiguousFree {
         if(val) {
             #i6 {
-                _bglStringPool.freeBuffer(buf);
-                _bglStringPool.freeString(buf);
+                _bglStringPool._bglText_freeBuffer(buf);
+                _bglStringPool._bglText_freeString(buf);
             }
         }
     }
@@ -339,7 +344,7 @@ object _bglStr {
     // again and would otherwise be handed the very buffer the first one is using —
     // making every literal-vs-literal comparison compare a value with itself. Lock
     // the first result across the second conversion, per toAmbiguousBuffer's contract.
-    bool areEqual(var buf1, var buf2, bool caseInsensitive = false) {
+    bool areEqual(var buf1, var buf2, bool caseInsensitive = false) asI6 _bglText_areEqual {
         buf1 = self.toAmbiguousBuffer(buf1);
         bool lck = self.ambiguousLock(buf1);
         buf2 = self.toAmbiguousBuffer(buf2);
@@ -350,7 +355,7 @@ object _bglStr {
 
     // Ordering across any combination of string-shaped values. Returns -1/0/1 in
     // the qsort tradition, so it can be handed straight to array<T>.sort().
-    int compareValues(var buf1, var buf2, bool caseInsensitive = false) {
+    int compareValues(var buf1, var buf2, bool caseInsensitive = false) asI6 _bglText_compareValues {
         buf1 = self.toAmbiguousBuffer(buf1);
         bool lck = self.ambiguousLock(buf1);       // see areEqual — hold across the 2nd conversion
         buf2 = self.toAmbiguousBuffer(buf2);
@@ -363,10 +368,10 @@ object _bglStr {
     // new() can detect literal-vs-instance; a `$self.getLength()` message send would
     // fault on an array element or object property, which hold packed literals.
     // Allocate/use/free is net-zero on the pool (same shape as trim below).
-    int getLength(var s) {
+    int getLength(var s) asI6 _bglText_getLength {
         var str = self.new(s);
         int n;
-        #i6 { n = str.getLength(); str.free(); }
+        #i6 { n = str._bglText_getLength(); str._bglText_free(); }
         return n;
     }
 
@@ -377,179 +382,179 @@ object _bglStr {
     // object property (both hold packed literals). allocate/use/free is net-zero on
     // the pool. Mutating members (operator =, +=, []=, capture/release) are NOT here:
     // they change the receiver in place and genuinely require a real instance.
-    int getChar(var s, int pos) {
+    int getChar(var s, int pos) asI6 _bglText_getChar {
         var str = self.new(s);
         int r;
-        #i6 { r = str.getChar(pos); str.free(); }
+        #i6 { r = str._bglText_getChar(pos); str._bglText_free(); }
         return r;
     }
-    int indexOf(var s, var searchText, int startingIndex) {
+    int indexOf(var s, var searchText, int startingIndex) asI6 _bglText_indexOf {
         bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         int r;
-        #i6 { r = str.indexOf(searchText, startingIndex); str.free(); }
+        #i6 { r = str._bglText_indexOf(searchText, startingIndex); str._bglText_free(); }
         self.ambiguousFree(searchText, lk_searchText);
         return r;
     }
-    bool startsWith(var s, var prefix, bool caseInsensitive) {
+    bool startsWith(var s, var prefix, bool caseInsensitive) asI6 _bglText_startsWith {
         bool lk_prefix = self.ambiguousLock(prefix);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
-        #i6 { r = str.startsWith(prefix, caseInsensitive); str.free(); }
+        #i6 { r = str._bglText_startsWith(prefix, caseInsensitive); str._bglText_free(); }
         self.ambiguousFree(prefix, lk_prefix);
         return r;
     }
-    bool endsWith(var s, var suffix, bool caseInsensitive) {
+    bool endsWith(var s, var suffix, bool caseInsensitive) asI6 _bglText_endsWith {
         bool lk_suffix = self.ambiguousLock(suffix);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
-        #i6 { r = str.endsWith(suffix, caseInsensitive); str.free(); }
+        #i6 { r = str._bglText_endsWith(suffix, caseInsensitive); str._bglText_free(); }
         self.ambiguousFree(suffix, lk_suffix);
         return r;
     }
-    bool contains(var s, var searchText) {
+    bool contains(var s, var searchText) asI6 _bglText_contains {
         bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         bool r;
-        #i6 { r = str.contains(searchText); str.free(); }
+        #i6 { r = str._bglText_contains(searchText); str._bglText_free(); }
         self.ambiguousFree(searchText, lk_searchText);
         return r;
     }
-    bool isEmpty(var s) {
+    bool isEmpty(var s) asI6 _bglText_isEmpty {
         var str = self.new(s);
         bool r;
-        #i6 { r = str.isEmpty(); str.free(); }
+        #i6 { r = str._bglText_isEmpty(); str._bglText_free(); }
         return r;
     }
     // `s += $"…"`: the interpolation is captured into a temporary, then appended.
-    var beginAppend(var s) {
+    var beginAppend(var s) asI6 _bglText_beginAppend {
         var t = self.new();
-        #i6 { _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t.capture(); }
+        #i6 { _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t._bglText_capture(); }
         return s;
     }
-    var endAppend(var s) {
+    var endAppend(var s) asI6 _bglText_endAppend {
         var t;
-        #i6 { _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t.release(); s.setFromStr(s.append(t)); t.free(); }
+        #i6 { _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t._bglText_release(); s._bglText_setFromStr(s._bglText_append(t)); t._bglText_free(); }
         return s;
     }
-    var append(var s, var text) {
+    var append(var s, var text) asI6 _bglText_append {
         bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.append(text); str.free(); }
+        #i6 { tmp = str._bglText_append(text); str._bglText_free(); }
         self.ambiguousFree(text, lk_text);
         return tmp;   // ephemeral, same contract as trim()
     }
-    var appendChar(var s, int c) {
+    var appendChar(var s, int c) asI6 _bglText_appendChar {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.appendChar(c); str.free(); }
+        #i6 { tmp = str._bglText_appendChar(c); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var prependChar(var s, int c) {
+    var prependChar(var s, int c) asI6 _bglText_prependChar {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.prependChar(c); str.free(); }
+        #i6 { tmp = str._bglText_prependChar(c); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var prepend(var s, var text) {
+    var prepend(var s, var text) asI6 _bglText_prepend {
         bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.prepend(text); str.free(); }
+        #i6 { tmp = str._bglText_prepend(text); str._bglText_free(); }
         self.ambiguousFree(text, lk_text);
         return tmp;   // ephemeral, same contract as trim()
     }
-    var toUpper(var s) {
+    var toUpper(var s) asI6 _bglText_toUpper {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.toUpper(); str.free(); }
+        #i6 { tmp = str._bglText_toUpper(); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var toLower(var s) {
+    var toLower(var s) asI6 _bglText_toLower {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.toLower(); str.free(); }
+        #i6 { tmp = str._bglText_toLower(); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var trimLeft(var s) {
+    var trimLeft(var s) asI6 _bglText_trimLeft {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.trimLeft(); str.free(); }
+        #i6 { tmp = str._bglText_trimLeft(); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var trimRight(var s) {
+    var trimRight(var s) asI6 _bglText_trimRight {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.trimRight(); str.free(); }
+        #i6 { tmp = str._bglText_trimRight(); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var reverse(var s) {
+    var reverse(var s) asI6 _bglText_reverse {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.reverse(); str.free(); }
+        #i6 { tmp = str._bglText_reverse(); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var mid(var s, int start, int count) {
+    var mid(var s, int start, int count) asI6 _bglText_mid {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.mid(start, count); str.free(); }
+        #i6 { tmp = str._bglText_mid(start, count); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var left(var s, int count) {
+    var left(var s, int count) asI6 _bglText_left {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.left(count); str.free(); }
+        #i6 { tmp = str._bglText_left(count); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var right(var s, int count) {
+    var right(var s, int count) asI6 _bglText_right {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.right(count); str.free(); }
+        #i6 { tmp = str._bglText_right(count); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var insert(var s, int pos, var source) {
+    var insert(var s, int pos, var source) asI6 _bglText_insert {
         bool lk_source = self.ambiguousLock(source);   // an ephemeral argument must outlive the copies made below
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.insert(pos, source); str.free(); }
+        #i6 { tmp = str._bglText_insert(pos, source); str._bglText_free(); }
         self.ambiguousFree(source, lk_source);
         return tmp;   // ephemeral, same contract as trim()
     }
-    var delete(var s, int pos, int count) {
+    var delete(var s, int pos, int count) asI6 _bglText_delete {
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.delete(pos, count); str.free(); }
+        #i6 { tmp = str._bglText_delete(pos, count); str._bglText_free(); }
         return tmp;   // ephemeral, same contract as trim()
     }
-    var replace(var s, var searchText, var replaceText) {
+    var replace(var s, var searchText, var replaceText) asI6 _bglText_replace {
         bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.replace(searchText, replaceText); str.free(); }
+        #i6 { tmp = str._bglText_replace(searchText, replaceText); str._bglText_free(); }
         self.ambiguousFree(replaceText, lk_replaceText);
         self.ambiguousFree(searchText, lk_searchText);
         return tmp;   // ephemeral, same contract as trim()
     }
-    var replaceAll(var s, var searchText, var replaceText) {
+    var replaceAll(var s, var searchText, var replaceText) asI6 _bglText_replaceAll {
         bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
         bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
-        #i6 { tmp = str.replaceAll(searchText, replaceText); str.free(); }
+        #i6 { tmp = str._bglText_replaceAll(searchText, replaceText); str._bglText_free(); }
         self.ambiguousFree(replaceText, lk_replaceText);
         self.ambiguousFree(searchText, lk_searchText);
         return tmp;   // ephemeral, same contract as trim()
     }
 
     // Trim leading/trailing whitespace, returning an ephemeral result.
-    var trim(var buf) {
+    var trim(var buf) asI6 _bglText_trim {
         var str = self.new(buf);
         var tmpStr;
         #i6 {
-            tmpStr = str.trim();
-            str.free();
+            tmpStr = str._bglText_trim();
+            str._bglText_free();
         }
         return tmpStr;
     }
@@ -583,7 +588,7 @@ object _bglStr {
 //==============================================================================
 superposed _bglObject _bglStringLockStack {
     // Lock `s` if it is a freed pool string and remember it; any other value passes through.
-    var stackLock(var s) {
+    var stackLock(var s) asI6 _bglText_stackLock {
         if(_bglStr.ambiguousLock(s)) {
             #i6 {
                 if(_bglStringLockStackTop >= bglStringLockStackSize){
@@ -597,7 +602,7 @@ superposed _bglObject _bglStringLockStack {
         return s;
     }
     // Open a mark at the current height; the matching stackDrain releases back to it.
-    int stackMark() {
+    int stackMark() asI6 _bglText_stackMark {
         #i6 {
             if(_bglStringLockStackMarkTop >= bglStringLockStackSize){
                 print "[ERROR: temporary strings nested too deeply.]";
@@ -609,13 +614,13 @@ superposed _bglObject _bglStringLockStack {
         return 0;
     }
     // Free what was locked since the most recent mark, close that mark, and pass `result` through.
-    var stackDrain(var result, int unused) {
+    var stackDrain(var result, int unused) asI6 _bglText_stackDrain {
         #i6 {
             if(_bglStringLockStackMarkTop == 0) return result;
             _bglStringLockStackMarkTop--;
             while(_bglStringLockStackTop > _bglStringLockStackMarks-->_bglStringLockStackMarkTop){
                 _bglStringLockStackTop--;
-                _bglStr.ambiguousFree(_bglStringLockStackSlots-->_bglStringLockStackTop, true);
+                _bglStr._bglText_ambiguousFree(_bglStringLockStackSlots-->_bglStringLockStackTop, true);
             }
         }
         return result;
@@ -642,71 +647,71 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     int _underlyingBuffer = 0;
 
     // ── Introspection ────────────────────────────────────────────────────────
-    int getLength() {
+    int getLength() asI6 _bglText_getLength {
         int retval;
-        #i6 { retval = _bglBuf.length(self.getBuf()); }
+        #i6 { retval = _bglBuf._bglText_length(self._bglText_getBuf()); }
         return retval;
     }
 
-    var getBuf(int suppressAllocation = 0) {
+    var getBuf(int suppressAllocation = 0) asI6 _bglText_getBuf {
         var retval;
         #i6 {
             if(self._underlyingBuffer == 0 && suppressAllocation == 0)
-                self._underlyingBuffer = _bglStringPool.allocateBuffer();
+                self._underlyingBuffer = _bglStringPool._bglText_allocateBuffer();
             retval = self._underlyingBuffer;
         }
         return retval;
     }
 
-    int getChar(int pos) {
+    int getChar(int pos) asI6 _bglText_getChar {
         int retval;
-        #i6 { retval = self.getBuf()->(pos + WORDSIZE); }
+        #i6 { retval = self._bglText_getBuf()->(pos + WORDSIZE); }
         return retval;
     }
 
-    int getCharFromRight(int pos) {
+    int getCharFromRight(int pos) asI6 _bglText_getCharFromRight {
         int retval;
-        #i6 { retval = self.getChar(self.getLength() - (pos + 1)); }
+        #i6 { retval = self._bglText_getChar(self._bglText_getLength() - (pos + 1)); }
         return retval;
     }
 
-    bool isEmpty() {
+    bool isEmpty() asI6 _bglText_isEmpty {
         bool retval;
-        #i6 { retval = (_bglBuf.length(self.getBuf()) == 0); }
+        #i6 { retval = (_bglBuf._bglText_length(self._bglText_getBuf()) == 0); }
         return retval;
     }
 
     // ── Lifecycle / pool state ───────────────────────────────────────────────
-    var clone() {
+    var clone() asI6 _bglText_clone {
         var retval;
-        #i6 { retval = _bglStr.new(self); }
+        #i6 { retval = _bglStr._bglText_new(self); }
         return retval;
     }
 
-    bool isLocked() {
+    bool isLocked() asI6 _bglText_isLocked {
         bool retval;
-        #i6 { retval = _bglStringPool.isLocked(self); }
+        #i6 { retval = _bglStringPool._bglText_isLocked(self); }
         return retval;
     }
 
-    bool isBufferLocked() {
+    bool isBufferLocked() asI6 _bglText_isBufferLocked {
         bool retval;
-        #i6 { retval = _bglStringPool.isLocked(self._underlyingBuffer); }
+        #i6 { retval = _bglStringPool._bglText_isLocked(self._underlyingBuffer); }
         return retval;
     }
 
-    var lock() {
-        #i6 { _bglStringPool.reclaimString(self); }
+    var lock() asI6 _bglText_lock {
+        #i6 { _bglStringPool._bglText_reclaimString(self); }
         return self;
     }
 
-    var free() {
-        #i6 { _bglStringPool.freeString(self); }
+    var free() asI6 _bglText_free {
+        #i6 { _bglStringPool._bglText_freeString(self); }
         return self;
     }
 
     // ── Mutation (set / setChar / setLength) ─────────────────────────────────
-    var set(var unkStr) {
+    var set(var unkStr) asI6 _bglText_set {
         var ab;
         bool lckBuf;
         bool lckSelf;
@@ -717,12 +722,12 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             ! fully pinned down yet (likely interacts with reclaimString's
             ! object-walk when the string and its underlying buffer are
             ! both ambiguously locked).
-            lckSelf = _bglStr.ambiguousLock(self);
-            ab      = _bglStr.toAmbiguousBuffer(unkStr);
-            lckBuf  = _bglStr.ambiguousLock(ab);
-            _bglBuf.setAny(self.getBuf(), ab);
-            _bglStr.ambiguousFree(ab, lckBuf);
-            _bglStr.ambiguousFree(self, lckSelf);
+            lckSelf = _bglStr._bglText_ambiguousLock(self);
+            ab      = _bglStr._bglText_toAmbiguousBuffer(unkStr);
+            lckBuf  = _bglStr._bglText_ambiguousLock(ab);
+            _bglBuf._bglText_setAny(self._bglText_getBuf(), ab);
+            _bglStr._bglText_ambiguousFree(ab, lckBuf);
+            _bglStr._bglText_ambiguousFree(self, lckSelf);
         }
         return self;
     }
@@ -733,51 +738,51 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     // user-pointer. The caller knows whether they hold a literal or a string
     // (Beguile's operator overloads discriminate at compile time); this passes
     // that knowledge through to the right _bglBuf primitive directly.
-    var setFromLit(var lit) {
+    var setFromLit(var lit) asI6 _bglText_setFromLit {
         #i6 {
             ! A null string (a `?.` chain that stopped) is the empty one.
-            if(lit == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
+            if(lit == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
             ! Direct setFromLiteral — caller knows lit is a packed string.
-            _bglBuf.setFromLiteral(self.getBuf(), lit);
+            _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), lit);
         }
         return self;
     }
-    var setFromStr(var src) {
+    var setFromStr(var src) asI6 _bglText_setFromStr {
         #i6 {
             ! A null string (a `?.` chain that stopped) is the empty one.
-            if(src == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
+            if(src == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
             ! A literal or string passed where a stringObj is expected arrives as packed text.
-            if(metaclass(src) == String){ _bglBuf.setFromLiteral(self.getBuf(), src); return self; }
-            _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
+            if(metaclass(src) == String){ _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), src); return self; }
+            _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), src._bglText_getBuf());
         }
         return self;
     }
 
-    var setLength(int newLength) {
-        #i6 { _bglBuf.setLength(self.getBuf(), newLength); }
+    var setLength(int newLength) asI6 _bglText_setLength {
+        #i6 { _bglBuf._bglText_setLength(self._bglText_getBuf(), newLength); }
         return self;
     }
 
-    var setChar(int pos, int val) {
+    var setChar(int pos, int val) asI6 _bglText_setChar {
         #i6 {
             if(val > 255) val = '?';   ! one byte per character: beyond Latin-1 reads as '?', as captured text does
-            self.getBuf()->(pos + WORDSIZE) = val;
+            self._bglText_getBuf()->(pos + WORDSIZE) = val;
         }
         return self;
     }
 
     // ── Output stream redirection ────────────────────────────────────────────
-    var capture() {
-        #i6 { _bglBuf.capture(self.getBuf()); }
+    var capture() asI6 _bglText_capture {
+        #i6 { _bglBuf._bglText_capture(self._bglText_getBuf()); }
         return self;
     }
 
-    var release() {
-        #i6 { _bglBuf.release(); }
+    var release() asI6 _bglText_release {
+        #i6 { _bglBuf._bglText_release(); }
         return self;
     }
 
-    var captureOutput(var o, var r) {
+    var captureOutput(var o, var r) asI6 _bglText_captureOutput {
         self.capture();
         #i6 { _bglStr.print(o, r); }
         self.release();
@@ -785,38 +790,38 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     }
 
     var print() {
-        #i6 { _bglBuf.print(self.getBuf()); }
+        #i6 { _bglBuf.print(self._bglText_getBuf()); }
         return self;
     }
 
     // ── Equality (single + 4-way "oneOf" + CI variants) ──────────────────────
-    bool equals(var altBuf, bool caseInsensitive = false) {
+    bool equals(var altBuf, bool caseInsensitive = false) asI6 _bglText_equals {
         bool retval;
-        #i6 { retval = _bglBuf.equals(_bglStr.toAmbiguousBuffer(altBuf), self.getBuf(), caseInsensitive); }
+        #i6 { retval = _bglBuf._bglText_equals(_bglStr._bglText_toAmbiguousBuffer(altBuf), self._bglText_getBuf(), caseInsensitive); }
         return retval;
     }
 
     // ── Phase B: type-specific equality ──────────────────────────────────────
     // Caller knows whether the argument is a literal or a string instance;
     // we skip the isTracked-based dispatch in toAmbiguousBuffer entirely.
-    bool equalsLit(var lit) {
+    bool equalsLit(var lit) asI6 _bglText_equalsLit {
         var ephemeral;
         bool retval;
         #i6 {
-            ephemeral = _bglStringPool.allocateBuffer();
-            _bglBuf.setFromLiteral(ephemeral, lit);
-            ephemeral = _bglStringPool.freeBuffer(ephemeral);
-            retval = _bglBuf.equals(ephemeral, self.getBuf(), 0);
+            ephemeral = _bglStringPool._bglText_allocateBuffer();
+            _bglBuf._bglText_setFromLiteral(ephemeral, lit);
+            ephemeral = _bglStringPool._bglText_freeBuffer(ephemeral);
+            retval = _bglBuf._bglText_equals(ephemeral, self._bglText_getBuf(), 0);
         }
         return retval;
     }
-    bool equalsStr(var other) {
+    bool equalsStr(var other) asI6 _bglText_equalsStr {
         bool retval;
-        #i6 { retval = _bglBuf.equals(other.getBuf(), self.getBuf(), 0); }
+        #i6 { retval = _bglBuf._bglText_equals(other._bglText_getBuf(), self._bglText_getBuf(), 0); }
         return retval;
     }
 
-    bool equalsOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+    bool equalsOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) asI6 _bglText_equalsOneOf {
         #i6 {
             ! Hidden orLib idiom: if the last positional arg is a boolean,
             ! treat it as the caseInsensitive flag and the slot is empty.
@@ -824,15 +829,15 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.equals(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_equals(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_equals(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_equals(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_equals(buf4, caseInsensitive) == true) rtrue;
         }
         return false;
     }
 
-    bool equalsOneOfCaseInsensitive(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0) {
+    bool equalsOneOfCaseInsensitive(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0) asI6 _bglText_equalsOneOfCaseInsensitive {
         return self.equalsOneOf(buf1, buf2, buf3, buf4, true);
     }
 
@@ -840,86 +845,86 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     // Negative when self sorts before `other`, 0 when equal, positive when after.
     // Note the operand order: self is the LEFT side, so `a.compareTo(b) < 0`
     // reads as "a before b" — the same sense the `<` operator gives you.
-    int compareTo(var other, bool caseInsensitive = false) {
+    int compareTo(var other, bool caseInsensitive = false) asI6 _bglText_compareTo {
         int retval;
-        #i6 { retval = _bglBuf.compare(self.getBuf(), _bglStr.toAmbiguousBuffer(other), caseInsensitive); }
+        #i6 { retval = _bglBuf._bglText_compare(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(other), caseInsensitive); }
         return retval;
     }
 
     // ── Search ───────────────────────────────────────────────────────────────
-    int indexOf(var searchText, int startingIndex = 0) {
+    int indexOf(var searchText, int startingIndex = 0) asI6 _bglText_indexOf {
         int retval;
-        #i6 { retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); }
+        #i6 { retval = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex); }
         return retval;
     }
 
-    int numOccurances(var searchText, int startingIndex = 0) {
+    int numOccurances(var searchText, int startingIndex = 0) asI6 _bglText_numOccurances {
         int count = 0;
         int n;
         #i6 {
-            n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex);
+            n = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex);
             while(n >= 0) {
                 count++;
                 startingIndex = n;
-                n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex + 1);
+                n = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex + 1);
             }
         }
         return count;
     }
 
-    bool startsWith(var buf2, bool caseInsensitive = false) {
+    bool startsWith(var buf2, bool caseInsensitive = false) asI6 _bglText_startsWith {
         bool retval;
-        #i6 { retval = _bglBuf.startsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); }
+        #i6 { retval = _bglBuf._bglText_startsWith(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(buf2), caseInsensitive); }
         return retval;
     }
 
-    bool startsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+    bool startsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) asI6 _bglText_startsWithOneOf {
         #i6 {
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.startsWith(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_startsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_startsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_startsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_startsWith(buf4, caseInsensitive) == true) rtrue;
         }
         return false;
     }
 
-    bool endsWith(var buf2, bool caseInsensitive = false) {
+    bool endsWith(var buf2, bool caseInsensitive = false) asI6 _bglText_endsWith {
         bool retval;
-        #i6 { retval = _bglBuf.endsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); }
+        #i6 { retval = _bglBuf._bglText_endsWith(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(buf2), caseInsensitive); }
         return retval;
     }
 
-    bool endsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) {
+    bool endsWithOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) asI6 _bglText_endsWithOneOf {
         #i6 {
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.endsWith(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_endsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_endsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_endsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_endsWith(buf4, caseInsensitive) == true) rtrue;
         }
         return false;
     }
 
-    bool contains(var searchText) {
+    bool contains(var searchText) asI6 _bglText_contains {
         bool retval;
-        #i6 { retval = (self.indexOf(searchText) > -1); }
+        #i6 { retval = (self._bglText_indexOf(searchText) > -1); }
         return retval;
     }
 
-    int indexOfFirstFalse(var routine, int startingIndex = 0) {
+    int indexOfFirstFalse(var routine, int startingIndex = 0) asI6 _bglText_indexOfFirstFalse {
         int retval;
-        #i6 { retval = _bglBuf.indexOfFirstFalse(self.getBuf(), routine, startingIndex); }
+        #i6 { retval = _bglBuf._bglText_indexOfFirstFalse(self._bglText_getBuf(), routine, startingIndex); }
         return retval;
     }
 
-    int indexOfFirstTrue(var routine, int startingIndex = 0) {
+    int indexOfFirstTrue(var routine, int startingIndex = 0) asI6 _bglText_indexOfFirstTrue {
         int retval;
-        #i6 { retval = _bglBuf.indexOfFirstTrue(self.getBuf(), routine, startingIndex); }
+        #i6 { retval = _bglBuf._bglText_indexOfFirstTrue(self._bglText_getBuf(), routine, startingIndex); }
         return retval;
     }
 
@@ -928,209 +933,209 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     // string, mutate the clone in place via _bglBuf, free the clone (making
     // it ephemeral so the caller doesn't need to dispose it explicitly), and
     // return it. The ephemeral remains valid until the next pool reuse.
-    var insert(int pos, var source, int count = 0) {
+    var insert(int pos, var source, int count = 0) asI6 _bglText_insert {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.insert(retval.getBuf(), _bglStr.toAmbiguousBuffer(source), pos, count);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_insert(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(source), pos, count);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var delete(int pos, int count) {
+    var delete(int pos, int count) asI6 _bglText_delete {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.delete(retval.getBuf(), pos, count);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_delete(retval._bglText_getBuf(), pos, count);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var replace(var searchText, var replaceText) {
-        var retval;
-        bool stl;
-        #i6 {
-            retval = self.clone();
-            searchText = _bglStr.toAmbiguousBuffer(searchText);
-            stl = _bglStr.ambiguousLock(searchText);
-            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
-            _bglBuf.replace(retval.getBuf(), searchText, replaceText);
-            _bglStr.ambiguousFree(searchText, stl);
-            retval = retval.free();
-        }
-        return retval;
-    }
-
-    var replaceAll(var searchText, var replaceText) {
+    var replace(var searchText, var replaceText) asI6 _bglText_replace {
         var retval;
         bool stl;
         #i6 {
-            retval = self.clone();
-            searchText = _bglStr.toAmbiguousBuffer(searchText);
-            stl = _bglStr.ambiguousLock(searchText);
-            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
-            _bglBuf.replaceAll(retval.getBuf(), searchText, replaceText);
-            _bglStr.ambiguousFree(searchText, stl);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(searchText);
+            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            _bglBuf._bglText_replace(retval._bglText_getBuf(), searchText, replaceText);
+            _bglStr._bglText_ambiguousFree(searchText, stl);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var toUpper() {
+    var replaceAll(var searchText, var replaceText) asI6 _bglText_replaceAll {
+        var retval;
+        bool stl;
+        #i6 {
+            retval = self._bglText_clone();
+            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(searchText);
+            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            _bglBuf._bglText_replaceAll(retval._bglText_getBuf(), searchText, replaceText);
+            _bglStr._bglText_ambiguousFree(searchText, stl);
+            retval = retval._bglText_free();
+        }
+        return retval;
+    }
+
+    var toUpper() asI6 _bglText_toUpper {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.toUpper(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_toUpper(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var append(var text) {
+    var append(var text) asI6 _bglText_append {
         var retval;
         bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
         #i6 {
-            retval = self.clone();
-            _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_appendBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            retval = retval._bglText_free();
         }
         _bglStr.ambiguousFree(text, lk);
         return retval;
     }
 
-    var appendChar(int c) {
+    var appendChar(int c) asI6 _bglText_appendChar {
         var retval;
         #i6 {
-            retval = self.clone();
-            retval.setChar(retval.getLength(), c);
-            retval.setLength(retval.getLength() + 1);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            retval._bglText_setChar(retval._bglText_getLength(), c);
+            retval._bglText_setLength(retval._bglText_getLength() + 1);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var prependChar(int c) {
+    var prependChar(int c) asI6 _bglText_prependChar {
         var one;
         var retval;
         #i6 {
-            one = _bglStr.new();
-            one.setChar(0, c);
-            one.setLength(1);
-            retval = one.append(self);
-            one.free();
+            one = _bglStr._bglText_new();
+            one._bglText_setChar(0, c);
+            one._bglText_setLength(1);
+            retval = one._bglText_append(self);
+            one._bglText_free();
         }
         return retval;
     }
 
-    var prepend(var text) {
+    var prepend(var text) asI6 _bglText_prepend {
         var retval;
         bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
         #i6 {
-            retval = self.clone();
-            _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_prependBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            retval = retval._bglText_free();
         }
         _bglStr.ambiguousFree(text, lk);
         return retval;
     }
 
-    var toLower() {
+    var toLower() asI6 _bglText_toLower {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.toLower(retval.getBuf(), self.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_toLower(retval._bglText_getBuf(), self._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var reverse() {
+    var reverse() asI6 _bglText_reverse {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.reverse(retval.getBuf(), self.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_reverse(retval._bglText_getBuf(), self._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var trimLeft() {
+    var trimLeft() asI6 _bglText_trimLeft {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.trimLeft(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trimLeft(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var trimRight() {
+    var trimRight() asI6 _bglText_trimRight {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.trimRight(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trimRight(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var trim() {
+    var trim() asI6 _bglText_trim {
         var retval;
         #i6 {
-            retval = self.clone();
-            _bglBuf.trim(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trim(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var mid(int start, int count) {
+    var mid(int start, int count) asI6 _bglText_mid {
         var retval;
         #i6 {
-            retval = _bglStr.new();
-            _bglBuf.mid(retval.getBuf(), self.getBuf(), start, count);
-            retval = retval.free();
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_mid(retval._bglText_getBuf(), self._bglText_getBuf(), start, count);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var left(int count) {
+    var left(int count) asI6 _bglText_left {
         var retval;
         #i6 {
-            retval = _bglStr.new();
-            _bglBuf.left(retval.getBuf(), self.getBuf(), count);
-            retval = retval.free();
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_left(retval._bglText_getBuf(), self._bglText_getBuf(), count);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var right(int count) {
+    var right(int count) asI6 _bglText_right {
         var retval;
         #i6 {
-            retval = _bglStr.new();
-            _bglBuf.right(retval.getBuf(), self.getBuf(), count);
-            retval = retval.free();
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_right(retval._bglText_getBuf(), self._bglText_getBuf(), count);
+            retval = retval._bglText_free();
         }
         return retval;
     }
 
-    var format(var pattern, var p1 = 0, var p2 = 0, var p3 = 0) {
+    var format(var pattern, var p1 = 0, var p2 = 0, var p3 = 0) asI6 _bglText_format {
         var retval;
         #i6 {
-            retval = _bglStr.new();
+            retval = _bglStr._bglText_new();
             if(pattern == 0) pattern = "$0";
-            pattern = _bglStr.new(pattern);  ! convert literal-or-otherwise to _bglString
-            pattern.set(pattern.replaceAll("$0", self));
+            pattern = _bglStr._bglText_new(pattern);  ! convert literal-or-otherwise to _bglString
+            pattern._bglText_set(pattern._bglText_replaceAll("$0", self));
 
-            if(p1 ~= 0) pattern.set(pattern.replaceAll("$1", p1));
-            if(p2 ~= 0) pattern.set(pattern.replaceAll("$2", p2));
-            if(p3 ~= 0) pattern.set(pattern.replaceAll("$3", p3));
+            if(p1 ~= 0) pattern._bglText_set(pattern._bglText_replaceAll("$1", p1));
+            if(p2 ~= 0) pattern._bglText_set(pattern._bglText_replaceAll("$2", p2));
+            if(p3 ~= 0) pattern._bglText_set(pattern._bglText_replaceAll("$3", p3));
 
-            retval.set(pattern);
-            pattern.free();
-            retval = retval.free();
+            retval._bglText_set(pattern);
+            pattern._bglText_free();
+            retval = retval._bglText_free();
         }
         return retval;
     }
@@ -1160,9 +1165,9 @@ extend class string {
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
-    emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
-    emitter stringObj operator + (string v)        { _bglStr.append($val, $v) }
-    emitter stringObj operator + (stringObj v)     { _bglStr.append($val, $v) }
+    emitter stringObj operator + (stringLiteral v) { _bglStr._bglText_append($val, $v) }
+    emitter stringObj operator + (string v)        { _bglStr._bglText_append($val, $v) }
+    emitter stringObj operator + (stringObj v)     { _bglStr._bglText_append($val, $v) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
@@ -1173,19 +1178,19 @@ extend class string {
     // `replace` — core declares these as address equality; <string> upgrades them to
     // content comparison. `!=` must be replaced alongside `==`, or the two would
     // disagree (content vs address) on the same pair of values.
-    replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator == (stringObj v)     { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
-    replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
-    replace emitter eBool operator != (stringObj v)     { (~~_bglStr.areEqual($val, $v, false)) }
-    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    replace emitter eBool operator != (string v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    replace emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
-    emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
-    emitter eBool operator switch(string v)        { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator switch(stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator switch(string v)        { _bglStr._bglText_areEqual($val, $v, false) }
 
     // Comparison published for generic containers. `static` means no receiver, so these
     // emit as free routines whose address array<T> can be handed — the only shape that can
@@ -1203,17 +1208,17 @@ extend class string {
     //
     // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
     // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
-    emitter eBool operator <  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) < 0) }
-    emitter eBool operator <  (string v)        { (_bglStr.compareValues($val, $v, false) < 0) }
-    emitter eBool operator >  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) > 0) }
-    emitter eBool operator >  (string v)        { (_bglStr.compareValues($val, $v, false) > 0) }
-    emitter eBool operator <= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) <= 0) }
-    emitter eBool operator <= (string v)        { (_bglStr.compareValues($val, $v, false) <= 0) }
-    emitter eBool operator >= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) >= 0) }
-    emitter eBool operator >= (string v)        { (_bglStr.compareValues($val, $v, false) >= 0) }
+    emitter eBool operator <  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
+    emitter eBool operator <  (string v)        { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
+    emitter eBool operator >  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
+    emitter eBool operator >  (string v)        { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
+    emitter eBool operator <= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) <= 0) }
+    emitter eBool operator <= (string v)        { (_bglStr._bglText_compareValues($val, $v, false) <= 0) }
+    emitter eBool operator >= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
+    emitter eBool operator >= (string v)        { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
 
     // Indexed character access
-    emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
+    emitter char operator[](int pos)                  { _bglStr._bglText_getChar($val, $pos) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
     replace emitter eBool operator ?() { $self ~= 0 }
@@ -1222,84 +1227,84 @@ extend class string {
     replace emitter void  print()                          { _bglStr.print($val) }
 
     /// Return a NEW string with `v` joined on. This one does not change the original — `stringObj` is the type that can be mutated.
-    emitter stringObj  append(string v)                      { _bglStr.append($val, $v) }
+    emitter stringObj  append(string v)                      { _bglStr._bglText_append($val, $v) }
     /// Return a new string with one character joined on.
-    emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
-    emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
+    emitter stringObj  append(char v)                        { _bglStr._bglText_appendChar($val, $v) }
+    emitter stringObj  append(array<char> v)                        { _bglStr._bglText_append($val, _bglStr._bglText_fromChars($v)) }
     /// Return a new string with `v` joined on the FRONT.
-    emitter stringObj  prepend(char v)                       { _bglStr.prependChar($val, $v) }
-    emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
-    emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
+    emitter stringObj  prepend(char v)                       { _bglStr._bglText_prependChar($val, $v) }
+    emitter stringObj  prepend(var v)                        { _bglStr._bglText_prepend($val, $v) }
+    emitter stringObj prepend(array<char> v) { _bglStr._bglText_prepend($val, _bglStr._bglText_fromChars($v)) }
     /// Return an upper-case copy.
-    emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
+    emitter stringObj  toUpper()                             { _bglStr._bglText_toUpper($val) }
     /// Return a lower-case copy.
-    emitter stringObj  toLower()                             { _bglStr.toLower($val) }
+    emitter stringObj  toLower()                             { _bglStr._bglText_toLower($val) }
     /// Return a copy with leading and trailing whitespace removed.
-    emitter stringObj  trim()                                { _bglStr.trim($val) }
+    emitter stringObj  trim()                                { _bglStr._bglText_trim($val) }
     /// Return a copy with leading whitespace removed.
-    emitter stringObj  trimLeft()                            { _bglStr.trimLeft($val) }
+    emitter stringObj  trimLeft()                            { _bglStr._bglText_trimLeft($val) }
     /// Return a copy with trailing whitespace removed.
-    emitter stringObj  trimRight()                           { _bglStr.trimRight($val) }
+    emitter stringObj  trimRight()                           { _bglStr._bglText_trimRight($val) }
     /// Return a copy with the characters in reverse order.
-    emitter stringObj  reverse()                             { _bglStr.reverse($val) }
+    emitter stringObj  reverse()                             { _bglStr._bglText_reverse($val) }
     /// Return `count` characters starting at `start`, counting from 0.
-    emitter stringObj  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
+    emitter stringObj  mid(int start, int count)             { _bglStr._bglText_mid($val, $start, $count) }
     /// Return the first `count` characters.
-    emitter stringObj  left(int count)                       { _bglStr.left($val, $count) }
+    emitter stringObj  left(int count)                       { _bglStr._bglText_left($val, $count) }
     /// Return the last `count` characters.
-    emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
+    emitter stringObj  right(int count)                      { _bglStr._bglText_right($val, $count) }
     /// Return a copy with `source` inserted at `pos`.
-    emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
+    emitter stringObj  insert(int pos, var source)           { _bglStr._bglText_insert($val, $pos, $source) }
     /// Return a copy with `count` characters removed from `pos`.
-    emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
+    emitter stringObj  delete(int pos, int count)            { _bglStr._bglText_delete($val, $pos, $count) }
     /// Return a copy with the FIRST `searchText` swapped for `replaceText`.
-    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(char c, char r)               { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack.stackDrain(_bglStr.replace($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
+    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), $replaceText), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), $replaceText), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(char c, char r)               { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, $searchText, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, $searchText, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr._bglText_replace($val, $searchText, $replaceText) }
     /// Return a copy with EVERY `searchText` swapped for `replaceText`.
-    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
+    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr._bglText_replaceAll($val, $searchText, $replaceText) }
     /// Substitute `$0`, `$1`… in `pattern` with this string and any extra arguments.
-    emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }
-    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr.format($val, $pattern, $p1) }
-    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr.format($val, $pattern, $p1, $p2) }
+    emitter stringObj  format(var pattern)                                               { _bglStr._bglText_format($val, $pattern) }
+    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr._bglText_format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr._bglText_format($val, $pattern, $p1, $p2) }
     /// How many characters, not counting a terminator.
-    emitter int     length                                { _bglStr.getLength($val) }
+    emitter int     length                                { _bglStr._bglText_getLength($val) }
     /// Order two strings by content: <0, 0 or >0. This is the comparison to hand `sort`.
-    emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
-    emitter int compareTo(array<char> other) { _bglStr.compareValues($val, _bglStr.fromChars($other), false) }
+    emitter int     compareTo(var other)                  { _bglStr._bglText_compareValues($val, $other, false) }
+    emitter int compareTo(array<char> other) { _bglStr._bglText_compareValues($val, _bglStr._bglText_fromChars($other), false) }
     /// Order by content, optionally ignoring case.
-    emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
+    emitter int     compareTo(var other, bool ci)         { _bglStr._bglText_compareValues($val, $other, $ci) }
     /// Position of the first `searchText`, counting from 0, or -1.
-    emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
-    emitter int indexOf(array<char> searchText) { _bglStr.indexOf($val, _bglStr.fromChars($searchText), 0) }
+    emitter int     indexOf(var searchText)               { _bglStr._bglText_indexOf($val, $searchText, 0) }
+    emitter int indexOf(array<char> searchText) { _bglStr._bglText_indexOf($val, _bglStr._bglText_fromChars($searchText), 0) }
     /// True when the string begins with `prefix`.
-    emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
-    emitter eBool startsWith(array<char> prefix) { _bglStr.startsWith($val, _bglStr.fromChars($prefix), false) }
+    emitter eBool   startsWith(var prefix)                { _bglStr._bglText_startsWith($val, $prefix, false) }
+    emitter eBool startsWith(array<char> prefix) { _bglStr._bglText_startsWith($val, _bglStr._bglText_fromChars($prefix), false) }
     /// True when the string ends with `suffix`.
-    emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
-    emitter eBool endsWith(array<char> suffix) { _bglStr.endsWith($val, _bglStr.fromChars($suffix), false) }
+    emitter eBool   endsWith(var suffix)                  { _bglStr._bglText_endsWith($val, $suffix, false) }
+    emitter eBool endsWith(array<char> suffix) { _bglStr._bglText_endsWith($val, _bglStr._bglText_fromChars($suffix), false) }
     /// True when `searchText` appears anywhere.
-    emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
-    emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
+    emitter eBool   contains(var searchText)              { _bglStr._bglText_contains($val, $searchText) }
+    emitter eBool contains(array<char> searchText) { _bglStr._bglText_contains($val, _bglStr._bglText_fromChars($searchText)) }
     /// The position of the character `c`, or -1.
-    emitter int     indexOf(char c)                       { _bglStringLockStack.stackDrain(_bglStr.indexOf($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), 0), _bglStringLockStack.stackMark()) }
+    emitter int     indexOf(char c)                       { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_indexOf($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), 0), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text starts with the character `c`.
-    emitter eBool   startsWith(char c)                    { _bglStringLockStack.stackDrain(_bglStr.startsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   startsWith(char c)                    { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_startsWith($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text ends with the character `c`.
-    emitter eBool   endsWith(char c)                      { _bglStringLockStack.stackDrain(_bglStr.endsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   endsWith(char c)                      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_endsWith($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text holds the character `c`.
-    emitter eBool   contains(char c)                      { _bglStringLockStack.stackDrain(_bglStr.contains($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    emitter eBool   contains(char c)                      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_contains($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c))), _bglStringLockStack._bglText_stackMark()) }
     /// A copy with the character `c` inserted at `pos`.
-    emitter stringObj insert(int pos, char c)             { _bglStringLockStack.stackDrain(_bglStr.insert($val, $pos, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    emitter stringObj insert(int pos, char c)             { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_insert($val, $pos, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c))), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text is the one character `c`.
-    emitter eBool   operator == (char c)                  { _bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   operator == (char c)                  { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_areEqual($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text is not the one character `c`.
-    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark())) }
-    emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
+    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack._bglText_stackDrain(_bglStr._bglText_areEqual($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark())) }
+    emitter eBool   isEmpty()                             { _bglStr._bglText_isEmpty($val) }
     // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
 }
 
@@ -1331,65 +1336,65 @@ extend class string {
 emitter class stringObj {
     // Lifecycle
     /// Take a buffer from the pool. Runs automatically at the declaration.
-    emitter void init()   { $self = _bglStr.new(); }
+    emitter void init()   { $self = _bglStr._bglText_new(); }
     /// Take a buffer from the pool holding a copy of `v`. Runs automatically for a parameter.
-    emitter void init(stringObj v) { $self = _bglStr.new($v); }
+    emitter void init(stringObj v) { $self = _bglStr._bglText_new($v); }
 
     // Temporaries in a call: a released (temporary) result is held from when it is produced until the
     // call returns, so evaluating another argument can't take its buffer. The compiler places these.
     /// Open a mark to release held temporaries back to. Used by the compiler before a call's arguments.
-    emitter int temporaryMark() { _bglStringLockStack.stackMark() }
+    emitter int temporaryMark() { _bglStringLockStack._bglText_stackMark() }
     /// Hold `v` if it is a temporary; a live string passes through. Used by the compiler on an argument.
-    emitter stringObj holdTemporary(stringObj v) { _bglStringLockStack.stackLock($v) }
+    emitter stringObj holdTemporary(stringObj v) { _bglStringLockStack._bglText_stackLock($v) }
     /// Release what was held since the open mark and close it, passing `result` through; `marked` only orders the mark first. Used by the compiler around a call.
-    emitter var releaseTemporaries(var result, int marked) { _bglStringLockStack.stackDrain($result, $marked) }
+    emitter var releaseTemporaries(var result, int marked) { _bglStringLockStack._bglText_stackDrain($result, $marked) }
     /// Give the buffer back. Runs automatically when the declaring block ends.
-    emitter void deinit() { if ($self) $self.free(); }
+    emitter void deinit() { if ($self) $self._bglText_free(); }
 
     // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
     // false-positive risk that could surface when a packed-string address
     // numerically collided with a tracked-buffer user pointer.
-    emitter stringObj operator = (stringLiteral v)         { $self.setFromLit($v); }
-    emitter stringObj operator = (stringObj v)                  { $self.setFromStr($v); }
+    emitter stringObj operator = (stringLiteral v)         { $self._bglText_setFromLit($v); }
+    emitter stringObj operator = (stringObj v)                  { $self._bglText_setFromStr($v); }
     // Widening: a `string` is a pointer to static text, so copy that text INTO this
     // object's own buffer. setFromLit handles a bare text pointer; setFromStr would
     // assume an instance.
-    emitter stringObj operator = (string v)                     { $self.setFromLit($v); }
-    emitter stringObj operator = (interpolatedStringLiteral v)     { $self.capture(); $v; $self.release(); }
+    emitter stringObj operator = (string v)                     { $self._bglText_setFromLit($v); }
+    emitter stringObj operator = (interpolatedStringLiteral v)     { $self._bglText_capture(); $v; $self._bglText_release(); }
 
     // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
     // str3 = str1 + str2  =>  str3.set(str1.append(str2))
-    emitter stringObj operator + (stringLiteral v) { _bglStr.append($val, $v) }
-    emitter stringObj operator + (stringObj v)        { _bglStr.append($val, $v) }
-    emitter stringObj operator + (string v)           { _bglStr.append($val, $v) }
-    emitter stringObj operator + (char c)             { _bglStr.appendChar($val, $c) }
+    emitter stringObj operator + (stringLiteral v) { _bglStr._bglText_append($val, $v) }
+    emitter stringObj operator + (stringObj v)        { _bglStr._bglText_append($val, $v) }
+    emitter stringObj operator + (string v)           { _bglStr._bglText_append($val, $v) }
+    emitter stringObj operator + (char c)             { _bglStr._bglText_appendChar($val, $c) }
 
     // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
     // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
     // copies it back into self.
-    emitter stringObj operator += (stringLiteral v) { $self.setFromStr($self.append($v)) }
-    emitter stringObj operator += (stringObj v)        { $self.setFromStr($self.append($v)) }
-    emitter stringObj operator += (string v)           { $self.setFromStr(_bglStr.append($self, $v)) }
-    emitter stringObj operator += (char c)             { $self.setFromStr(_bglStr.appendChar($self, $c)) }
-    emitter stringObj operator += (interpolatedStringLiteral v) { _bglStr.beginAppend($self); $v; _bglStr.endAppend($self); }
+    emitter stringObj operator += (stringLiteral v) { $self._bglText_setFromStr($self._bglText_append($v)) }
+    emitter stringObj operator += (stringObj v)        { $self._bglText_setFromStr($self._bglText_append($v)) }
+    emitter stringObj operator += (string v)           { $self._bglText_setFromStr(_bglStr._bglText_append($self, $v)) }
+    emitter stringObj operator += (char c)             { $self._bglText_setFromStr(_bglStr._bglText_appendChar($self, $c)) }
+    emitter stringObj operator += (interpolatedStringLiteral v) { _bglStr._bglText_beginAppend($self); $v; _bglStr._bglText_endAppend($self); }
 
     // Equality — Phase B typed dispatch
     // `replace` — core declares these as address equality; <string> upgrades them to
     // content comparison. `!=` must be replaced alongside `==`, or the two would
     // disagree (content vs address) on the same pair of values.
-    emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
-    emitter eBool operator == (stringObj v)        { _bglStr.areEqual($val, $v, false) }
-    emitter eBool operator == (string v)           { _bglStr.areEqual($val, $v, false) }
-    emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
-    emitter eBool operator != (stringObj v)        { (~~_bglStr.areEqual($val, $v, false)) }
-    emitter eBool operator != (string v)           { (~~_bglStr.areEqual($val, $v, false)) }
-    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator == (stringObj v)        { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator == (string v)           { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    emitter eBool operator != (stringObj v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    emitter eBool operator != (string v)           { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
     // Switch comparison — Phase B typed dispatch
-    emitter eBool operator switch(stringLiteral v) { _bglStr.areEqual($val, $v, false) }
-    emitter eBool operator switch(stringObj v)        { _bglStr.areEqual($val, $v, false) }
+    emitter eBool operator switch(stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator switch(stringObj v)        { _bglStr._bglText_areEqual($val, $v, false) }
 
     // Comparison published for generic containers. `static` means no receiver, so these
     // emit as free routines whose address array<T> can be handed — the only shape that can
@@ -1408,7 +1413,7 @@ emitter class stringObj {
     // on a slot it has no receiver for. Guarded: a slot may hold 0 (never written) or a
     // packed literal (not pool-owned), and neither is ours to free.
     static void deinit(var s) {
-        #i6 { if(s ~= 0 && s ofclass _bglString) s.free(); }
+        #i6 { if(s ~= 0 && s ofclass _bglString) s._bglText_free(); }
     }
 
     // Assignment published for generic containers — the value form of operator =. setOwned
@@ -1419,8 +1424,8 @@ emitter class stringObj {
     static var operator = (var cur, var v) {
         #i6 {
             if(cur ~= 0 && cur ofclass _bglString) {
-                if(v == 0) { cur.free(); return 0; }
-                cur.set(v);                  ! reuse the allocation this slot already owns
+                if(v == 0) { cur._bglText_free(); return 0; }
+                cur._bglText_set(v);                  ! reuse the allocation this slot already owns
                 return cur;
             }
             if(v == 0) return 0;
@@ -1433,19 +1438,19 @@ emitter class stringObj {
     //
     // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
     // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
-    emitter eBool operator <  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) < 0) }
-    emitter eBool operator <  (stringObj v)        { (_bglStr.compareValues($val, $v, false) < 0) }
-    emitter eBool operator >  (stringLiteral v) { (_bglStr.compareValues($val, $v, false) > 0) }
-    emitter eBool operator >  (stringObj v)        { (_bglStr.compareValues($val, $v, false) > 0) }
-    emitter eBool operator <= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) <= 0) }
-    emitter eBool operator <= (stringObj v)        { (_bglStr.compareValues($val, $v, false) <= 0) }
-    emitter eBool operator >= (stringLiteral v) { (_bglStr.compareValues($val, $v, false) >= 0) }
-    emitter eBool operator >= (stringObj v)        { (_bglStr.compareValues($val, $v, false) >= 0) }
+    emitter eBool operator <  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
+    emitter eBool operator <  (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
+    emitter eBool operator >  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
+    emitter eBool operator >  (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
+    emitter eBool operator <= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) <= 0) }
+    emitter eBool operator <= (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) <= 0) }
+    emitter eBool operator >= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
+    emitter eBool operator >= (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
 
     // Indexed character access
-    emitter char operator[](int pos)                  { _bglStr.getChar($val, $pos) }
-    emitter char operator[]=(int pos, char c)         { $val.setChar($pos,$c) }
-    emitter char operator[]=(int pos, charLiteral c)  { $val.setChar($pos,$c) }
+    emitter char operator[](int pos)                  { _bglStr._bglText_getChar($val, $pos) }
+    emitter char operator[]=(int pos, char c)         { $val._bglText_setChar($pos,$c) }
+    emitter char operator[]=(int pos, charLiteral c)  { $val._bglText_setChar($pos,$c) }
 
     // Query — enables ?., ??, and postfix ? for null (unallocated) checks
     emitter eBool operator ?() { $self ~= 0 }
@@ -1453,64 +1458,64 @@ emitter class stringObj {
     // Methods
     emitter void  print()                          { _bglStr.print($val) }
 
-    emitter stringObj  append(stringObj v)                      { _bglStr.append($val, $v) }
-    emitter stringObj  append(char v)                        { _bglStr.appendChar($val, $v) }
-    emitter stringObj  append(array<char> v)                        { _bglStr.append($val, _bglStr.fromChars($v)) }
-    emitter stringObj  prepend(char v)                       { _bglStr.prependChar($val, $v) }
-    emitter stringObj  prepend(var v)                        { _bglStr.prepend($val, $v) }
-    emitter stringObj prepend(array<char> v) { _bglStr.prepend($val, _bglStr.fromChars($v)) }
-    emitter stringObj  toUpper()                             { _bglStr.toUpper($val) }
-    emitter stringObj  toLower()                             { _bglStr.toLower($val) }
-    emitter stringObj  trim()                                { _bglStr.trim($val) }
-    emitter stringObj  trimLeft()                            { _bglStr.trimLeft($val) }
-    emitter stringObj  trimRight()                           { _bglStr.trimRight($val) }
-    emitter stringObj  reverse()                             { _bglStr.reverse($val) }
-    emitter stringObj  mid(int start, int count)             { _bglStr.mid($val, $start, $count) }
-    emitter stringObj  left(int count)                       { _bglStr.left($val, $count) }
-    emitter stringObj  right(int count)                      { _bglStr.right($val, $count) }
-    emitter stringObj  insert(int pos, var source)           { _bglStr.insert($val, $pos, $source) }
-    emitter stringObj  delete(int pos, int count)            { _bglStr.delete($val, $pos, $count) }
-    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), $replaceText), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(char c, char r)               { _bglStringLockStack.stackDrain(_bglStr.replace($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack.stackDrain(_bglStr.replace($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack.stackDrain(_bglStr.replaceAll($val, $searchText, _bglStringLockStack.stackLock(_bglStr.appendChar("", $r))), _bglStringLockStack.stackMark()) }
-    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr.replace($val, $searchText, $replaceText) }
-    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr.replaceAll($val, $searchText, $replaceText) }
-    emitter stringObj  format(var pattern)                                               { _bglStr.format($val, $pattern) }
-    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr.format($val, $pattern, $p1) }
-    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr.format($val, $pattern, $p1, $p2) }
-    emitter int     length                                { _bglStr.getLength($val) }
-    emitter int     compareTo(var other)                  { _bglStr.compareValues($val, $other, false) }
-    emitter int compareTo(array<char> other) { _bglStr.compareValues($val, _bglStr.fromChars($other), false) }
-    emitter int     compareTo(var other, bool ci)         { _bglStr.compareValues($val, $other, $ci) }
-    emitter int     indexOf(var searchText)               { _bglStr.indexOf($val, $searchText, 0) }
-    emitter int indexOf(array<char> searchText) { _bglStr.indexOf($val, _bglStr.fromChars($searchText), 0) }
-    emitter eBool   startsWith(var prefix)                { _bglStr.startsWith($val, $prefix, false) }
-    emitter eBool startsWith(array<char> prefix) { _bglStr.startsWith($val, _bglStr.fromChars($prefix), false) }
-    emitter eBool   endsWith(var suffix)                  { _bglStr.endsWith($val, $suffix, false) }
-    emitter eBool endsWith(array<char> suffix) { _bglStr.endsWith($val, _bglStr.fromChars($suffix), false) }
-    emitter eBool   contains(var searchText)              { _bglStr.contains($val, $searchText) }
-    emitter eBool contains(array<char> searchText) { _bglStr.contains($val, _bglStr.fromChars($searchText)) }
+    emitter stringObj  append(stringObj v)                      { _bglStr._bglText_append($val, $v) }
+    emitter stringObj  append(char v)                        { _bglStr._bglText_appendChar($val, $v) }
+    emitter stringObj  append(array<char> v)                        { _bglStr._bglText_append($val, _bglStr._bglText_fromChars($v)) }
+    emitter stringObj  prepend(char v)                       { _bglStr._bglText_prependChar($val, $v) }
+    emitter stringObj  prepend(var v)                        { _bglStr._bglText_prepend($val, $v) }
+    emitter stringObj prepend(array<char> v) { _bglStr._bglText_prepend($val, _bglStr._bglText_fromChars($v)) }
+    emitter stringObj  toUpper()                             { _bglStr._bglText_toUpper($val) }
+    emitter stringObj  toLower()                             { _bglStr._bglText_toLower($val) }
+    emitter stringObj  trim()                                { _bglStr._bglText_trim($val) }
+    emitter stringObj  trimLeft()                            { _bglStr._bglText_trimLeft($val) }
+    emitter stringObj  trimRight()                           { _bglStr._bglText_trimRight($val) }
+    emitter stringObj  reverse()                             { _bglStr._bglText_reverse($val) }
+    emitter stringObj  mid(int start, int count)             { _bglStr._bglText_mid($val, $start, $count) }
+    emitter stringObj  left(int count)                       { _bglStr._bglText_left($val, $count) }
+    emitter stringObj  right(int count)                      { _bglStr._bglText_right($val, $count) }
+    emitter stringObj  insert(int pos, var source)           { _bglStr._bglText_insert($val, $pos, $source) }
+    emitter stringObj  delete(int pos, int count)            { _bglStr._bglText_delete($val, $pos, $count) }
+    emitter stringObj  replace(char c, var replaceText)      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), $replaceText), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(char c, var replaceText)   { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), $replaceText), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(char c, char r)               { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(char c, char r)            { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(var searchText, char r)       { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replace($val, $searchText, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replaceAll(var searchText, char r)    { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_replaceAll($val, $searchText, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $r))), _bglStringLockStack._bglText_stackMark()) }
+    emitter stringObj  replace(var searchText, var replaceText)    { _bglStr._bglText_replace($val, $searchText, $replaceText) }
+    emitter stringObj  replaceAll(var searchText, var replaceText) { _bglStr._bglText_replaceAll($val, $searchText, $replaceText) }
+    emitter stringObj  format(var pattern)                                               { _bglStr._bglText_format($val, $pattern) }
+    emitter stringObj  format(var pattern, string | stringObj p1)                        { _bglStr._bglText_format($val, $pattern, $p1) }
+    emitter stringObj  format(var pattern, string | stringObj p1, string | stringObj p2) { _bglStr._bglText_format($val, $pattern, $p1, $p2) }
+    emitter int     length                                { _bglStr._bglText_getLength($val) }
+    emitter int     compareTo(var other)                  { _bglStr._bglText_compareValues($val, $other, false) }
+    emitter int compareTo(array<char> other) { _bglStr._bglText_compareValues($val, _bglStr._bglText_fromChars($other), false) }
+    emitter int     compareTo(var other, bool ci)         { _bglStr._bglText_compareValues($val, $other, $ci) }
+    emitter int     indexOf(var searchText)               { _bglStr._bglText_indexOf($val, $searchText, 0) }
+    emitter int indexOf(array<char> searchText) { _bglStr._bglText_indexOf($val, _bglStr._bglText_fromChars($searchText), 0) }
+    emitter eBool   startsWith(var prefix)                { _bglStr._bglText_startsWith($val, $prefix, false) }
+    emitter eBool startsWith(array<char> prefix) { _bglStr._bglText_startsWith($val, _bglStr._bglText_fromChars($prefix), false) }
+    emitter eBool   endsWith(var suffix)                  { _bglStr._bglText_endsWith($val, $suffix, false) }
+    emitter eBool endsWith(array<char> suffix) { _bglStr._bglText_endsWith($val, _bglStr._bglText_fromChars($suffix), false) }
+    emitter eBool   contains(var searchText)              { _bglStr._bglText_contains($val, $searchText) }
+    emitter eBool contains(array<char> searchText) { _bglStr._bglText_contains($val, _bglStr._bglText_fromChars($searchText)) }
     /// The position of the character `c`, or -1.
-    emitter int     indexOf(char c)                       { _bglStringLockStack.stackDrain(_bglStr.indexOf($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), 0), _bglStringLockStack.stackMark()) }
+    emitter int     indexOf(char c)                       { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_indexOf($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), 0), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text starts with the character `c`.
-    emitter eBool   startsWith(char c)                    { _bglStringLockStack.stackDrain(_bglStr.startsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   startsWith(char c)                    { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_startsWith($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text ends with the character `c`.
-    emitter eBool   endsWith(char c)                      { _bglStringLockStack.stackDrain(_bglStr.endsWith($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   endsWith(char c)                      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_endsWith($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text holds the character `c`.
-    emitter eBool   contains(char c)                      { _bglStringLockStack.stackDrain(_bglStr.contains($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    emitter eBool   contains(char c)                      { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_contains($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c))), _bglStringLockStack._bglText_stackMark()) }
     /// A copy with the character `c` inserted at `pos`.
-    emitter stringObj insert(int pos, char c)             { _bglStringLockStack.stackDrain(_bglStr.insert($val, $pos, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c))), _bglStringLockStack.stackMark()) }
+    emitter stringObj insert(int pos, char c)             { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_insert($val, $pos, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c))), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text is the one character `c`.
-    emitter eBool   operator == (char c)                  { _bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark()) }
+    emitter eBool   operator == (char c)                  { _bglStringLockStack._bglText_stackDrain(_bglStr._bglText_areEqual($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark()) }
     /// True when the text is not the one character `c`.
-    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack.stackDrain(_bglStr.areEqual($val, _bglStringLockStack.stackLock(_bglStr.appendChar("", $c)), false), _bglStringLockStack.stackMark())) }
-    emitter eBool   isEmpty()                             { _bglStr.isEmpty($val) }
-    emitter void    capture()                             { $self.capture() }
-    emitter void    release()                             { $self.release() }
-    emitter void    captureOutput(object obj, property prop)   { $self.captureOutput($obj, $prop) }
+    emitter eBool   operator != (char c)                  { (~~_bglStringLockStack._bglText_stackDrain(_bglStr._bglText_areEqual($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark())) }
+    emitter eBool   isEmpty()                             { _bglStr._bglText_isEmpty($val) }
+    emitter void    capture()                             { $self._bglText_capture() }
+    emitter void    release()                             { $self._bglText_release() }
+    emitter void    captureOutput(object obj, property prop)   { $self._bglText_captureOutput($obj, $prop) }
 
     // NOTE: no `static operator =` is published yet, so array<stringObj> slot writes
     // take core's raw word store and the developer owns the lifecycle explicitly:
@@ -1527,24 +1532,26 @@ emitter class stringObj {
 /// The `"…"` literal gains `<string>`'s content comparison and query methods, so a literal can be
 /// compared and searched without first being copied into a `stringObj`.
 extend class stringLiteral {
-    emitter stringObj operator + (string v)      { _bglStr.append($self, $v) }
-    emitter stringObj operator + (stringObj v)   { _bglStr.append($self, $v) }
-    emitter stringObj operator + (charLiteral c) { _bglStr.appendChar($self, $c) }
+    emitter stringObj operator + (string v)      { _bglStr._bglText_append($self, $v) }
+    emitter stringObj operator + (stringObj v)   { _bglStr._bglText_append($self, $v) }
+    emitter stringObj operator + (charLiteral c) { _bglStr._bglText_appendChar($self, $c) }
 
     // Upgrade the literal's own comparison too. Core declares these as address
     // equality; without replacing them here a literal-on-the-left comparison
     // (`"a" == "a"`) would keep core semantics even with <string> included, while
     // the same test with a string on the left compared by content.
-    replace emitter eBool operator == (stringLiteral v) { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator == (string v)        { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator == (stringObj v)     { _bglStr.areEqual($val, $v, false) }
-    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr.areEqual($val, $v, false)) }
-    replace emitter eBool operator != (string v)        { (~~_bglStr.areEqual($val, $v, false)) }
-    replace emitter eBool operator != (stringObj v)     { (~~_bglStr.areEqual($val, $v, false)) }
-    emitter eBool operator =~ (stringLiteral v) { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (string v)        { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
-    emitter eBool operator =~ (stringObj v)     { _bglStr.areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    replace emitter eBool operator != (string v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    replace emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 }
 
-replace emitter void print(string str) { _bglStr.print($str) }
-emitter void print(stringObj str) { _bglStr.print($str) }
+extend _bglOutput {
+    replace emitter void print(string str) { _bglStr.print($str) }   /// Print `str`.
+    emitter void print(stringObj str) { _bglStr.print($str) }        /// Print `str`.
+}

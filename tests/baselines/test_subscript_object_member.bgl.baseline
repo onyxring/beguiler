@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 class _bglClass_thing
   class object
@@ -113,7 +112,7 @@ class _bglClass_rule
     ]
 ;
 Array _bglhdr_book --> $9084 2;
-array book table _bglanon4 _bglanon5;
+array book table _bglanon6 _bglanon7;
 [main v _bgl_tempL0;
     print ( _bglAt(book, 1, 0)-->0 ).pri;
     _bgl_tempL0 = ( _bglAt(book, 0, 0)-->0 ).matcher;
@@ -121,11 +120,11 @@ array book table _bglanon4 _bglanon5;
     v = ( _bglAt(book, 0, 0)-->0 ).run();
     print v;
 ];
-_bglClass_rule _bglanon4
+_bglClass_rule _bglanon6
   with matcher shirt,
        pri 5
 ;
-_bglClass_rule _bglanon5
+_bglClass_rule _bglanon7
   with matcher shirt,
        pri 7
 ;
@@ -147,7 +146,7 @@ _bglClass_rule _bglanon5
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

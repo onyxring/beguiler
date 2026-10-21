@@ -1,0 +1,6 @@
+// Negative test: <string> and <stringObj> both provide stringObj, so a program includes one of them.
+// EXPECT_ERROR: both provide stringObj; include one of them
+#beguilerSettings { target = z5; informName = "none"; }
+#include <stringObj>
+#include <string>
+void main(){ print("x"); }

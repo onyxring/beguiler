@@ -179,4 +179,6 @@ extend class _bglMath {
     emitter float abs(float v)           { _bglFloatAbs($v) }       /// Return the absolute value of `v`.
 }
 
-emitter void print(float c){ _bglFloatPrintDecimal($c); }  /// Print `c` as a decimal rounded to four places.
+extend _bglOutput {
+    emitter void print(float c){ _bglFloatPrintDecimal($c); }  /// Print `c` as a decimal rounded to four places.
+}

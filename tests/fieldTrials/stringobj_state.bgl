@@ -1,0 +1,138 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: stringObj heap state across save, restore, undo and restart — a global that grows well
+// past one capture's worth of characters by `+=` before a save and is then grown, emptied and
+// reassigned, a captured global snapshot near the capture limit, a member that grows by captured
+// appends and a member with an initializer; a bloat verb that grows a string by a thousand characters
+// in one turn (heap compaction), a churn verb typed repeatedly between saves, undo of grow/bloat/churn
+// turns, and restart followed by a rebuild and a second save/restore. Contents and lengths are read
+// back after every phase, and the big string is verified against a rebuilt copy.
+
+#beguilerSettings {
+    target = z5;
+    stringHeapSize = 8192;
+    includePaths = "../../../inform6/stdlib";
+}
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+
+extend class object {
+    string description;
+}
+
+stringObj big;
+stringObj snapshot;
+int notes = 0;
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+object slate {
+    "slate";
+    parent = roomA;
+    name = {.slate};
+    stringObj body;
+    stringObj tag = "T0";
+    description = "A slate.";
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+// True when big is exactly its length / 10 copies of the ten-character block.
+bool bigIntact() {
+    if (big.length % 10 != 0) return false;
+    stringObj e;
+    for (int i = 0; i < big.length / 10; i++) e += "abcdefghij";
+    return e == big;
+}
+
+stringObj head(stringObj s, int n) {
+    if (s.length >= n) return s.left(n);
+    return s;
+}
+
+stringObj tail(stringObj s, int n) {
+    if (s.length >= n) return s.right(n);
+    return s;
+}
+
+verb Dump {
+    meta = true;
+    grammar = {.dump};
+    void handler() {
+        printLine($"Big: len {big.length} head [{head(big, 12)}] tail [{tail(big, 12)}] intact {bigIntact()}");
+        printLine($"Body: len {slate.body.length} [{slate.body}] tag [{slate.tag}] notes {notes}");
+        printLine($"Snap: len {snapshot.length} head [{head(snapshot, 6)}] tail [{tail(snapshot, 6)}]");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        for (int i = 0; i < 10; i++) big += "abcdefghij";
+        printLine("Grew.");
+    }
+}
+
+verb Bloat {
+    grammar = {.bloat};
+    void handler() {
+        for (int i = 0; i < 100; i++) big += "abcdefghij";
+        printLine("Bloated.");
+    }
+}
+
+verb Note {
+    grammar = {.note};
+    void handler() {
+        slate.body += $"({notes})";
+        notes++;
+        printLine("Noted.");
+    }
+}
+
+verb Snap {
+    grammar = {.snap};
+    void handler() {
+        snapshot = $"{big.left(480)}|{notes}";
+        printLine("Snapped.");
+    }
+}
+
+verb Reset {
+    grammar = {.reset};
+    void handler() {
+        big = "";
+        slate.body = "";
+        slate.tag = "changed-and-longer-than-sixteen";
+        snapshot = "x";
+        printLine("Reset.");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        stringObj t;
+        for (int i = 0; i < 40; i++) t += "0123456789";
+        stringObj u = $"{t.left(100)}/{notes}";
+        stringObj v = u.toUpper().reverse();
+        stringObj keep = big;
+        big += v;
+        big = keep;
+        if (big != keep) printLine("Bad churn.");
+        printLine("Churned.");
+    }
+}

@@ -162,7 +162,7 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 |---|---|---|
 | `bgl.ui.statusBar.height` read | the library's tracked current height | the library's tracked current height |
 | `bgl.ui.statusBar.height` write | the library's status-line-height routine | sets the library's persistent height and splits immediately |
-| `bgl.ui.statusBar.id` | the library's status window (Glulx); `null` (Z-machine) | `null` |
+| `bgl.ui.statusBar.id` | the library's status window (Glulx); `0`, read-only (Z-machine) | `0`, read-only |
 | `bgl.ui.mainWin.id` | the library's main window | the core's (`0`) |
 
 ### 23.3.9 Banner Texts

@@ -60,7 +60,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 [main a b c s ch flag autoInt autoChar i j;
     a = 5;

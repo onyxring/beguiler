@@ -561,7 +561,9 @@ extern verb NotUnderstood { }   /// Runs when a command to a character is not un
 union stringOrRoutine = string | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }
 }
-emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }
+extend _bglOutput {
+    emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
+}
 // A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
 superposed void _bglPrintOrRun(stringOrRoutine v){
     #i6 {
@@ -641,7 +643,9 @@ extend class object {
     }
 #else // Z-code
     extend _bglStatus {
-        replace auto id = null; // Z-code doesn't maintain ids for windows
+        replace auto id = {   // the Z-machine has no window ids
+            int operator() { return 0; }
+        }
         replace auto height = {
             int operator()        { return gg_statuswin_cursize; }
             void operator = (int v){ gg_statuswin_size = v; StatusLineHeight(v); }
@@ -1000,13 +1004,14 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
     #Endif;
 }
 
-// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize. Its
-// grammar follows the library's own.
+// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize (and
+// stringHeapSize, with <stringObj>). Its grammar follows the library's own.
 #emitlast {
     #Ifdef DEBUG;
     [ _bglHeapVerbSub;
-        if (_bglHeap == 0) "Heap: nothing allocated yet.";
-        print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+        if (_bglHeap == 0) print "Heap: nothing allocated yet.^";
+        else print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+        #Ifdef _bglStrHeapReport; _bglStrHeapReport(); #Endif;
     ];
     Verb meta 'heap' * -> _bglHeapVerb;
     #Endif;

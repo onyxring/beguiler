@@ -55,7 +55,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 Array _bglcap_task_scores -> 0 15;
 Array task_scores buffer 5 10 5 10 5 5 5 5 10 5 10 5 5 5 10;

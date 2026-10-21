@@ -1,0 +1,46 @@
+Room A
+> status
+Now: ga[alpha](5) gb[beta](4) gc[gamma](5)
+Now: ma[mu](2) mb[nu](2)
+> grow
+Grown: ga[alphaabababababababababababababababababababab](45) gb[betacdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd](44) gc[gamma01234567890123456789](25)
+Grown: ma[mu01234567890123456789](22) mb[nudddddddddddddddddddd](22)
+> status
+Now: ga[alphaabababababababababababababababababababab](45) gb[betacdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd](44) gc[gamma01234567890123456789](25)
+Now: ma[mu01234567890123456789](22) mb[nudddddddddddddddddddd](22)
+> shrink
+Shrunk: ga[alpha](5) gb[beta](4) gc[g](1)
+Shrunk: ma[](0) mb[nu](2)
+> grow
+Grown: ga[alphaabababababababababababababababababababab](45) gb[betacdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd](44) gc[g01234567890123456789](21)
+Grown: ma[01234567890123456789](20) mb[nudddddddddddddddddddd](22)
+> shrink
+Shrunk: ga[alpha](5) gb[beta](4) gc[g](1)
+Shrunk: ma[](0) mb[nu](2)
+> eph
+ga is 45: #############################################
+gb is 15: ####012345678##
+gc is 9: ##0123###
+ma is 8: [012345]
+s is 12: 012340123456
+## 012 ### 01234567
+Reset: ga[alpha](5) gb[beta](4) gc[gamma](5)
+Reset: ma[mu](2) mb[nu](2)
+> status
+Now: ga[alpha](5) gb[beta](4) gc[gamma](5)
+Now: ma[mu](2) mb[nu](2)
+#repeat 200
+> churn
+Churned.
+> status
+Now: ga[alpha](5) gb[beta](4) gc[gamma](5)
+Now: ma[mu](2) mb[nu](2)
+> near
+Big is 1800 characters.
+012345678901 890123456789 5678901234
+Content ok: true
+Near: ga[alpha!](6) gb[beta](4) gc[gamma](5)
+Near: ma[mu](2) mb[nu?](3)
+> status
+Now: ga[alpha](5) gb[beta](4) gc[gamma](5)
+Now: ma[mu](2) mb[nu](2)

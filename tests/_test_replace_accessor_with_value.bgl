@@ -1,0 +1,14 @@
+// Negative test: replacing an accessor member with a value would leave reads compiled before the replace
+// calling the accessor, so the kind must stay.
+// EXPECT_ERROR: 'replace' can't change 'id' from an accessor to a value
+#beguilerSettings { target = z5; informName = "none"; }
+object holder {
+    auto id = {
+        int _id = 0;
+        int operator() { return _id; }
+    }
+}
+extend holder {
+    replace auto id = null;
+}
+void main(){ print(holder.id); }

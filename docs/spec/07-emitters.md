@@ -375,7 +375,7 @@ The declaration is written at file scope.
 
 A global emitter is declared at file scope and is used like a global function, with its body
 substituted at each use site. `$self` has no meaning in a global emitter. Global emitters may be
-overloaded; the overload is selected by argument type. `print()` and `log()` are global emitters
+overloaded; the overload is selected by argument type. `print()` is a global emitter
 (§21.4).
 
 **Example**

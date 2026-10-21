@@ -1,0 +1,20 @@
+// run_ternary_string_operand_held — a ?: whose result is a string temporary is computed ahead of the
+// expression it sits in, and is held until that expression is done: the right operand of `+`, which
+// Inform 6 evaluates first and which allocates strings, can't take its buffer.
+// EXPECT_OUTPUT: BRabr BRabr
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 { Constant bglStringPoolReserve 16; }   // the recursion holds several strings at once
+#include <stringObj>
+stringObj everyOther(stringObj s) {
+    if (s.length < 2) return s;
+    stringObj rest = s.mid(2, 99);
+    return everyOther(rest).prepend(s[0]);
+}
+void main() {
+    bglInit();
+    stringObj t = "BRASS KEY";
+    int c = 3;
+    stringObj a = (c > 5 ? t.left(3) : t.left(2)) + everyOther("amber");
+    stringObj b = (t.left(2) ?? t) + everyOther("amber");
+    print($"{a} {b}");
+}

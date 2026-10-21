@@ -1,0 +1,21 @@
+// run_stringobj_heap_peak — in a debug build the `heap` verb reports the string heap: its size (the
+// stringHeapSize setting), the bytes in use and the most the run needed.
+// BEGUILER_FLAGS: --debug
+// EXPECT_OUTPUT: String heap: 3000 bytes;
+// EXPECT_OUTPUT: at most.
+// INPUT: heap
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; stringHeapSize = 3000; }
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; attributes = {light}; }
+stringObj kept = "";
+bool Initialise() {
+    location = roomA;
+    for(int i = 0; i < 30; i++) kept += "abcdefghij";
+    rfalse;
+}
+#includeI6 "grammar"

@@ -157,6 +157,11 @@ string bglParser::processBglConditionals(const string& text){
 // A global emitter emits no Inform 6 symbol, so an emitter body that names one as plain text
 // fails only in Inform 6; it has to be reached through $i6Expr (§7.3.4).
 void bglParser::rejectEmitterNamesInBody(const string& text, const i6Block* blk){
+    // Constants Inform 6 defines itself: the body means them even when a Beguile emitter shares the name.
+    static const std::set<string> i6CompilerConstants = {
+        "wordsize", "target_zcode", "target_glulx", "dict_word_size", "dict_char_size", "dict_is_unicode",
+        "num_attr_bytes", "gobj_ext_start", "indiv_prop_start", "float_infinity", "float_ninfinity", "float_nan"
+    };
     auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
     for(size_t i = 0; i < text.size(); ){
         char c = text[i];
@@ -191,7 +196,8 @@ void bglParser::rejectEmitterNamesInBody(const string& text, const i6Block* blk)
         if(prev == '$' || prev == '.' || prev == '#' || prev == ':' || prev == '@' || prev == '&') continue;
         string word = text.substr(start, i - start);
         transform(word.begin(), word.end(), word.begin(), ::tolower);
-        if(bglLanguageService::isI6StatementKeyword(word)) continue;
+        if(bglLanguageService::isI6StatementKeyword(word) || i6CompilerConstants.count(word)) continue;
+        rejectYieldedGlobalName(word);
         bool emitterOnly = false;
         for(typeDef* g : languageService.globals){
             if(g->name != word) continue;
@@ -203,6 +209,55 @@ void bglParser::rejectEmitterNamesInBody(const string& text, const i6Block* blk)
         if(emitterOnly)
             parsingError(format("emitter body names emitter '{0}', which emits no Inform 6 symbol; "
                                 "write $i6Expr({0}(…)) to expand it.", word));
+    }
+}
+
+// The same check over an `#i6` block's text: a word that isn't one of the routine's locals or parameters.
+void bglParser::rejectYieldedGlobalsInRaw(const string& text, statementBlock* body){
+    auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    // The locals of routines the block defines itself (`[ name a b;`, `prop [ a b;`).
+    set<string> rawLocals;
+    for(size_t b = text.find('['); b != string::npos; b = text.find('[', b + 1)){
+        size_t semi = text.find(';', b);
+        if(semi == string::npos) break;
+        string head = text.substr(b + 1, semi - b - 1);
+        if(head.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ \t\r\n") != string::npos) continue;
+        for(size_t k = 0; k < head.size(); ){
+            if(!isWordChar(head[k])){ k++; continue; }
+            size_t w = k;
+            while(k < head.size() && isWordChar(head[k])) k++;
+            string local = head.substr(w, k - w);
+            transform(local.begin(), local.end(), local.begin(), ::tolower);
+            rawLocals.insert(local);
+        }
+    }
+    for(size_t i = 0; i < text.size(); ){
+        char c = text[i];
+        if(c == '"' || c == '\''){ size_t e = text.find(c, i + 1); i = e == string::npos ? text.size() : e + 1; continue; }
+        if(c == '!'){ size_t e = text.find('\n', i); i = e == string::npos ? text.size() : e + 1; continue; }
+        if(!isWordChar(c)){ i++; continue; }
+        size_t start = i;
+        while(i < text.size() && isWordChar(text[i])) i++;
+        if(isdigit((unsigned char)text[start])) continue;
+        char prev = start > 0 ? text[start - 1] : ' ';
+        if(prev == '$' || prev == '.' || prev == '#' || prev == '@' || prev == '&') continue;
+        string word = text.substr(start, i - start);
+        transform(word.begin(), word.end(), word.begin(), ::tolower);
+        if(currentFunc != nullptr && (qualifyFromParams(word, currentFunc) || qualifyFromBodyLocals(word, body)
+                                      || qualifyFromAncestorBlocks(word, body))) continue;
+        if(rawLocals.count(word)) continue;
+        rejectYieldedGlobalName(word);
+    }
+}
+
+// A Beguile global that yielded its name to a member (§3.11) is emitted as `_g_<name>`; raw Inform 6
+// naming it by its own name would reach the member's property instead.
+void bglParser::rejectYieldedGlobalName(const string& word){
+    for(typeDef* g : languageService.globals){
+        if(g->name != word || g->i6name.rfind("_g_", 0) != 0) continue;
+        if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isEmitter) continue;
+        parsingError(format("'{0}' is emitted as '{1}', since a member holds its name; write $i6Name({0}).", word, g->i6name));
+        return;
     }
 }
 
@@ -1046,6 +1101,7 @@ bool bglParser::directiveI6Block(statementBlock* body, abstractObject& contextOb
         sourceLocation segStart = file.currentLocation();
         string segment = resolveIslandTokens(file.getRawTextUntilCloseOrBgl(directive, depth, depth),
                                              currentFunc, body);
+        rejectYieldedGlobalsInRaw(segment, body);
         if(body != nullptr){
             if(!segment.empty()){
                 i6RawNode* node = new i6RawNode();
@@ -1314,7 +1370,14 @@ bool bglParser::processBeguilerSettings(){
         string memberType;
         if(schema){
             typeMember* m = findMemberInHierarchy(schema, [&](typeMember* tm){ return tm->name == key; });
-            if(!m)
+            // An int setting an extension declares (`extend class beguilerSettingsType`) may come from an
+            // include below this block: it is checked once the whole program is read.
+            if(!m && file.peekToken().is(eTokenType::integer)){
+                auto d = file.getCurrentFileDetail();
+                cfg.settingsToCheck.push_back({key, format("{0}:{1}:{2}: ", get<1>(d), get<2>(d), get<3>(d))});
+                memberType = "int";
+            }
+            else if(!m)
                 parsingError(format("Unknown beguilerSettings property '{0}'", key));
             if(auto* vd = dynamic_cast<variableDeclaration*>(m))
                 memberType = vd->type.name;
@@ -1357,6 +1420,8 @@ bool bglParser::processBeguilerSettings(){
         }
 
         // Per-property storage and semantic validation
+        if(memberType == "int" && val.is(eTokenType::integer) && !cfg.intSettings.count(key))
+            cfg.intSettings[key] = stoi(strVal);
         if(key == "errorformat"){
             string upper = strVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
@@ -1496,6 +1561,11 @@ void bglParser::applySchemaDefaults(){
     beguilerSettingsDef& cfg = beguilerSettings;
     classDef* schema = languageService.findClass("beguilerSettingstype");
     if(!schema) return;
+    for(auto& [key, at] : cfg.settingsToCheck){
+        auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(schema, [&](typeMember* tm){ return tm->name == key; }));
+        if(vd == nullptr) parsingError(at + format("Unknown beguilerSettings property '{0}'", key));
+        else if(vd->type.name != "int") parsingError(at + format("beguilerSettings property '{0}' expects a {1} value", key, typeDisplayName(vd->type.name)));
+    }
 
     for(typeMember* m : schema->members){
         variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);

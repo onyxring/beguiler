@@ -1,0 +1,39 @@
+// run_stringobj_heap — <stringObj>: strings grow past <string>'s 500-char buffers, a growing replaceAll,
+// captures (nested too) once the big strings are freed, and enough churn to compact the string heap while
+// other strings stay live.
+// EXPECT_OUTPUT: grow 600 replace 780 ABCDEFde capture [n=42 second] nest (4(3(2(1)))) churn 230 keep 55 second firstxx
+#beguilerSettings { target = z5; informName = "none"; }
+#include <stringObj>
+stringObj keep1 = "first";
+stringObj keep2 = "second";
+void churn(int k){
+    stringObj t = "";
+    for(int i = 0; i < 40; i++) t += $"{k}:{i},";
+    if(k == 49) print($"churn {t.length} ");
+}
+void grow(){
+    stringObj c = "";
+    for(int i = 0; i < 60; i++) c += "abcdefghij";
+    print($"grow {c.length} ");
+    stringObj e = c.replaceAll("abc", "ABCDEF");
+    print($"replace {e.length} {e.left(8)} ");
+}
+stringObj nest(int depth){
+    stringObj here;
+    here.capture();
+    print($"({depth}");
+    if(depth > 1) print(nest(depth - 1));
+    print(")");
+    here.release();
+    return here;
+}
+void main(){
+    bglInit();
+    grow();
+    int n = 42;
+    stringObj d = $"n={n} {keep2}";
+    print($"capture [{d}] ");
+    print($"nest {nest(4)} ");
+    for(int k = 0; k < 50; k++){ churn(k); keep1 += "x"; }
+    print($"keep {keep1.length} {keep2} {keep1.left(7)}^");
+}

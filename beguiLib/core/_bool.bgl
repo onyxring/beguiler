@@ -34,5 +34,7 @@ primitive class bool {
     emitter eBool operator ! (){ ~~$val }              /// True when the value is false.
 }
 
-emitter void print(bool b){ if($b == true) print "true"; else print "false"; }   /// Print `true` or `false`.
-emitter void print(eBool b){ if($b == true) print "true"; else print "false"; }  /// Print `true` or `false`.
+extend _bglOutput {
+    emitter void print(bool b){ if($b == true) print "true"; else print "false"; }   /// Print `true` or `false`.
+    emitter void print(eBool b){ if($b == true) print "true"; else print "false"; }  /// Print `true` or `false`.
+}

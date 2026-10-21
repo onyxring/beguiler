@@ -1,0 +1,15 @@
+// run_asi6_forward_member — code above a struct or an object reads its members by their `asI6` names, as code
+// below it does.
+// EXPECT_OUTPUT: area 12 raw 12 held 5 raw 5
+#beguilerSettings { target = z5; informName = "none"; }
+int area(dims d){ return d.w * d.h; }
+int peek(){ return holder.v; }
+struct dims { inline int w asI6 _dims_w = 0; int h asI6 _dims_h = 0; }
+object holder { int v asI6 _holder_v = 5; }
+void main(){
+    bglInit();
+    dims a; a.w = 3; a.h = 4;
+    int raw = 0; int rawHeld = 0;
+    #i6 { raw = a._dims_w * a._dims_h; rawHeld = holder._holder_v; }
+    print($"area {area(a)} raw {raw} held {peek()} raw {rawHeld}");
+}

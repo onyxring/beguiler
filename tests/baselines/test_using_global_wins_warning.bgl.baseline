@@ -7,7 +7,6 @@ constant _bglWorldBufSize = 128;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
-global ptrSize = 2;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;
@@ -56,13 +55,13 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 object myLib
-  with _m_ptrsize 4,
+  with ptrsize 4,
        other 9
 ;
+global _g_ptrSize = 2;
 [main ws;
-    ws=ptrsize;
+    ws=_g_ptrSize;
     print ws + mylib.other;
 ];

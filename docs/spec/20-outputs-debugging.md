@@ -49,7 +49,7 @@ hand-written `.inf` beside the source.
   bundle**, `<source file name>.bgldbg`, beside the transpiled file.
 - Inform 6 is run with `-D`, so the library's debugging features are present: its debugging verbs
   (`tree`, `purloin`, `actions`, …) and action tracing.
-- The symbol `DEBUG` is defined (Appendix F), which turns on `log()` (§21.4). The library bindings
+- The symbol `DEBUG` is defined (Appendix F), which turns on `bgl.output.log()` (§21.4). The library bindings
   declare their debugging verbs only under it, so a program that names one outside `#if DEBUG` fails
   to compile in an ordinary build.
 

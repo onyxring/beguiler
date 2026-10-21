@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 class _bglClass_menu
   class object
@@ -123,18 +122,18 @@ _bglClass_menu _child
        title "a child",
        words 'foo' 'bar' 'baz' 3 
 ;
-_bglClass_menu _bglanon4
+_bglClass_menu _bglanon6
   with linkto root,
        title "text to display",
        words 'type' 'kind' 2 
 ;
-_bglClass_menu _bglanon5
+_bglClass_menu _bglanon7
   with title "lonely"
 ;
 _bglClass_wrapper w
-  with head _bglanon6
+  with head _bglanon8
 ;
-_bglClass_menu _bglanon6
+_bglClass_menu _bglanon8
   with linkto root,
        title "nested",
        words 'x//' 1 
@@ -157,7 +156,7 @@ _bglClass_menu _bglanon6
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

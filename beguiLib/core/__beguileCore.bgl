@@ -7,6 +7,9 @@
    -----------------------------------------------------------------------------*/
 #once
 
+//-- Output ----------------------------------------------------------------------
+#include <core/_output>
+
 //-- Core types ----------------------------------------------------------------
 #include <core/_array>
 #include <core/_attribute>
@@ -95,18 +98,6 @@ primitive class bglClass{
 }
 
 //-- Global routines -----------------------------------------------------------
-emitter void print(var val){ print $val; }                                                           /// Print a value of a type with no print() of its own.
-emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;}  /// Print an object: its own print() if it has one, otherwise its name.
-/// Print `msg`, but only in a debug build.
-emitter void log(var msg){
-    ##if DEBUG
-    $i6Expr(print($msg));
-    ##endif
-}
-emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }                                  /// Print `val` the way `print(val)` would, then a newline.
-emitter void printLine(interpolatedStringLiteral val){ $val; print "^"; }                            /// Print an interpolated string, then a newline.
-emitter void printLine(){ print "^"; }                                                               /// Print a newline.
-emitter void printName(object o){ print (name)$o; }                                                  /// Print an object's name, with no article.
 extern void bglInit();                                                                               /// Start the Beguile runtime; runs before the game's own main.
 
 //-- Blorb assets --------------------------------------------------------------
@@ -118,8 +109,8 @@ union eAssets = eImages | eSounds | eUnknownAsset;   /// Any packaged asset.
 //-- Utility types -------------------------------------------------------------
 /// A width and a height.
 superposed struct bglSize{
-    inline int width=0;    /// The width.
-    inline int height=0;   /// The height.
+    inline int width asI6 _bglSize_width = 0;     /// The width.
+    inline int height asI6 _bglSize_height = 0;   /// The height.
     /// Copy another size.
     bglSize operator = (bglSize s){
         self.width=s.width;

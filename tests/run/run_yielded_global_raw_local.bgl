@@ -1,0 +1,8 @@
+// run_yielded_global_raw_local — a global that yields its name to a member (`owner` → `_g_owner`) doesn't
+// reject an included #i6 routine whose own local has that name.
+// EXPECT_OUTPUT: hi 5
+#beguilerSettings { target = z5; informName = "none"; }
+#include <stringObj>
+class Pet { int owner = 0; }
+int owner = 5;
+void main(){ bglInit(); stringObj s = "hi"; print(s); print(" "); print(owner); }

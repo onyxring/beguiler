@@ -226,7 +226,17 @@ string i6Emitter::resolvedOutput(){
             std::cerr << "WARNING: nothing calls bglInit(), so this program starts with the BLR "
                          "uninitialized.\n";
     }
+    // The marker names a global past a local of its name; what follows it is emitted as Inform 6 knows the global.
     for(const string marker : {string(kGlobalEscapeMarker), string("_bglg_")})   // a canonical (lowercased) name keeps it too
+        for(size_t p = 0; (p = buf.find(marker, p)) != string::npos; ){
+            size_t s = p + marker.size(), e = s;
+            while(e < buf.size() && (isalnum((unsigned char)buf[e]) || buf[e] == '_')) e++;
+            string name = buf.substr(s, e - s);
+            string i6 = name.empty() ? name : parser.globalI6Name(name);
+            buf.replace(p, e - p, i6);
+            p += i6.size();
+        }
+    for(const string marker : {string(kPropertyEscapeMarker), string("_bglp_")})
         for(size_t p = 0; (p = buf.find(marker, p)) != string::npos; )
             buf.erase(p, marker.size());
     // A debug build compiles Inform 6's veneer with tracing, which uses `debug_flag`, `workflag` and
@@ -1884,30 +1894,34 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
             size_t end = buf.find("\n;\n", start);
             if(end == string::npos) continue;
             end += 3;
-            // Lines of the block; an item is `  with NAME [` or `       NAME [` through `  ],` / `  ]`.
+            // Lines of the block. Each property starts on a line `  with NAME` or `       NAME`: a method
+            // (`NAME [`) runs to `  ],` / `  ]`; a data property runs to the next property.
             vector<string> lines;
             for(size_t p = start; p < end; ){
                 size_t e = buf.find('\n', p);
                 lines.push_back(buf.substr(p, e - p));
                 p = e + 1;
             }
-            struct Item { string name; size_t first, last; };
+            struct Item { string name; size_t first, last; bool isMethod; };
             vector<Item> items;
-            static const regex itemHead(R"(^(  with |       )([A-Za-z_]\w*) \[)");
-            for(size_t i = 1; i < lines.size(); i++){
+            static const regex itemHead(R"(^(  with |       )([A-Za-z_]\w*)( \[)?)");
+            bool understood = lines.size() >= 3;
+            for(size_t i = 1; understood && i + 1 < lines.size(); ){
                 smatch m;
-                if(!regex_search(lines[i], m, itemHead)) continue;
+                if(!regex_search(lines[i], m, itemHead)){ understood = false; break; }
+                bool isMethod = m[3].matched;
+                string name = m[2].str();
                 size_t j = i;
-                while(j < lines.size() && lines[j] != "  ]," && lines[j] != "  ]") j++;
-                if(j == lines.size()){ items.clear(); break; }   // not a shape this pass understands
-                items.push_back({m[2].str(), i, j});
-                i = j;
+                if(isMethod){
+                    while(j + 1 < lines.size() && lines[j] != "  ]," && lines[j] != "  ]") j++;
+                    if(lines[j] != "  ]," && lines[j] != "  ]"){ understood = false; break; }
+                } else {
+                    while(j + 2 < lines.size() && !regex_search(lines[j + 1], m, itemHead)) j++;
+                }
+                items.push_back({name, i, j, isMethod});
+                i = j + 1;
             }
-            if(items.empty()) continue;
-            // Every non-item line between items would be data; leave such objects whole.
-            bool onlyItems = true;
-            for(size_t k = 0; k + 1 < items.size(); k++) if(items[k].last + 1 != items[k+1].first) onlyItems = false;
-            if(!onlyItems || items.front().first != 1 || items.back().last + 2 != lines.size()) continue;
+            if(!understood || items.empty()) continue;
             vector<bool> keep(items.size(), true);
             vector<string> itemTexts(items.size());
             for(size_t k = 0; k < items.size(); k++)
@@ -1915,6 +1929,7 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
             auto explicitIt = explicitMethods.find(lc(name));
             bool isSuperposedObject = splicedSuperposedObjects.count(name) > 0;
             for(size_t k = 0; k < items.size(); k++){
+                if(!items[k].isMethod) continue;   // data stays
                 string w = lc(items[k].name);
                 if(explicitIt != explicitMethods.end() && explicitIt->second.count(w)){
                     string qualified = lc(name) + "." + w;
@@ -1939,7 +1954,13 @@ void i6Emitter::pruneSuperposedObjectMethods(string& buf){
                 for(size_t i = items[k].first; i <= items[k].last; i++){
                     string l = lines[i];
                     if(i == items[k].first) l = (firstKept ? "  with " : "       ") + l.substr(7);
-                    if(i == items[k].last) l = k == lastKept ? "  ]" : "  ],";
+                    if(i == items[k].last){
+                        if(items[k].isMethod) l = k == lastKept ? "  ]" : "  ],";
+                        else {
+                            while(!l.empty() && (l.back() == ',' || l.back() == ' ')) l.pop_back();
+                            if(k != lastKept) l += ",";
+                        }
+                    }
                     newLine[i] = (int)out.size();
                     out.push_back(l);
                 }
@@ -2039,15 +2060,16 @@ if(languageService.bufInUse){
 for(typeDef* g : languageService.globals){
     auto* vd = dynamic_cast<variableDeclaration*>(g);
     if(vd != nullptr && vd->needsEarlyGlobalDecl && !vd->isExternal && !vd->isConst){
+        const string& gname = vd->i6name.empty() ? vd->dName() : vd->i6name;
         // Carry the initializer when there is one: this is the whole declaration, moved, and pass
         // 3 skips the name once it is here. A global whose own initializer was deferred has had it
         // cleared, so it declares bare and bglInit assigns it.
         if(vd->declaredExpressionValue != nullptr)
-            out << format("global {0} = {1};\n", vd->dName(), staticText(vd->declaredExpressionValue));
+            out << format("global {0} = {1};\n", gname, staticText(vd->declaredExpressionValue));
         else if(globalOwnsInstance(vd))
-            out << format("global {0} = {1};\n", vd->dName(), globalInstanceName(vd));   // its own instance (pass 3)
+            out << format("global {0} = {1};\n", gname, globalInstanceName(vd));   // its own instance (pass 3)
         else
-            out << format("global {0};\n", vd->dName());
+            out << format("global {0};\n", gname);
         earlyDeclaredGlobals.insert(vd->name);
     }
 }
@@ -2662,9 +2684,9 @@ for(typeMember* m : classNode->members){
 // The `class <Name>[(N)]` directive line and its I6 inheritance list (emitter bases filtered out).
 void i6Emitter::emitClassHeader(classDef* classNode){
 if(classNode->poolSize > 0){
-    const string& n = classNode->poolSizeExpr.empty()
+    const string n = classNode->poolSizeExpr.empty()
                         ? to_string(classNode->poolSize)
-                        : classNode->poolSizeExpr;
+                        : parser.globalI6Name(classNode->poolSizeExpr);   // a constant, as Inform 6 knows it
     out << format("class {0}({1})\n", classNode->i6Name(), n);
 } else
     out << format("class {0}\n", classNode->i6Name());
@@ -3070,7 +3092,7 @@ void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDecla
             std::string dtor = findStaticDeinit(languageService.findClass(arr->elementType));
             if(dtor.empty()) dtor = valueElementRoutine(arr->elementType, "_bglValFree_");
             if(!dtor.empty())
-                fn->cleanups.push_back({arr->name, format("_bglArray.freeAll({0}, 0, {1});", name, dtor)});
+                fn->cleanups.push_back({arr->name, format("_bglArray._bglArr_freeAll({0}, 0, {1});", name, dtor)});
             fn->cleanups.push_back({arr->name, format("_bglFrameFree({0});", count + 3)});
             allocInner(name, list);
         } else if(arr->isRaw){
@@ -3155,7 +3177,7 @@ void i6Emitter::emitLocalArrayDeclaration(arrayDeclaration* arrLoc, const string
         if(languageService.arrayInUse && !arrLoc->isRaw){
             string dtor = findStaticDeinit(languageService.findClass(arrLoc->elementType));
             if(dtor.empty()) dtor = valueElementRoutine(arrLoc->elementType, "_bglValFree_");
-            if(!dtor.empty()) out << format("{0}_bglArray.freeAll({1}, 0, {2});\n", indent, name, dtor);
+            if(!dtor.empty()) out << format("{0}_bglArray._bglArr_freeAll({1}, 0, {2});\n", indent, name, dtor);
         }
         for(int k = arrLoc->isRaw ? 0 : 1; k <= arrLoc->arraySize; k++)
             out << format("{0}{1}-->{2} = 0;\n", indent, name, k);
@@ -5075,8 +5097,19 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                 auto* fvd = dynamic_cast<variableDeclaration*>(m);
                 if(fvd == nullptr || !seenLife.insert(fvd->name).second) return;
                 string path = "self." + (fvd->i6name.empty() ? fvd->dName() : fvd->i6name);
-                lifecycleCreate  += memberLifecycleText(fvd, path, "init");
+                string made = memberLifecycleText(fvd, path, "init");
+                lifecycleCreate  += made;
                 lifecycleDestroy += memberLifecycleText(fvd, path, "deinit");
+                // Its declared value goes in through the type's `operator =`, once `init` has given it storage.
+                if(!made.empty() && fvd->declaredExpressionValue != nullptr)
+                    if(functionDef* op = parser.emitterAssignOperator(languageService.findClass(fvd->type.name),
+                                                                       fvd->declaredExpressionValue->resolvedType)){
+                        emitterBindings ab; ab.self = path; ab.val = path; ab.trim = emitterTrim::wsSemi; ab.fn = op;
+                        ab.args.push_back(fvd->declaredExpressionValue->text());
+                        string t = parser.expandEmitterBody(dynamic_cast<i6Block*>(op->body), ab);
+                        while(!t.empty() && (t.back() == ';' || isspace((unsigned char)t.back()))) t.pop_back();
+                        if(!t.empty()) lifecycleCreate += "\n" + t + ";";
+                    }
             });
             if(!lifecycleCreate.empty()) lifecycleCreate += "\n";
             if(!lifecycleDestroy.empty()) lifecycleDestroy += "\n";
@@ -6345,9 +6378,7 @@ string i6Emitter::gcRootsRoutine(const std::function<bool(const string&)>& refer
                 if(mv != nullptr && !mv->type.name.empty() && memberHolds(mv)) body += markProp(nm, propName(mv));
             }
         } else if(auto* vd = dynamic_cast<variableDeclaration*>(node)){
-            // A library's extern `var` names an Inform 6 global of any use (`sp`); a program's own is its slot.
-            if(vd->isConst || vd->isInstanceBacking || !holdsHeapArray(vd->type.name)
-               || (vd->isExternal && vd->src.file.find("beguiLib") != string::npos)) continue;
+            if(vd->isConst || vd->isInstanceBacking || !holdsHeapArray(vd->type.name)) continue;
             string nm = vd->i6name.empty() ? vd->dName() : vd->i6name;
             if(seen.insert(nm).second && referenced(nm)) body += format("    _bglHeapMark({0});\n", nm);
         }

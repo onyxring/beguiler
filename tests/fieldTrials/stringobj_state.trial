@@ -1,0 +1,142 @@
+Room A
+> dump
+Big: len 0 head [] tail [] intact true
+Body: len 0 [] tag [T0] notes 0
+Snap: len 0 head [] tail []
+#repeat 6
+> grow
+Grew.
+#repeat 3
+> note
+Noted.
+> snap
+Snapped.
+> dump
+Big: len 600 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 9 [(0)(1)(2)] tag [T0] notes 3
+Snap: len 482 head [abcdef] tail [ghij|3]
+> save
+>> sv1
+Please enter a file name (without an extension): Ok.
+> bloat
+Bloated.
+#repeat 2
+> note
+Noted.
+> snap
+Snapped.
+> dump
+Big: len 1600 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 15 [(0)(1)(2)(3)(4)] tag [T0] notes 5
+Snap: len 482 head [abcdef] tail [ghij|5]
+#repeat 20
+> churn
+Churned.
+> dump
+Big: len 1600 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 15 [(0)(1)(2)(3)(4)] tag [T0] notes 5
+Snap: len 482 head [abcdef] tail [ghij|5]
+> reset
+Reset.
+> dump
+Big: len 0 head [] tail [] intact true
+Body: len 0 [] tag [changed-and-longer-than-sixteen] notes 5
+Snap: len 1 head [x] tail [x]
+> restore
+>> sv1
+Please enter a file name (without an extension): Ok.
+> dump
+Big: len 600 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 9 [(0)(1)(2)] tag [T0] notes 3
+Snap: len 482 head [abcdef] tail [ghij|3]
+#repeat 3
+> grow
+Grew.
+#repeat 5
+> churn
+Churned.
+> dump
+Big: len 900 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 9 [(0)(1)(2)] tag [T0] notes 3
+Snap: len 482 head [abcdef] tail [ghij|3]
+> bloat
+Bloated.
+> undo
+Room A
+[Previous turn undone.]
+> dump
+Big: len 900 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 9 [(0)(1)(2)] tag [T0] notes 3
+Snap: len 482 head [abcdef] tail [ghij|3]
+> churn
+Churned.
+> undo
+Room A
+[Previous turn undone.]
+> dump
+Big: len 900 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 9 [(0)(1)(2)] tag [T0] notes 3
+Snap: len 482 head [abcdef] tail [ghij|3]
+> note
+Noted.
+> snap
+Snapped.
+> undo
+Room A
+[Previous turn undone.]
+> dump
+Big: len 900 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 12 [(0)(1)(2)(3)] tag [T0] notes 4
+Snap: len 482 head [abcdef] tail [ghij|3]
+> restart
+>> y
+Are you sure you want to restart?
+Release 1 / Serial number *
+Written in Beguile v*
+Compiled with Inform v* / Library v*
+Room A
+A plain room.
+You can see a slate here.
+> dump
+Big: len 0 head [] tail [] intact true
+Body: len 0 [] tag [T0] notes 0
+Snap: len 0 head [] tail []
+#repeat 2
+> grow
+Grew.
+> note
+Noted.
+#repeat 3
+> churn
+Churned.
+> snap
+Snapped.
+> dump
+Big: len 200 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 3 [(0)] tag [T0] notes 1
+Snap: len 202 head [abcdef] tail [ghij|1]
+> save
+>> sv2
+Please enter a file name (without an extension): Ok.
+> bloat
+Bloated.
+#repeat 2
+> note
+Noted.
+> snap
+Snapped.
+> reset
+Reset.
+> restore
+>> sv2
+Please enter a file name (without an extension): Ok.
+> dump
+Big: len 200 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 3 [(0)] tag [T0] notes 1
+Snap: len 202 head [abcdef] tail [ghij|1]
+> bloat
+Bloated.
+> dump
+Big: len 1200 head [abcdefghijab] tail [ijabcdefghij] intact true
+Body: len 3 [(0)] tag [T0] notes 1
+Snap: len 202 head [abcdef] tail [ghij|1]

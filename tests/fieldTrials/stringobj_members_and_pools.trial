@@ -1,0 +1,54 @@
+Room A
+> members
+o1: tag=base extra=[] count=0
+o2: tag=sub extra=[] count=0
+o3: tag=own extra=[ex] count=0
+> change
+o1: tag=changed extra=[] count=1
+o2: tag=sub extra=[changed!] count=0
+o3: tag=OWN extra=[ex-more] count=0
+> globals
+g1=global g2=[]
+g1=global g2=global-copy
+g1=global-shared al=global-shared
+g1=reset g2=global-copy
+g1=reset local=reset?
+> funcs
+a=abc b=abc!
+a=abc++ b=abc!
+o3.extra=ex-more+
+o3.tag=OWN
+made7 made8 made9 made7! made7
+> pool
+k: 303 oneabcdefghij note=init+grown
+j: two note=init
+free 1
+free 2
+m: three 5 note=init
+m: threethree j: two
+free 3
+p: [] true note=init
+> structs
+r1=first/1 r2=first-copy/2
+r1=changed/1 r2=first-copy/2
+loc=FIRST-COPY r2=first-copy
+> arrays
+len 4: pear apple fig figs t=figs
+apple! date t=figs
+sorted: apple! date figs pear
+index of figs 2, contains pear true
+loc 3: apple!-loc pear zed
+gl[0]=apple!
+len 3: date
+> purge
+Wiped.
+> z
+Time passes.
+> z
+Time passes.
+> z
+Time passes.
+> ticks
+clock tick3 trail=123 ticks=3
+> ticks
+clock tick4 trail=1234 ticks=4

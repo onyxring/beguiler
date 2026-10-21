@@ -117,7 +117,7 @@ need `#include <array>`.
 | `copy(other)` | method on `bglAllocated` | core | §21.8 |
 | `count()` | method on `array<T>` | `<linq>` | §22.5 |
 | `create([p1[, p2[, p3]]])` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
-| `DEBUG` | symbol (defined by `--debug`; enables `log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
+| `DEBUG` | symbol (defined by `--debug`; enables `bgl.output.log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
 | `deinit()`, `static deinit(T v)` | lifecycle emitter / value-form method on a class | core | §8.5, §12.10 |
 | `delete(pos, count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `destroy()` | method on a pooled class (author-declared; run by `delete`) | core | §8.2.6 |
@@ -183,12 +183,14 @@ need `#include <array>`.
 | `length`, `size` | property on `children` (read-only) | core | §11.5.2, §21.5.7 |
 | `light`, `container`, `scenery`, `static`, … (library attributes) | value (`attribute`) | binding | §23.3.4 |
 | `location`, `player`, `actor`, `score`, `turns` | variable (extern) | binding | §23.3.4 |
-| `log(v)` | function | core | §21.4 |
+| `bgl.output` | namespace | core | §21.4 |
+| `bgl.output.log(v)` | function | core | §21.4 |
+| `bgl.output.spaces(n)` | function | core | §21.4 |
 | `map(f)` | method on `array<T>` | `<linq>` | §22.5 |
 | `measureStyle(styleType, hint)`, `styleHonored(styleType, hint)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `meta` | member on `verb` | core | §13.2.4 |
 | `mid(start, count)`, `left(count)`, `right(count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `moveCursor(col, line)` | method on `textGridWindow`, `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.6 |
+| `moveCursor(col, line)` | method on `bgl.ui.statusBar`, `textGridWindow` | core; `<glulxWindow>` | §21.10, §22.7.6 |
 | `moveUp()`, `moveDown()`, `moveLeft()`, `moveRight()` | method on `window` | `<glulxWindow>` | §22.7.4 |
 | `name` | property (additive, on `object`) | core | §11.7.2, §21.5.2 |
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
@@ -207,10 +209,10 @@ need `#include <array>`.
 | `prepend(item)` | method on `array<T>` | `<array>` | §22.4 |
 | `print()` | method on `_bglObject` (author-defined override) | core | §21.4 |
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `print(v)` | function (overloaded by type) | core | §21.4 |
-| `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
+| `print(v)` | function (overloaded by type; global alias of `bgl.output.print`) | core | §10.5, §21.4 |
+| `printLine([v])` | function (`print(v)`, then a newline; global alias of `bgl.output.printLine`) | core | §10.5, §21.4 |
 | `print(v)`, `printLine([v])` (window output) | method on the text window types, `bgl.ui.mainWin`; `print` on `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.11 |
-| `printName(obj)` | function | core | §21.4 |
+| `printName(obj)` | function (global alias of `bgl.output.printName`) | core | §10.5, §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |
 | `provides(prop)` | method on `object` | core | §11.7.1, §21.5.2 |
@@ -265,6 +267,6 @@ need `#include <array>`.
 | `var` | type | core | §2.6 |
 | `verb` | type | core | §13.2, §21.5.4 |
 | `void` | type | core | §2.2 |
-| `width` | member on `window`, the roots | `<glulxWindow>` | §22.7.4 |
+| `width` | member on `bgl.ui.mainWin`, `bgl.ui.statusBar` (read-only), `window` | core; `<glulxWindow>` (writable) | §21.10, §22.7.4 |
 | `width`, `height` | property on `glulxImage` (read-only); methods `width()`, `height()` on `eImages` | `<glulxImage>` | §22.8 |
 | `window` | type | `<glulxWindow>` | §22.7.1 |

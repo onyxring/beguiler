@@ -1,0 +1,65 @@
+Room A
+> names
+Names: red ball, blue cube, green lamp and notebook (0) (48 chars, 4 objects).
+> rename ball to amber orb
+Renamed to amber orb.
+> names
+Names: amber orb, blue cube, green lamp and notebook (0) (49 chars, 4 objects).
+> tag cube
+Tag: blue cube! (10).
+> loud lamp
+GREEN LAMP
+> echo red green
+You say: [red green] (2 words, 9 chars).
+> match red ball
+Typed [red ball]: == stored false, != stored true, =~ stored true.
+compareTo 1, folded 0, same as ball false, upper true.
+> match amber orb
+Typed [amber orb]: == stored false, != stored true, =~ stored false.
+compareTo 1, folded -1, same as ball true, upper false.
+#repeat 30
+> write alpha beta gamma
+Written.
+> size
+Notebook: 591 chars, 30 entries.
+> names
+Names: amber orb, blue cube, green lamp and notebook (591) (51 chars, 4 objects).
+> write needle zeta
+Written.
+> size
+Notebook: 606 chars, 31 entries.
+> find needle
+needle at 594 (contains true).
+> find alpha
+alpha at 2 (contains true).
+> find zebra
+zebra not found (contains false).
+> find beta gamma
+beta gamma at 8 (contains true).
+> tally alpha
+alpha appears 30 times.
+> tally beta
+beta appears 30 times.
+> tally zeta
+zeta appears 1 times.
+> ends
+Starts [1:alpha beta gamma;] ends [31:needle zeta;] starts with 1: true ends with semicolon: true.
+> examine notebook
+Notebook: 606 chars, last entry [31:needle zeta;].
+> wipe
+Wiped.
+> size
+Notebook: 0 chars, 0 entries.
+> find alpha
+alpha not found (contains false).
+#repeat 150
+> write alpha beta gamma
+Written.
+> size
+Notebook: 3042 chars, 150 entries.
+> tally gamma
+gamma appears 150 times.
+> find omega
+omega not found (contains false).
+> examine notebook
+Notebook: 3042 chars, last entry [pha beta gamma;].

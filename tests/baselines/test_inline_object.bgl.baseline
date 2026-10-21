@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 class _bglClass_point
   class object
@@ -105,15 +104,15 @@ class _bglClass_point
     y
 ;
 Array _bglhdr_pts --> $9084 2;
-array pts table _bglanon4 _bglanon5;
+array pts table _bglanon6 _bglanon7;
 _bglClass_point origin
   with x 0,
        y 0
 ;
 Array _bglhdr_path --> $9084 3;
-array path table origin _bglanon6 _bglanon7;
+array path table origin _bglanon8 _bglanon9;
 Array _bglhdr_inferred --> $9084 2;
-array inferred table _bglanon8 _bglanon9;
+array inferred table _bglanon10 _bglanon11;
 [main;
     print ( _bglAt(pts, 1, 0)-->0 ).x;
     print ( _bglAt(path, 1, 0)-->0 ).y;
@@ -123,27 +122,27 @@ array inferred table _bglanon8 _bglanon9;
     print pb.y;
     print pc.x;
 ];
-_bglClass_point _bglanon4
+_bglClass_point _bglanon6
   with x 1,
        y 2
 ;
-_bglClass_point _bglanon5
+_bglClass_point _bglanon7
   with x 3,
        y 4
 ;
-_bglClass_point _bglanon6
+_bglClass_point _bglanon8
   with x 5,
        y 5
 ;
-_bglClass_point _bglanon7
+_bglClass_point _bglanon9
   with x 9,
        y 9
 ;
-_bglClass_point _bglanon8
+_bglClass_point _bglanon10
   with x 7,
        y 8
 ;
-_bglClass_point _bglanon9
+_bglClass_point _bglanon11
   with x 9,
        y 10
 ;
@@ -173,7 +172,7 @@ _bglClass_point pc
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

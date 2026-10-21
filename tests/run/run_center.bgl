@@ -1,0 +1,38 @@
+// run_center — <extensions/general/center>: bgl.ui.center() wraps at maxWidth after a space or a visible break
+// character (kept on its line) and at '^'; prints a routine's or an object's text; calls the frame
+// before and after each line; bgl.ui.inset() wraps between margins.
+// EXPECT_OUTPUT: Fourscore and seven
+// EXPECT_OUTPUT: years ago our
+// EXPECT_OUTPUT: I wandered lonely as a cloud,
+// EXPECT_OUTPUT: --William Wordsworth
+// EXPECT_OUTPUT: Is this-
+// EXPECT_OUTPUT: a test?
+// EXPECT_OUTPUT: from a routine
+// EXPECT_OUTPUT: shiny widget
+// EXPECT_OUTPUT: > Framed <
+// EXPECT_OUTPUT: one two three four
+// EXPECT_OUTPUT: [END]
+// INPUT: go2
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/general/center>
+object room { short_name = "Room"; string description = "A room."; attributes = {light}; }
+object widget { short_name = "shiny widget"; }
+bool fromRoutine() { print("from a routine"); return false; }
+int frame(int n) { if(n == 0) return 4; if(n == 1) print("> "); else print(" <"); return 0; }
+verb Go2 { grammar = {.go2}; void handler() {
+    bgl.ui.center("Fourscore and seven years ago our fathers brought forth on this continent", 20);
+    bgl.ui.center("I wandered lonely as a cloud,^^--William Wordsworth");
+    bgl.ui.center("Is this-a test? Yes", 6);
+    bgl.ui.center(fromRoutine);
+    bgl.ui.center(widget);
+    bgl.ui.center("Framed", 0, centerHighlight.all, false, frame);
+    bgl.ui.inset("one two three four five six seven eight nine ten", 30, 2);
+    print("[END]^");
+} }
+void initialise() { location = room; }
+#includeI6 "grammar"

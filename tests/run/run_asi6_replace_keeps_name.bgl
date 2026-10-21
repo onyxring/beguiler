@@ -1,0 +1,22 @@
+// run_asi6_replace_keeps_name — a member replaced in an `extend` is the same Inform 6 property, so it keeps
+// the `asI6` name the original gave, and code reading that name reads the replacement.
+// EXPECT_OUTPUT: count 7 raw 7 level 9
+#beguilerSettings { target = z5; informName = "none"; }
+object meter {
+    int count asI6 _meterCount = 1;
+    auto level asI6 _meterLevel = {
+        int operator() { return 2; }
+    }
+}
+extend meter {
+    replace int count = 7;
+    replace auto level = {
+        int operator() { return 9; }
+    }
+}
+void main(){
+    bglInit();
+    int raw = 0;
+    #i6 { raw = meter._meterCount; }
+    print($"count {meter.count} raw {raw} level {meter.level}");
+}

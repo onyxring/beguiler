@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 class _bglClass_point(4)
   with
@@ -136,7 +135,7 @@ class _bglClass_point(4)
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

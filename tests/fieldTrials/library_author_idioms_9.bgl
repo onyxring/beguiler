@@ -208,7 +208,7 @@ verb Sums {
             if (x > 5) big++;
         });
         print($"Total {total}, big {big}; low {binLow.over(la9Nums)}, high {binHigh.over(la9Nums)}.^");
-        log("sums done");
+        bgl.output.log("sums done");
     }
 }
 

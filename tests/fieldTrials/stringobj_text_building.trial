@@ -1,0 +1,74 @@
+Room A
+> grow
+Length 1000: abcdeabcdeab / deabcde / abcde
+indexOf 4 -1 contains true starts true ends true not false
+Upper 1000: ABCDEAB CDE source still abc
+Copy 1006: deZyyABC original 1000
+Self slice 1005: abcdeabcde
+> chars
+Counted 690: 0,1,2,3,4,5,6, ... 197,198,199,
+Index 290 150,151,
+Mixed 200: abc00abc1,abc21a
+Joined 600: abc81abc96
+> replace
+Grown 1400: aXYZcdeaX deaXYZcde first 1 source 1000
+Replace once 1398: a-cdeaXY
+Round trip 1000 equal true
+Emptied 0 true
+Insert 1006: de[mark]ab
+Delete 1000 equal true
+> trim
+Padded 605
+Trim 600 603 602
+Edges [xyx] [yxy] [xyx] [yxy]
+> reverse
+Reversed 1500: jihgfedcba jihgfedcba
+Twice equal true
+Case trip true 1500
+> nest
+Four deep 17: <a:<b:<c:<d:x>>>>
+Inline 19: [<a:<b:<c:<d:y>>>>]
+Twice 17: (p<p:(q<q:z>q)>p)
+Long 308: <w:<v:01 456789>>
+Appended 316: 6789>><t:89>>>
+> pieces
+Format 1002: aa-bb bb-cc ccc
+Wrapped 503: <<aa aaa>
+Chain 1000: aabb bbcc
+Plus 1003: axb cccc
+Head 504 headaa
+> double
+Doubled 3: 80 6789
+Doubled 6: 640 6789
+Doubled 7: 1280 6789
+Self slice 1285
+Small 12 abababababab
+> swap
+Start 1200 2
+Long into short 1200: abc equal true
+Short again 2 hi
+Short into long 2 hi
+Regrown 1500: xyzx
+Cut 5 xyzxy
+Doubled 10 xyzxyXYZXY
+hihi 4
+> compare
+Equal false true true false true
+Order true false true false true true false
+Three-way true true true true compareTo -1 1 0 -1
+Case false true true false 0 1
+Switch default.
+Switch long default.
+> scan
+Chars 400 400 1 of 801
+Index sum 10000
+Edited Zba abY 801
+<Z><b><a><b><a><b>
+> literal
+Literal 600: 01234 56789 5678901234
+Same as global true 600
+Literal 900: abcde lmnop abcde
+Assigned 900: nop
+Back 600
+Both 1500: 89ab
+Global plus 603: 89end

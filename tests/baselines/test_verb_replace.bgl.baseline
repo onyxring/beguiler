@@ -63,7 +63,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 [Banner;
     print "^";
@@ -72,9 +71,9 @@ object bgl
     style roman;
     print (string)headline;
     print "Release ";
-    print _bglheader.release._opconv_int();
+    print _bglheader._bglHeader_release._opconv_int();
     print " / Serial number ";
-    _bglheader.printserial();
+    _bglheader._bglHeader_printSerial();
     print "^";
     style underline;
     print "Written in";
@@ -133,28 +132,29 @@ verb 'pilfer'
 
     #Ifdef DEBUG;
     [ _bglHeapVerbSub;
-        if (_bglHeap == 0) "Heap: nothing allocated yet.";
-        print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+        if (_bglHeap == 0) print "Heap: nothing allocated yet.^";
+        else print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+        #Ifdef _bglStrHeapReport; _bglStrHeapReport(); #Endif;
     ];
     Verb meta 'heap' * -> _bglHeapVerb;
     #Endif;
 
-class _bglaccessor3
+class _bglaccessor5
   with
     _opconv_int[;
         return _bgl_bglOpCodes_loadw(2, 0) & 1023;
     ]
 ;
-_bglaccessor3 __bglheader_release;
+_bglaccessor5 __bglheader_release;
 object _bglHeader
-  with release __bglheader_release,
-       serialChar [i;
+  with _bglHeader_release __bglheader_release,
+       _bglHeader_serialChar [i;
     return _bgl_bglOpCodes_loadb(18, i);
   ],
-       printSerial [i;
+       _bglHeader_printSerial [i;
     i = 0;
     for (i = 0 : i < 6 : i++) {
-        print (char)self.serialchar(i);
+        print (char)self._bglHeader_serialChar(i);
     }
   ]
 ;

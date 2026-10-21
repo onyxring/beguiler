@@ -21,6 +21,7 @@
   - [22.7.11 Window Output](#22711-window-output)
   - [22.7.12 Capabilities](#22712-capabilities)
 - [22.8 `<glulxImage>`](#228-glulximage)
+- [22.9 `<stringObj>`](#229-stringobj)
 <!-- /toc -->
 
 ## 22.1 Overview
@@ -229,7 +230,7 @@ void Main() {
 
 **Settings**
 
-The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). Each buffer is `bglStringDefaultSize` bytes (default `500`, §22.2), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default); text that would go past that is dropped. Both are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). Each buffer is `bglStringDefaultSize` bytes (default `500`, §22.2), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }
@@ -515,7 +516,7 @@ void Main() {
 `width` and `height` are readable on every window and root; reading queries the live window. Writing re-arranges the window within its parent pair. Only the axis a window was split *along* can be written — `height` for an `Up`/`Down` split, `width` for a `Left`/`Right` split — because the other dimension is dictated by the sibling window. This is enforced at two levels:
 
 - **At compile time**, when the window is held as its orientation view: a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
-- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `log()` (§21.4).
+- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `bgl.output.log()` (§21.4).
 
 `moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size. Glk keeps a split's axis, so a window split `Up` or `Down` moves only up or down, and one split `Left` or `Right` only left or right: a `…Horz` view hides `moveLeft` and `moveRight`, a `…Vert` view hides `moveUp` and `moveDown`, and on the permissive surface a move across the axis does nothing and reports a programming error. They are not available on the roots.
 
@@ -800,3 +801,38 @@ void Main() {
 Does not require `bglInit()`. Does not require `generateBlorb`, but without packaged assets there are no images to measure.
 
 **See also** §17.6, §21.12, §22.7.
+
+## 22.9 `<stringObj>`
+
+**Purpose.** An alternative to `<string>` (§22.3) whose `stringObj` buffers grow as text is written into them.
+
+**Include**
+
+```bgl
+#include <stringObj>     // in place of <string>; includes <buf>
+```
+
+**Description**
+
+`<stringObj>` provides the same types, operators and methods as `<string>`, with the same lifecycle: `bglStringPoolReserve` string objects (default `10`), taken on declaration and released at scope exit. Only the storage behind them differs. Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
+
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
+
+Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
+
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
+Both sizes are settings that `<stringObj>` declares (§17.4); unset or `0`, they take the defaults above:
+
+```bgl
+#beguilerSettings { stringHeapSize = 8192; stringCaptureSize = 1024; }
+#include <stringObj>
+```
+
+In a debug build of a program with a library binding, the `heap` verb also reports the string heap: its size, the bytes in use, and the most the run has needed. That figure allows for compaction and growth, so a `stringHeapSize` set to it holds the same run; set it from a debug playthrough to shrink the heap for release.
+
+`<stringObj>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
+
+**See also** §22.2, §22.3.

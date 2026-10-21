@@ -410,7 +410,7 @@ verb ShowStatus {
     meta = true;
     grammar = {.status};
     void handler() {
-        log($"status at {turns}");
+        bgl.output.log($"status at {turns}");
         printLine($"Release {bgl.header.release}; hyphen fixes {hyphenFixes}; revivals {revivals}; prompts seen {prompts > 3}.");
     }
 }

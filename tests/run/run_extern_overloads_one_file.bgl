@@ -1,0 +1,10 @@
+// run_extern_overloads_one_file — two `extern` signatures of one Inform 6 routine declared together are
+// overloads side by side; neither replaces the other.
+// EXPECT_OUTPUT: 3 0 / 3 1
+#beguilerSettings { target = z5; informName = "none"; }
+#i6 {
+[ Mark task wait; print task, " ", wait; ];
+}
+extern void Mark(int task);
+extern void Mark(int task, bool wait);
+void main(){ Mark(3); print(" / "); Mark(3, true); }

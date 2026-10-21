@@ -928,11 +928,31 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
         tmpDecl.name = arrName;
         tmpDecl.type = languageService.getType("var");
         tmpDecl.isSynthetic = true;   // for-in array temp — compiler-generated, hidden in the debugger
-        if(body != nullptr) body->statements.push_back(&tmpDecl);
+        // A call's result of a type that manages its own storage (stringObj) is a temporary that the loop's
+        // body may reuse: the loop walks its own copy, made through the type's `operator =`.
+        functionDef* ownCopy = nullptr;
+        if(currentFunc != nullptr && arrExpr != nullptr && !arrExprText.empty() && arrExprText.back() == ')')
+            if(classDef* sc = languageService.findClass(arrExpr->resolvedType); sc != nullptr && sc->isEmitterClass
+               && findMemberInHierarchy(sc, [](typeMember* m){ auto* f = dynamic_cast<functionDef*>(m);
+                      return f != nullptr && f->isEmitter && f->name == "init" && f->params.empty(); }) != nullptr)
+                if((ownCopy = emitterAssignOperator(sc, arrExpr->resolvedType)) != nullptr) tmpDecl.type = languageService.getType(sc->name);
+        if(ownCopy != nullptr && body != nullptr){
+            // A local of the type: its storage is taken here and given back at scope exit and on return.
+            auto pending = std::move(postInjections);
+            postInjections.clear();
+            registerVariableDeclaration(tmpDecl, false, func, body);
+            postInjections = std::move(pending);
+        }
+        else if(body != nullptr) body->statements.push_back(&tmpDecl);
         i6RawNode& assign = *(new i6RawNode());
         assign.text = arrName + " = " + arrExprText + ";";
+        if(ownCopy != nullptr){
+            emitterBindings cb; cb.self = arrName; cb.val = arrName; cb.trim = emitterTrim::wsSemi; cb.fn = ownCopy;
+            cb.args.push_back(arrExprText);
+            assign.text = expandEmitterBody(dynamic_cast<i6Block*>(ownCopy->body), cb) + ";";
+        }
         // A call's or a chain's result is the loop's own while it runs (dropped after it, or at the routine's exit).
-        if(currentFunc != nullptr && !arrExprText.empty() && arrExprText.back() == ')'
+        if(ownCopy == nullptr && currentFunc != nullptr && !arrExprText.empty() && arrExprText.back() == ')'
            && !isStaticArrayText(arrExprText, func, body)){   // never a heap array
             forInOwner = claimOwner(arrName);
             assign.text = forInOwner + " = _bglHeapReown(" + forInOwner + ", (" + arrName + " = " + arrExprText + "));";
@@ -2729,7 +2749,7 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
             string dtor = substituteElemOps("$opref(deinit)", elemType);
             if(dtor != "0"){
                 auto* give = new i6RawNode(); give->cooked = true;
-                give->text = dtor + "(_bglArray.get(" + (isMemberWordArray ? memOwner + ", " + escapePropertyName(memProp) : arrPath + ", 0")
+                give->text = dtor + "(_bglArray._bglArr_get(" + (isMemberWordArray ? memOwner + ", " + escapePropertyName(memProp) : arrPath + ", 0")
                            + ", " + indexExpr->text() + "));";
                 pendingInjections.push_back(give);
             }
@@ -2811,6 +2831,9 @@ bool bglParser::processSubscriptWrite(string arrPath, expression* indexExpr, Sta
                 string head = objectI6Name(arrPath.substr(0, hd));
                 valPath = head + arrPath.substr(hd);
                 if(selfValue == arrPath.substr(0, hd)) selfPath = head;
+            } else {   // a global array emitted under another name (`_g_hops`); a local keeps its own
+                valPath = objectI6Name(arrPath);
+                if(selfValue == arrPath) selfPath = valPath;
             }
             emitterBindings ab; ab.self = selfPath; ab.val = valPath; ab.prop = propValue;
             ab.fn = setMethod;
@@ -3682,7 +3705,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         && (qualifyFromParams(a.variableLeft, currentFunc)
             || qualifyFromBodyLocals(a.variableLeft, activeBlockStack.empty() ? nullptr : activeBlockStack.back())
             || qualifyFromAncestorBlocks(a.variableLeft, nullptr));
-    if(slotOfAnyType && val != nullptr && !isBindAssign && slotIsLocal && hasOwner(a.variableLeft) && a.src.file.find("beguiLib") == string::npos
+    if(slotOfAnyType && val != nullptr && !isBindAssign && slotIsLocal && hasOwner(a.variableLeft)
        && !isWordArrayType(val->resolvedType) && !slotHoldsArray(val->resolvedType)){
         // The local lets go of the array it owned.
         string own = claimOwner(a.variableLeft);
@@ -3691,8 +3714,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         a.assignedExpression = val;
         return;
     }
-    if(slotOfAnyType && val != nullptr && !isBindAssign && (isWordArrayType(val->resolvedType) || slotHoldsArray(val->resolvedType)) && currentFunc != nullptr
-       && a.src.file.find("beguiLib") == string::npos){
+    if(slotOfAnyType && val != nullptr && !isBindAssign && (isWordArrayType(val->resolvedType) || slotHoldsArray(val->resolvedType)) && currentFunc != nullptr){
         copyMemberArrayValue(val);
         // A `var` or union slot holds the array itself; one that outlives the routine keeps it past its owner.
         bool localSlot = a.variableLeft.find('.') == string::npos
@@ -3719,8 +3741,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
         a.assignedExpression = val;
         return;
     }
-    if(t.leftType != nullptr && val != nullptr && !slotOfAnyType && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")
-       && a.src.file.find("beguiLib") == string::npos){
+    if(t.leftType != nullptr && val != nullptr && !slotOfAnyType && (isWordArrayType(t.leftType->name) || t.leftType->name == "bytearray")){
         bool member = !t.emitterProp.empty() && t.emitterProp != "0";
         string lOwner, lProp;   // a member held through a pointer: `self.waiting`, `box.log`
         bool pointerMember = !member && a.variableLeft.find('.') != string::npos
@@ -3745,7 +3766,7 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
                 return;
             }
         } else if(t.leftType->name == "bytearray"){
-            if(currentFunc != nullptr && (!localSlot || a.src.file.find("beguiLib") == string::npos)){
+            if(currentFunc != nullptr){
                 val->tokens = {"_bglByteArrCopyInto(" + (member ? objectI6Name(t.emitterSelf) + "." + propertyI6Name(t.emitterProp) : a.variableLeft)
                                + ", " + val->text() + ")"};
                 a.variableLeft = "_bglSink-->0";   // the copy is the statement
@@ -4547,6 +4568,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             if(isWordArrayType(lhsTypeName) || lhsTypeName == "bytearray"){
                 pb.prop = cIsMember ? cProp : "0";
                 pb.elemType = resolveArrayElementType(lhs, func, body);
+                if(pb.elemType->empty() && lhs != tok.value) pb.elemType = resolveArrayElementType(tok.value, func, body);   // a global emitted as _g_<name>
                 if(pb.elemType->empty() && cIsMember) pb.elemType = resolveArrayElementTypeDotted(cOwner, cProp, func, body);
                 // `+=`/`-=` take one element; another array is one only for an array of arrays.
                 if(rhs != nullptr && isWordArrayType(rhs->resolvedType) && !pb.elemType->empty()
@@ -4742,9 +4764,14 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
     if(rawName.rfind("::", 0) == 0){
         string base = rawName.substr(2);
         int overloads = 0;
+        bool emitter = false;
         for(typeDef* g : languageService.globals)
-            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == base) overloads++;
-        if(overloads > 1) return base;
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == base){
+                overloads++;
+                // An emitter has no I6 name, and a routine emitted under another name: neither is hidden by a local.
+                emitter = emitter || fd->isEmitter || (!fd->i6name.empty() && strcasecmp(fd->i6name.c_str(), base.c_str()) != 0);
+            }
+        if(overloads > 1 || emitter) return base;
     }
     if(func != nullptr && rawName.find('.') == string::npos){
         if(languageService.findGlobalAs<functionDef>(rawName) && isUsingImportedValueEmitter(rawName)) return rawName;
@@ -4774,6 +4801,10 @@ string bglParser::qualifyCallName(token tok, StatementContext& sc){
                         return (shadowed ? "::" : "") + imp->name + "." + rawName;
                     }
         string qualified = qualifyIdentifier(rawName, func, body);
+        // An object or variable can't be called: a global emitter of its name takes the call, however it is emitted.
+        if(qualified != rawName && qualified.find('.') == string::npos && qualified == globalI6Name(rawName))
+                for(typeDef* g : languageService.globals)
+                    if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isEmitter && fd->name == rawName){ qualified = rawName; break; }
         // A global variable or constant can't be called, so a method of this object or class of the name takes the call.
         if(qualified.rfind("self.", 0) != 0 && languageService.findGlobalAs<functionDef>(rawName) == nullptr
            && !qualifyFromParams(rawName, func) && !qualifyFromBodyLocals(rawName, body)

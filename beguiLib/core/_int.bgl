@@ -65,4 +65,6 @@ primitive class int {
     emitter int operator >>= (int v){ $val = _bglShiftRight($val, $v) }   /// Shift the variable right by `v` bits.
 }
 
-emitter void print(int c){ print $c; }   /// Print `c` as a number.
+extend _bglOutput {
+    emitter void print(int c){ print $c; }   /// Print `c` as a number.
+}

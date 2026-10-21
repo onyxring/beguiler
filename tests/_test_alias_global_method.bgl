@@ -1,0 +1,7 @@
+// Negative test: a file-scope alias makes an object's emitters global; an ordinary method has a routine
+// of its own and can't be one.
+// EXPECT_ERROR: only an emitter can be aliased at file scope
+#beguilerSettings { target = z5; informName = "none"; }
+object report { void note(int v){ print(v); } }
+alias note = report.note;
+void main(){ note(3); }

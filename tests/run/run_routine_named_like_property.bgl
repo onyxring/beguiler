@@ -1,0 +1,6 @@
+// run_routine_named_like_property — a routine named like a property (`name`, which every program has)
+// yields its Inform 6 name; calls reach it by its Beguile name.
+// EXPECT_OUTPUT: 3
+#beguilerSettings { target = z5; informName = "none"; }
+void name(int v){ print(v); }
+void main(){ name(3); }

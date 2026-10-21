@@ -55,9 +55,8 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
-class _bglaccessor4
+class _bglaccessor6
   with
     _raw 0,
     _opconv_int[;
@@ -67,7 +66,7 @@ class _bglaccessor4
         self._raw=v * gadget.scale;
     ]
 ;
-_bglaccessor4 _gadget_level;
+_bglaccessor6 _gadget_level;
 object gadget
   with scale 3,
        level _gadget_level

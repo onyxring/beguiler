@@ -55,7 +55,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 ! test_inf_mode_raw_object_parent.inf — an object declared in raw I6, read in a #bgl island through a
 ! member every object has (`parent`, `child`): the read goes through the member's emitter, `parent(x)`.

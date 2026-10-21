@@ -46,8 +46,10 @@ primitive class char {
 
     replace emitter void print(){ print (char)$val; }   /// Print the character.
 }
-/// Print a character.
-emitter void print(char c){ print (char)$c; }
+extend _bglOutput {
+    /// Print a character.
+    emitter void print(char c){ print (char)$c; }
+}
 
 //-- Classification and case helpers -------------------------------------------
 // Implementation routines behind the char methods below.

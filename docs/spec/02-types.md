@@ -165,7 +165,7 @@ uint v = (uint)-1;   // the largest unsigned value
 An interpolated string (§1.6.5) contains several segments that cannot be reduced to a single value, so
 it has no corresponding runtime type. It may be passed only to an emitter that declares an
 `interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
-non-emitter function is a compile-time error. The core `print()` and `log()` accept it (§21.4); with the
+non-emitter function is a compile-time error. The core `print()` and `bgl.output.log()` accept it (§21.4); with the
 `<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3).
 
 ## 2.5 `null`

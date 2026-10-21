@@ -58,7 +58,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -77,101 +76,101 @@ array inner table 10 20 30 3 40;
 [innerBeatsX x;
     _bglHeapFreshEnter();
     _bglHeapSweepFresh(true);
-    return _bglArray.chainCount(_bglArray.filter(inner, 0, isbig), -1) > x;
+    return _bglArray._bglArr_chainCount(_bglArray._bglArr_filter(inner, 0, isbig), -1) > x;
 ];
 [innerCountPlus x;
     _bglHeapFreshEnter();
     _bglHeapSweepFresh(true);
-    return _bglArray.chainCount(_bglArray.filter(inner, 0, isbig), -1) + x;
+    return _bglArray._bglArr_chainCount(_bglArray._bglArr_filter(inner, 0, isbig), -1) + x;
 ];
 [main a b c;
     _bglHeapFreshEnter();
     bglinit();
     _bglHeapSweepFresh();
-    a=_bglArray.chainCount(_bglArray.filter(outer, 0, innerbeatsx), -1);
+    a=_bglArray._bglArr_chainCount(_bglArray._bglArr_filter(outer, 0, innerbeatsx), -1);
     _bglHeapSweepFresh();
-    b=_bglArray.first(_bglArray.map(outer, 0, innercountplus), -1, 0);
+    b=_bglArray._bglArr_first(_bglArray._bglArr_map(outer, 0, innercountplus), -1, 0);
     _bglHeapSweepFresh();
-    c=_bglArray.chainCount(_bglArray.filter(_bglArray.filter(outer, 0, innerbeatsx), -1, isbig), -1);
+    c=_bglArray._bglArr_chainCount(_bglArray._bglArr_filter(_bglArray._bglArr_filter(outer, 0, innerbeatsx), -1, isbig), -1);
     _bglHeapSweepFresh();
     _bglHeapSweepFresh(true);
 ];
 object _bglArray
-  with get [obj prop n;
+  with _bglArr_get [obj prop n;
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
-       size [obj prop;
+       _bglArr_size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
-       length [obj prop;
+       _bglArr_length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
-       setLength [obj prop n cap;
+       _bglArr_setLength [obj prop n cap;
     if (n < 0) {
         print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
-    cap=self.size(obj,prop);
+    cap=self._bglArr_size(obj,prop);
     if (n > cap) {
         n=cap;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
-       filter [obj prop pred _bglret _bglown_dst dst writeCount srcLen i elem;
-    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
+       _bglArr_filter [obj prop pred _bglret _bglown_dst dst writeCount srcLen i elem;
+    dst = _bgllinqenter(self._bglArr_size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
     writeCount = 0;
-    srcLen=self.length(obj,prop);
+    srcLen=self._bglArr_length(obj,prop);
     for (i = 0 : i < srclen : i++) {
-        elem = self.get(obj,prop,i);
+        elem = self._bglArr_get(obj,prop,i);
         if (pred(elem)) {
             _bglAt(dst, writecount, 1)-->0 = elem;
             writecount++;
         }
     }
-    _bglArray.setLength(dst, 0, writeCount);
+    _bglArray._bglArr_setLength(dst, 0, writeCount);
     _bgllinqused(obj, prop);
     _bgllinqleave();
     _bglret = _bglHeapReturn(dst);
     _bglHeapDropOwned(_bglown_dst);
     return _bglret;
   ],
-       chainCount [obj prop n;
-    n=self.length(obj,prop);
+       _bglArr_chainCount [obj prop n;
+    n=self._bglArr_length(obj,prop);
     _bgllinqused(obj, prop);
     return n;
   ],
-       first [obj prop owned r;
+       _bglArr_first [obj prop owned r;
     r = 0;
-    if (self.length(obj,prop) > 0) {
-        r = self.get(obj,prop,0);
+    if (self._bglArr_length(obj,prop) > 0) {
+        r = self._bglArr_get(obj,prop,0);
     }
     else {
         if (owned~=0) {
-            self.emptyvalueerror("first");
+            self._bglarr_emptyvalueerror("first");
         }
     }
     _bgllinqused(obj, prop);
     return r;
   ],
-       emptyValueError [which;
+       _bglArr_emptyValueError [which;
     print (string)"^[Beguile run-time error: ";
     print (string)which;
     print (string)"() of an empty array of values; check count() first]^";
      quit; 
   ],
-       map [obj prop f _bglret _bglown_dst dst srcLen i;
-    dst = _bgllinqenter(self.size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
-    srcLen=self.length(obj,prop);
+       _bglArr_map [obj prop f _bglret _bglown_dst dst srcLen i;
+    dst = _bgllinqenter(self._bglArr_size(obj,prop)); _bglown_dst = _bglHeapReown(_bglown_dst, dst);
+    srcLen=self._bglArr_length(obj,prop);
     for (i = 0 : i < srclen : i++) {
-        _bglAt(dst, i, 1)-->0 = f(self.get(obj,prop,i));
+        _bglAt(dst, i, 1)-->0 = f(self._bglArr_get(obj,prop,i));
     }
-    _bglArray.setLength(dst, 0, srcLen);
+    _bglArray._bglArr_setLength(dst, 0, srcLen);
     _bgllinqused(obj, prop);
     _bgllinqleave();
     _bglret = _bglHeapReturn(dst);

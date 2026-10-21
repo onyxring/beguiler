@@ -172,6 +172,12 @@ void beguiler::extractBlorbSettings(const string& filename) {
         // at emit time), this one has to be read here or the declaration sees only the default.
         extractInt("worldbufsize", beguilerSettings.worldBufSize);
         extractInt("heapsize", beguilerSettings.heapSize);           // sizes the BLR's heap, as worldBufSize does
+        // Every `key = <integer>`, for the int settings extensions declare and read while they are parsed.
+        {
+            static const std::regex intEntry(R"(([A-Za-z_]\w*)\s*=\s*(\d+)\s*;)");
+            for(std::sregex_iterator it(blockLower.begin(), blockLower.end(), intEntry), end; it != end; ++it)
+                beguilerSettings.intSettings.emplace((*it)[1].str(), stoi((*it)[2].str()));
+        }
 
         // autoInitialize (default true): record on the settings struct here. The gating symbol is
         // defined AFTER the loop (below) so it's set even for files with no #beguilerSettings block.

@@ -1,0 +1,295 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: stringObj held in structures — stringObj members of objects and classes (with and
+// without initializers, a subclass overriding an inherited initializer), a pooled class with
+// stringObj members that grow, deleted and reused, a struct with a stringObj field (copy semantics),
+// array<stringObj> globals and locals (append, sort, index, for-in), stringObj passed by value and
+// by ref and returned, = copying against ref / := sharing, and a stringObj member rebuilt by a
+// daemon each turn. Contents are printed after each change to check that a copy never changes
+// its original.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 4096;
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <array>
+#include <stringObj>
+
+extend class object {
+    string description;
+}
+
+stringObj g1 = "global";
+stringObj g2;
+array<stringObj> gl[6];
+
+// Base class: one member with an initializer, one without.
+class base : object {
+    stringObj tag = "base";
+    stringObj extra;
+    int count = 0;
+}
+
+// The subclass overrides the inherited initializer.
+class sub : base {
+    tag = "sub";
+}
+
+class card[3] : object, bglAllocated {
+    stringObj text;
+    stringObj note = "init";
+    void create(string t) {
+        text = t;
+    }
+}
+
+struct rec {
+    stringObj label;
+    int n = 0;
+}
+
+rec r1;
+rec r2;
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+base o1 {
+    "o1";
+    parent = roomA;
+    name = {.one};
+}
+
+sub o2 {
+    "o2";
+    parent = roomA;
+    name = {.two};
+}
+
+base o3 {
+    "o3";
+    parent = roomA;
+    name = {.three};
+    tag = "own";
+    extra = "ex";
+}
+
+// A daemon rebuilds one member every turn.
+object clock {
+    "clock";
+    parent = roomA;
+    name = {.clock};
+    stringObj stamp;
+    stringObj trail;
+    int ticks = 0;
+    void daemon() {
+        ticks++;
+        stamp = $"tick{ticks}";
+        trail += $"{ticks}";
+    }
+}
+
+object lexicon {
+    "lexicon";
+    name = {.alpha, .beta, .gamma, .delta};
+}
+
+stringObj shout(stringObj s) {
+    s += "!";
+    return s;
+}
+
+void bump(ref stringObj s) {
+    s += "+";
+}
+
+stringObj make(int n) {
+    stringObj r = $"made{n}";
+    return r;
+}
+
+void showMembers() {
+    printLine($"o1: tag={o1.tag} extra=[{o1.extra}] count={o1.count}");
+    printLine($"o2: tag={o2.tag} extra=[{o2.extra}] count={o2.count}");
+    printLine($"o3: tag={o3.tag} extra=[{o3.extra}] count={o3.count}");
+}
+
+bool Initialise() {
+    location = roomA;
+    StartDaemon(clock);
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Members {
+    meta = true;
+    grammar = {.members};
+    void handler() {
+        showMembers();
+    }
+}
+
+verb Change {
+    meta = true;
+    grammar = {.change};
+    void handler() {
+        o1.tag = "changed";
+        o2.extra = o1.tag;
+        o2.extra += "!";
+        o3.extra += "-more";
+        o3.tag = o3.tag.toUpper();
+        o1.count++;
+        showMembers();
+    }
+}
+
+verb Globals {
+    meta = true;
+    grammar = {.globals};
+    void handler() {
+        printLine($"g1={g1} g2=[{g2}]");
+        g2 = g1;
+        g2 += "-copy";
+        printLine($"g1={g1} g2={g2}");
+        ref stringObj al := g1;
+        al += "-shared";
+        printLine($"g1={g1} al={al}");
+        al = "reset";
+        printLine($"g1={g1} g2={g2}");
+        stringObj local = g1;
+        local += "?";
+        printLine($"g1={g1} local={local}");
+    }
+}
+
+verb Funcs {
+    meta = true;
+    grammar = {.funcs};
+    void handler() {
+        stringObj a = "abc";
+        stringObj b = shout(a);
+        printLine($"a={a} b={b}");
+        bump(a);
+        bump(a);
+        printLine($"a={a} b={b}");
+        bump(o3.extra);
+        printLine($"o3.extra={o3.extra}");
+        shout(o3.tag);
+        printLine($"o3.tag={o3.tag}");
+        stringObj m = make(7);
+        stringObj n = make(8);
+        printLine($"{m} {n} {make(9)} {shout(m)} {m}");
+    }
+}
+
+verb Pool {
+    meta = true;
+    grammar = {.pool};
+    void handler() {
+        card k = new card("one");
+        card j = new card("two");
+        if (k == null || j == null) {
+            printLine("No cards.");
+            return;
+        }
+        for (int i = 0; i < 30; i++) k.text += "abcdefghij";
+        k.note += "+grown";
+        printLine($"k: {k.text.length} {k.text.left(13)} note={k.note}");
+        printLine($"j: {j.text} note={j.note}");
+        printLine($"free {card.remaining()}");
+        delete k;
+        printLine($"free {card.remaining()}");
+        card m = new card("three");
+        printLine($"m: {m.text} {m.text.length} note={m.note}");
+        m.text += m.text;
+        printLine($"m: {m.text} j: {j.text}");
+        delete j;
+        delete m;
+        printLine($"free {card.remaining()}");
+        card p = new card("");
+        printLine($"p: [{p.text}] {p.text.isEmpty()} note={p.note}");
+        delete p;
+    }
+}
+
+verb Structs {
+    meta = true;
+    grammar = {.structs};
+    void handler() {
+        r1.label = "first";
+        r1.n = 1;
+        r2 = r1;
+        r2.label += "-copy";
+        r2.n = 2;
+        printLine($"r1={r1.label}/{r1.n} r2={r2.label}/{r2.n}");
+        r1.label = "changed";
+        printLine($"r1={r1.label}/{r1.n} r2={r2.label}/{r2.n}");
+        rec loc;
+        loc = r2;
+        loc.label = loc.label.toUpper();
+        printLine($"loc={loc.label} r2={r2.label}");
+    }
+}
+
+verb Arrays {
+    meta = true;
+    grammar = {.arrays};
+    void handler() {
+        gl.clear();
+        gl.append("pear");
+        gl.append("apple");
+        stringObj t = "fig";
+        gl.append(t);
+        t += "s";
+        gl.append(t);
+        printLine($"len {gl.length}: {gl[0]} {gl[1]} {gl[2]} {gl[3]} t={t}");
+        gl[1] += "!";
+        gl[2] = "date";
+        printLine($"{gl[1]} {gl[2]} t={t}");
+        gl.sort();
+        print("sorted:");
+        for (stringObj s in gl) print($" {s}");
+        printLine("");
+        printLine($"index of figs {gl.indexOf("figs")}, contains pear {gl.contains("pear")}");
+        array<stringObj> loc[4];
+        loc.append(gl[0]);
+        loc.append(gl[3]);
+        loc.append("zed");
+        loc[0] += "-loc";
+        loc.sort();
+        printLine($"loc {loc.length}: {loc[0]} {loc[1]} {loc[2]}");
+        printLine($"gl[0]={gl[0]}");
+        gl.remove(0);
+        printLine($"len {gl.length}: {gl[0]}");
+    }
+}
+
+verb Purge {
+    meta = true;
+    grammar = {.purge};
+    void handler() {
+        o3.extra = "";
+        o3.tag = "own";
+        gl.clear();
+        printLine("Wiped.");
+    }
+}
+
+verb Ticks {
+    grammar = {.ticks};
+    void handler() {
+        printLine($"clock {clock.stamp} trail={clock.trail} ticks={clock.ticks}");
+    }
+}

@@ -70,15 +70,15 @@ member named like the class. The prefix keeps every Beguile class name free. An 
 Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
 unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
 
-Members share that namespace too. A data member or method whose name is also a global (one the
-program declares, a routine, variable or object, or one the library binding declares, such as
-`score`, `action`, a library routine or object) is emitted under another name, and every Beguile use
-follows it. A member named like a library *property* (`before`, `describe`) keeps its name, which is
-how the library calls it. The members of the library's own classes keep their names too: a program
-routine named like one of their methods (`<linq>`'s `first`) is the one emitted under another name.
-A routine the library itself defines, such as `print`, is one the compiler calls by name, so a
-program overload of it does not rename methods of that name. I6 code reaches a renamed member or
-routine through `$i6Name`.
+Members share that namespace too, and one rule decides which name moves, whoever declares the two
+(the program, an extension or the library). A routine, global variable, array or object named like a
+member property is emitted as `_g_⟨name⟩`, and the member keeps its name. A member moves instead
+(`_m_⟨name⟩`) only when the other name is fixed: an `extern` declaration, a routine that replaces an
+`extern` one, a name chosen with `asI6` (§3.11), an Inform 6 operator word, a system function, a class
+or `main`. A method named like an Inform 6 statement keyword (`print`) keeps its name, because a
+routine of that name is always emitted under another. Every Beguile use follows the moved name. I6 code,
+in an emitter body or an `#i6` block, names a moved global or member through `$i6Name` (§7.3.3);
+naming a moved global by its bare name there is a compile-time error.
 
 **Example**
 

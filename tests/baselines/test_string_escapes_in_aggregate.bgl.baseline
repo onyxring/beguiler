@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 Array _bglhdr_lines --> $9084 3;
 array lines table "~I don't trust you,~ he mutters." "~...for you, friend,~ the guard says, ~the gate's always open.~" "plain line, no quotes";
@@ -107,16 +106,16 @@ class _bglClass_Response
     text
 ;
 Array _bglhdr_table --> $9084 2;
-array table table _bglanon4 _bglanon5;
+array table table _bglanon6 _bglanon7;
 [main;
     print (string) _bglAt(lines, 0, 0)-->0 ;
     print (string)( _bglAt(table, 0, 0)-->0 ).text;
 ];
-_bglClass_Response _bglanon4
+_bglClass_Response _bglanon6
   with weight 1,
        text "~Don't move,~ she warns."
 ;
-_bglClass_Response _bglanon5
+_bglClass_Response _bglanon7
   with weight 2,
        text "He won't say."
 ;
@@ -138,7 +137,7 @@ _bglClass_Response _bglanon5
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

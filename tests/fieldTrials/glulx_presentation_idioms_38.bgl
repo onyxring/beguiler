@@ -96,7 +96,7 @@ string countWord(int n, string one, string many) { return n == 1 ? one : many; }
 void note(stringObj text, bool loud = false) {
     logLines++;
     if (logPane == null) {
-        log($"note (no log): {text}");
+        bgl.output.log($"note (no log): {text}");
         return;
     }
     if (loud) logPane.printLine($"{bold}[{turns}] {text}{roman}");

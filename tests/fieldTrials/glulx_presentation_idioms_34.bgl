@@ -58,7 +58,7 @@ int number = 40;           // named like the library property `number`
 stringObj label = "panel";
 int tick = 0;
 
-emitter void tick(int n) { tick = tick + $n; }
+emitter void tick(int n) { $i6Name(tick) = $i6Name(tick) + $n; }
 
 styleSheet gridLook = styleSheet{
     normal = style{ fixedWidth = true; };

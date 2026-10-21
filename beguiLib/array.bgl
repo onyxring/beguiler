@@ -53,89 +53,89 @@ int _bglArrayCompareAsc(var lhs, var rhs){
 extend class array {
     // Member and global arrays alike, through the dual-form helpers.
     /// How many elements the array can hold. Fixed at declaration.
-    replace emitter int  size             { _bglArray.size($self, $prop) }
+    replace emitter int  size             { _bglArray._bglArr_size($self, $prop) }
     /// True when this array carries a length separate from its capacity. A `rawArray` does not.
-    emitter bool isTracked()              { _bglArray.isTracked($self, $prop) }
+    emitter bool isTracked()              { _bglArray._bglArr_isTracked($self, $prop) }
 
     /// Copy `src`'s elements and length into this array's own storage, up to its capacity.
-    emitter void copyFrom(array<T> src)   { _bglArray.copy($self, $prop, $src, 0, $opref(=)) }
+    emitter void copyFrom(array<T> src)   { _bglArray._bglArr_copy($self, $prop, $src, 0, $opref(=)) }
 
     // Ownership-aware slot write, used ONLY when the element type publishes a static
     // `operator =` (stringObj). core's raw `$val-->($i+1) = $v` still handles every plain
     // element type, so array<int> keeps its inline word write and pays nothing — the
     // compiler picks between the two by asking the element type, not by replacing core's.
-    emitter void setOwnedAt(int i, literal T v) { _bglArray.setOwned($self, $prop, $i, $v, $opref(=)) }
+    emitter void setOwnedAt(int i, literal T v) { _bglArray._bglArr_setOwned($self, $prop, $i, $v, $opref(=)) }
 
     // Search
     /// The position of the first `item`, or -1. Uses the element type's `==`.
-    emitter int  indexOf(T item)          { _bglArray.indexOf($self, $prop, $item, $opref(==)) }
+    emitter int  indexOf(T item)          { _bglArray._bglArr_indexOf($self, $prop, $item, $opref(==)) }
     /// The position of the first `item`, or -1. The orLibrary name for `indexOf`.
-    emitter int  find(T item)             { _bglArray.indexOf($self, $prop, $item, $opref(==)) }       // alias — matches orLibrary terminology
+    emitter int  find(T item)             { _bglArray._bglArr_indexOf($self, $prop, $item, $opref(==)) }       // alias — matches orLibrary terminology
     /// True when `item` is somewhere in the used part of the array.
-    emitter bool contains(T item)         { (_bglArray.indexOf($self, $prop, $item, $opref(==)) >= 0) }
+    emitter bool contains(T item)         { (_bglArray._bglArr_indexOf($self, $prop, $item, $opref(==)) >= 0) }
 
     // In-place transforms (no resize)
     /// Empty the array — length back to 0, every slot zeroed, and owned elements released.
-    emitter void clear()                  { _bglArray.clear($self, $prop, $opref(deinit)) }
+    emitter void clear()                  { _bglArray._bglArr_clear($self, $prop, $opref(deinit)) }
     /// Exchange the elements at two positions.
-    emitter void swap(int pos1, int pos2) { _bglArray.swap($self, $prop, $pos1, $pos2) }
+    emitter void swap(int pos1, int pos2) { _bglArray._bglArr_swap($self, $prop, $pos1, $pos2) }
     /// Reverse the used part of the array, in place.
-    emitter void reverse()                { _bglArray.reverse($self, $prop) }
+    emitter void reverse()                { _bglArray._bglArr_reverse($self, $prop) }
 
     // Compound-assignment sugar for the append/remove idiom:
     //   arr += item;   appends one element   (mirrors grammar/extend `+=`)
     //   arr -= item;   removes it by value
     // The braced-list forms `arr += {a, b}` / `arr -= {a, b}` bind to the
     // array<T> overloads below, which append/remove each element in turn.
-    emitter void operator += (var v)        { _bglArray.append($self, $prop, $v, $opref(=)) }
-    emitter void operator -= (var v)        { _bglArray.removeValue($self, $prop, $v, $opref(==), $opref(deinit)) }
+    emitter void operator += (var v)        { _bglArray._bglArr_append($self, $prop, $v, $opref(=)) }
+    emitter void operator -= (var v)        { _bglArray._bglArr_removeValue($self, $prop, $v, $opref(==), $opref(deinit)) }
 
     // Length-changing mutators — each grows or shrinks the explicit length.
     // append / prepend / insert return false on a full array (no growth happened).
     /// Add `item` at the end. False when the array is already full — it does not grow.
-    emitter bool append(literal T item)             { _bglArray.append($self, $prop, $item, $opref(=)) }
+    emitter bool append(literal T item)             { _bglArray._bglArr_append($self, $prop, $item, $opref(=)) }
     /// Add `item` at the front, shifting the rest up. False when full.
-    emitter bool prepend(literal T item)            { _bglArray.prepend($self, $prop, $item, $opref(=)) }
+    emitter bool prepend(literal T item)            { _bglArray._bglArr_prepend($self, $prop, $item, $opref(=)) }
     /// Insert `item` at `pos`, shifting the rest up. False when full or `pos` is out of range.
-    emitter bool insert(int pos, literal T item)    { _bglArray.insert($self, $prop, $pos, $item, $opref(=)) }
+    emitter bool insert(int pos, literal T item)    { _bglArray._bglArr_insert($self, $prop, $pos, $item, $opref(=)) }
     /// Take out the element at `pos`, closing the gap. Releases it if the element type owns storage.
-    emitter void remove(int pos)            { _bglArray.remove($self, $prop, $pos, $opref(deinit)) }
+    emitter void remove(int pos)            { _bglArray._bglArr_remove($self, $prop, $pos, $opref(deinit)) }
     /// Take out EVERY element equal to `item`, closing the gaps.
-    emitter void removeValue(T item)        { _bglArray.removeValue($self, $prop, $item, $opref(==), $opref(deinit)) }
+    emitter void removeValue(T item)        { _bglArray._bglArr_removeValue($self, $prop, $item, $opref(==), $opref(deinit)) }
 
     // Deque view (orLibrary convention — push/peek/pop at the front;
     // enqueue/peekEnd/popEnd at the back).
     /// Stack push — onto the FRONT. `pop()` takes it back off.
-    emitter void push(literal T item)               { _bglArray.push($self, $prop, $item, $opref(=)) }
+    emitter void push(literal T item)               { _bglArray._bglArr_push($self, $prop, $item, $opref(=)) }
     /// Stack pop — take the front element off and return it. 0 when empty.
-    emitter T    pop()                      { _bglArray.pop($self, $prop) }
+    emitter T    pop()                      { _bglArray._bglArr_pop($self, $prop) }
     /// Queue take — the front element, removed. Pairs with `enqueue`.
-    emitter T    dequeue()                  { _bglArray.dequeue($self, $prop) }
+    emitter T    dequeue()                  { _bglArray._bglArr_dequeue($self, $prop) }
     /// Queue add — onto the END. Pairs with `dequeue`.
-    emitter void enqueue(literal T item)            { _bglArray.enqueue($self, $prop, $item, $opref(=)) }
+    emitter void enqueue(literal T item)            { _bglArray._bglArr_enqueue($self, $prop, $item, $opref(=)) }
     /// The front element, left in place. 0 when empty.
-    emitter T    peek()                     { _bglArray.peek($self, $prop) }
+    emitter T    peek()                     { _bglArray._bglArr_peek($self, $prop) }
     /// The last element, left in place. 0 when empty.
-    emitter T    peekEnd()                  { _bglArray.peekEnd($self, $prop) }
+    emitter T    peekEnd()                  { _bglArray._bglArr_peekEnd($self, $prop) }
     /// Take the last element off and return it. 0 when empty.
-    emitter T    popEnd()                   { _bglArray.popEnd($self, $prop) }
+    emitter T    popEnd()                   { _bglArray._bglArr_popEnd($self, $prop) }
 
     // Sort — two overloads. The no-arg form uses the default ascending
     // comparator; the func-arg form lets the caller customize ordering
     // (e.g. descending, by field, locale-aware string compare).
     /// Sort ascending, using the element type's `<=>`. A type without one will not compile.
-    emitter void sort()                            { _bglArray.sortDefault($self, $prop, $oprefReq(<=>)) }
+    emitter void sort()                            { _bglArray._bglArr_sortDefault($self, $prop, $oprefReq(<=>)) }
     /// Sort with your own comparison, which returns <0, 0 or >0 like `<=>`.
-    emitter void sort(func<int, T, T> compare)     { _bglArray.sort($self, $prop, $compare) }
+    emitter void sort(func<int, T, T> compare)     { _bglArray._bglArr_sort($self, $prop, $compare) }
 
 }
 
 /// With `<array>`, an array's `length` is assignable: set it to say how many elements are in use.
 extend class arrayLength {
     /// How many elements are in use. `append` and friends move it; `size` does not change.
-    replace emitter int  operator()       { _bglArray.length($self, $prop) }
+    replace emitter int  operator()       { _bglArray._bglArr_length($self, $prop) }
     /// Set how many elements are in use, at most `size`. Growing it exposes slots that were never written.
-    emitter void operator = (int n)       { _bglArray.setLength($self, $prop, $n) }
+    emitter void operator = (int n)       { _bglArray._bglArr_setLength($self, $prop, $n) }
 }
 
 
@@ -161,21 +161,21 @@ superposed object _bglArray {
     // ── Raw word access on a global/local array ADDRESS ───────────────────────
     // Bypasses operator[] so this object never recurses through its own dispatch.
     // `addr-->slot` is the raw I6 slot (slot 0 = header/count, data at 1..N).
-    superposed var  rawGet(var addr, var slot)        { #i6 { return addr-->slot; } }
-    superposed void rawSet(var addr, var slot, var v) { #i6 { addr-->slot = v; } }
+    superposed var  rawGet(var addr, var slot) asI6 _bglArr_rawGet        { #i6 { return addr-->slot; } }
+    superposed void rawSet(var addr, var slot, var v) asI6 _bglArr_rawSet { #i6 { addr-->slot = v; } }
 
     // ── Dual-form element access (orLibrary util.orArray convention) ───────────
     // metaclass(obj)==object → member/property array: element n at obj.&prop-->n
     //   (0-indexed, no count slot). otherwise → global/local array address:
     //   count-prefixed, element n at obj-->(n+1). All higher methods build on these,
     //   so member ↔ global parity is decided once, here, at runtime.
-    superposed var get(var obj, var prop, int n){
+    superposed var get(var obj, var prop, int n) asI6 _bglArr_get {
         #i6 {
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         }
     }
-    superposed void set(var obj, var prop, int n, var v){
+    superposed void set(var obj, var prop, int n, var v) asI6 _bglArr_set {
         #i6 {
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
@@ -186,7 +186,7 @@ superposed object _bglArray {
     // set dest's length. Clamps to dest capacity if the source is longer. Backs the
     // `array<T> operator=` copy-on-assign. Word arrays only — byteArray overrides its
     // own operator= (byte-form) so char arrays never route through this.
-    superposed void copy(var dobj, var dprop, var sobj, var sprop, var assign = 0){
+    superposed void copy(var dobj, var dprop, var sobj, var sprop, var assign = 0) asI6 _bglArr_copy {
         int n = length(sobj, sprop);
         int cap = size(dobj, dprop);
         if(n > cap) n = cap;
@@ -199,12 +199,12 @@ superposed object _bglArray {
 
     // Property arrays are never tracked (no magic/length slot); size = #prop/WORDSIZE,
     // length == size. Global/local arrays use the tracked layout when <array> stamped a marker.
-    superposed bool isTracked(var obj, var prop){
+    superposed bool isTracked(var obj, var prop) asI6 _bglArr_isTracked {
         #i6 { if(metaclass(obj)==object) rfalse; }
         return _bglArrTracked(obj);
     }
 
-    superposed int size(var obj, var prop){
+    superposed int size(var obj, var prop) asI6 _bglArr_size {
         // A member array reserves its LAST word for the length, so capacity is one less than
         // the property holds. The data keeps 0-based `obj.&prop-->n` indexing — putting the
         // length first would have shifted every subscript. `rawArray<T>` members opt out of
@@ -213,12 +213,12 @@ superposed object _bglArray {
         return _bglArrSize(obj);
     }
 
-    superposed int length(var obj, var prop){
+    superposed int length(var obj, var prop) asI6 _bglArr_length {
         #i6 { if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); }
         return _bglArrLength(obj);
     }
 
-    superposed void setLength(var obj, var prop, int n){
+    superposed void setLength(var obj, var prop, int n) asI6 _bglArr_setLength {
         if(n < 0){
             print("^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
             #i6 { quit; }   // I6 control; no Beguile equivalent yet
@@ -247,7 +247,7 @@ superposed object _bglArray {
     // taking both operands (an instance operator comes wrapped in one that sends it to the
     // element). 0 means the type publishes none, so word comparison stands and
     // int/char/object pay nothing.
-    superposed int indexOf(var obj, var prop, var val, var op = 0){
+    superposed int indexOf(var obj, var prop, var val, var op = 0) asI6 _bglArr_indexOf {
         // length(), not size(): a search covers the elements the array HOLDS, not its
         // capacity. Unused slots are 0 and are not findable. This matches every other
         // traversal here (removeValue, sort, first/last); clear() is the deliberate
@@ -268,7 +268,7 @@ superposed object _bglArray {
     // word. It receives the slot's CURRENT value and the incoming one, and returns the word to
     // store — which is how a type that owns storage can allocate on first write and copy into
     // its own buffer thereafter, without _bglArray knowing anything about the type.
-    superposed void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0){
+    superposed void setOwned(var obj, var prop, int n, var v, func<var, var, var> assign = 0) asI6 _bglArr_setOwned {
         if(assign == 0){ set(obj, prop, n, v); return; }
         var cur = get(obj, prop, n);
         // An array with no instances of its own (a step's result, an array declared from a value) holds pointers:
@@ -283,14 +283,14 @@ superposed object _bglArray {
 
     // A struct can't be added to an array that shares its elements: it has no instances to copy into, and a
     // pointer to the struct (a local, a function's result) would go stale.
-    superposed bool refusesStruct(var v){
+    superposed bool refusesStruct(var v) asI6 _bglArr_refusesStruct {
         #i6 { if(metaclass(v) ~= Object) rfalse; }
         print("^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^");
         return true;
     }
 
     // Zero every slot up to size; length drops to 0.
-    superposed void clear(var obj, var prop, var dtor = 0){
+    superposed void clear(var obj, var prop, var dtor = 0) asI6 _bglArr_clear {
         // Destruction is SIZE-scoped, not length-scoped. Ownership is physical: a slot
         // write (`a[i] = ...`) allocates without moving the length cursor, so an owned
         // allocation can sit past length(). Iteration (indexOf, sort) stays length-scoped
@@ -306,7 +306,7 @@ superposed object _bglArray {
     // Destroy every live element without disturbing length or contents — the scope-exit
     // path for a local array<T> whose element type owns storage. The frame is about to be
     // reclaimed, so only the owned allocations need releasing.
-    superposed void freeAll(var obj, var prop, var dtor = 0){
+    superposed void freeAll(var obj, var prop, var dtor = 0) asI6 _bglArr_freeAll {
         if(dtor == 0) return;
         // Size-scoped for the same reason as clear(): the frame is going away, so every
         // owned allocation must be released regardless of where the length cursor sits.
@@ -316,7 +316,7 @@ superposed object _bglArray {
 
     // Exchange the values at the two given indices. Size-bounded; caller is
     // responsible for passing in-range indices.
-    superposed void swap(var obj, var prop, int pos1, int pos2){
+    superposed void swap(var obj, var prop, int pos1, int pos2) asI6 _bglArr_swap {
         var tmp = get(obj, prop, pos1);
         set(obj, prop, pos1, get(obj, prop, pos2));
         set(obj, prop, pos2, tmp);
@@ -324,7 +324,7 @@ superposed object _bglArray {
 
     // Reverse the used range (positions 0..length-1) in place. Trailing
     // slots past length are untouched.
-    superposed void reverse(var obj, var prop){
+    superposed void reverse(var obj, var prop) asI6 _bglArr_reverse {
         int len = length(obj, prop);
         int half = len / 2;
         for(int i = 0; i < half; i++)
@@ -337,7 +337,7 @@ superposed object _bglArray {
     // word. Routing the store through setOwned is what lets `a += "text"` allocate into an
     // owning element type instead of parking a bare pointer in the slot — the same channel
     // a subscript write uses, so both entry points behave alike.
-    superposed bool append(var obj, var prop, var val, var assign = 0){
+    superposed bool append(var obj, var prop, var val, var assign = 0) asI6 _bglArr_append {
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
         if(assign != 0 && ownedDtor(obj, prop, 1) == 0){
@@ -352,7 +352,7 @@ superposed object _bglArray {
     // Insert val at the given position, shifting positions pos..length-1 to
     // pos+1..length. Returns false if the array is full or pos is out of
     // range (pos may equal length() to append, but not exceed it).
-    superposed bool insert(var obj, var prop, int pos, var val, var assign = 0){
+    superposed bool insert(var obj, var prop, int pos, var val, var assign = 0) asI6 _bglArr_insert {
         int len = length(obj, prop);
         if(len >= size(obj, prop)) return false;
         if(pos < 0 || pos > len) return false;
@@ -373,7 +373,7 @@ superposed object _bglArray {
 
     // Insert val at position 0, shifting existing items right.
     // Returns false if the array is full, true on success.
-    superposed bool prepend(var obj, var prop, var val, var assign = 0){
+    superposed bool prepend(var obj, var prop, var val, var assign = 0) asI6 _bglArr_prepend {
         return insert(obj, prop, 0, val, assign);
     }
 
@@ -387,7 +387,7 @@ superposed object _bglArray {
     // own storage — so nothing is freed and plain element types pay nothing. A slot may
     // hold 0 (never written); the type's own deinit guards the rest.
     // `dtor`, or 0 when the array doesn't own its elements: a step's result shares its source's.
-    superposed var ownedDtor(var obj, var prop, var dtor){
+    superposed var ownedDtor(var obj, var prop, var dtor) asI6 _bglArr_ownedDtor {
         int b = 0;
         #i6 {
             if(dtor == 0 || metaclass(obj) == object) return dtor;
@@ -396,11 +396,11 @@ superposed object _bglArray {
             return dtor;
         }
     }
-    superposed void destroyValue(var dtor, var v){
+    superposed void destroyValue(var dtor, var v) asI6 _bglArr_destroyValue {
         #i6 { if(dtor ~= 0 && v ~= 0) dtor(v); }
     }
 
-    superposed void remove(var obj, var prop, int pos, var dtor = 0){
+    superposed void remove(var obj, var prop, int pos, var dtor = 0) asI6 _bglArr_remove {
         int len = length(obj, prop);
         if(pos < 0 || pos >= len) return;
         destroyValue(ownedDtor(obj, prop, dtor), get(obj, prop, pos));   // before the shift overwrites the slot
@@ -415,7 +415,7 @@ superposed object _bglArray {
     // Remove every occurrence of val within the used range (positions 0..length-1).
     // Each match shifts subsequent elements left; the scan continues from the
     // same position since the next element is now at that index.
-    superposed void removeValue(var obj, var prop, var val, var op = 0, var dtor = 0){
+    superposed void removeValue(var obj, var prop, var val, var op = 0, var dtor = 0) asI6 _bglArr_removeValue {
         int pos = 0;
         int len = length(obj, prop);
         while(pos < len){
@@ -450,37 +450,37 @@ superposed object _bglArray {
     // The orientation differs from JavaScript (where push appends); see the
     // project_array_deque_naming memory for the rationale.
 
-    superposed void push(var obj, var prop, var val, var assign = 0){
+    superposed void push(var obj, var prop, var val, var assign = 0) asI6 _bglArr_push {
         insert(obj, prop, 0, val, assign);   // bool result intentionally discarded; full-array detection is via .length/.size
     }
 
-    superposed var pop(var obj, var prop){
+    superposed var pop(var obj, var prop) asI6 _bglArr_pop {
         if(length(obj, prop) == 0) return 0;
         var v = get(obj, prop, 0);
         remove(obj, prop, 0);
         return v;
     }
 
-    superposed var dequeue(var obj, var prop){
+    superposed var dequeue(var obj, var prop) asI6 _bglArr_dequeue {
         return pop(obj, prop);
     }
 
-    superposed void enqueue(var obj, var prop, var val, var assign = 0){
+    superposed void enqueue(var obj, var prop, var val, var assign = 0) asI6 _bglArr_enqueue {
         append(obj, prop, val, assign);
     }
 
-    superposed var peek(var obj, var prop){
+    superposed var peek(var obj, var prop) asI6 _bglArr_peek {
         if(length(obj, prop) == 0) return 0;
         return get(obj, prop, 0);
     }
 
-    superposed var peekEnd(var obj, var prop){
+    superposed var peekEnd(var obj, var prop) asI6 _bglArr_peekEnd {
         int len = length(obj, prop);
         if(len == 0) return 0;
         return get(obj, prop, len - 1);
     }
 
-    superposed var popEnd(var obj, var prop){
+    superposed var popEnd(var obj, var prop) asI6 _bglArr_popEnd {
         int len = length(obj, prop);
         if(len == 0) return 0;
         var v = get(obj, prop, len - 1);
@@ -498,19 +498,19 @@ superposed object _bglArray {
     // No-arg sort(): the compiler passes the element type's comparator via $opref(<=>), or 0
     // when signed-word ordering is correct. _bglArrayCompareAsc is now only the fallback,
     // not an assumption — it is wrong for float (IEEE sign-magnitude) and for string.
-    superposed void sortDefault(var obj, var prop, func<int, var, var> cmp = 0){
+    superposed void sortDefault(var obj, var prop, func<int, var, var> cmp = 0) asI6 _bglArr_sortDefault {
         if(cmp == 0) self.sort(obj, prop, _bglArrayCompareAsc);
         else         self.sort(obj, prop, cmp);
     }
 
     // Invoke a comparator: a routine taking both operands (a static `operator <=>`, a lambda,
     // _bglArrayCompareAsc, or the routine $opref wraps an instance `operator <=>` in).
-    superposed int invokeCompare(var cmp, var a, var b){
+    superposed int invokeCompare(var cmp, var a, var b) asI6 _bglArr_invokeCompare {
         #i6 { if(cmp ~= 0) return cmp(a, b); }
         return 0;
     }
 
-    superposed void sort(var obj, var prop, func<int, var, var> compare){
+    superposed void sort(var obj, var prop, func<int, var, var> compare) asI6 _bglArr_sort {
         int len = length(obj, prop);
         for(int i = 1; i < len; i++){
             var key = get(obj, prop, i);

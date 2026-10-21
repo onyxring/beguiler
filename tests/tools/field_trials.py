@@ -42,7 +42,7 @@ import argparse, concurrent.futures, glob, os, re, shutil, subprocess, sys, temp
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
 TRIALS = os.path.join(ROOT, 'tests', 'fieldTrials')
-BEGUILER = os.path.join(ROOT, 'beguiler')
+BEGUILER = os.environ.get('BEGUILER') or os.path.join(ROOT, 'beguiler')
 ZVM = os.environ.get('ZVM') or shutil.which('zvm') or os.path.join(ROOT, '..', 'beguilex', 'node_modules', '.bin', 'zvm')
 GLULX_RUN = os.path.join(HERE, 'glulx-run.js')
 

@@ -1,0 +1,229 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <stringObj> in a PunyInform program (z5). Strings built in verb handlers (`+=`, `+`,
+// interpolation, capture() / release()), stringObj members on static objects printed by short_name and
+// by a description routine, a daemon that rewrites a stringObj global each turn, object names
+// interpolated into strings, growth past 494 characters with `+=`, a churn verb repeated with #repeat
+// to force the heap to compact, and comparisons and transforms (==, <, =~, <=>, switch, toUpper,
+// reverse, replaceAll, insert, delete, mid, format).
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/puny/lib";
+    stringHeapSize = 2560; stringCaptureSize = 128;
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#include <bindings/punyInform>
+#include <stringObj>
+#includeI6 "puny"
+
+#using bgl.printRules;
+
+extend class object {
+    string description;
+    ref object e_to;
+    ref object w_to;
+}
+
+stringObj status;
+stringObj big;
+int ticks = 0;
+
+object roomA {
+    "Room A";
+    description = "Room A. Room B is east.";
+    e_to = roomB;
+    attributes = {light};
+}
+
+object roomB {
+    "Room B";
+    description = "Room B. Room A is west.";
+    w_to = roomA;
+    attributes = {light};
+}
+
+object lamp {
+    "lamp";
+    parent = roomA;
+    name = {.lamp};
+    stringObj label;
+    description = "A lamp.";
+
+    bool short_name() {
+        if (label == null || label.isEmpty()) print("lamp");
+        else print(label);
+        rtrue;
+    }
+}
+
+object dial {
+    "dial";
+    parent = roomA;
+    name = {.dial};
+    stringObj reading;
+    attributes = {static};
+
+    bool description() {
+        if (reading == null || reading.isEmpty()) printLine("The dial is blank.");
+        else printLine($"The dial reads {reading}.");
+        rtrue;
+    }
+}
+
+object ticker {
+    "ticker";
+    parent = roomA;
+    name = {.ticker};
+    description = "A ticker.";
+    attributes = {static};
+
+    void daemon() {
+        ticks++;
+        status = $"turn {ticks} in {location}";
+    }
+}
+
+// --- helpers ----------------------------------------------------------------------------------------
+
+stringObj wrap(stringObj s) {
+    return "<" + s + ">";
+}
+
+void show(string label, stringObj s) {
+    printLine($"{label}: {s} ({s.length})");
+}
+
+// --- verbs ------------------------------------------------------------------------------------------
+
+verb Build {
+    grammar = {.build};
+    void handler() {
+        stringObj s = "ab";
+        s += "cd";
+        s += 'e';
+        s += $" {ticks}";
+        show("a", s);
+        stringObj t = s + "-" + wrap(s.left(2));
+        show("b", t);
+        stringObj c;
+        c.capture();
+        print("cap ");
+        print(lamp);
+        c.release();
+        show("c", c);
+        s = $"{s}|{lamp}|{roomA}|{player}";
+        show("d", s);
+    }
+}
+
+verb Label {
+    grammar = {.label, NOUN};
+    void handler() {
+        if (noun != lamp) {
+            printLine("Only the lamp.");
+            return;
+        }
+        if (lamp.label == null) lamp.label = "";
+        lamp.label = $"lamp {noun.parent}";
+        printLine($"Now {lamp}; label length {lamp.label.length}.");
+    }
+}
+
+verb SetDial {
+    grammar = {.set, .dial, NUMBER};
+    void handler() {
+        dial.reading = $"{parsed_number} units";
+        dial.reading += " (set)";
+        printLine("Set.");
+    }
+}
+
+verb Stat {
+    meta = true;
+    grammar = {.stat};
+    void handler() {
+        printLine($"Status: [{status}]");
+    }
+}
+
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        int i = 0;
+        big = "";
+        while (i < 60) {
+            big += "0123456789";
+            i++;
+        }
+        printLine($"Big length {big.length}.");
+        printLine($"Big[0..5] {big.left(5)}, [595..] {big.right(5)}, at 300 {big.mid(300, 4)}.");
+        stringObj twice = big.left(100) + big.right(100);
+        printLine($"Twice length {twice.length}.");
+        big = big.reverse();
+        printLine($"Reversed starts {big.left(4)}.");
+    }
+}
+
+verb Churn {
+    grammar = {.churn};
+    void handler() {
+        stringObj a = "alpha";
+        stringObj b = a.toUpper();
+        stringObj c = b.insert(2, "--");
+        stringObj d = c.replaceAll("-", "+");
+        stringObj e = d.delete(0, 1);
+        stringObj f = e.format("[$0|$1]", "x");
+        int i = 0;
+        stringObj acc = "";
+        while (i < 12) {
+            acc += $"{i}:{f}/";
+            i++;
+        }
+        printLine($"{f} {acc.length} {acc.mid(0, 12)}");
+    }
+}
+
+verb Cmp {
+    grammar = {.cmp};
+    void handler() {
+        stringObj a = "Apple";
+        stringObj b = "apple";
+        string    c = "Banana";
+        printLine($"eq {a == b} ci {a =~ b} lt {a < c} ge {a >= c} ne {a != b}");
+        printLine($"cmp {(a <=> c) < 0} {(c <=> a) > 0} {(a <=> a) == 0}");
+        printLine($"has {a.contains("ppl")} idx {a.indexOf("pl")} sw {a.startsWith("Ap")} {a.endsWith('e')}");
+        switch (a.toLower()) {
+            case "apple": printLine("switch lower ok");
+            default: printLine("switch missed");
+        }
+        stringObj m = "  pad  ";
+        printLine($"[{m.trim()}] [{m.trimLeft()}] [{m.trimRight()}]");
+        a[0] = 'a';
+        printLine($"{a} {a == b} {a[1]}");
+    }
+}
+
+verb Cap {
+    grammar = {.over};
+    void handler() {
+        stringObj s;
+        // A moderate overrun: one far past the room can run off the end of the Z-machine's memory, and the
+        // interpreter fails before the error prints (spec §22.9).
+        s = $"{big.left(300)}";
+        printLine($"Unreachable {s.length}");
+    }
+}
+
+bool Initialise() {
+    StartDaemon(ticker);
+    status = "init";
+    big = "";
+    rfalse;
+}

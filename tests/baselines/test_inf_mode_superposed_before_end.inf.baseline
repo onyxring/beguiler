@@ -96,7 +96,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 ! test_inf_mode_superposed_before_end.inf — a superposed routine an island calls must land
 ! BEFORE the file's `end;`.
@@ -143,7 +142,7 @@ x = _bgl_bglOpCodes_random(6);
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

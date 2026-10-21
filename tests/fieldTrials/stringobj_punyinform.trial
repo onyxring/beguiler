@@ -1,0 +1,69 @@
+Room A
+Room A. Room B is east.
+You can see a lamp, a dial and a ticker here.
+> stat
+Status: [init]
+> build
+a: abcde 0 (7)
+b: abcde 0-<ab> (12)
+c: cap lamp (8)
+d: abcde 0|lamp|Room A|yourself (28)
+> label lamp
+Now lamp Room A; label length 11.
+> x lamp
+A lamp.
+> i
+You are empty handed.
+> look
+Room A
+Room A. Room B is east.
+You can see a lamp Room A, a dial and a ticker here.
+> x dial
+The dial is blank.
+> set dial 42
+Set.
+> x dial
+The dial reads 42 units (set).
+> stat
+Status: [turn 8 in Room A]
+> grow
+Big length 600.
+Big[0..5] 01234, [595..] 56789, at 300 0123.
+Twice length 200.
+Reversed starts 9876.
+> cmp
+eq false ci true lt true ge false ne true
+cmp true true true
+has true idx 2 sw true true
+switch lower ok
+[pad] [pad  ] [  pad]
+apple true p
+> churn
+[L++PHA|x] 158 0:[L++PHA|x]
+#repeat 200
+> churn
+[L++PHA|x] 158 0:[L++PHA|x]
+> grow
+Big length 600.
+Big[0..5] 01234, [595..] 56789, at 300 0123.
+Twice length 200.
+Reversed starts 9876.
+> build
+a: abcde 212 (9)
+b: abcde 212-<ab> (14)
+c: cap lamp Room A (15)
+d: abcde 212|lamp Room A|Room A|yourself (37)
+> stat
+Status: [turn 213 in Room A]
+> x dial
+The dial reads 42 units (set).
+> e
+Room B
+Room B. Room A is west.
+> stat
+Status: [turn 215 in Room B]
+> w
+Room A
+You can see a lamp Room A, a dial and a ticker here.
+> over
+[Beguile run-time error: 300 characters were printed into room for *; raise the stringCaptureSize setting (stringHeapSize, for a literal)]

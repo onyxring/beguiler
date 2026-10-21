@@ -27,5 +27,7 @@ primitive class dictionaryWord : patternElement {
     replace emitter void print(){ print (address) $val }   /// Print the word.
 }
 
-emitter void print(dictionaryWord val){ print (address) $val; }          /// Print a dictionary word.
-emitter void print(dictionaryWordLiteral val){ print (address) $val; }   /// Print a dictionary word.
+extend _bglOutput {
+    emitter void print(dictionaryWord val){ print (address) $val; }          /// Print a dictionary word.
+    emitter void print(dictionaryWordLiteral val){ print (address) $val; }   /// Print a dictionary word.
+}

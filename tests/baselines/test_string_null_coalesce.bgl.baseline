@@ -55,7 +55,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 [main a b c maybeName label first _bgl_tempL0 _bgl_tempL1;
     a="hello";

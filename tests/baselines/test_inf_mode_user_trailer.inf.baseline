@@ -53,7 +53,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 ! test_inf_mode_user_trailer.inf — Slice 5b: trailer extraction. The first `end;`
 ! directive in the trailing raw text and everything after it is hoisted to the very

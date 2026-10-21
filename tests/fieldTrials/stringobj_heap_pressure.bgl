@@ -1,0 +1,209 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: the <stringObj> heap under pressure. A small stringHeapSize makes compaction run often
+// while five live strings (three globals, two members of an object) hold known text. Verbs grow two
+// and three live strings in interleaved steps, shrink them with short assignments and grow them
+// again, run a churn (typed 200 times) of temporaries, locals, ephemeral function results and
+// captures whose text comes from a function that allocates, and build one string close to the heap's
+// size. Every live string and its length is printed after each phase.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 2600;
+    stringCaptureSize = 100;
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+
+extend class object {
+    string description;
+}
+
+stringObj ga = "alpha";
+stringObj gb = "beta";
+stringObj gc = "gamma";
+int churns = 0;
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+object box {
+    "box";
+    parent = roomA;
+    name = {.box};
+    stringObj ma = "mu";
+    stringObj mb = "nu";
+}
+
+// Off-stage: puts the verb words into the dictionary.
+object lexicon {
+    "lexicon";
+    name = {.alpha};
+}
+
+// A string of n hash marks, built a mark at a time.
+stringObj mk(int n) {
+    stringObj r;
+    for (int i = 0; i < n; i++) r += "#";
+    return r;
+}
+
+// Builds 400 characters of scratch text, answers with the first k + 3 of them.
+stringObj wrap(int k) {
+    stringObj big;
+    for (int i = 0; i < 40; i++) big += "0123456789";
+    return big.left(k + 3);
+}
+
+void show(string label) {
+    printLine($"{label}: ga[{ga}]({ga.length}) gb[{gb}]({gb.length}) gc[{gc}]({gc.length})");
+    printLine($"{label}: ma[{box.ma}]({box.ma.length}) mb[{box.mb}]({box.mb.length})");
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Status {
+    meta = true;
+    grammar = {.status};
+    void handler() {
+        show("Now");
+    }
+}
+
+// Two live strings and a third grow a step at a time, so their blocks must move past one another.
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        for (int i = 0; i < 20; i++) {
+            ga += "ab";
+            gb += "cd";
+            gc += $"{i % 10}";
+            box.ma += $"{i % 10}";
+            box.mb += gb.right(1);
+        }
+        show("Grown");
+    }
+}
+
+verb Shrink {
+    grammar = {.shrink};
+    void handler() {
+        ga = "alpha";
+        gb = gb.left(4);
+        gc = "g";
+        box.ma = "";
+        box.mb = box.mb.left(2);
+        show("Shrunk");
+    }
+}
+
+// One round of work. Prints the same line each time, or what went wrong.
+verb Churn {
+    meta = true;
+    grammar = {.churn};
+    void handler() {
+        int k = churns % 6;
+        stringObj t;
+        for (int i = 0; i < 8 + k * 6; i++) t += "xy";
+        stringObj kk = $"##{k}";
+        stringObj p = "p";
+        stringObj q = "q";
+        for (int i = 0; i < 5; i++) {
+            ga += mk(4);
+            p += mk(3 + k);
+            gb += $"{mk(2)}{k}";
+            q += p.right(2);
+            gc += t.left(2);
+            box.ma += wrap(0);
+        }
+        stringObj u = $"<{wrap(k)}>";
+        stringObj w = $"{wrap(k)}{ga.length}{wrap(1)}";
+        stringObj z = ga.left(3) + mk(k) + gb.right(2) + wrap(2);
+        stringObj c;
+        c.capture();
+        print(wrap(k));
+        print("|");
+        print(mk(5));
+        c.release();
+        bool ok = true;
+        if (ga.length != 25 || gb.length != 4 + 15 || gc.length != 5 + 10 || box.ma.length != 2 + 15) ok = false;
+        if (!ga.startsWith("alpha####") || !gb.endsWith(kk)) ok = false;
+        if (u.length != k + 5 || !u.startsWith("<012") || !u.endsWith(">")) ok = false;
+        if (w.length != k + 3 + 2 + 4) ok = false;
+        if (z.length != 3 + k + 2 + 5) ok = false;
+        if (c.length != k + 3 + 1 + 5 || !c.endsWith("|#####")) ok = false;
+        if (p.length != 1 + 5 * (3 + k) || q.length != 1 + 10) ok = false;
+        if (!ok) {
+            printLine($"Churn {churns} is wrong:");
+            show("  Bad");
+            printLine($"  t {t.length} u [{u}] w [{w}] z [{z}] c [{c}] p {p.length} q {q.length}");
+        }
+        ga = "alpha";
+        gb = "beta";
+        gc = gc.left(5);
+        box.ma = box.ma.left(2);
+        churns++;
+        if (ok) printLine("Churned.");
+    }
+}
+
+// Results of functions that allocate, used while the heap is busy.
+verb Eph {
+    grammar = {.eph};
+    void handler() {
+        ga = mk(3) + mk(40) + mk(2);
+        printLine($"ga is {ga.length}: {ga}");
+        gb = $"{mk(4)}{wrap(6)}{mk(2)}";
+        printLine($"gb is {gb.length}: {gb}");
+        gc = mk(2) + wrap(1) + mk(3);
+        printLine($"gc is {gc.length}: {gc}");
+        stringObj inner = $"{wrap(3)}";
+        box.ma = $"[{inner}]";
+        printLine($"ma is {box.ma.length}: {box.ma}");
+        stringObj s1 = $"{wrap(2)}";
+        stringObj s = s1 + wrap(4);
+        printLine($"s is {s.length}: {s}");
+        printLine($"{mk(2)} {wrap(0)} {mk(3)} {wrap(5)}");
+        ga = "alpha";
+        gb = "beta";
+        gc = "gamma";
+        box.ma = "mu";
+        show("Reset");
+    }
+}
+
+// A single string most of the way to the size of the heap.
+verb Near {
+    grammar = {.near};
+    void handler() {
+        stringObj big;
+        for (int i = 0; i < 180; i++) big += "0123456789";
+        printLine($"Big is {big.length} characters.");
+        printLine($"{big.left(12)} {big.right(12)} {big.mid(995, 10)}");
+        bool ok = true;
+        for (int i = 0; i < big.length; i++) {
+            if (big[i] != '0' + i % 10) ok = false;
+        }
+        printLine($"Content ok: {ok}");
+        ga += "!";
+        box.mb += "?";
+        show("Near");
+        ga = "alpha";
+        box.mb = "nu";
+    }
+}

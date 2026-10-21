@@ -539,11 +539,11 @@ superposed _bglObject _bglGC {
     /// Release an array now instead of at the next collection; a later use through another reference is an error.
     emitter void free(var a)  { _bglHeapFree($a) }
     /// Keep an array for Inform 6 code that holds on to it, until `unpin` or `free`.
-    void keep(var a)  { _bglHeapPin(a, true); }
+    void keep(var a) asI6 _bglGC_keep  { _bglHeapPin(a, true); }
     /// Hand an array kept with `keep` back to the collector, which frees it once nothing refers to it.
-    void unpin(var a) { _bglHeapPin(a, false); }
+    void unpin(var a) asI6 _bglGC_unpin { _bglHeapPin(a, false); }
     /// Free every array that nothing refers to; call it where no local array still needed is held only in a local.
-    void collect()    { _bglHeapCollect(true); }
+    void collect() asI6 _bglGC_collect    { _bglHeapCollect(true); }
     emitter int used  { _bglHeapUsedWords() }   /// Words of the heap in use.
     emitter int size  { _bglHeapSizeWords() }   /// Words the heap holds for arrays.
     emitter int peak  { _bglHeapPeakWords() }   /// The most words of the heap ever in use: what `heapSize` must hold.

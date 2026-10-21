@@ -1,0 +1,154 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <stringObj> on Glulx. A global stringObj grown past 1200 characters with +=, then
+// sliced, searched and doubled; Latin-1 characters in literals, char literals, captures, transforms
+// and comparisons; interpolation with captures nested through a helper; a stringObj member of an
+// object and a global changed by verbs; a churn verb typed 40 times with a small heap so the string
+// heap is compacted while the long global stays live; and a replaced DrawStatusLine that prints
+// stringObj text into the status line.
+
+#beguilerSettings {
+    target = Glulx;
+    includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 8192;
+    stringCaptureSize = 256;
+}
+
+#i6 { Constant bglStringPoolReserve 40; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+#include <glulxWindow>
+
+stringObj g;
+stringObj keepText;
+int       count = 0;
+
+object roomA {
+    "Room A";
+    string description = "A plain room.";
+    attributes = {light};
+}
+
+object tray {
+    "tray";
+    parent = roomA;
+    name = {.tray};
+    attributes = {static};
+    stringObj label;
+}
+
+stringObj wrap(stringObj x) {
+    stringObj r = $"<{x}>";
+    return r;
+}
+
+replace void DrawStatusLine() {
+    if (bgl.ui.statusBar.id == 0) return;
+    bgl.ui.statusBar.clear();
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.ui.statusBar.print($"[{tray.label}] {g.length}");
+}
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+#includeI6 "grammar"
+
+verb Long {
+    meta = true;
+    grammar = {.long};
+    void handler() {
+        g = "";
+        for (int i = 0; i < 120; i++) g += "abcdefghij";
+        printLine($"Long {g.length} [{g.left(12)}] [{g.right(12)}] [{g.mid(595, 10)}] {g.indexOf("jab")}");
+        g += " é";
+        printLine($"Grown {g.length} [{g.right(3)}]");
+        stringObj twice = g + g;
+        printLine($"Twice {twice.length} [{twice.mid(1200, 6)}] {twice.indexOf("é")} {twice.contains("é abc")}");
+        stringObj cut = twice.left(10);
+        printLine($"Cut {cut.length} [{cut}]");
+    }
+}
+
+verb Accent {
+    meta = true;
+    grammar = {.accent};
+    void handler() {
+        stringObj s = "café über";
+        printLine($"[{s}] ({s.length}) upper [{s.toUpper()}] reverse [{s.reverse()}]");
+        printLine($"index {s.indexOf("ü")} {s.indexOf("é")} char [{s[3]}]");
+        stringObj c = $"{'ü'}x{'é'}";
+        printLine($"Chars [{c}] ({c.length})");
+        c[1] = 'é';
+        printLine($"Set [{c}] {c.startsWith("üé")} {c.endsWith("é")}");
+        stringObj r = s.replaceAll("é", "e");
+        printLine($"Plain [{r}] ({r.length})");
+    }
+}
+
+verb Nest {
+    meta = true;
+    grammar = {.nest};
+    void handler() {
+        stringObj s = "café über";
+        stringObj n = $"a {wrap(wrap("é"))} b {wrap(s.left(4))}";
+        printLine($"[{n}] ({n.length})");
+        stringObj inner = $"{n.length}{wrap("ü")}";
+        stringObj m = $"{wrap(inner)}";
+        printLine($"[{m}] ({m.length})");
+    }
+}
+
+verb Compare {
+    meta = true;
+    grammar = {.compare};
+    void handler() {
+        stringObj a = "apple";
+        stringObj b = "Apple";
+        printLine($"eq {a == b} ci {a.compareTo(b, true)} cs {a.compareTo(b)} lt {a < "banana"} ge {a >= b}");
+        stringObj e = "é";
+        printLine($"accent {e > "z"} {e == "é"} {e.compareTo("z")} {"é" == e}");
+    }
+}
+
+verb Tag {
+    meta = true;
+    grammar = {.tag};
+    void handler() {
+        count++;
+        tray.label = $"tray {count} é";
+        printLine($"Label [{tray.label}] ({tray.label.length})");
+        tray.label += "|";
+        tray.label += g.right(3);
+        printLine($"Label [{tray.label}] ({tray.label.length})");
+    }
+}
+
+verb Churn {
+    meta = true;
+    grammar = {.churn};
+    void handler() {
+        stringObj t;
+        for (int i = 0; i < 20; i++) t += $"{i}é,";
+        stringObj u = t.toUpper();
+        stringObj v = t + t + t;
+        stringObj w = v.replaceAll(",", ";é");
+        keepText += "x";
+        printLine($"Churn {t.length} {v.length} {w.length} [{u.left(6)}] [{w.left(9)}]");
+    }
+}
+
+verb Check {
+    meta = true;
+    grammar = {.check};
+    void handler() {
+        printLine($"Check {g.length} [{g.right(3)}] [{g.left(5)}] keep {keepText.length} [{keepText.left(5)}] label [{tray.label}]");
+    }
+}
+

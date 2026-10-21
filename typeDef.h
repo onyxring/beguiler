@@ -373,6 +373,7 @@ class functionDef:public typeMember, public typeDef{
         int chainTempsUsed = 0;
         bool isEmitter;
         bool isExplicit = false;   // true for 'explicit emitter': conversion operator only fires at explicit cast sites
+        string asI6Name;           // the name an `asI6` clause gave; overloads sharing it are told apart from it
         bool isDefault = false;    // true for 'default': expected to be overridden without requiring 'replace'
         bool isSuperposed = false; // true for 'superposed': routine is emitted into the story file ONLY if it is
                                    // referenced (called) somewhere in the final output; otherwise it evaporates.
@@ -719,6 +720,8 @@ class beguilerSettingsDef : public typeDef {
         bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
         int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
         int heapSize        = -1;      // words in the array heap (-1 = unset; 0 = sized by target)
+        map<string, int> intSettings;  // every int setting the block gives, by lowercase key; read as #beguilerSettings.key
+        vector<pair<string, string>> settingsToCheck;   // keys not yet in the schema, with their `file:line:col`
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)
         bool   autoInitialize = true;  // false → BLR does NOT wrap main (replace main / [main; bglInit; _oldmain]).
                                        // Set false when another extension (e.g. orLibrary) already replaces main;

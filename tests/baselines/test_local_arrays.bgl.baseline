@@ -142,7 +142,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 [_bglArrayCompareAsc lhs rhs;
     
@@ -157,7 +156,7 @@ object bgl
         _bglHeapLocalDrop();
         return 0;
     }
-    _bglArray.append(acc, 0, n, 0);
+    _bglArray._bglArr_append(acc, 0, n, 0);
     rest=sumdown(n - 1);
     _bglret =  _bglAt(acc, 0, 0)-->0  + rest;
     _bglHeapLocalDrop();
@@ -166,9 +165,9 @@ object bgl
 [useTwoLocals a b _bglret first second;
     first = _bglHeapLocal(3);
     second = _bglHeapLocal(3);
-    _bglArray.append(first, 0, a, 0);
-    _bglArray.append(first, 0, b, 0);
-    _bglArray.append(second, 0, a + b, 0);
+    _bglArray._bglArr_append(first, 0, a, 0);
+    _bglArray._bglArr_append(first, 0, b, 0);
+    _bglArray._bglArr_append(second, 0, a + b, 0);
     _bglret =  _bglAt(first, 0, 0)-->0  +  _bglAt(first, 1, 0)-->0  +  _bglAt(second, 0, 0)-->0 ;
     _bglHeapLocalDrop();
     _bglHeapLocalDrop();
@@ -176,13 +175,13 @@ object bgl
 ];
 [earlyReturn flag _bglret buf;
     buf = _bglHeapLocal(5);
-    _bglArray.append(buf, 0, 100, 0);
+    _bglArray._bglArr_append(buf, 0, 100, 0);
     if (flag) {
         _bglret =  _bglAt(buf, 0, 0)-->0 ;
         _bglHeapLocalDrop();
         return _bglret;
     }
-    _bglArray.append(buf, 0, 200, 0);
+    _bglArray._bglArr_append(buf, 0, 200, 0);
     _bglret =  _bglAt(buf, 1, 0)-->0 ;
     _bglHeapLocalDrop();
     return _bglret;
@@ -190,7 +189,7 @@ object bgl
 [sumAll data _bglret _bglownp_data total i;
     _bglownp_data = _bglHeapAdopt(data);
     total = 0;
-    for (i = 0 : i < _bglArray.length(data, 0) : i++) {
+    for (i = 0 : i < _bglArray._bglArr_length(data, 0) : i++) {
         total=total +  _bglAt(data, i, 0)-->0 ;
     }
     _bglret = total;
@@ -205,7 +204,7 @@ object bgl
     primes-->4 = 7;
     primes-->5 = 11;
     primes-->(-1) = 5;
-    _bglret = _bglArray.length(primes, 0) * 100 + sumall(primes);
+    _bglret = _bglArray._bglArr_length(primes, 0) * 100 + sumall(primes);
     _bglHeapLocalDrop();
     return _bglret;
 ];
@@ -231,80 +230,80 @@ object bgl
     print localbytearray();
 ];
 object _bglArray
-  with get [obj prop n;
+  with _bglArr_get [obj prop n;
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
-       set [obj prop n v;
+       _bglArr_set [obj prop n v;
     
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
   ],
-       size [obj prop;
+       _bglArr_size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
-       length [obj prop;
+       _bglArr_length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
-       setLength [obj prop n cap;
+       _bglArr_setLength [obj prop n cap;
     if (n < 0) {
         print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
-    cap=self.size(obj,prop);
+    cap=self._bglArr_size(obj,prop);
     if (n > cap) {
         n=cap;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
-       setOwned [obj prop n v assign cur;
+       _bglArr_setOwned [obj prop n v assign cur;
     if (assign==0) {
-        self.set(obj, prop, n, v);
+        self._bglArr_set(obj, prop, n, v);
         return;
     }
-    cur = self.get(obj,prop,n);
-    if (self.owneddtor(obj,prop,1)==0) {
+    cur = self._bglArr_get(obj,prop,n);
+    if (self._bglarr_owneddtor(obj,prop,1)==0) {
         if (cur~=0) {
             assign(cur, v);
         }
         else {
-            if ((~~self.refusesstruct(v))) {
-                self.set(obj, prop, n, v);
+            if ((~~self._bglarr_refusesstruct(v))) {
+                self._bglArr_set(obj, prop, n, v);
             }
         }
         return;
     }
-    self.set(obj, prop, n, assign(cur,v));
+    self._bglArr_set(obj, prop, n, assign(cur,v));
   ],
-       refusesStruct [v;
+       _bglArr_refusesStruct [v;
      if(metaclass(v) ~= Object) rfalse; 
     print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
     return true;
   ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
+       _bglArr_append [obj prop val assign len;
+    len=self._bglArr_length(obj,prop);
+    if (len >= self._bglArr_size(obj,prop)) {
         return false;
     }
-    if (assign~=0 && self.owneddtor(obj,prop,1)==0) {
-        if (self.refusesstruct(val)) {
+    if (assign~=0 && self._bglarr_owneddtor(obj,prop,1)==0) {
+        if (self._bglArr_refusesStruct(val)) {
             return false;
         }
-        self.set(obj, prop, len, val);
+        self._bglArr_set(obj, prop, len, val);
     }
     else {
-        self.setOwned(obj, prop, len, val, assign);
+        self._bglArr_setOwned(obj, prop, len, val, assign);
     }
-    self.setLength(obj, prop, len + 1);
+    self._bglArr_setLength(obj, prop, len + 1);
     return true;
   ],
-       ownedDtor [obj prop dtor b;
+       _bglArr_ownedDtor [obj prop dtor b;
     b = 0;
     
             if(dtor == 0 || metaclass(obj) == object) return dtor;

@@ -253,6 +253,21 @@ that is not a declared property is a compile-time error.
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
 
+An extension may declare int settings of its own by extending the settings type, and reads them the same
+way; unset, one reads as `0`. A setting's entry may come before the include that declares it, since the
+block is checked once the whole program is read:
+
+```bgl
+extend class beguilerSettingsType {
+    int stringHeapSize;   /// Bytes in the string heap (unset: 5120).
+}
+#if #beguilerSettings.stringHeapSize > 0
+    const int bglStringHeapSize = #beguilerSettings.stringHeapSize;
+#else
+    const int bglStringHeapSize = 5120;
+#endif
+```
+
 The value is whatever has been fixed when the reference is parsed. A string property not yet set
 reads as `""` and an integer property as `0`, except the four runtime sizes, which read as their
 defaults; so the block that sets a property must precede, in parse order, any reference to it.

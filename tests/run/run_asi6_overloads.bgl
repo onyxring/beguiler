@@ -1,0 +1,16 @@
+// run_asi6_overloads — `asI6` on an object's overloaded method names every overload, each told apart by its
+// parameters; and `asI6` follows the parameters of a method that returns an array.
+// EXPECT_OUTPUT: int 3 | text hi | 3 items
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+object shower {
+    void show(int n) asI6 _shower_show { print($"int {n}"); }
+    void show(string s) asI6 _shower_show { print($"text {s}"); }
+    array<int> items(int n) asI6 _shower_items { array<int> a[8]; for(int i = 0; i < n; i++) a.push(i); return a; }
+}
+void main(){
+    bglInit();
+    shower.show(3); print(" | "); shower.show("hi"); print(" | ");
+    array<int> got = shower.items(3);
+    print($"{got.length} items");
+}

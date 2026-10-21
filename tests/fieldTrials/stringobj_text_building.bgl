@@ -1,0 +1,288 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: building text in a stringObj — += with literals, strings, stringObjs, chars and
+// interpolations; + and format; prepend/append; text grown past 494 characters (1000-2000) and then
+// transformed (toUpper, replaceAll, mid/left/right, trim, reverse, indexOf, contains, startsWith,
+// endsWith); interpolation assigned to a stringObj with captures nested four deep; literals longer than
+// 512 assigned whole; s += s; long text assigned to short and back; comparisons on long text; for-in
+// over the characters of a stringObj.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 16000;
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+
+extend class object {
+    string description;
+}
+
+string longA = "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+
+bool Initialise() {
+    location = roomA;
+    rfalse;
+}
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+// A stringObj of n copies of unit, built with +=.
+stringObj repeatText(string unit, int n) {
+    stringObj r;
+    for (int i = 0; i < n; i++) r += unit;
+    return r;
+}
+
+// Builds its result by capture.
+stringObj wrap(string tag, stringObj inner) {
+    stringObj r = $"<{tag}:{inner}>";
+    return r;
+}
+
+stringObj wrapTwice(string tag, stringObj inner) {
+    stringObj r = $"({tag}{wrap(tag, inner)}{tag})";
+    return r;
+}
+
+#includeI6 "grammar"
+
+verb Grow {
+    grammar = {.grow};
+    void handler() {
+        stringObj s = repeatText("abcde", 200);
+        printLine($"Length {s.length}: {s.left(12)} / {s.right(7)} / {s.mid(500, 5)}");
+        printLine($"indexOf {s.indexOf("eab")} {s.indexOf("zzz")} contains {s.contains("eabcdea")} starts {s.startsWith("abcde")} ends {s.endsWith("bcde")} not {s.endsWith("abcd")}");
+        stringObj u = s.toUpper();
+        printLine($"Upper {u.length}: {u.left(7)} {u.right(3)} source still {s.left(3)}");
+        stringObj t = s;
+        t += 'Z';
+        t += "yy";
+        t += u.left(3);
+        printLine($"Copy {t.length}: {t.right(8)} original {s.length}");
+        s += s.right(5);
+        printLine($"Self slice {s.length}: {s.right(10)}");
+    }
+}
+
+verb Chars {
+    grammar = {.chars};
+    void handler() {
+        stringObj s;
+        for (int i = 0; i < 200; i++) s += $"{i},";
+        printLine($"Counted {s.length}: {s.left(14)} ... {s.right(12)}");
+        printLine($"Index {s.indexOf("100,")} {s.mid(s.indexOf("150,"), 8)}");
+        stringObj m;
+        for (int i = 0; i < 40; i++) {
+            m += "ab";
+            m += 'c';
+            m += $"{i % 10}";
+            m += s.mid(i, 1);
+        }
+        printLine($"Mixed {m.length}: {m.left(16)}");
+        stringObj big = m + m + m;
+        printLine($"Joined {big.length}: {big.right(10)}");
+    }
+}
+
+verb Replace {
+    grammar = {.replace};
+    void handler() {
+        stringObj s = repeatText("abcde", 200);
+        stringObj t = s.replaceAll("b", "XYZ");
+        printLine($"Grown {t.length}: {t.left(9)} {t.right(9)} first {t.indexOf("XYZ")} source {s.length}");
+        stringObj v = t.replace("XYZ", "-");
+        printLine($"Replace once {v.length}: {v.left(8)}");
+        stringObj w = t.replaceAll("XYZ", "b");
+        printLine($"Round trip {w.length} equal {w == s}");
+        stringObj x = s.replaceAll("abcde", "");
+        printLine($"Emptied {x.length} {x.isEmpty()}");
+        stringObj y = s.insert(500, "[mark]");
+        printLine($"Insert {y.length}: {y.mid(498, 10)}");
+        stringObj z = y.delete(500, 6);
+        printLine($"Delete {z.length} equal {z == s}");
+    }
+}
+
+verb Trim {
+    grammar = {.trim};
+    void handler() {
+        stringObj s = "  " + repeatText("xy", 300) + "   ";
+        printLine($"Padded {s.length}");
+        stringObj a = s.trim();
+        stringObj b = s.trimLeft();
+        stringObj c = s.trimRight();
+        printLine($"Trim {a.length} {b.length} {c.length}");
+        printLine($"Edges [{a.left(3)}] [{a.right(3)}] [{b.left(3)}] [{c.right(3)}]");
+    }
+}
+
+verb Reverse {
+    grammar = {.reverse};
+    void handler() {
+        stringObj s = repeatText("abcdefghij", 150);
+        stringObj r = s.reverse();
+        printLine($"Reversed {r.length}: {r.left(10)} {r.right(10)}");
+        stringObj rr = r.reverse();
+        printLine($"Twice equal {rr == s}");
+        stringObj low = r.toUpper().toLower();
+        printLine($"Case trip {low == r} {low.length}");
+    }
+}
+
+verb Nest {
+    grammar = {.nest};
+    void handler() {
+        stringObj a = $"{wrap("a", wrap("b", wrap("c", wrap("d", "x"))))}";
+        printLine($"Four deep {a.length}: {a}");
+        stringObj b = $"[{wrap("a", wrap("b", wrap("c", wrap("d", "y"))))}]";
+        printLine($"Inline {b.length}: {b}");
+        stringObj c = $"{wrapTwice("p", wrapTwice("q", "z"))}";
+        printLine($"Twice {c.length}: {c}");
+        stringObj d = repeatText("0123456789", 30);
+        stringObj e = $"{wrap("w", wrap("v", d))}";
+        printLine($"Long {e.length}: {e.left(8)} {e.right(8)}");
+        e += $"{wrap("t", e.right(4))}";
+        printLine($"Appended {e.length}: {e.right(14)}");
+    }
+}
+
+verb Pieces {
+    grammar = {.pieces};
+    void handler() {
+        stringObj a = repeatText("a", 500);
+        stringObj b = repeatText("b", 300);
+        stringObj c = repeatText("c", 200);
+        stringObj f = a.format("$0-$1-$2", b, c);
+        printLine($"Format {f.length}: {f.mid(498, 5)} {f.mid(799, 5)} {f.right(3)}");
+        stringObj p = a.prepend("<<").append('>');
+        printLine($"Wrapped {p.length}: {p.left(4)} {p.right(4)}");
+        stringObj q = b.append(c).prepend(a);
+        printLine($"Chain {q.length}: {q.mid(498, 4)} {q.mid(798, 4)}");
+        stringObj r = a + 'x' + b + "yz" + c;
+        printLine($"Plus {r.length}: {r.mid(499, 3)} {r.right(4)}");
+        stringObj s = "head" + a;
+        printLine($"Head {s.length} {s.left(6)}");
+    }
+}
+
+verb Double {
+    grammar = {.double};
+    void handler() {
+        stringObj s = "0123456789";
+        for (int i = 1; i <= 7; i++) {
+            s += s;
+            if (i == 3 || i == 6 || i == 7) printLine($"Doubled {i}: {s.length} {s.right(4)}");
+        }
+        s += s.left(5);
+        printLine($"Self slice {s.length}");
+        stringObj t = "ab";
+        t += t;
+        t += t + t;
+        printLine($"Small {t.length} {t}");
+    }
+}
+
+verb Swap {
+    grammar = {.swap};
+    void handler() {
+        stringObj a = repeatText("abc", 400);
+        stringObj b = "hi";
+        printLine($"Start {a.length} {b.length}");
+        b = a;
+        printLine($"Long into short {b.length}: {b.right(3)} equal {a == b}");
+        b = "hi";
+        printLine($"Short again {b.length} {b}");
+        a = b;
+        printLine($"Short into long {a.length} {a}");
+        a = repeatText("xyz", 500);
+        printLine($"Regrown {a.length}: {a.left(4)}");
+        a = a.left(5);
+        printLine($"Cut {a.length} {a}");
+        a = a + a.toUpper();
+        printLine($"Doubled {a.length} {a}");
+        b = b + b;
+        b = b.left(100);
+        printLine($"{b} {b.length}");
+    }
+}
+
+verb Compare {
+    grammar = {.compare};
+    void handler() {
+        stringObj a = repeatText("abcde", 200);
+        stringObj b = repeatText("abcde", 199) + "abcdf";
+        stringObj c = a + "x";
+        stringObj d = a;
+        printLine($"Equal {a == b} {a != b} {a == d} {a != d} {a == a}");
+        printLine($"Order {a < b} {b < a} {a <= d} {a > b} {a < c} {c >= a} {c <= a}");
+        printLine($"Three-way {(a <=> b) < 0} {(b <=> a) > 0} {(a <=> d) == 0} {(a <=> c) < 0} compareTo {a.compareTo(b)} {b.compareTo(a)} {a.compareTo(d)} {a.compareTo(c)}");
+        stringObj u = a.toUpper();
+        printLine($"Case {a == u} {a =~ u} {u =~ a} {a =~ b} {a.compareTo(u, true)} {a.compareTo(u)}");
+        switch (a) {
+            case "abcde": printLine("Switch short.");
+            default:      printLine("Switch default.");
+        }
+        switch (d) {
+            case "other": printLine("Wrong.");
+            default: printLine("Switch long default.");
+        }
+    }
+}
+
+verb Scan {
+    grammar = {.scan};
+    void handler() {
+        stringObj s = repeatText("ab", 400);
+        s += "c";
+        int a = 0;
+        int b = 0;
+        int other = 0;
+        for (char ch in s) {
+            if (ch == 'a') a++;
+            else if (ch == 'b') b++;
+            else other++;
+        }
+        printLine($"Chars {a} {b} {other} of {s.length}");
+        int sum = 0;
+        for (int i = 0; i < 200; i++) if (s[i] == 'b') sum += i;
+        printLine($"Index sum {sum}");
+        s[0] = 'Z';
+        s[s.length - 1] = 'Y';
+        printLine($"Edited {s.left(3)} {s.right(3)} {s.length}");
+        stringObj t;
+        for (char ch in s.left(6)) t += $"<{ch}>";
+        printLine(t);
+    }
+}
+
+verb Literal {
+    grammar = {.literal};
+    void handler() {
+        stringObj s = "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+        printLine($"Literal {s.length}: {s.left(5)} {s.right(5)} {s.mid(295, 10)}");
+        stringObj g = longA;
+        printLine($"Same as global {s == g} {g.length}");
+        stringObj t = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnop";
+        printLine($"Literal {t.length}: {t.left(5)} {t.right(5)} {t.mid(26, 5)}");
+        s = t;
+        printLine($"Assigned {s.length}: {s.right(3)}");
+        s = "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";
+        printLine($"Back {s.length}");
+        s += t;
+        printLine($"Both {s.length}: {s.mid(598, 4)}");
+        stringObj u = g + "end";
+        printLine($"Global plus {u.length}: {u.right(5)}");
+    }
+}

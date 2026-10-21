@@ -24,7 +24,7 @@ void main(){
     print($"Use \{braces} for interpolation.\n");
 
     // Log (debug-conditional)
-    log($"Debug pts={pts}\n");
+    bgl.output.log($"Debug pts={pts}\n");
 
     // Arithmetic expression inside interpolation
     print($"Total: {pts + bonus}\n");

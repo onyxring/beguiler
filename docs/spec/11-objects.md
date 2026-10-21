@@ -871,6 +871,8 @@ Any previously declared object may be extended. Inside the body:
 - A new member is declared with `=`, as in an object body.
 - `replace` replaces an existing method or member value. Adding a duplicate member without `replace`
   is a compile-time error; `replace` on a member that does not exist is a warning.
+- A replaced member keeps its kind: an accessor (`auto ⟨name⟩ = { … }`, §9.9) is replaced by an accessor,
+  and a value by a value. Changing the kind is a compile-time error.
 - `+=` appends to, and `-=` removes from, an existing collection member (`grammarRuleList` or
   `array<T>`). The member must exist and be a collection type; otherwise it is a compile-time error.
   `attributeList` accepts `=` only (§11.5.3). The grammar forms are specified in §13.5.
@@ -916,6 +918,10 @@ An object defined in I6 rather than Beguile is declared `extern`. The bare form 
 The body form also declares the types of the object's members, so calls and member reads against it
 type-check. The object is a referenceable file-scope name like any global object, but no object is
 defined for it in the story file.
+
+`extern ⟨Class⟩ ⟨name⟩;` declares an I6 *variable* of that class's type, which a member initializer can't
+read. An I6 object typed by its class is declared `extern const ⟨Class⟩ ⟨name⟩;`, which an
+initializer can name (`parent = trayA;`).
 
 Rules for the body:
 

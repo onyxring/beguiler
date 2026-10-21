@@ -12,11 +12,6 @@
 //-----------------------------------------------------------------------------
 #once
 
-#if TARGET_GLULX
-// Two-word scratch: glk writes [0]=width, [1]=height.
-array<int> _bglKeyWinSize[2];
-#endif
-
 extend _bglUi {
 
     // Park the text caret out of the prose, ahead of a key read.
@@ -32,22 +27,17 @@ extend _bglUi {
     // window and the caller should fall back to the main window.
     /// Point keyboard input at the status window and return the window to read from, or 0 when
     /// there is no usable one. Call `showCursor()` afterwards. `waitForKey` does both for you.
-    int hideCursor(){
+    int hideCursor() asI6 _bglUi_hideCursor {
+        int h = bgl.ui.statusBar.height;
     #if TARGET_GLULX
         // `id` stays 0 until the status window is open, so both must hold before redirecting the request.
-        if(bgl.ui.statusBar.height <= 0 || bgl.ui.statusBar.id == 0) return 0;
-
-        int win = bgl.ui.statusBar.id;
-        bgl.asm.windowGetSize(win, ((int)_bglKeyWinSize) + bgl.wordsize, ((int)_bglKeyWinSize) + (2 * bgl.wordsize));
-        bgl.asm.windowMoveCursor(win, _bglKeyWinSize[0] - 1, _bglKeyWinSize[1] - 1);
-        return win;
+        if(h <= 0 || bgl.ui.statusBar.id == 0) return 0;
+        bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - 1, h - 1);
+        return bgl.ui.statusBar.id;
     #else
-        int h = bgl.ui.statusBar.height;
-        int w = bgl.asm.loadb(0, $21);   // header byte $21 - screen width in characters
-        if(h <= 0 || w <= 0) return 0;
-
-        bgl.asm.setWindow(1);            // @set_cursor only addresses the upper window
-        bgl.asm.setCursor(h, w);         // 1-based: last row, last column
+        if(h <= 0) return 0;
+        bgl.asm.setWindow(1);            // the cursor moves only in the upper window
+        bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - 1, h - 1);
         return 0;
     #endif
     }
@@ -55,7 +45,7 @@ extend _bglUi {
     // Undo hideCursor. Z-code: hand the current window back to the main window. Glulx: nothing to
     // undo - the caret belonged to the input request, which has already completed.
     /// Undo `hideCursor()`, putting input back on the main window.
-    void showCursor(){
+    void showCursor() asI6 _bglUi_showCursor {
     #if TARGET_GLULX
         ;
     #else
@@ -65,7 +55,7 @@ extend _bglUi {
 
     /// Wait for one key press and return it. Prints `separator` first if given - a "[MORE]" line,
     /// for example.
-    char waitForKey(string separator=null){
+    char waitForKey(string separator=null) asI6 _bglUi_waitForKey {
     
     if(separator !=null) {
         print(separator);

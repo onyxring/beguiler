@@ -326,6 +326,9 @@ class bglParser {
         int stmtExprBase = 0;
         bool resolvingCallee = false;   // the name being resolved is called (its '(' already read)
         bool optStringMarkOpen = false;
+        int interpSegmentDepth = 0;   // parsing the expression of an interpolated string's `{ }` span
+        bool stringMarkLeftOpen = false;   // the statement just parsed ended with held strings undrained
+        void holdHoistedString(class i6RawNode* inj, const std::string& temp, const std::string& type);
         bool allowEmptyExpr = false;
         set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
@@ -514,6 +517,11 @@ class bglParser {
         bool processArrayDeclarationFromGeneric(token arrayTok, Qualifiers& q, abstractObject& ctx);  // reads from after '<'
         bool processGrammarDeclaration(token nameOverride=token());
         bool processObjectExtension(token nameTok);
+        bool processFunctionAlias(token nameTok);
+        void rejectYieldedGlobalName(const string& word);
+        string globalI6Name(const string& name);
+        void rejectYieldedGlobalsInRaw(const string& text, statementBlock* body);
+        void syncFunctionAliases();
         // Named union: `union Name = A | B [ { members } ]` and `alias union Name = A | B;`.
         // Registers Name as an emitter class carrying unionMembers; an optional `{ … }` body is
         // parsed via processClassDeclaration so members (emitter/static, esp. `print()`) reuse the
@@ -544,6 +552,8 @@ class bglParser {
         bool objectMemberIsConst = false;        // the object-body member being parsed was declared `const`
         bool objectMemberIsSuperposed = false;   // the object-body method being parsed was declared `superposed`
         vector<objectDef*> usingObjectImports;   // imported object scopes from #using directives (file-scoped)
+        vector<pair<objectDef*, string>> functionAliases;   // `alias print = bgl.output.print;`: object + member name
+        set<functionDef*> functionAliasGlobals;             // the aliased emitters already among the globals
         int includeDepth = 0;               // current include nesting depth
         static constexpr int maxIncludeDepth = 255;
         int forInCounter = 0;               // counter for unique _bglfiN variable names
@@ -618,8 +628,7 @@ class bglParser {
         // Consume an optional `as <i6name>` sitting after a method's parameter list (§3.11) and
         // record it on the method. Ignored on operators, whose i6name the overload mangler owns.
         void consumeMethodI6Alias(functionDef& funcDef);
-        bool namesLibraryGlobal(const string& name);
-        bool namesLibraryMethod(const string& name);
+        bool namesFixedGlobal(const string& name);
         bool isUpcast(const string& castType, const string& actualType);
         void syncOverrideNames();
         void emitLoopExitCleanups(statementBlock* body, bool isBreak = false);
@@ -809,7 +818,7 @@ class bglParser {
             if(warnedAt.insert(msg + "@" + currentStatementSrc.file + ":" + std::to_string(currentStatementSrc.line)).second) parsingWarning(msg);
         }
         bool callPastLocal = false;   // parsing `::name(…)` with a local of the name in scope
-        bool libraryPropertyNamed(const string& name);
+        bool memberPropertyNamed(const string& name);
         string propertyNameAsEmitted(const string& name);
         void preScanClassBody(classDef* cls);
         bool processCallSubscriptStatement(token head, StatementContext& sc);
@@ -1523,6 +1532,10 @@ class bglParser {
         // the generic parameter list ('<T>' for array, balanced '<...>' for func) so the caller
         // can continue reading the identifier name. Used by pre-scan member header recognition.
         bool preScanIsMemberQualifier(const token& t);
+        int freshMarks = 0;                 // calls that left a routine an unowned array, so far
+        std::string lastFreshCall;          // the expression the latest one ended
+        static std::string stripSpaces(const std::string& s){ std::string o; for(char c : s) if(!isspace((unsigned char)c)) o += c; return o; }
+        string genericReturnType(const std::string& typeName, const std::string& generic);
         string preScanConsumeGenericSuffix(const token& typeTok);   // returns the `<…>` read, if any
         // Pre-scan one `emitter <type> name(params){body}` member inside an enum body (the `emitter`
         // keyword already consumed) into a companion functionDef stub — capturing params and the

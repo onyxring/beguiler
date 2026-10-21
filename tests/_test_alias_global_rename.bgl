@@ -1,0 +1,6 @@
+// Negative test: a file-scope alias of an object's emitter keeps the emitter's name.
+// EXPECT_ERROR: an alias of a member keeps its name
+#beguilerSettings { target = z5; informName = "none"; }
+superposed object report { emitter void note(int v){ print $v; } }
+alias say = report.note;
+void main(){ say(3); }

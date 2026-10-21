@@ -86,11 +86,11 @@ superposed array<object> _bglWorldInParent(object parent, var pred){
 /// Queries that list the objects in the game world; each result is a shared buffer, so copy it to keep it.
 superposed _bglObject _bglWorld {
     /// Return every object, optionally filtered: `bgl.world.getAll((object o) => o has light)`.
-    array<object> getAll(func<bool, object> pred = 0)            { return _bglWorldGetAll(pred); }
+    array<object> getAll(func<bool, object> pred = 0) asI6 _bglWorld_getAll            { return _bglWorldGetAll(pred); }
     /// Return the objects directly inside `p`, optionally filtered.
-    array<object> inParent(object p, func<bool, object> pred = 0){ return _bglWorldInParent(p, pred); }
+    array<object> inParent(object p, func<bool, object> pred = 0) asI6 _bglWorld_inParent { return _bglWorldInParent(p, pred); }
     /// Return every object of class `cls`, including subclasses, optionally filtered.
-    array<object> instances(var cls, func<bool, object> pred = 0){ return _bglWorldInstances(cls, pred); }
+    array<object> instances(var cls, func<bool, object> pred = 0) asI6 _bglWorld_instances { return _bglWorldInstances(cls, pred); }
 }
 
 extend bgl {

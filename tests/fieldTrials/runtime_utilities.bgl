@@ -3,7 +3,7 @@
 
 // Exercises: bgl.util.math, bgl.util.random (ranges, list choice, a seeded sequence repeated),
 // uint arithmetic, shifts and unsigned comparison, char classification and case conversion,
-// bgl.header, bgl.world queries with and without predicates, and log() in a normal build and after
+// bgl.header, bgl.world queries with and without predicates, and bgl.output.log() in a normal build and after
 // #redef DEBUG.
 
 #beguilerSettings {
@@ -180,7 +180,7 @@ verb WorldCheck {
 verb LogQuiet {
     grammar = {.logquiet};
     void handler() {
-        log("Quiet log.^");
+        bgl.output.log("Quiet log.^");
         print("After quiet log.^");
     }
 }
@@ -190,7 +190,7 @@ verb LogQuiet {
 verb LogLoud {
     grammar = {.logloud};
     void handler() {
-        log("Loud log.^");
+        bgl.output.log("Loud log.^");
         print("After loud log.^");
     }
 }

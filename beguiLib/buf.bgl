@@ -112,19 +112,19 @@ array<int> _bglBufGlulxStreams[16];
 /// how much of it is in use.
 extend class byteArray {
     /// How many bytes the buffer can hold.
-    replace emitter int  size             { _bglBuf.size($val) }
+    replace emitter int  size             { _bglBuf._bglText_size($val) }
     /// True when this buffer carries a length. A buffer built outside `<buf>` does not.
-    emitter bool isTracked()              { _bglBuf.isTracked($val) }
+    emitter bool isTracked()              { _bglBuf._bglText_isTracked($val) }
     /// Copy another buffer's bytes and length into this one, up to this buffer's size.
-    replace emitter void copyFrom(array<char> src) { _bglBuf.setFromBuffer($self, $src) }
+    replace emitter void copyFrom(array<char> src) { _bglBuf._bglText_setFromBuffer($self, $src) }
 }
 
 /// With `<buf>`, a buffer's `length` is assignable.
 extend class byteArrayLength {
     /// How many bytes are in use.
-    replace emitter int  operator()       { _bglBuf.length($self) }
+    replace emitter int  operator()       { _bglBuf._bglText_length($self) }
     /// Set how many bytes are in use, after writing into the buffer through some other route.
-    emitter void operator = (int n)       { _bglBuf.setLength($self, $n) }
+    emitter void operator = (int n)       { _bglBuf._bglText_setLength($self, $n) }
 }
 
 //=============================================================================
@@ -133,7 +133,7 @@ extend class byteArrayLength {
 // Layout: see the file header. `size` is `buf-->(-1)`, `length` is `buf-->0`. The registry below
 // tells a buffer from a packed string where a value could be either (setAny).
 //=============================================================================
-object _bglBuf {
+superposed object _bglBuf {
     // Top of the shared capture/release stack. 0 = nothing captured.
     int _stackTop = 0;
     // Count of registered tracked-buf user-pointers in _bglTrackedRegistry.
@@ -156,7 +156,7 @@ object _bglBuf {
     // $90 $84 prefix. The two bytes remain reserved in the layout (see
     // SizedBuffer doc above) so the user-pointer offset is unchanged through
     // the deprecation window. Full prefix compaction is pending follow-up.
-    bool isTracked(array<char> buf){
+    superposed bool isTracked(array<char> buf) asI6 _bglText_isTracked {
         int p = (int)buf;
         if(p == 0) return false;
         for(int i = 0; i < self._trackedCount; i++)
@@ -171,7 +171,7 @@ object _bglBuf {
     // and the registration is silently dropped (the buffer will then fail
     // isTracked even though it was meant to be tracked — surfaces as a
     // runtime symptom rather than memory corruption).
-    void _registerTracked(array<char> buf){
+    superposed void _registerTracked(array<char> buf){
         #i6 {
             if(self._trackedCount >= _BGL_TRACKED_CAP){
                 print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
@@ -183,7 +183,7 @@ object _bglBuf {
     }
 
     // A local buffer leaves the registry when its routine returns.
-    void _unregisterTracked(array<char> buf){
+    superposed void _unregisterTracked(array<char> buf){
         int p = (int)buf;
         for(int i = self._trackedCount - 1; i >= 0; i--)
             #i6 {
@@ -198,7 +198,7 @@ object _bglBuf {
     // size returns the data capacity in chars from the size WORD at buf-->(-1).
     // For untracked byteArrays returns -1 — distinguishes from a legitimately
     // empty buf and parallels orBuf's sized-buf convention.
-    int size(array<char> buf){
+    superposed int size(array<char> buf) asI6 _bglText_size {
         if((int)buf == 0) return -1;
         return _bglGetWord(buf, -1);
     }
@@ -207,12 +207,12 @@ object _bglBuf {
     // buffer length convention). Works on tracked AND untracked bufs since
     // both honor this layout (I6's `Array X buffer N` stores length at WORD 0
     // per the 6.30+ spec).
-    int length(array<char> buf){
+    superposed int length(array<char> buf) asI6 _bglText_length {
         return _bglGetWord(buf, 0);
     }
 
     // setLength writes the current char count, clamped to size() if tracked.
-    void setLength(array<char> buf, int newLength){
+    superposed void setLength(array<char> buf, int newLength) asI6 _bglText_setLength {
         int sz = size(buf);
         if(sz > 0 && newLength > sz) newLength = sz;
         _bglSetWord(buf, 0, newLength);
@@ -221,17 +221,17 @@ object _bglBuf {
     // ── Character access ──────────────────────────────────────────────────────
     // getChar / setChar are bounds-checked wrappers around byte access. For
     // unchecked direct access, `buf[i]` is equivalent within bounds.
-    int getChar(array<char> buf, int pos){
+    superposed int getChar(array<char> buf, int pos) asI6 _bglText_getChar {
         int sz = size(buf);
         if(sz < 0 || sz > pos) return _bglGetByte(buf, pos + bgl.wordsize);
         return -1;
     }
 
-    void setChar(array<char> buf, int pos, int val){
+    superposed void setChar(array<char> buf, int pos, int val) asI6 _bglText_setChar {
         int sz = size(buf);
         if(sz == -1 || sz > pos) _bglSetByte(buf, pos + bgl.wordsize, val);
     }
-    void setChar(array<char> buf, int pos, char val){
+    superposed void setChar(array<char> buf, int pos, char val) asI6 _bglText_setChar {
         int sz = size(buf);
         if(sz == -1 || sz > pos) _bglSetByte(buf, pos + bgl.wordsize, val);
     }
@@ -239,11 +239,11 @@ object _bglBuf {
     // ── Copy / write ──────────────────────────────────────────────────────────
     // set(buf, val) writes the contents of `val` into `buf`: a packed string literal, or another
     // buffer, tracked or not.
-    array<char> set(array<char> buf, string stringVal){ return setAny(buf, stringVal); }
-    array<char> set(array<char> buf, array<char> src){ return setFromBuffer(buf, src); }
+    superposed array<char> set(array<char> buf, string stringVal) asI6 _bglText_set { return setAny(buf, stringVal); }
+    superposed array<char> set(array<char> buf, array<char> src) asI6 _bglText_set { return setFromBuffer(buf, src); }
 
     // setAny: a value only known at run time — a tracked buffer, else a packed string literal.
-    array<char> setAny(array<char> buf, var stringVal){
+    superposed array<char> setAny(array<char> buf, var stringVal) asI6 _bglText_setAny {
         if(isTracked(stringVal)) setFromBuffer(buf, stringVal);
         else                     setFromLiteral(buf, stringVal);
         return buf;
@@ -252,17 +252,19 @@ object _bglBuf {
     // setFromLiteral: render a packed I6 string into buf using print_to_array.
     // `print_to_array` is an I6-native method on packed strings; not an
     // assembly opcode, so wrapping it as a one-line I6 island is appropriate.
-    array<char> setFromLiteral(array<char> buf, var stringVal){
+    superposed array<char> setFromLiteral(array<char> buf, var stringVal) asI6 _bglText_setFromLiteral {
         int sz = size(buf);
         if(sz < 0) sz = bglStringDefaultSize;
         sz = sz + bgl.wordsize;   // print_to_array counts the length word in the array's size
         #i6 { stringVal.print_to_array(buf, sz); }
+        int room = size(buf);
+        if(room > 0 && length(buf) > room) overrun(length(buf), room);
         setLength(buf, length(buf));
         return buf;
     }
 
     // setFromBuffer: bulk-copy from another tracked buf.
-    array<char> setFromBuffer(array<char> buf, array<char> stringVal){
+    superposed array<char> setFromBuffer(array<char> buf, array<char> stringVal) asI6 _bglText_setFromBuffer {
         int svlen = length(stringVal);
         copy(buf, stringVal, svlen, 0, 0);
         setLength(buf, svlen);
@@ -273,7 +275,7 @@ object _bglBuf {
     // toBuf[toPos]. -1 for numCharsToCopy means "from fromPos to end of source".
     // Bounds-checked against both source length and target size.
     // Uses @copy_table on Z and @mcopy on Glulx for one-opcode bulk transfer.
-    array<char> copy(array<char> toBuf, array<char> fromBuf, int numCharsToCopy, int toPos = 0, int fromPos = 0){
+    superposed array<char> copy(array<char> toBuf, array<char> fromBuf, int numCharsToCopy, int toPos = 0, int fromPos = 0) asI6 _bglText_copy {
         if(fromPos == -1) fromPos = 0;
         if(toPos == -1)   toPos = 0;
         int srcLen = length(fromBuf);
@@ -294,12 +296,29 @@ object _bglBuf {
         return toBuf;
     }
 
+    // Text printed into a buffer was longer than its room. On the Z-machine it has already been written
+    // past the buffer, and on Glulx the rest was lost, so the program stops on both.
+    superposed void overrun(int written, int room) asI6 _bglBufOverrun {
+        // Output goes back to the screen first, so no capture swallows the message.
+        #if TARGET_ZCODE
+            while(self._stackTop > 0){ self._stackTop--; bgl.asm.outputStream(-1 * 3); }
+        #else
+            if(self._stackTop > 0){ bgl.asm.streamSetCurrent(_bglBufGlulxStreams[0]); self._stackTop = 0; }
+        #endif
+        #i6 {
+            print "^[Beguile run-time error: ", written, " characters were printed into room for ", room, "; raise ";
+            #Ifdef _bglOverrunSetting; print (string) _bglOverrunSetting; #Ifnot; print "the buffer's size"; #Endif;
+            print "]^";
+            quit;
+        }
+    }
+
     // ── Stream redirect ───────────────────────────────────────────────────────
     // capture: redirect `print` output into `buf`. Nested captures push onto
     // the internal stack so a release() restores the previous target.
     // Z uses @output_stream 3 with the table address; Glulx opens a memory
     // glk stream and saves the prior stream on the parallel stack.
-    void capture(array<char> buf, int maxBytes = 0){
+    superposed void capture(array<char> buf, int maxBytes = 0) asI6 _bglText_capture {
         _bglBufStreamStack[self._stackTop] = buf;
         #if TARGET_ZCODE
             bgl.asm.outputStream(3, (int)buf);
@@ -317,24 +336,28 @@ object _bglBuf {
     // release: pop the most-recent capture, restoring the previous output
     // target. The buf's length byte is refreshed from the actual char count
     // written.
-    array<char> release(){
+    superposed array<char> release() asI6 _bglText_release {
         if(self._stackTop == 0) return _bglAsBuf(0);
         self._stackTop--;
         array<char> buf = _bglBufStreamStack[self._stackTop];
         #if TARGET_ZCODE
             bgl.asm.outputStream(-1 * 3);   // the VM writes the count into the length word
+            int room = size(buf);
+            if(room > 0 && length(buf) > room) overrun(length(buf), room);
             setLength(buf, length(buf));
         #else
             bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)_bglStreamCounts);
-            // The write count is the number of bytes the redirected output produced.
-            setLength(buf, _bglStreamCounts[1]);
+            // The write count is the number of bytes the redirected output produced, kept or not.
             bgl.asm.streamSetCurrent(_bglBufGlulxStreams[self._stackTop]);
+            int room = size(buf);
+            if(room > 0 && _bglStreamCounts[1] > room) overrun(_bglStreamCounts[1], room);
+            setLength(buf, _bglStreamCounts[1]);
         #endif
         return buf;
     }
 
     // stackLen: current capture-stack depth.
-    int stackLen(){
+    superposed int stackLen() asI6 _bglText_stackLen {
         return self._stackTop;
     }
 
@@ -342,7 +365,7 @@ object _bglBuf {
     // print: write the buf's current characters to the current output stream.
     // len=-1 (default) means "all of buf"; explicit len truncates. Glulx uses
     // glk_put_buffer; Z walks the bytes and prints each as (char).
-    array<char> print(array<char> buf, int len = -1){
+    superposed array<char> print(array<char> buf, int len = -1){
         if((int)buf == 0) return buf;   // a null buffer prints nothing
         if(len <= 0) len = length(buf);
         #if TARGET_GLULX
@@ -360,7 +383,7 @@ object _bglBuf {
     // ── Comparison ────────────────────────────────────────────────────────────
     // equals: byte-equal of two bufs' character data. Optional case-insensitive
     // compare via _bglCharToLower.
-    bool equals(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+    superposed bool equals(array<char> buf1, array<char> buf2, bool caseInsensitive = false) asI6 _bglText_equals {
         int len1 = length(buf1);
         if(len1 != length(buf2)) return false;
         for(int t = 0; t < len1; t++){
@@ -384,7 +407,7 @@ object _bglBuf {
     // This is byte order, not locale collation: on a Z-machine that is ZSCII, so
     // all uppercase letters sort ahead of all lowercase ones ("Zoo" before "apple").
     // Pass caseInsensitive when you want dictionary-style ordering.
-    int compare(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+    superposed int compare(array<char> buf1, array<char> buf2, bool caseInsensitive = false) asI6 _bglText_compare {
         int len1 = length(buf1);
         int len2 = length(buf2);
         int lim  = len1 < len2 ? len1 : len2;
@@ -402,7 +425,7 @@ object _bglBuf {
     }
 
     // startsWith: does buf1's prefix equal buf2's entire content?
-    bool startsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+    superposed bool startsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false) asI6 _bglText_startsWith {
         int len2 = length(buf2);
         if(length(buf1) < len2) return false;
         for(int t = 0; t < len2; t++){
@@ -418,7 +441,7 @@ object _bglBuf {
     }
 
     // endsWith: does buf1's suffix equal buf2's entire content?
-    bool endsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false){
+    superposed bool endsWith(array<char> buf1, array<char> buf2, bool caseInsensitive = false) asI6 _bglText_endsWith {
         int len2 = length(buf2);
         int offset = length(buf1) - len2;
         if(offset < 0) return false;
@@ -438,7 +461,7 @@ object _bglBuf {
     // mid: copy numCharsToCopy chars from fromBuf[fromPos] into toBuf. -1 for
     // numCharsToCopy means "from fromPos to end of source". A position or count
     // outside the source is clamped to it.
-    array<char> mid(array<char> toBuf, array<char> fromBuf, int fromPos, int numCharsToCopy){
+    superposed array<char> mid(array<char> toBuf, array<char> fromBuf, int fromPos, int numCharsToCopy) asI6 _bglText_mid {
         int len = length(fromBuf);
         if(fromPos < 0) fromPos = 0;
         if(fromPos > len) fromPos = len;
@@ -451,7 +474,7 @@ object _bglBuf {
     }
 
     // left: copy the first n chars of fromBuf into toBuf (all of it when n is past the end).
-    array<char> left(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
+    superposed array<char> left(array<char> toBuf, array<char> fromBuf, int numCharsToCopy) asI6 _bglText_left {
         int len = length(fromBuf);
         if(numCharsToCopy > len) numCharsToCopy = len;
         if(numCharsToCopy < 0) numCharsToCopy = 0;
@@ -461,7 +484,7 @@ object _bglBuf {
     }
 
     // right: copy the last n chars of fromBuf into toBuf (all of it when n is past the end).
-    array<char> right(array<char> toBuf, array<char> fromBuf, int numCharsToCopy){
+    superposed array<char> right(array<char> toBuf, array<char> fromBuf, int numCharsToCopy) asI6 _bglText_right {
         int len = length(fromBuf);
         if(numCharsToCopy > len) numCharsToCopy = len;
         if(numCharsToCopy < 0) numCharsToCopy = 0;
@@ -473,7 +496,7 @@ object _bglBuf {
     // ── Insertion / deletion ──────────────────────────────────────────────────
     // insert: shift toBuf chars right starting at toPos, then write fromBuf's
     // content into the gap. charCount=0 (default) means use fromBuf's full length.
-    array<char> insert(array<char> toBuf, array<char> fromBuf, int toPos, int charCount = 0){
+    superposed array<char> insert(array<char> toBuf, array<char> fromBuf, int toPos, int charCount = 0) asI6 _bglText_insert {
         if(charCount <= 0) charCount = length(fromBuf);
         int len = length(toBuf);
         if(toPos < 0) toPos = 0;
@@ -485,22 +508,22 @@ object _bglBuf {
     }
 
     // prepend: insert fromBuf at the start of toBuf.
-    array<char> prepend(array<char> toBuf, array<char> fromBuf){ return prependBuffer(toBuf, fromBuf); }
-    array<char> prependBuffer(array<char> toBuf, array<char> fromBuf){
+    superposed array<char> prepend(array<char> toBuf, array<char> fromBuf) asI6 _bglText_prepend { return prependBuffer(toBuf, fromBuf); }
+    superposed array<char> prependBuffer(array<char> toBuf, array<char> fromBuf) asI6 _bglText_prependBuffer {
         insert(toBuf, fromBuf, 0, length(fromBuf));
         return toBuf;
     }
 
     // append: copy fromBuf onto the end of toBuf.
-    array<char> append(array<char> toBuf, array<char> fromBuf){ return appendBuffer(toBuf, fromBuf); }
-    array<char> appendBuffer(array<char> toBuf, array<char> fromBuf){
+    superposed array<char> append(array<char> toBuf, array<char> fromBuf) asI6 _bglText_append { return appendBuffer(toBuf, fromBuf); }
+    superposed array<char> appendBuffer(array<char> toBuf, array<char> fromBuf) asI6 _bglText_appendBuffer {
         copy(toBuf, fromBuf, -1, length(toBuf), 0);
         return toBuf;
     }
 
     // append a string: print_to_array renders it straight after the text. Its length word lands on the
     // text's last few characters (or the buffer's own length word), which are saved and put back.
-    array<char> append(array<char> toBuf, string text){
+    superposed array<char> append(array<char> toBuf, string text) asI6 _bglText_append {
         int len = length(toBuf);
         int sz = size(toBuf);
         if(sz < 0) sz = bglStringDefaultSize;
@@ -517,7 +540,7 @@ object _bglBuf {
     }
 
     // prepend a string: appended, then rotated to the front.
-    array<char> prepend(array<char> toBuf, string text){
+    superposed array<char> prepend(array<char> toBuf, string text) asI6 _bglText_prepend {
         int len = length(toBuf);
         append(toBuf, text);
         int total = length(toBuf);
@@ -528,7 +551,7 @@ object _bglBuf {
     }
 
     // reverseRange: reverse the characters in [from, to).
-    void reverseRange(array<char> buf, int from, int to){
+    superposed void reverseRange(array<char> buf, int from, int to) asI6 _bglText_reverseRange {
         int w = bgl.wordsize;
         for(to = to - 1; from < to; from++){
             int c = _bglGetByte(buf, from + w);
@@ -540,7 +563,7 @@ object _bglBuf {
 
     // delete: remove `count` chars starting at `pos`, shifting trailing chars
     // left.
-    array<char> delete(array<char> buf, int pos, int count){
+    superposed array<char> delete(array<char> buf, int pos, int count) asI6 _bglText_delete {
         int len = length(buf);
         copy(buf, buf, len - count, pos, pos + count);
         setLength(buf, len - count);
@@ -550,7 +573,7 @@ object _bglBuf {
     // ── Search / replace ──────────────────────────────────────────────────────
     // replace: find the first occurrence of searchTextBuf in buf and replace it
     // with replaceTextBuf. If not found, buf is unchanged.
-    array<char> replace(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf){
+    superposed array<char> replace(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf) asI6 _bglText_replace {
         int searchLen = length(searchTextBuf);
         int pos = indexOf(buf, searchTextBuf, 0);
         if(pos == -1) return buf;
@@ -561,7 +584,7 @@ object _bglBuf {
 
     // replaceAll: replace every occurrence of searchTextBuf with replaceTextBuf,
     // starting at `startingIndex`.
-    array<char> replaceAll(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf, int startingIndex = 0){
+    superposed array<char> replaceAll(array<char> buf, array<char> searchTextBuf, array<char> replaceTextBuf, int startingIndex = 0) asI6 _bglText_replaceAll {
         int searchLen = length(searchTextBuf);
         int rtlen = length(replaceTextBuf);
         if(searchLen == 0) return buf;
@@ -578,7 +601,7 @@ object _bglBuf {
 
     // indexOf: position of first occurrence of searchTextBuf in buf at or
     // after startingIndex, or -1.
-    int indexOf(array<char> buf, array<char> searchTextBuf, int startingIndex = 0){
+    superposed int indexOf(array<char> buf, array<char> searchTextBuf, int startingIndex = 0) asI6 _bglText_indexOf {
         int stblen = length(searchTextBuf);
         int blen   = length(buf);
         if(startingIndex < 0) startingIndex = 0;
@@ -594,7 +617,7 @@ object _bglBuf {
 
     // indexOfFirstTrue: position of the first character at or after
     // startingIndex for which the predicate returns true, or -1.
-    int indexOfFirstTrue(array<char> buf, func<bool, char> pred, int startingIndex = 0){
+    superposed int indexOfFirstTrue(array<char> buf, func<bool, char> pred, int startingIndex = 0) asI6 _bglText_indexOfFirstTrue {
         int buflen = length(buf);
         if(startingIndex < 0) startingIndex = 0;
         for(int o = startingIndex; o < buflen; o++){
@@ -606,7 +629,7 @@ object _bglBuf {
 
     // indexOfFirstFalse: position of the first character at or after
     // startingIndex for which the predicate returns false, or -1.
-    int indexOfFirstFalse(array<char> buf, func<bool, char> pred, int startingIndex = 0){
+    superposed int indexOfFirstFalse(array<char> buf, func<bool, char> pred, int startingIndex = 0) asI6 _bglText_indexOfFirstFalse {
         int buflen = length(buf);
         if(startingIndex < 0) startingIndex = 0;
         if(startingIndex > buflen) return -1;
@@ -618,21 +641,21 @@ object _bglBuf {
     }
 
     // ── Case transforms ──────────────────────────────────────────────────────
-    array<char> toUpper(array<char> buf){
+    superposed array<char> toUpper(array<char> buf) asI6 _bglText_toUpper {
         int buflen = length(buf);
         for(int t = 0; t < buflen; t++)
             _bglSetByte(buf, t + bgl.wordsize, _bglCharToUpper(_bglGetByte(buf, t + bgl.wordsize)));
         return buf;
     }
 
-    array<char> toLower(array<char> buf){
+    superposed array<char> toLower(array<char> buf) asI6 _bglText_toLower {
         int buflen = length(buf);
         for(int t = 0; t < buflen; t++)
             _bglSetByte(buf, t + bgl.wordsize, _bglCharToLower(_bglGetByte(buf, t + bgl.wordsize)));
         return buf;
     }
 
-    array<char> reverse(array<char> buf){
+    superposed array<char> reverse(array<char> buf) asI6 _bglText_reverse {
         int buflen = length(buf);
         for(int t = 0; t < buflen / 2; t++){
             int c = _bglGetByte(buf, t + bgl.wordsize);
@@ -642,18 +665,18 @@ object _bglBuf {
         return buf;
     }
 
-    array<char> trimLeft(array<char> buf){
+    superposed array<char> trimLeft(array<char> buf) asI6 _bglText_trimLeft {
         while(length(buf) > 0 && getChar(buf, 0) == ' ') self.delete(buf, 0, 1);
         return buf;
     }
 
-    array<char> trimRight(array<char> buf){
+    superposed array<char> trimRight(array<char> buf) asI6 _bglText_trimRight {
         while(length(buf) > 0 && getChar(buf, length(buf) - 1) == ' ')
             self.delete(buf, length(buf) - 1, 1);
         return buf;
     }
 
-    array<char> trim(array<char> buf){
+    superposed array<char> trim(array<char> buf) asI6 _bglText_trim {
         return trimRight(trimLeft(buf));
     }
 }

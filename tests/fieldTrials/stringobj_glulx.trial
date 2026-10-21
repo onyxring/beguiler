@@ -1,0 +1,50 @@
+#grids
+Room A
+A plain room.
+You can see a tray here.
+[grid 1]
+|[] 0                                              |
+> long
+Long 1200 [abcdefghijab] [ijabcdefghij] [fghijabcde] 9
+Grown 1202 [j é]
+Twice 2404 [ éabcd] 1201 false
+Cut 10 [abcdefghij]
+[grid 1]
+|[] 1202                                           |
+> accent
+[café über] (9) upper [CAFÉ ÜBER] reverse [rebü éfac]
+index 5 3 char [é]
+Chars [üxé] (3)
+Set [üéé] true true
+Plain [cafe über] (9)
+[grid 1]
+|[] 1202                                           |
+> nest
+[a <<é>> b <café>] (16)
+[<16<ü>>] (7)
+[grid 1]
+|[] 1202                                           |
+> compare
+eq false ci 0 cs 1 lt true ge true
+accent true true 1 true
+[grid 1]
+|[] 1202                                           |
+> tag
+Label [tray 1 é] (8)
+Label [tray 1 é|j é] (12)
+[grid 1]
+|[tray 1 é|j é] 1202                               |
+> tag
+Label [tray 2 é] (8)
+Label [tray 2 é|j é] (12)
+[grid 1]
+|[tray 2 é|j é] 1202                               |
+#repeat 40
+> churn
+Churn 70 210 270 [0É,1É,] [0é;é1é;é2]
+[grid 1]
+|[tray 2 é|j é] 1202                               |
+> check
+Check 1202 [j é] [abcde] keep 40 [xxxxx] label [tray 2 é|j é]
+[grid 1]
+|[tray 2 é|j é] 1202                               |

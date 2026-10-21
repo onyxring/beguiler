@@ -41,42 +41,42 @@ extend class array {
     // filter/distinct/orderBy etc. are type-preserving; map returns array<var>
     // because the mapper's output type can't be statically tracked.
     /// The elements `pred` accepts: `nums.filter((int n) => n > 3)`, as a new array.
-    emitter array<T>   filter(func<bool, T> pred)   { _bglArray.filter($self, $prop, $pred) }
+    emitter array<T>   filter(func<bool, T> pred)   { _bglArray._bglArr_filter($self, $prop, $pred) }
     /// Each element put through `f`. The result is `array<var>`: the mapper may return any type.
-    emitter array<var> map(func<var, T> f)          { _bglArray.map($self, $prop, $f) }
+    emitter array<var> map(func<var, T> f)          { _bglArray._bglArr_map($self, $prop, $f) }
 
     // Terminals — collapse a chain to a scalar, with no new array; receiver
     // type drives element type for first/last (returns T) and any/all (pred
     // signature). count is a plain alias of length() for naming familiarity.
     /// The first element, or 0 when empty (an error for a struct, which is never empty). A terminal — it ends the chain.
-    emitter T    first()                            { _bglArray.first($self, $prop, $opref(deinit)) }
+    emitter T    first()                            { _bglArray._bglArr_first($self, $prop, $opref(deinit)) }
     /// The last element, or 0 when empty (an error for a struct). A terminal.
-    emitter T    last()                             { _bglArray.last($self, $prop, $opref(deinit)) }
+    emitter T    last()                             { _bglArray._bglArr_last($self, $prop, $opref(deinit)) }
     /// How many elements. A terminal; the same number as `length`.
-    emitter int  count()                            { _bglArray.chainCount($self, $prop) }
+    emitter int  count()                            { _bglArray._bglArr_chainCount($self, $prop) }
     /// True when at least one element satisfies `pred`. Stops at the first hit.
-    emitter bool any(func<bool, T> pred)            { _bglArray.any($self, $prop, $pred) }
+    emitter bool any(func<bool, T> pred)            { _bglArray._bglArr_any($self, $prop, $pred) }
     /// True when every element satisfies `pred`. Stops at the first miss.
-    emitter bool all(func<bool, T> pred)            { _bglArray.all($self, $prop, $pred) }
+    emitter bool all(func<bool, T> pred)            { _bglArray._bglArr_all($self, $prop, $pred) }
 
     // Slicing — all type-preserving, flip parity, return array<T>.
     /// The first `n` elements. Fewer if the array is shorter.
-    emitter array<T> take(int n)                    { _bglArray.take($self, $prop, $n) }
+    emitter array<T> take(int n)                    { _bglArray._bglArr_take($self, $prop, $n) }
     /// Everything after the first `n` elements.
-    emitter array<T> skip(int n)                    { _bglArray.skip($self, $prop, $n) }
+    emitter array<T> skip(int n)                    { _bglArray._bglArr_skip($self, $prop, $n) }
     /// Elements from the start until `pred` first fails. Unlike `filter`, it stops there.
-    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray.takeWhile($self, $prop, $pred) }
+    emitter array<T> takeWhile(func<bool, T> pred)  { _bglArray._bglArr_takeWhile($self, $prop, $pred) }
     /// Elements from where `pred` first fails, to the end.
-    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray.skipWhile($self, $prop, $pred) }
+    emitter array<T> skipWhile(func<bool, T> pred)  { _bglArray._bglArr_skipWhile($self, $prop, $pred) }
 
     // distinct / orderBy. distinct keeps first occurrence (O(N²) scan, fine at IF scale).
     // orderBy sorts a new copy with sort() — two overloads matching sort's surface.
     /// The elements with later duplicates dropped, first occurrence kept.
-    emitter array<T> distinct()                          { _bglArray.distinct($self, $prop, $opref(==)) }
+    emitter array<T> distinct()                          { _bglArray._bglArr_distinct($self, $prop, $opref(==)) }
     /// Sorted ascending by the element type's `<=>`, into a new buffer. Unlike `sort()`, the source is left alone.
-    emitter array<T> orderBy()                           { _bglArray.orderBy($self, $prop, $oprefReq(<=>)) }
+    emitter array<T> orderBy()                           { _bglArray._bglArr_orderBy($self, $prop, $oprefReq(<=>)) }
     /// Sorted by your own comparison, which returns <0, 0 or >0.
-    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray.orderBy($self, $prop, $compare) }
+    emitter array<T> orderBy(func<int, T, T> compare)    { _bglArray._bglArr_orderBy($self, $prop, $compare) }
 }
 
 // LINQ non-terminals + terminals — extend the <array> utility object _bglArray.
@@ -86,7 +86,7 @@ extend _bglArray {
     // into a new array with room for all of them (_bglLinqEnter), sets its
     // length, and returns it.
 
-    array<var> filter(var obj, var prop, func<bool, var> pred){
+    array<var> filter(var obj, var prop, func<bool, var> pred) asI6 _bglArr_filter {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int writeCount = 0;
         int srcLen = length(obj, prop);
@@ -109,13 +109,13 @@ extend _bglArray {
     // first/last return 0 on empty — same convention as pop/peek.
     // any/all short-circuit (first match wins for any; first non-match wins for all).
 
-    int chainCount(var obj, var prop){
+    int chainCount(var obj, var prop) asI6 _bglArr_chainCount {
         int n = length(obj, prop);
         _bglLinqUsed(obj, prop);
         return n;
     }
 
-    var first(var obj, var prop, var owned = 0){
+    var first(var obj, var prop, var owned = 0) asI6 _bglArr_first {
         var r = 0;
         if(length(obj, prop) > 0) r = get(obj, prop, 0);
         else if(owned != 0) emptyValueError("first");
@@ -124,14 +124,14 @@ extend _bglArray {
     }
 
     // An element that is a value (a struct) has no 0 to stand for "none".
-    void emptyValueError(string which){
+    void emptyValueError(string which) asI6 _bglArr_emptyValueError {
         print("^[Beguile run-time error: ");
         print(which);
         print("() of an empty array of values; check count() first]^");
         #i6 { quit; }
     }
 
-    var last(var obj, var prop, var owned = 0){
+    var last(var obj, var prop, var owned = 0) asI6 _bglArr_last {
         var r = 0;
         int len = length(obj, prop);
         if(len > 0) r = get(obj, prop, len - 1);
@@ -140,7 +140,7 @@ extend _bglArray {
         return r;
     }
 
-    bool any(var obj, var prop, func<bool, var> pred){
+    bool any(var obj, var prop, func<bool, var> pred) asI6 _bglArr_any {
         bool r = false;
         int len = length(obj, prop);
         for(int i = 0; i < len && !r; i++)
@@ -149,7 +149,7 @@ extend _bglArray {
         return r;
     }
 
-    bool all(var obj, var prop, func<bool, var> pred){
+    bool all(var obj, var prop, func<bool, var> pred) asI6 _bglArr_all {
         bool r = true;
         int len = length(obj, prop);
         for(int i = 0; i < len && r; i++)
@@ -158,7 +158,7 @@ extend _bglArray {
         return r;
     }
 
-    array<var> map(var obj, var prop, func<var, var> f){
+    array<var> map(var obj, var prop, func<var, var> f) asI6 _bglArr_map {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         for(int i = 0; i < srcLen; i++){
@@ -178,7 +178,7 @@ extend _bglArray {
     // the first element that fails the predicate; skipWhile drops while the
     // predicate matches, then keeps everything from the first failure on.
 
-    array<var> take(var obj, var prop, int n){
+    array<var> take(var obj, var prop, int n) asI6 _bglArr_take {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         int outLen = n;
@@ -191,7 +191,7 @@ extend _bglArray {
         return dst;
     }
 
-    array<var> skip(var obj, var prop, int n){
+    array<var> skip(var obj, var prop, int n) asI6 _bglArr_skip {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         int start = n;
@@ -205,7 +205,7 @@ extend _bglArray {
         return dst;
     }
 
-    array<var> takeWhile(var obj, var prop, func<bool, var> pred){
+    array<var> takeWhile(var obj, var prop, func<bool, var> pred) asI6 _bglArr_takeWhile {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         int outLen = 0;
@@ -220,7 +220,7 @@ extend _bglArray {
         return dst;
     }
 
-    array<var> skipWhile(var obj, var prop, func<bool, var> pred){
+    array<var> skipWhile(var obj, var prop, func<bool, var> pred) asI6 _bglArr_skipWhile {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         int start = 0;
@@ -238,7 +238,7 @@ extend _bglArray {
     // IF arrays are small. orderBy copies into a new array, then sorts that copy
     // in place with sort(), so the source array is left untouched.
 
-    array<var> distinct(var obj, var prop, var op = 0){
+    array<var> distinct(var obj, var prop, var op = 0) asI6 _bglArr_distinct {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         int outLen = 0;
@@ -263,7 +263,7 @@ extend _bglArray {
         return dst;
     }
 
-    array<var> orderBy(var obj, var prop, func<int, var, var> compare = 0){
+    array<var> orderBy(var obj, var prop, func<int, var, var> compare = 0) asI6 _bglArr_orderBy {
         array<var> dst = _bglLinqEnter(size(obj, prop));
         int srcLen = length(obj, prop);
         for(int i = 0; i < srcLen; i++) dst[i] = get(obj, prop, i);

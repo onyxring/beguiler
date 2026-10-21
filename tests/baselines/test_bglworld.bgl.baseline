@@ -55,7 +55,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 class _bglClass_Animal
   class object
@@ -79,20 +78,20 @@ object stone cage
   with short_name "stone"
 ;
 [main totalCount caged animals o _bglfia1 _bglfi2 cagedAnimals cageWithoutStones notFish _bglfia3 _bglfi4 here;
-    totalCount=_bglArrLength(_bglworld.getall(0));
+    totalCount=_bglArrLength(_bglworld._bglWorld_getAll(0));
     print (string)"total objects: ";
     print totalCount;
     print (string)"^";
-    caged=_bglArrLength(_bglworld.inparent(cage, 0));
+    caged=_bglArrLength(_bglworld._bglWorld_inParent(cage, 0));
     print (string)"in cage: ";
     print caged;
     print (string)"^";
-    animals=_bglArrLength(_bglworld.instances(_bglClass_Animal, 0));
+    animals=_bglArrLength(_bglworld._bglWorld_instances(_bglClass_Animal, 0));
     print (string)"animals: ";
     print animals;
     print (string)"^";
     print (string)"named animals:^";
-    _bglfia1 = _bglworld.instances(_bglClass_Animal, 0);
+    _bglfia1 = _bglworld._bglWorld_instances(_bglClass_Animal, 0);
        _bglfi2 = 0;
        for (: _bglfi2 < _bglArrLength(_bglfia1) : _bglfi2++) {
           o = _bglfia1-->(_bglfi2+1);
@@ -100,24 +99,24 @@ object stone cage
         print (string)o.short_name;
         print (string)"^";
        }
-    cagedAnimals=_bglArrLength(_bglworld.instances(_bglClass_Animal, _bglLambda_0));
+    cagedAnimals=_bglArrLength(_bglworld._bglWorld_instances(_bglClass_Animal, _bglLambda_0));
     print (string)"caged animals (in-walk filter): ";
     print cagedAnimals;
     print (string)"^";
-    cageWithoutStones=_bglArrLength(_bglworld.inparent(cage, _bglLambda_1));
+    cageWithoutStones=_bglArrLength(_bglworld._bglWorld_inParent(cage, _bglLambda_1));
     print (string)"cage without stones: ";
     print cageWithoutStones;
     print (string)"^";
-    notFish=_bglArrLength(_bglworld.getall(_bglLambda_2));
+    notFish=_bglArrLength(_bglworld._bglWorld_getAll(_bglLambda_2));
     print (string)"everything except fish: ";
     print notFish;
     print (string)"^";
     print (string)"nested walk:^";
-    _bglfia3 = _bglworld.instances(_bglClass_Animal, 0);
+    _bglfia3 = _bglworld._bglWorld_instances(_bglClass_Animal, 0);
        _bglfi4 = 0;
        for (: _bglfi4 < _bglArrLength(_bglfia3) : _bglfi4++) {
           o = _bglfia3-->(_bglfi4+1);
-        here=_bglArrLength(_bglworld.inparent(parent(o), 0));
+        here=_bglArrLength(_bglworld._bglWorld_inParent(parent(o), 0));
         print (string)" - ";
         print (string)o.short_name;
         print (string)" shares its parent with ";
@@ -149,13 +148,13 @@ object stone cage
     
 ];
 object _bglWorld
-  with getAll [pred;
+  with _bglWorld_getAll [pred;
     return _bglworldgetall(pred);
   ],
-       inParent [p pred;
+       _bglWorld_inParent [p pred;
     return _bglworldinparent(p,pred);
   ],
-       instances [cls pred;
+       _bglWorld_instances [cls pred;
     return _bglworldinstances(cls,pred);
   ]
 ;

@@ -792,7 +792,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         string t = (string)returnType;
         bool text = t == "string" || t == "stringorroutine" || t == "auto" || t.empty();
         if(!isEmitter && !newClass.isEmitterClass && !isMemberStatic && !text && file.peekToken().isNot(token::bracketOpen)
-           && t.find('<') == string::npos && name.src.file.find("beguiLib") == string::npos
+           && t.find('<') == string::npos
            && languageService.isAdditiveProperty(prop))
             parsingError(format("'{0}.{1}' is declared '{2}', but '{3}' is an ADDITIVE "
                 "property: it holds a list of every class's and object's contributions, so the member is "
@@ -1699,8 +1699,8 @@ void bglParser::rejectRunTimeMemberRead(expression* e, const string& memberName)
             string w = (*it)[2].str(), lw = w;
             transform(lw.begin(), lw.end(), lw.begin(), ::tolower);
             auto* g = languageService.findGlobalAs<variableDeclaration>(lw);
-            // A program's bodiless extern may name an Inform 6 object; the bindings mark theirs const.
-            if(g == nullptr || g->isConst || g->isPrePassStub || (g->isExternal && g->src.file.find("beguiLib") == string::npos) || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
+            // An extern that names an Inform 6 object is declared const.
+            if(g == nullptr || g->isConst || g->isPrePassStub || dynamic_cast<arrayDeclaration*>(g) != nullptr) continue;
             if(classDef* tc = languageService.findClass(g->type.name); tc != nullptr && !tc->isPrimitive && isValueClass(tc))
                 continue;   // static data names the instance it holds
             const string& gt = g->type.name;
@@ -1840,6 +1840,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
         if(isOperator && !funcDef.isEmitter) funcDef.i6name = mangleOperatorName(funcDef.name);
 
         processParameterList(funcDef);
+        if(!isOperator && !funcDef.isEmitter) consumeMethodI6Alias(funcDef);   // `array<T> m(...) asI6 <i6name> { … }` (§3.11)
 
         if(funcDef.isEmitter){
             file.getToken(token::braceOpen);
@@ -2101,13 +2102,11 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
         return;
     }
     if(!file.peekToken().is("asi6")){
-        // Renamed like a data member when the name is an I6 operator word, a global routine, or a library
-        // global or object the binding declares (`Action` and parser.h's `action`). A library property keeps it.
-        // The library's own methods keep their names: a program routine named like one yields instead.
-        bool libraryMethod = funcDef.src.file.find("beguiLib") != string::npos;
+        // Renamed when the name is an I6 operator word, a system function, a class, or a global whose
+        // I6 name is fixed (`Action` and parser.h's `action`). A Beguile global of the name yields instead.
         if(!funcDef.isEmitter && !funcDef.isStatic
            && (isI6OperatorWord(funcDef.name) || isI6SystemFunction(funcDef.name) || namesI6Class(funcDef.name)
-               || (!libraryMethod && namesLibraryGlobal(funcDef.name))))
+               || namesFixedGlobal(funcDef.name)))
             funcDef.i6name = "_m_" + funcDef.dName();
         return;
     }
@@ -2121,13 +2120,12 @@ void bglParser::consumeMethodI6Alias(functionDef& funcDef){
         && (funcDef.name == "operator()" || funcDef.name.rfind("operator", 0) == 0
             || (!isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_'));
     if(!isOperatorMethod)
-        funcDef.i6name = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
+        funcDef.i6name = funcDef.asI6Name = aliasTok.originalValue.empty() ? aliasTok.value : aliasTok.originalValue;
 }
 
 // `string Name()`: a method under an additive property that holds an object's words (`name`) would be one
 // more entry in that list of words.
 void bglParser::rejectMethodOnWordProperty(token name, const string& owner, const string& i6alias){
-    if(name.src.file.find("beguiLib") != string::npos) return;
     string prop = i6alias.empty() ? (string)name : i6alias;
     transform(prop.begin(), prop.end(), prop.begin(), ::tolower);
     if(!languageService.isAdditiveProperty(prop)) return;
@@ -2155,7 +2153,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
     // `Type method(...) as <i6name>` — emit the routine under a chosen I6 name. Skip operators,
     // whose i6name is assigned by the operator/overload mangler; a manual alias there would fight it.
     if(!i6alias.empty() && name.value.rfind("operator", 0) != 0)
-        funcDef.i6name = i6alias;
+        funcDef.i6name = funcDef.asI6Name = i6alias;
     funcDef.src = name.src.line > 0 ? name.src : file.currentLocation();
     funcDef.returnType = languageService.getType((string)returnType);
     if(!returnType.docComment.empty())   funcDef.docComment = returnType.docComment;
@@ -2344,7 +2342,16 @@ void bglParser::processMemberVariable(objectDef& obj, string typeName, string na
         for(size_t i = 0; i < obj.members.size(); i++)
             if(auto* vd = dynamic_cast<variableDeclaration*>(obj.members[i]))
                 if(vd->name == prop.name){
+                    // Reads compiled before the replace keep the old member's form, so the kind must stay.
+                    auto isAccessor = [](const variableDeclaration* v){ return v->type.name.rfind("_bglaccessor", 0) == 0; };
+                    if(!vd->isPrePassStub && isAccessor(vd) != isAccessor(member))
+                        parsingError(format("object '{0}': 'replace' can't change '{1}' from {2}.",
+                            obj.dName(), prop.dName(),
+                            isAccessor(vd) ? "an accessor to a value; replace it with an accessor"
+                                           : "a value to an accessor; replace it with a value"));
                     if(vd->isPrePassStub && obj.isPrePassStub) member->isForwardReplace = true;   // the object's own is still to come
+                    // The replacement is the same I6 property: it keeps the replaced member's name unless it names its own.
+                    if(i6alias.empty() && !vd->isPrePassStub && !vd->i6name.empty()) member->i6name = vd->i6name;
                     obj.members[i] = member; replaced = true; break;
                 }
         if(!replaced)

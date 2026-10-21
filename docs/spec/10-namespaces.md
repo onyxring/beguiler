@@ -5,6 +5,7 @@
 - [10.2 Value Aliases](#102-value-aliases)
 - [10.3 Alias Members on Emitter Classes](#103-alias-members-on-emitter-classes)
 - [10.4 `#using`](#104-using)
+- [10.5 Global Emitter Aliases](#105-global-emitter-aliases)
 <!-- /toc -->
 
 A **namespace** is a container reached by a dotted path: `lib.gfx.window`, `bgl.util.math.pow(2, 8)`.
@@ -208,3 +209,46 @@ island (§15.1.2).
 
 **See also** §3.8.3 — the resolution tiers; §15.1.2 — precompiler mode; §21.3 — the `bgl` namespace;
 Appendix B — the directive index.
+
+## 10.5 Global Emitter Aliases
+
+**Syntax**
+
+```syntax
+alias ⟨name⟩ = ⟨object⟩ [ .⟨member⟩ … ] .⟨name⟩ ;
+```
+
+**Description**
+
+At file scope, `alias` can make an object's emitters callable without their path. Every overload of
+`⟨name⟩` on the object is called as a global function of that name, including overloads that a later
+`extend` of the object adds. An overload that an `extend … { replace … }` replaces is replaced for the
+global name too.
+
+- The object path follows the rules of value aliases (§10.2).
+- The alias keeps the member's name.
+- Only emitters can be aliased. An emitter has no routine of its own, so the global name and the
+  member are the same definition. An object's ordinary method is a compile-time error here.
+- A global function of the same name, declared anywhere, joins the same overload set.
+
+The core declares the print family this way: `print`, `printLine` and `printName` live in
+`bgl.output` (§21.4) and are global through aliases.
+
+**Example**
+
+```bgl
+superposed object _report {
+    emitter void note(int v){ print "#", $v; }
+}
+alias note = _report.note;
+extend _report {
+    emitter void note(string v){ print (string)$v; }
+}
+
+void Main(){
+    note(3);          // _report.note(int)
+    note("done");     // _report.note(string), added after the alias
+}
+```
+
+**See also** §10.2 — value aliases; §21.4 — `bgl.output`.

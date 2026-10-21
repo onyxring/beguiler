@@ -267,6 +267,12 @@ void bglParser::preScanCaptureParams(vector<paramDef*>& out){
     }
 }
 
+// A stub's return type keeps an array's element type, so a call above the declaration knows it.
+string bglParser::genericReturnType(const string& typeName, const string& generic){
+    if((typeName != "array" && typeName != "rawarray") || generic.size() <= 2) return typeName;
+    return typeName + generic == "array<char>" ? "bytearray" : typeName + generic;
+}
+
 string bglParser::preScanConsumeGenericSuffix(const token& typeTok){
     string suffix;
     // array<...> and func<...> can nest arbitrarily (e.g. array<func<eVerdict>>),
@@ -650,7 +656,7 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
             if(afterName.is(token::parenOpen)){
                 functionDef& fd = *(new functionDef());
                 fd.name = memberName.value;
-                fd.returnType = languageService.getType(t.value);
+                fd.returnType = languageService.getType(t.value); fd.returnType.name = genericReturnType(t.value, objMemberGeneric);
                 fd.isEmitter = memberIsEmitter;
                 fd.isPrePassStub = true;
                 preScanCaptureParams(fd.params);
@@ -717,6 +723,13 @@ void bglParser::preScanExtendObjectMembers(objectDef* obj){
                 }
                 bool afterAssign = false;
                 while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                    // `int w asI6 _w = 0;`: a use above the object reads the member by that name.
+                    if(afterName.is("asi6") && !afterAssign){
+                        token n = file.getToken();
+                        if(stubVd != nullptr) stubVd->i6name = n.originalValue.empty() ? n.value : n.originalValue;
+                        afterName = file.getToken();
+                        continue;
+                    }
                     if(afterName.is(token::braceOpen)){
                         string body = file.getRawTextThroughClosingBrace();
                         if(afterAssign && stubVd != nullptr && stubVd->type.name == "auto") preScanAccessorGetter(obj->name, *stubVd, body);
@@ -847,6 +860,11 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
     // registered. Replay any forward extends captured while their target was still undeclared.
     if(isFirst){
         drainDeferredObjectExtends(); drainDeferredClassBases(); drainPreScanFixups();
+        // An object named like a member's property yields its I6 name, as a routine or global does (§3.11).
+        for(typeDef* g : languageService.globals)
+            if(auto* od = dynamic_cast<objectDef*>(g); od && !od->isExternal && od->i6name.empty()
+               && dynamic_cast<verbObjectDef*>(od) == nullptr && memberPropertyNamed(od->name))
+                od->i6name = "_g_" + od->dName();
         // A method stub's parameter typed by one of its object's type aliases (`void note(tally t)`) takes
         // the type the alias names, so its definition, and calls above it, match it by signature.
         for(typeDef* g : languageService.globals)
@@ -1110,7 +1128,7 @@ void bglParser::preScanExtend(token& tok){
                     // `emitter int kg { … }`: a value emitter, with its body so a use above this extend expands it.
                     functionDef& fd = *(new functionDef());
                     fd.name = memberName.value;
-                    fd.returnType.name = t.value;
+                    fd.returnType.name = genericReturnType(t.value, extMemberGeneric);
                     fd.isEmitter = fd.isValueEmitter = fd.isPrePassStub = true;
                     i6Block* blk = new i6Block();
                     blk->i6Body = file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
@@ -1150,6 +1168,12 @@ void bglParser::preScanExtend(token& tok){
                     // skip to ;
                     bool afterAssign = false;
                     while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                        if(afterName.is("asi6") && !afterAssign){   // `int w asI6 _w = 0;`
+                            token n = file.getToken();
+                            if(extStubVd != nullptr) extStubVd->i6name = n.originalValue.empty() ? n.value : n.originalValue;
+                            afterName = file.getToken();
+                            continue;
+                        }
                         if(afterName.is(token::braceOpen)){
                             string body = file.getRawTextThroughClosingBrace();
                             // An inline accessor (`auto knob = { … }`): its stub class, so a use above the extend dispatches.
@@ -1347,7 +1371,7 @@ void bglParser::preScanClassBody(classDef* cls){
                   if(opTok.is(eTokenType::identifier) && !file.peekToken().is(token::parenOpen)) opName += file.getToken().value;   // `prefix ++`
                   functionDef& fd = *(new functionDef());
                   fd.name = opName;
-                  fd.returnType.name = typeTok.value;
+                  fd.returnType.name = genericReturnType(typeTok.value, staticGeneric);
                   fd.isStatic = true;
                   fd.isPrePassStub = true;
                   fd.i6name = mangleOperatorName(opName);   // as its declaration names it
@@ -1366,7 +1390,7 @@ void bglParser::preScanClassBody(classDef* cls){
                   preScanCaptureParams(ps);
                   functionDef& fd = *(new functionDef());
                   fd.name = memberName.value;
-                  fd.returnType.name = typeTok.value;
+                  fd.returnType.name = genericReturnType(typeTok.value, staticGeneric);
                   fd.isStatic = true;
                   fd.isPrePassStub = true;
                   fd.params = ps;
@@ -1534,7 +1558,7 @@ void bglParser::preScanClassBody(classDef* cls){
                       // One stub per overload: a later signature of the name is another member.
                       functionDef* mStub = new functionDef();
                       mStub->name = mname;
-                      mStub->returnType.name = typeTok.value;
+                      mStub->returnType.name = genericReturnType(typeTok.value, memberGeneric);
                       mStub->isEmitter = sawEmitter;
                       mStub->isPrePassStub = true;
                       // Consume params (capturing types) then the body
@@ -1614,6 +1638,13 @@ void bglParser::preScanClassBody(classDef* cls){
                       token s = file.getToken();
                       bool sawAssign = false;
                       while(!s.is(token::endStatement) && !s.is(token::braceClose) && !s.is(eTokenType::eof)){
+                          // `int w asI6 _w = 0;`: a use above the class reads the member by that name.
+                          if(s.is("asi6") && !sawAssign){
+                              token n = file.getToken();
+                              if(propStub != nullptr) propStub->i6name = n.originalValue.empty() ? n.value : n.originalValue;
+                              s = file.getToken();
+                              continue;
+                          }
                           if(s.is(token::braceOpen)){
                               string body = file.getRawTextThroughClosingBrace();
                               if(sawAssign && propStub != nullptr && propStub->type.name == "auto")
@@ -1925,7 +1956,7 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         // Method: register a stub
                         functionDef& fd = *(new functionDef());
                         fd.name = memberName.value;
-                        fd.returnType = languageService.getType(t.value);
+                        fd.returnType = languageService.getType(t.value); fd.returnType.name = genericReturnType(t.value, genericSuffix);
                         fd.isEmitter = memberIsEmitter;
                         fd.isPrePassStub = true;
                         preScanCaptureParams(fd.params);
@@ -2013,6 +2044,13 @@ void bglParser::preScanObject(token& tok, bool isExtern){
                         // its trailing property.
                         bool afterAssign = false;
                         while(!afterName.is(token::endStatement) && !afterName.is(token::braceClose) && !afterName.is(eTokenType::eof)){
+                            // `int w asI6 _w = 0;`: a use above the object reads the member by that name.
+                            if(afterName.is("asi6") && !afterAssign){
+                                token n = file.getToken();
+                                if(stubVd != nullptr) stubVd->i6name = n.originalValue.empty() ? n.value : n.originalValue;
+                                afterName = file.getToken();
+                                continue;
+                            }
                             if(afterName.is(token::braceOpen)){
                                 string body = file.getRawTextThroughClosingBrace();
                                 if(afterAssign && stubVd != nullptr && stubVd->type.name == "auto")
@@ -2267,9 +2305,8 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
         if(!isEmitter && !isExtern && bglLanguageService::isI6StatementKeyword(nameStr)){
             stub.i6name = "_" + nameStr;   // see registerObject: a call would read as the I6 statement
             stub.i6nameAvoidsKeyword = true;
-        } else if(!isEmitter && !isExtern && file.currentLocation().file.find("beguiLib") == string::npos
-                  && namesLibraryMethod(nameStr))
-            stub.i6name = "_" + nameStr;
+        } else if(!isEmitter && !isExtern)   // named like a member's property: decided once every member is known
+            preScanFixups.push_back([this, &stub]{ if(stub.i6name.empty() && memberPropertyNamed(stub.name) && !namesFixedGlobal(stub.name)) stub.i6name = "_g_" + stub.dName(); });
         preScanCaptureParams(stub.params);
         // `extern int I6Twice(int x) asBgl twice;` is called `twice` from Beguile.
         if(isExtern && file.peekToken().is("asbgl")){
@@ -2389,9 +2426,9 @@ void bglParser::preScanTypedDecl(token& tok, bool isExtern, bool isEmitter){
             stub.isPrePassStub = true;
             stub.isExternal = isExtern;
             stub.src = nameTok.src;
-            // Named like a property an included library emits: its other I6 name, for a use above it too.
-            if(isArr && !isExtern)
-                preScanFixups.push_back([this, &stub]{ if(libraryPropertyNamed(stub.name)) stub.i6name = "_" + stub.dName(); });
+            // Named like a member's property: its other I6 name, for a use above it too.
+            if(!isExtern)
+                preScanFixups.push_back([this, &stub]{ if(stub.type.name != "property" && memberPropertyNamed(stub.name)) stub.i6name = "_g_" + stub.dName(); });
             // A `const int` set to an integer literal sizes an array declared above it.
             if(preScanIsConst && sym.is(token::assignment)){
                 int k = 1;

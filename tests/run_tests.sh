@@ -51,7 +51,7 @@
 #                                 Negative tests are unaffected by --capture.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BEGUILER="$SCRIPT_DIR/../beguiler"
+BEGUILER="${BEGUILER:-$SCRIPT_DIR/../beguiler}"
 BASELINE_DIR="$SCRIPT_DIR/baselines"
 OUTPUT_DIR="$SCRIPT_DIR/output"
 

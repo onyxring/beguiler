@@ -1,0 +1,33 @@
+// A routine sweeps fresh arrays only when a call leaves one that nothing takes: a forward-declared method
+// returning array<char> (getFirst), a call returning a file-scope array (getAll), and a local taking a
+// call's whole result (takeWhole) leave none; a nested call's result (takeNested) still does.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <array>
+object k {
+    array<char> getFirst(array<char> x) { return getSecond(x); }
+    array<char> getSecond(array<char> x) { return x; }
+}
+array<object> wb0[8];
+array<object> wb1[8];
+int wi = 0;
+array<object> nextBuf(){
+    wi = (wi + 1) % 2;
+    switch(wi){
+        case 0: return wb0;
+        case 1: return wb1;
+    }
+    return wb0;
+}
+array<object> getAll(){ array<object> buf = nextBuf(); return buf; }
+array<int> make(int n){ array<int> a[4]; a[0] = n; return a; }
+array<int> wrap(array<int> x){ return x; }
+int takeWhole(){ array<int> d = make(3); return d[0]; }
+int takeNested(){ array<int> d = wrap(make(3)); return d[0]; }
+void main(){
+    bglInit();
+    array<char> q[8];
+    k.getFirst(q);
+    print(getAll().length);
+    print(takeWhole());
+    print(takeNested());
+}

@@ -383,7 +383,7 @@ replace void DrawStatusLine() {
 
 void note(stringObj text) {
     logPane?.printLine($"[{turns}] {text}");
-    log($"note: {text}");
+    bgl.output.log($"note: {text}");
 }
 
 // ---- reports -------------------------------------------------------------------------------------

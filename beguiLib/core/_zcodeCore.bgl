@@ -11,7 +11,7 @@
 
 //-- Namespaces ----------------------------------------------------------------
 extend bgl{
-    auto zcode=_zcode;   /// Z-machine-specific facilities.
+    alias zcode = _zcode;   /// Z-machine-specific facilities.
 }
 
 // The object behind bgl.zcode.
@@ -27,13 +27,13 @@ extend bgl {
 /// The story file header: the release number and serial code the game was compiled with.
 superposed _bglObject _bglHeader {
     /// The release number.
-    auto release = {
+    auto release asI6 _bglHeader_release = {
         int operator(){ return bgl.asm.loadw($02, 0) & $03ff; }
     }
     /// Character `i` (0-5) of the six-character serial code.
-    char serialChar(int i){ return (char)bgl.asm.loadb($12, i); }
+    char serialChar(int i) asI6 _bglHeader_serialChar { return (char)bgl.asm.loadb($12, i); }
     /// Print the serial code.
-    void printSerial(){
+    void printSerial() asI6 _bglHeader_printSerial {
         int i = 0;
         for(i = 0; i < 6; i++) print(self.serialChar(i));
     }
@@ -41,3 +41,7 @@ superposed _bglObject _bglHeader {
 extend bgl {
     alias header = _bglHeader;   /// The story file header.
 }
+
+// Every Z-machine window is as wide as the screen; only the upper window has a cursor to move.
+superposed int _bglWinWidth(int win){ return bgl.asm.loadb(0, $21); }
+superposed void _bglWinMoveCursor(int win, int col, int line){ bgl.asm.setCursor(line + 1, col + 1); }

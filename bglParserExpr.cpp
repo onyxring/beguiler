@@ -79,6 +79,24 @@ string bglParser::applyPropertyClassRead(const string& objText, const string& me
 
 // `acc += 3` / `acc++` as an expression, where the accessor's class declares that operator: the
 // operator gets the accessor itself, not the value its getter reads.
+// The call that ends a token list (`obj.f(a, b)` of `x + obj.f(a, b)`), as one text.
+static string trailingCallText(const vector<string>& tokens){
+    if(tokens.empty() || tokens.back().empty() || tokens.back().back() != ')') return "";
+    if(tokens.back().size() > 1) return tokens.back();
+    int depth = 0;
+    size_t i = tokens.size();
+    while(i-- > 0){
+        if(tokens[i] == ")") depth++;
+        else if(tokens[i] == "(" && --depth == 0) break;
+    }
+    if(i == string::npos || i == 0) return "";
+    size_t start = i - 1;   // the callee: a name, or a dotted path written as one token
+    while(start >= 2 && tokens[start - 1] == "." ) start -= 2;
+    string out;
+    for(size_t k = start; k < tokens.size(); k++) out += tokens[k];
+    return out;
+}
+
 bool bglParser::nextOperatorIsOwn(ExprParseState& st, const string& memberType){
     // Compound and step operators, and the binary ones: an accessor's class's own operator applies to
     // the member, ahead of the value its getter reads (§4.4). The root classes' operators don't count.
@@ -141,6 +159,19 @@ functionDef* bglParser::findQueryOp(classDef* cls, const string& type){
 }
 
 // An object named bare, as I6 knows it: one named by a word I6 reserves (`box`) emits as `_box`.
+// The name Inform 6 knows a file-scope variable, array, object or routine by: its own, or the one it was given.
+string bglParser::globalI6Name(const string& name){
+    string low = name; transform(low.begin(), low.end(), low.begin(), ::tolower);
+    if(auto* vd = dynamic_cast<variableDeclaration*>(languageService.findGlobal(low)); vd != nullptr && !vd->i6name.empty()) return vd->i6name;
+    if(auto* od = dynamic_cast<objectDef*>(&languageService.getType(low)); od != nullptr && !od->i6name.empty()) return od->i6name;
+    // A routine (not an overload set, whose calls already carry the chosen overload's name).
+    functionDef* only = nullptr; int n = 0;
+    for(typeDef* g : languageService.globals)
+        if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == low && !fd->isEmitter){ only = fd; n++; }
+    if(n == 1 && !only->i6name.empty()) return only->i6name;
+    return name;
+}
+
 string bglParser::objectI6Name(const string& name){
     if(name.find('.') != string::npos) return name;
     string low = name; transform(low.begin(), low.end(), low.begin(), ::tolower);
@@ -515,10 +546,14 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
             bool savedAllowVoid = allowVoidReturnExpr;
             allowVoidReturnExpr = true;   // `=> shout(3)`: a void call is the body (below)
             expression* retExpr = nullptr;
+            // The body is the lambda's whole statement: strings its expression holds are released there.
+            int savedBase = stmtExprBase; bool savedOpen = optStringMarkOpen;
+            stmtExprBase = exprParseDepth; optStringMarkOpen = false;
             try {
                 retExpr = parseExpression(bodyStart, {token::endStatement, token::comma, token::parenClose,
                                                       token::braceClose, ":"}, &fd, lambdaBody);   // `}`: last of a `{ … }` list
-            } catch(...) { allowVoidReturnExpr = savedAllowVoid; throw; }
+            } catch(...) { allowVoidReturnExpr = savedAllowVoid; stmtExprBase = savedBase; optStringMarkOpen = savedOpen; throw; }
+            stmtExprBase = savedBase; optStringMarkOpen = savedOpen;
             allowVoidReturnExpr = savedAllowVoid;
             vector<statement*> innerSetUp = pendingInjections, innerAfter = postInjections;
             pendingInjections = savedPending; postInjections = savedPost;
@@ -1250,6 +1285,7 @@ void bglParser::parseExprTernary(expression* expr, const vector<string>& termina
     expr->tokens.push_back(tempName);
     expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
     expr->terminator = falseExpr->terminator;
+    holdHoistedString(inj, tempName, expr->resolvedType);
 }
 
 // Null coalescing: lhs ?? fallback
@@ -1298,6 +1334,7 @@ void bglParser::parseExprNullCoalescing(expression* expr, const vector<string>& 
                                             && isTypeCompatible(fallback->resolvedType, lhsType)))
         expr->resolvedType = fallback->resolvedType;
     expr->terminator = fallback->terminator;
+    holdHoistedString(inj, tempName, expr->resolvedType);
 }
 
 // `a && b?.c`: set-up an operand right of `&&`/`||` needs (a `?.` chain's temporaries) runs only when
@@ -1918,6 +1955,16 @@ void bglParser::exprAssembleTernary(ExprParseState& st){
         else                              expr->resolvedType = canonicalUnionOf({tt, ft});
     }
     else expr->resolvedType = !pt.trueType.empty() ? pt.trueType : falseType;
+    holdHoistedString(inj, pt.tempName, expr->resolvedType);
+}
+
+// A string result computed ahead of its expression is a temporary that anything else the statement computes
+// could take: it is held until the statement's expression is done.
+void bglParser::holdHoistedString(i6RawNode* inj, const string& temp, const string& type){
+    // An interpolation prints each span as soon as it is computed, so nothing can take its buffer first.
+    if(strcasecmp(type.c_str(), "stringobj") != 0 || exprParseDepth <= stmtExprBase || interpSegmentDepth > 0) return;
+    if(!optStringMarkOpen){ inj->text = "_bglStringLockStack._bglText_stackMark(); " + inj->text; optStringMarkOpen = true; }
+    inj->text += " " + temp + " = _bglStringLockStack._bglText_stackLock(" + temp + ");";
 }
 
 // Cast emission helper. When `(T)x` is parsed, the consumer site calls this with the
@@ -3226,7 +3273,7 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     auto holdChainString = [&](const string& call, const string& type){
         if(strcasecmp(type.c_str(), "stringobj") != 0) return call;
         chainHeldString = true;
-        return "_bglStringLockStack.stackLock(" + call + ")";
+        return "_bglStringLockStack._bglText_stackLock(" + call + ")";
     };
     string lhsName = cur.value;
     string lhsType;
@@ -3603,13 +3650,8 @@ bglParser::ExprStep bglParser::parseExprOptionalChain(ExprParseState& st, token&
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
     inj->cooked = true;   // built from Beguile expressions: locals take their renames
-    if(chainHeldString && !optStringMarkOpen){ inj->text = "_bglStringLockStack.stackMark(); " + inj->text; optStringMarkOpen = true; }
-    // A string result is a temporary: anything else the statement computes could take its buffer,
-    // so it is held until the statement's expression is done.
-    if(strcasecmp(currentType.c_str(), "stringobj") == 0 && exprParseDepth > stmtExprBase){
-        if(!optStringMarkOpen){ inj->text = "_bglStringLockStack.stackMark(); " + inj->text; optStringMarkOpen = true; }
-        inj->text += " " + optTemp + " = _bglStringLockStack.stackLock(" + optTemp + ");";
-    }
+    if(chainHeldString && !optStringMarkOpen){ inj->text = "_bglStringLockStack._bglText_stackMark(); " + inj->text; optStringMarkOpen = true; }
+    holdHoistedString(inj, optTemp, currentType);
     pendingInjections.push_back(inj);
     expr->tokens.clear();
     for(const auto& p : chainPrefix) expr->tokens.push_back(p);
@@ -3741,7 +3783,7 @@ string bglParser::methodCallName(functionDef* fd, const string& written){
     // The same rule the declaration applies (parseClassMethodMember / processMemberMethod).
     if(fd->isPrePassStub && !fd->isEmitter && !fd->isExternal && !fd->isStatic
        && (isI6OperatorWord(fd->name) || isI6SystemFunction(fd->name) || namesI6Class(fd->name)
-           || (fd->src.file.find("beguiLib") == string::npos && namesLibraryGlobal(fd->name))))
+           || namesFixedGlobal(fd->name)))
         return "_m_" + fd->dName();
     return written;
 }
@@ -6182,7 +6224,7 @@ expression* bglParser::parseExpression(token firstToken, std::vector<std::string
     if(optStringMarkOpen && exprParseDepth == stmtExprBase && e != nullptr){
         optStringMarkOpen = false;
         string t = e->text();
-        e->tokens.assign(1, "_bglStringLockStack.stackDrain(" + t + ", 0)");
+        e->tokens.assign(1, "_bglStringLockStack._bglText_stackDrain(" + t + ", 0)");
     }
     return e;
 }
@@ -6367,10 +6409,10 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
 
         // A call or chain left an array: one nothing may own, which the routine's statements sweep up.
         if(currentFunc != nullptr && !currentFunc->makesFresh && isWordArrayType(expr->resolvedType) && expr->resolvedType != "array<char>"
-           && currentFunc->src.file.find("beguiLib") == string::npos && !expr->tokens.empty()
-           && !isStaticArrayText(expr->tokens.back(), currentFunc, body)   // never a heap array
+           && !expr->tokens.empty()
+           && !isStaticArrayText(trailingCallText(expr->tokens), currentFunc, body)   // never a heap array
            && !expr->tokens.back().empty() && expr->tokens.back().back() == ')')
-            currentFunc->makesFresh = true;
+        { currentFunc->makesFresh = true; freshMarks++; lastFreshCall = stripSpaces(expr->text()); }
         if(step == ExprStep::Break) break;
         if(step == ExprStep::Continue) continue;
         cur = exprNext(st);
@@ -6561,7 +6603,8 @@ void bglParser::rejectStrayOuter(functionDef* func, statementBlock* body){
 string bglParser::escapePropertyName(const string& prop){
     bool plain = !prop.empty() && !isdigit((unsigned char)prop[0])
               && all_of(prop.begin(), prop.end(), [](char c){ return isalnum((unsigned char)c) || c == '_'; });
-    return plain && prop.rfind(kGlobalEscapeMarker, 0) != 0 ? kGlobalEscapeMarker + prop : prop;
+    return plain && prop.rfind(kGlobalEscapeMarker, 0) != 0 && prop.rfind(kPropertyEscapeMarker, 0) != 0
+         ? kPropertyEscapeMarker + prop : prop;
 }
 
 string bglParser::checkedMemberSlot(const string& owner, const string& prop, const string& index, bool write, bool tracked){

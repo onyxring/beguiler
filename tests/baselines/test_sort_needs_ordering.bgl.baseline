@@ -1,11 +1,6 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
-Property individual indexOf;
-Property individual insert;
-Property individual isTracked;
-Property individual prepend;
-Property individual reverse;
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
    Array _bglFramePool --> 64;
@@ -153,7 +148,6 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
 object _zcode
 ;
 object bgl
-  with zcode _zcode
 ;
 Array _bglhdr__bglbufstreamstack --> $9084 0;
 array _bglbufstreamstack table 16;
@@ -166,465 +160,8 @@ array _bglbufglulxstreams table 16;
     Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
     Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
 
-object _bglBuf
-  with _stacktop 0,
-       _trackedcount 0,
-       isTracked [buf p i;
-    p=buf;
-    if (p == 0) {
-        return false;
-    }
-    for (i = 0 : i < self._trackedcount : i++) {
-         if(_bglTrackedRegistry-->i == p) rtrue; 
-    }
-    return false;
-  ],
-       _registerTracked [buf;
-    
-            if(self._trackedCount >= _BGL_TRACKED_CAP){
-                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
-                return;
-            }
-            _bglTrackedRegistry-->(self._trackedCount) = buf;
-        
-    self._trackedcount++;
-  ],
-       _unregisterTracked [buf p i;
-    p=buf;
-    for (i = self._trackedcount - 1 : i >= 0 : i--) {
-        
-                if(_bglTrackedRegistry-->i == p){
-                    self._trackedCount--;
-                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
-                    return;
-                }
-            
-    }
-  ],
-       size [buf;
-    if (buf == 0) {
-        return -1;
-    }
-    return buf-->(-1);
-  ],
-       length [buf;
-    return buf-->(0);
-  ],
-       setLength [buf newLength sz;
-    sz=self.size(buf);
-    if (sz > 0 && newlength > sz) {
-        newLength=sz;
-    }
-    buf-->(0) = newLength;
-  ],
-       getChar [buf pos sz;
-    sz=self.size(buf);
-    if (sz < 0 || sz > pos) {
-        return buf->(pos + WORDSIZE);
-    }
-    return -1;
-  ],
-       setchar_3_bytearray_int_int [buf pos val sz;
-    sz=self.size(buf);
-    if (sz == -1 || sz > pos) {
-        buf->(pos + WORDSIZE) = val;
-    }
-  ],
-       setchar_3_bytearray_int_char [buf pos val sz;
-    sz=self.size(buf);
-    if (sz == -1 || sz > pos) {
-        buf->(pos + WORDSIZE) = val;
-    }
-  ],
-       set_2_bytearray_string [buf stringVal;
-    return self.setany(buf,stringval);
-  ],
-       set_2_bytearray_bytearray [buf src;
-    return self.setfrombuffer(buf,src);
-  ],
-       setAny [buf stringVal;
-    if (self.istracked(stringVal)) {
-        self.setfrombuffer(buf, stringVal);
-    }
-    else {
-        self.setfromliteral(buf, stringVal);
-    }
-    return buf;
-  ],
-       setFromLiteral [buf stringVal sz;
-    sz=self.size(buf);
-    if (sz < 0) {
-        sz=bglstringdefaultsize;
-    }
-    sz=sz + WORDSIZE;
-     stringVal.print_to_array(buf, sz); 
-    self.setLength(buf, self.length(buf));
-    return buf;
-  ],
-       setFromBuffer [buf stringVal svlen;
-    svlen=self.length(stringVal);
-    self.copy(buf, stringVal, svlen, 0, 0);
-    self.setLength(buf, svlen);
-    return buf;
-  ],
-       copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
-    if (frompos == -1) {
-        fromPos = 0;
-    }
-    if (topos == -1) {
-        toPos = 0;
-    }
-    srcLen=self.length(fromBuf);
-    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
-        numCharsToCopy=srclen - frompos;
-    }
-    tgtSize=self.size(toBuf);
-    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
-        numCharsToCopy=tgtsize - topos;
-    }
-    frmPtr=frombuf + frompos + WORDSIZE;
-    toPtr=tobuf + topos + WORDSIZE;
-    @copy_table frmPtr toPtr numCharsToCopy;
-    self.setLength(toBuf, topos + numcharstocopy);
-    return tobuf;
-  ],
-       capture [buf maxBytes;
-    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
-    @output_stream 3 buf;
-    self._stacktop++;
-  ],
-       release [buf;
-    if (self._stacktop == 0) {
-        return 0;
-    }
-    self._stacktop--;
-    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
-    @output_stream -1 * 3;
-    self.setLength(buf, self.length(buf));
-    return buf;
-  ],
-       stackLen [;
-    return self._stacktop;
-  ],
-       print [buf len i c;
-    if (buf == 0) {
-        return buf;
-    }
-    if (len <= 0) {
-        len=self.length(buf);
-    }
-    for (i = 0 : i < len : i++) {
-        c=buf->(i + WORDSIZE);
-        if (c == 0) {
-            break;
-        }
-        @print_char c;
-    }
-    return buf;
-  ],
-       equals [buf1 buf2 caseInsensitive len1 t c1 c2;
-    len1=self.length(buf1);
-    if (len1 ~= self.length(buf2)) {
-        return false;
-    }
-    for (t = 0 : t < len1 : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
-    len1=self.length(buf1);
-    len2=self.length(buf2);
-    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
-    lim=_bgl_tempL0;
-    for (t = 0 : t < lim : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
-            return _bgl_tempL0;
-        }
-    }
-    if (len1 == len2) {
-        return 0;
-    }
-    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
-    return _bgl_tempL0;
-  ],
-       startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
-    len2=self.length(buf2);
-    if (self.length(buf1) < len2) {
-        return false;
-    }
-    for (t = 0 : t < len2 : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
-    len2=self.length(buf2);
-    offset=self.length(buf1) - len2;
-    if (offset < 0) {
-        return false;
-    }
-    for (t = 0 : t < len2 : t++) {
-        c1=buf1->(offset + t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       mid [toBuf fromBuf fromPos numCharsToCopy len maxLen;
-    len=self.length(fromBuf);
-    if (frompos < 0) {
-        fromPos = 0;
-    }
-    if (frompos > len) {
-        fromPos=len;
-    }
-    maxLen=len - frompos;
-    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
-        numCharsToCopy=maxLen;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       left [toBuf fromBuf numCharsToCopy len;
-    len=self.length(fromBuf);
-    if (numcharstocopy > len) {
-        numCharsToCopy=len;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       right [toBuf fromBuf numCharsToCopy len;
-    len=self.length(fromBuf);
-    if (numcharstocopy > len) {
-        numCharsToCopy=len;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, len - numcharstocopy);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       insert [toBuf fromBuf toPos charCount len;
-    if (charcount <= 0) {
-        charCount=self.length(fromBuf);
-    }
-    len=self.length(toBuf);
-    if (topos < 0) {
-        toPos = 0;
-    }
-    if (topos > len) {
-        toPos=len;
-    }
-    self.copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
-    self.copy(toBuf, fromBuf, charCount, toPos, 0);
-    self.setLength(toBuf, len + charcount);
-    return tobuf;
-  ],
-       prepend_2_bytearray_bytearray [toBuf fromBuf;
-    return self.prependbuffer(tobuf,frombuf);
-  ],
-       prependBuffer [toBuf fromBuf;
-    self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
-    return tobuf;
-  ],
-       append_2_bytearray_bytearray [toBuf fromBuf;
-    return self.appendbuffer(tobuf,frombuf);
-  ],
-       appendBuffer [toBuf fromBuf;
-    self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
-    return tobuf;
-  ],
-       append_2_bytearray_string [toBuf text len sz n saved;
-    len=self.length(toBuf);
-    sz=self.size(toBuf);
-    if (sz < 0) {
-        sz=bglstringdefaultsize;
-    }
-    n = 0;
-    saved = 0;
-    
-            saved = (toBuf + len)-->0;
-            text.print_to_array(toBuf + len, sz - len);
-            n = (toBuf + len)-->0;
-            (toBuf + len)-->0 = saved;
-        
-    self.setLength(toBuf, len + n);
-    return tobuf;
-  ],
-       prepend_2_bytearray_string [toBuf text len total;
-    len=self.length(toBuf);
-    self.append_2_bytearray_string(toBuf, text);
-    total=self.length(toBuf);
-    self.reverserange(toBuf, 0, total);
-    self.reverserange(toBuf, 0, total - len);
-    self.reverserange(toBuf, total - len, total);
-    return tobuf;
-  ],
-       reverseRange [buf from _l_to w c;
-    w=WORDSIZE;
-    for (_l_to = _l_to - 1 : from < _l_to : from++) {
-        c=buf->(from + w);
-        buf->(from + w) = buf->(_l_to + w);
-        buf->(_l_to + w) = c;
-        _l_to--;
-    }
-  ],
-       delete [buf pos count len;
-    len=self.length(buf);
-    self.copy(buf, buf, len - count, pos, pos + count);
-    self.setLength(buf, len - count);
-    return buf;
-  ],
-       replace [buf searchTextBuf replaceTextBuf searchLen pos;
-    searchLen=self.length(searchTextBuf);
-    pos=self.indexof(buf,searchTextBuf,0);
-    if (pos == -1) {
-        return buf;
-    }
-    self.delete(buf, pos, searchLen);
-    self.insert(buf, replaceTextBuf, pos, 0);
-    return buf;
-  ],
-       replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
-    searchLen=self.length(searchTextBuf);
-    rtlen=self.length(replaceTextBuf);
-    if (searchlen == 0) {
-        return buf;
-    }
-    pos=self.indexof(buf,searchTextBuf,startingIndex);
-    while (pos ~= -1) {
-        self.delete(buf, pos, searchLen);
-        self.insert(buf, replaceTextBuf, pos, 0);
-        pos=self.indexof(buf,searchTextBuf,pos + rtlen);
-    }
-    return buf;
-  ],
-       indexOf [buf searchTextBuf startingIndex stblen blen o i;
-    stblen=self.length(searchTextBuf);
-    blen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    for (o = startingindex : o + stblen <= blen : o++) {
-        for (i = 0 : i < stblen : i++) {
-            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
-                break;
-            }
-        }
-        if (i == stblen) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       indexOfFirstTrue [buf pred startingIndex buflen o c;
-    buflen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    for (o = startingindex : o < buflen : o++) {
-        c = buf->(o + WORDSIZE);
-        if (pred(c)) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       indexOfFirstFalse [buf pred startingIndex buflen o c;
-    buflen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    if (startingindex > buflen) {
-        return -1;
-    }
-    for (o = startingindex : o < buflen : o++) {
-        c = buf->(o + WORDSIZE);
-        if ((~~pred(c))) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       toUpper [buf buflen t;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen : t++) {
-        buf->(t + WORDSIZE) = _bglchartoupper(buf->(t + WORDSIZE));
-    }
-    return buf;
-  ],
-       toLower [buf buflen t;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen : t++) {
-        buf->(t + WORDSIZE) = _bglchartolower(buf->(t + WORDSIZE));
-    }
-    return buf;
-  ],
-       reverse [buf buflen t c;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen / 2 : t++) {
-        c=buf->(t + WORDSIZE);
-        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
-        buf->(buflen - t - 1 + WORDSIZE) = c;
-    }
-    return buf;
-  ],
-       trimLeft [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,0) == ' ') {
-        self.delete(buf, 0, 1);
-    }
-    return buf;
-  ],
-       trimRight [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1) == ' ') {
-        self.delete(buf, self.length(buf) - 1, 1);
-    }
-    return buf;
-  ],
-       trim [buf;
-    return self.trimright(self.trimleft(buf));
-  ]
-;
 
+    Constant _bglOverrunSetting "bglStringDefaultSize";        ! what <buf> names when printed text overruns its room
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -636,7 +173,7 @@ object _bglBuf
 
     Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
 
-    class _bglBufferWrapper(bglBufferPoolReserve) with buf 0;   ! buffer-as-object so it can move between sentinel containers
+    class _bglBufferWrapper(bglBufferPoolReserve) with _bglText_buf 0;   ! buffer-as-object so it can move between sentinel containers
 
     object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
     object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
@@ -684,15 +221,15 @@ object _bglBuf
         ]
         !find the allocated object wrapper for the given buffer
     ,	_findAllocatedObjFromBuffer[b o;
-            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
             !find the unallocated object wrapper for the given buffer
     ,	_findAvailableObjFromBuffer[b o;
-            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o.buf==b) return o;
+            objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
-    ,	isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
+    ,	_bglText_isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
             if(self._findAllocatedObjFromBuffer(b)==0) rfalse;
             rtrue;
         ]
@@ -711,42 +248,42 @@ object _bglBuf
             objectloop(o in _bglObjectHeap) if(o==b) return o;
             return 0;
         ]
-    with allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
+    with _bglText_allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
             retval = self._allocateObj(_bglString);
-            retval.getBuf(); !force initilization
+            retval._bglText_getBuf(); !force initilization
             return retval;
         ]
-    ,	freeString[str; !take a specific allocated string, and free it for later use
-            self.freeBuffer(self._findAllocatedObj(str));
+    ,	_bglText_freeString[str; !take a specific allocated string, and free it for later use
+            self._bglText_freeBuffer(self._findAllocatedObj(str));
             self._freeObj(self._findAllocatedObj(str));
 
             return str;
         ]
-    ,	reclaimString[b retval; !take a previously freed string and lock it again
+    ,	_bglText_reclaimString[b retval; !take a previously freed string and lock it again
             retval = self._reclaimObj(self._findAvailableObj(b));
-            if(retval~=0) self.reclaimBuffer(retval.getBuf(true));
+            if(retval~=0) self._bglText_reclaimBuffer(retval._bglText_getBuf(true));
             return retval;
         ]
-    ,	allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
-            retval = self._allocateObj(_bglBufferWrapper).buf;
-            _bglBuf.setLength(retval,0);
+    ,	_bglText_allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+            retval = self._allocateObj(_bglBufferWrapper)._bglText_buf;
+            _bglBuf._bglText_setLength(retval,0);
             return retval;
         ]
-    ,	freeBuffer[b; !take a specific buffer and free it for later allocation
+    ,	_bglText_freeBuffer[b; !take a specific buffer and free it for later allocation
             self._freeObj(self._findAllocatedObjFromBuffer(b));
             return b;
         ]
-    ,	reclaimBuffer[b retval;
+    ,	_bglText_reclaimBuffer[b retval;
             retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
-            if(retval~=0) return retval.buf;
+            if(retval~=0) return retval._bglText_buf;
             return 0;
         ]
-    , 	isLocked[obj;
+    , 	_bglText_isLocked[obj;
             if(self._findAllocatedObj(obj)) return true;
             if(self._findAllocatedObjFromBuffer(obj)) return true;
             return false;
         ]
-    ,	isFree[obj;
+    ,	_bglText_isFree[obj;
             if(self._findAvailableObj(obj)) return true;
             if(self._findAvailableObjFromBuffer(obj)) return true;
             return false;
@@ -761,20 +298,20 @@ object _bglBuf
             i obj;
         for(i=0:_bglBufferWrapper.remaining()>0:i++){
             obj=_bglBufferWrapper.create();
-            obj.buf=_bglDsbuf+(i*bglStringDefaultSize);
-            obj.buf=_bglConvertToSizedBuffer(obj.buf,bglStringDefaultSize);
+            obj._bglText_buf=_bglDsbuf+(i*bglStringDefaultSize);
+            obj._bglText_buf=_bglConvertToSizedBuffer(obj._bglText_buf,bglStringDefaultSize);
             move obj to _bglObjectHeap;
         }
 
         for(i=0:_bglString.remaining()>0:i++){
             obj=_bglString.create();
-            obj.getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
+            obj._bglText_getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
             move obj to _bglObjectHeap;
         }
     ];
 
 [_bglConvertToSizedBuffer b sz result;
-    if (_bglbuf.istracked(b)) {
+    if (_bglbuf._bglText_isTracked(b)) {
         return b;
     }
     result = b + WORDSIZE + 2;
@@ -783,248 +320,248 @@ object _bglBuf
     return result;
 ];
 object _bglStr
-  with new [unkStr retval lck;
+  with _bglText_new [unkStr retval lck;
     
-            lck    = self.ambiguousLock(unkStr);
-            retval = _bglStringPool.allocateString();
-            if(unkStr ~= 0) retval.set(unkStr);
-            else retval.setLength(0);   ! a pooled buffer still holds its last text
-            self.ambiguousFree(unkStr, lck);
-            retval = retval.lock();
+            lck    = self._bglText_ambiguousLock(unkStr);
+            retval = _bglStringPool._bglText_allocateString();
+            if(unkStr ~= 0) retval._bglText_set(unkStr);
+            else retval._bglText_setLength(0);   ! a pooled buffer still holds its last text
+            self._bglText_ambiguousFree(unkStr, lck);
+            retval = retval._bglText_lock();
         
     return retval;
   ],
-       fromChars [chars retval n i;
-    retval = self.new(0);
+       _bglText_fromChars [chars retval n i;
+    retval = self._bglText_new(0);
     
             n = chars-->0;
-            i = _bglBuf.size(retval.getBuf());   ! -1 when the buffer carries no capacity
+            i = _bglBuf._bglText_size(retval._bglText_getBuf());   ! -1 when the buffer carries no capacity
             if(i >= 0 && n > i) n = i;
-            for(i = 0 : i < n : i++) retval.setChar(i, chars->(i + WORDSIZE));
-            retval.setLength(n);
-            retval = retval.free();
+            for(i = 0 : i < n : i++) retval._bglText_setChar(i, chars->(i + WORDSIZE));
+            retval._bglText_setLength(n);
+            retval = retval._bglText_free();
         
     return retval;
   ],
-       format [s _l_pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
-    lk_pattern=self.ambiguouslock(_l_pattern);
-    lk_p1=self.ambiguouslock(p1);
-    lk_p2=self.ambiguouslock(p2);
-    lk_p3=self.ambiguouslock(p3);
-    str = self.new(s);
-     tmp = str.format(_l_pattern, p1, p2, p3); str.free(); 
-    self.ambiguousfree(p3, lk_p3);
-    self.ambiguousfree(p2, lk_p2);
-    self.ambiguousfree(p1, lk_p1);
-    self.ambiguousfree(_l_pattern, lk_pattern);
+       _bglText_format [s _l_pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
+    lk_pattern=self._bgltext_ambiguouslock(_l_pattern);
+    lk_p1=self._bgltext_ambiguouslock(p1);
+    lk_p2=self._bgltext_ambiguouslock(p2);
+    lk_p3=self._bgltext_ambiguouslock(p3);
+    str = self._bglText_new(s);
+     tmp = str._bglText_format(_l_pattern, p1, p2, p3); str._bglText_free(); 
+    self._bgltext_ambiguousfree(p3, lk_p3);
+    self._bgltext_ambiguousfree(p2, lk_p2);
+    self._bgltext_ambiguousfree(p1, lk_p1);
+    self._bgltext_ambiguousfree(_l_pattern, lk_pattern);
     return tmp;
   ],
-       toAmbiguousBuffer [unkStr retval;
+       _bglText_toAmbiguousBuffer [unkStr retval;
     
-            if(unkStr ofclass _bglString) return unkStr.getBuf();
+            if(unkStr ofclass _bglString) return unkStr._bglText_getBuf();
             ! A null string reads as the empty one.
             if(unkStr == 0){
-                retval = _bglStringPool.allocateBuffer();
-                _bglBuf.setLength(retval, 0);
-                return _bglStringPool.freeBuffer(retval);
+                retval = _bglStringPool._bglText_allocateBuffer();
+                _bglBuf._bglText_setLength(retval, 0);
+                return _bglStringPool._bglText_freeBuffer(retval);
             }
             ! Phase B safety: at this point we KNOW unkStr is not a _bglString
             ! (ofclass check failed), so it's a packed string literal in practice.
             ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
             ! Eliminates the residual isTracked-collision bug for all callers of
             ! toAmbiguousBuffer (insert, replace, indexOf, startsWith, etc.).
-            retval = _bglStringPool.allocateBuffer();
-            _bglBuf.setFromLiteral(retval, unkStr);
-            retval = _bglStringPool.freeBuffer(retval);
+            retval = _bglStringPool._bglText_allocateBuffer();
+            _bglBuf._bglText_setFromLiteral(retval, unkStr);
+            retval = _bglStringPool._bglText_freeBuffer(retval);
         
     return retval;
   ],
-       ambiguousLock [buf retval;
+       _bglText_ambiguousLock [buf retval;
     retval=false;
     
-            if(_bglStringPool.isFree(buf)) {
-                _bglStringPool.reclaimBuffer(buf);
-                _bglStringPool.reclaimString(buf);
+            if(_bglStringPool._bglText_isFree(buf)) {
+                _bglStringPool._bglText_reclaimBuffer(buf);
+                _bglStringPool._bglText_reclaimString(buf);
                 retval = true;
             }
         
     return retval;
   ],
-       ambiguousFree [buf val;
+       _bglText_ambiguousFree [buf val;
     if (val) {
         
-                _bglStringPool.freeBuffer(buf);
-                _bglStringPool.freeString(buf);
+                _bglStringPool._bglText_freeBuffer(buf);
+                _bglStringPool._bglText_freeString(buf);
             
     }
   ],
-       areEqual [buf1 buf2 caseInsensitive lck retval;
-    buf1 = self.toambiguousbuffer(buf1);
-    lck=self.ambiguouslock(buf1);
-    buf2 = self.toambiguousbuffer(buf2);
-    retval=_bglbuf.equals(buf1, buf2, caseinsensitive);
-    self.ambiguousfree(buf1, lck);
+       _bglText_areEqual [buf1 buf2 caseInsensitive lck retval;
+    buf1 = self._bglText_toAmbiguousBuffer(buf1);
+    lck=self._bglText_ambiguousLock(buf1);
+    buf2 = self._bglText_toAmbiguousBuffer(buf2);
+    retval=_bglbuf._bglText_equals(buf1, buf2, caseinsensitive);
+    self._bglText_ambiguousFree(buf1, lck);
     return retval;
   ],
-       compareValues [buf1 buf2 caseInsensitive lck retval;
-    buf1 = self.toambiguousbuffer(buf1);
-    lck=self.ambiguouslock(buf1);
-    buf2 = self.toambiguousbuffer(buf2);
-    retval=_bglbuf.compare(buf1, buf2, caseinsensitive);
-    self.ambiguousfree(buf1, lck);
+       _bglText_compareValues [buf1 buf2 caseInsensitive lck retval;
+    buf1 = self._bglText_toAmbiguousBuffer(buf1);
+    lck=self._bglText_ambiguousLock(buf1);
+    buf2 = self._bglText_toAmbiguousBuffer(buf2);
+    retval=_bglbuf._bglText_compare(buf1, buf2, caseinsensitive);
+    self._bglText_ambiguousFree(buf1, lck);
     return retval;
   ],
-       getLength [s str n;
-    str = self.new(s);
-     n = str.getLength(); str.free(); 
+       _bglText_getLength [s str n;
+    str = self._bglText_new(s);
+     n = str._bglText_getLength(); str._bglText_free(); 
     return n;
   ],
-       getChar [s pos str r;
-    str = self.new(s);
-     r = str.getChar(pos); str.free(); 
+       _bglText_getChar [s pos str r;
+    str = self._bglText_new(s);
+     r = str._bglText_getChar(pos); str._bglText_free(); 
     return r;
   ],
-       indexOf [s searchText startingIndex lk_searchText str r;
-    lk_searchText=self.ambiguouslock(searchtext);
-    str = self.new(s);
-     r = str.indexOf(searchText, startingIndex); str.free(); 
-    self.ambiguousfree(searchText, lk_searchText);
+       _bglText_indexOf [s searchText startingIndex lk_searchText str r;
+    lk_searchText=self._bglText_ambiguousLock(searchtext);
+    str = self._bglText_new(s);
+     r = str._bglText_indexOf(searchText, startingIndex); str._bglText_free(); 
+    self._bglText_ambiguousFree(searchText, lk_searchText);
     return r;
   ],
-       startsWith [s prefix caseInsensitive lk_prefix str r;
-    lk_prefix=self.ambiguouslock(prefix);
-    str = self.new(s);
-     r = str.startsWith(prefix, caseInsensitive); str.free(); 
-    self.ambiguousfree(prefix, lk_prefix);
+       _bglText_startsWith [s prefix caseInsensitive lk_prefix str r;
+    lk_prefix=self._bglText_ambiguousLock(prefix);
+    str = self._bglText_new(s);
+     r = str._bglText_startsWith(prefix, caseInsensitive); str._bglText_free(); 
+    self._bglText_ambiguousFree(prefix, lk_prefix);
     return r;
   ],
-       endsWith [s suffix caseInsensitive lk_suffix str r;
-    lk_suffix=self.ambiguouslock(suffix);
-    str = self.new(s);
-     r = str.endsWith(suffix, caseInsensitive); str.free(); 
-    self.ambiguousfree(suffix, lk_suffix);
+       _bglText_endsWith [s suffix caseInsensitive lk_suffix str r;
+    lk_suffix=self._bglText_ambiguousLock(suffix);
+    str = self._bglText_new(s);
+     r = str._bglText_endsWith(suffix, caseInsensitive); str._bglText_free(); 
+    self._bglText_ambiguousFree(suffix, lk_suffix);
     return r;
   ],
-       contains [s searchText lk_searchText str r;
-    lk_searchText=self.ambiguouslock(searchtext);
-    str = self.new(s);
-     r = str.contains(searchText); str.free(); 
-    self.ambiguousfree(searchText, lk_searchText);
+       _bglText_contains [s searchText lk_searchText str r;
+    lk_searchText=self._bglText_ambiguousLock(searchtext);
+    str = self._bglText_new(s);
+     r = str._bglText_contains(searchText); str._bglText_free(); 
+    self._bglText_ambiguousFree(searchText, lk_searchText);
     return r;
   ],
-       isEmpty [s str r;
-    str = self.new(s);
-     r = str.isEmpty(); str.free(); 
+       _bglText_isEmpty [s str r;
+    str = self._bglText_new(s);
+     r = str._bglText_isEmpty(); str._bglText_free(); 
     return r;
   ],
-       beginAppend [s t;
-    t = self.new(0);
-     _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t.capture(); 
+       _bglText_beginAppend [s t;
+    t = self._bglText_new(0);
+     _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t._bglText_capture(); 
     return s;
   ],
-       endAppend [s t;
-     _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t.release(); s.setFromStr(s.append(t)); t.free(); 
+       _bglText_endAppend [s t;
+     _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t._bglText_release(); s._bglText_setFromStr(s._bglText_append(t)); t._bglText_free(); 
     return s;
   ],
-       append [s text lk_text str tmp;
-    lk_text=self.ambiguouslock(text);
-    str = self.new(s);
-     tmp = str.append(text); str.free(); 
-    self.ambiguousfree(text, lk_text);
+       _bglText_append [s text lk_text str tmp;
+    lk_text=self._bglText_ambiguousLock(text);
+    str = self._bglText_new(s);
+     tmp = str._bglText_append(text); str._bglText_free(); 
+    self._bglText_ambiguousFree(text, lk_text);
     return tmp;
   ],
-       appendChar [s c str tmp;
-    str = self.new(s);
-     tmp = str.appendChar(c); str.free(); 
+       _bglText_appendChar [s c str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_appendChar(c); str._bglText_free(); 
     return tmp;
   ],
-       prependChar [s c str tmp;
-    str = self.new(s);
-     tmp = str.prependChar(c); str.free(); 
+       _bglText_prependChar [s c str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_prependChar(c); str._bglText_free(); 
     return tmp;
   ],
-       prepend [s text lk_text str tmp;
-    lk_text=self.ambiguouslock(text);
-    str = self.new(s);
-     tmp = str.prepend(text); str.free(); 
-    self.ambiguousfree(text, lk_text);
+       _bglText_prepend [s text lk_text str tmp;
+    lk_text=self._bglText_ambiguousLock(text);
+    str = self._bglText_new(s);
+     tmp = str._bglText_prepend(text); str._bglText_free(); 
+    self._bglText_ambiguousFree(text, lk_text);
     return tmp;
   ],
-       toUpper [s str tmp;
-    str = self.new(s);
-     tmp = str.toUpper(); str.free(); 
+       _bglText_toUpper [s str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_toUpper(); str._bglText_free(); 
     return tmp;
   ],
-       toLower [s str tmp;
-    str = self.new(s);
-     tmp = str.toLower(); str.free(); 
+       _bglText_toLower [s str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_toLower(); str._bglText_free(); 
     return tmp;
   ],
-       trimLeft [s str tmp;
-    str = self.new(s);
-     tmp = str.trimLeft(); str.free(); 
+       _bglText_trimLeft [s str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_trimLeft(); str._bglText_free(); 
     return tmp;
   ],
-       trimRight [s str tmp;
-    str = self.new(s);
-     tmp = str.trimRight(); str.free(); 
+       _bglText_trimRight [s str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_trimRight(); str._bglText_free(); 
     return tmp;
   ],
-       reverse [s str tmp;
-    str = self.new(s);
-     tmp = str.reverse(); str.free(); 
+       _bglText_reverse [s str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_reverse(); str._bglText_free(); 
     return tmp;
   ],
-       mid [s start count str tmp;
-    str = self.new(s);
-     tmp = str.mid(start, count); str.free(); 
+       _bglText_mid [s start count str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_mid(start, count); str._bglText_free(); 
     return tmp;
   ],
-       left [s count str tmp;
-    str = self.new(s);
-     tmp = str.left(count); str.free(); 
+       _bglText_left [s count str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_left(count); str._bglText_free(); 
     return tmp;
   ],
-       right [s count str tmp;
-    str = self.new(s);
-     tmp = str.right(count); str.free(); 
+       _bglText_right [s count str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_right(count); str._bglText_free(); 
     return tmp;
   ],
-       insert [s pos source lk_source str tmp;
-    lk_source=self.ambiguouslock(source);
-    str = self.new(s);
-     tmp = str.insert(pos, source); str.free(); 
-    self.ambiguousfree(source, lk_source);
+       _bglText_insert [s pos source lk_source str tmp;
+    lk_source=self._bglText_ambiguousLock(source);
+    str = self._bglText_new(s);
+     tmp = str._bglText_insert(pos, source); str._bglText_free(); 
+    self._bglText_ambiguousFree(source, lk_source);
     return tmp;
   ],
-       delete [s pos count str tmp;
-    str = self.new(s);
-     tmp = str.delete(pos, count); str.free(); 
+       _bglText_delete [s pos count str tmp;
+    str = self._bglText_new(s);
+     tmp = str._bglText_delete(pos, count); str._bglText_free(); 
     return tmp;
   ],
-       replace [s searchText replaceText lk_searchText lk_replaceText str tmp;
-    lk_searchText=self.ambiguouslock(searchtext);
-    lk_replaceText=self.ambiguouslock(replacetext);
-    str = self.new(s);
-     tmp = str.replace(searchText, replaceText); str.free(); 
-    self.ambiguousfree(replaceText, lk_replaceText);
-    self.ambiguousfree(searchText, lk_searchText);
+       _bglText_replace [s searchText replaceText lk_searchText lk_replaceText str tmp;
+    lk_searchText=self._bglText_ambiguousLock(searchtext);
+    lk_replaceText=self._bglText_ambiguousLock(replacetext);
+    str = self._bglText_new(s);
+     tmp = str._bglText_replace(searchText, replaceText); str._bglText_free(); 
+    self._bglText_ambiguousFree(replaceText, lk_replaceText);
+    self._bglText_ambiguousFree(searchText, lk_searchText);
     return tmp;
   ],
-       replaceAll [s searchText replaceText lk_searchText lk_replaceText str tmp;
-    lk_searchText=self.ambiguouslock(searchtext);
-    lk_replaceText=self.ambiguouslock(replacetext);
-    str = self.new(s);
-     tmp = str.replaceAll(searchText, replaceText); str.free(); 
-    self.ambiguousfree(replaceText, lk_replaceText);
-    self.ambiguousfree(searchText, lk_searchText);
+       _bglText_replaceAll [s searchText replaceText lk_searchText lk_replaceText str tmp;
+    lk_searchText=self._bglText_ambiguousLock(searchtext);
+    lk_replaceText=self._bglText_ambiguousLock(replacetext);
+    str = self._bglText_new(s);
+     tmp = str._bglText_replaceAll(searchText, replaceText); str._bglText_free(); 
+    self._bglText_ambiguousFree(replaceText, lk_replaceText);
+    self._bglText_ambiguousFree(searchText, lk_searchText);
     return tmp;
   ],
-       trim [buf str tmpStr;
-    str = self.new(buf);
+       _bglText_trim [buf str tmpStr;
+    str = self._bglText_new(buf);
     
-            tmpStr = str.trim();
-            str.free();
+            tmpStr = str._bglText_trim();
+            str._bglText_free();
         
     return tmpstr;
   ],
@@ -1047,51 +584,51 @@ object _bglStr
 class _bglString(bglstringpoolreserve)
   with
     _underlyingBuffer 0,
-    getLength[retval;
-         retval = _bglBuf.length(self.getBuf()); 
+    _bglText_getLength[retval;
+         retval = _bglBuf._bglText_length(self._bglText_getBuf()); 
         return retval;
     ],
-    getBuf[suppressAllocation retval;
+    _bglText_getBuf[suppressAllocation retval;
         
             if(self._underlyingBuffer == 0 && suppressAllocation == 0)
-                self._underlyingBuffer = _bglStringPool.allocateBuffer();
+                self._underlyingBuffer = _bglStringPool._bglText_allocateBuffer();
             retval = self._underlyingBuffer;
         
         return retval;
     ],
-    getChar[pos retval;
-         retval = self.getBuf()->(pos + WORDSIZE); 
+    _bglText_getChar[pos retval;
+         retval = self._bglText_getBuf()->(pos + WORDSIZE); 
         return retval;
     ],
-    getCharFromRight[pos retval;
-         retval = self.getChar(self.getLength() - (pos + 1)); 
+    _bglText_getCharFromRight[pos retval;
+         retval = self._bglText_getChar(self._bglText_getLength() - (pos + 1)); 
         return retval;
     ],
-    isEmpty[retval;
-         retval = (_bglBuf.length(self.getBuf()) == 0); 
+    _bglText_isEmpty[retval;
+         retval = (_bglBuf._bglText_length(self._bglText_getBuf()) == 0); 
         return retval;
     ],
-    clone[retval;
-         retval = _bglStr.new(self); 
+    _bglText_clone[retval;
+         retval = _bglStr._bglText_new(self); 
         return retval;
     ],
-    isLocked[retval;
-         retval = _bglStringPool.isLocked(self); 
+    _bglText_isLocked[retval;
+         retval = _bglStringPool._bglText_isLocked(self); 
         return retval;
     ],
-    isBufferLocked[retval;
-         retval = _bglStringPool.isLocked(self._underlyingBuffer); 
+    _bglText_isBufferLocked[retval;
+         retval = _bglStringPool._bglText_isLocked(self._underlyingBuffer); 
         return retval;
     ],
-    lock[;
-         _bglStringPool.reclaimString(self); 
+    _bglText_lock[;
+         _bglStringPool._bglText_reclaimString(self); 
         return self;
     ],
-    free[;
-         _bglStringPool.freeString(self); 
+    _bglText_free[;
+         _bglStringPool._bglText_freeString(self); 
         return self;
     ],
-    set[unkStr ab lckBuf lckSelf;
+    _bglText_set[unkStr ab lckBuf lckSelf;
         
             ! Order matches orLib exactly: lckSelf first, then ab, then lckBuf.
             ! Reordering surfaced pool-state corruption in stringRuntime.bgl
@@ -1099,81 +636,81 @@ class _bglString(bglstringpoolreserve)
             ! fully pinned down yet (likely interacts with reclaimString's
             ! object-walk when the string and its underlying buffer are
             ! both ambiguously locked).
-            lckSelf = _bglStr.ambiguousLock(self);
-            ab      = _bglStr.toAmbiguousBuffer(unkStr);
-            lckBuf  = _bglStr.ambiguousLock(ab);
-            _bglBuf.setAny(self.getBuf(), ab);
-            _bglStr.ambiguousFree(ab, lckBuf);
-            _bglStr.ambiguousFree(self, lckSelf);
+            lckSelf = _bglStr._bglText_ambiguousLock(self);
+            ab      = _bglStr._bglText_toAmbiguousBuffer(unkStr);
+            lckBuf  = _bglStr._bglText_ambiguousLock(ab);
+            _bglBuf._bglText_setAny(self._bglText_getBuf(), ab);
+            _bglStr._bglText_ambiguousFree(ab, lckBuf);
+            _bglStr._bglText_ambiguousFree(self, lckSelf);
         
         return self;
     ],
-    setFromLit[lit;
+    _bglText_setFromLit[lit;
         
             ! A null string (a `?.` chain that stopped) is the empty one.
-            if(lit == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
+            if(lit == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
             ! Direct setFromLiteral — caller knows lit is a packed string.
-            _bglBuf.setFromLiteral(self.getBuf(), lit);
+            _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), lit);
         
         return self;
     ],
-    setFromStr[src;
+    _bglText_setFromStr[src;
         
             ! A null string (a `?.` chain that stopped) is the empty one.
-            if(src == 0){ _bglBuf.setLength(self.getBuf(), 0); return self; }
+            if(src == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
             ! A literal or string passed where a stringObj is expected arrives as packed text.
-            if(metaclass(src) == String){ _bglBuf.setFromLiteral(self.getBuf(), src); return self; }
-            _bglBuf.setFromBuffer(self.getBuf(), src.getBuf());
+            if(metaclass(src) == String){ _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), src); return self; }
+            _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), src._bglText_getBuf());
         
         return self;
     ],
-    setLength[newLength;
-         _bglBuf.setLength(self.getBuf(), newLength); 
+    _bglText_setLength[newLength;
+         _bglBuf._bglText_setLength(self._bglText_getBuf(), newLength); 
         return self;
     ],
-    setChar[pos val;
+    _bglText_setChar[pos val;
         
             if(val > 255) val = '?';   ! one byte per character: beyond Latin-1 reads as '?', as captured text does
-            self.getBuf()->(pos + WORDSIZE) = val;
+            self._bglText_getBuf()->(pos + WORDSIZE) = val;
         
         return self;
     ],
-    capture[;
-         _bglBuf.capture(self.getBuf()); 
+    _bglText_capture[;
+         _bglBuf._bglText_capture(self._bglText_getBuf()); 
         return self;
     ],
-    release[;
-         _bglBuf.release(); 
+    _bglText_release[;
+         _bglBuf._bglText_release(); 
         return self;
     ],
-    captureOutput[o r;
-        self.capture();
+    _bglText_captureOutput[o r;
+        self._bglText_capture();
          _bglStr.print(o, r); 
-        self.release();
+        self._bglText_release();
         return self;
     ],
     print[;
-         _bglBuf.print(self.getBuf()); 
+         _bglBuf.print(self._bglText_getBuf()); 
         return self;
     ],
-    equals[altBuf caseInsensitive retval;
-         retval = _bglBuf.equals(_bglStr.toAmbiguousBuffer(altBuf), self.getBuf(), caseInsensitive); 
+    _bglText_equals[altBuf caseInsensitive retval;
+         retval = _bglBuf._bglText_equals(_bglStr._bglText_toAmbiguousBuffer(altBuf), self._bglText_getBuf(), caseInsensitive); 
         return retval;
     ],
-    equalsLit[lit ephemeral retval;
+    _bglText_equalsLit[lit ephemeral retval;
         
-            ephemeral = _bglStringPool.allocateBuffer();
-            _bglBuf.setFromLiteral(ephemeral, lit);
-            ephemeral = _bglStringPool.freeBuffer(ephemeral);
-            retval = _bglBuf.equals(ephemeral, self.getBuf(), 0);
+            ephemeral = _bglStringPool._bglText_allocateBuffer();
+            _bglBuf._bglText_setFromLiteral(ephemeral, lit);
+            ephemeral = _bglStringPool._bglText_freeBuffer(ephemeral);
+            retval = _bglBuf._bglText_equals(ephemeral, self._bglText_getBuf(), 0);
         
         return retval;
     ],
-    equalsStr[other retval;
-         retval = _bglBuf.equals(other.getBuf(), self.getBuf(), 0); 
+    _bglText_equalsStr[other retval;
+         retval = _bglBuf._bglText_equals(other._bglText_getBuf(), self._bglText_getBuf(), 0); 
         return retval;
     ],
-    equalsOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+    _bglText_equalsOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
         
             ! Hidden orLib idiom: if the last positional arg is a boolean,
             ! treat it as the caseInsensitive flag and the slot is empty.
@@ -1181,245 +718,245 @@ class _bglString(bglstringpoolreserve)
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.equals(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.equals(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.equals(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.equals(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_equals(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_equals(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_equals(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_equals(buf4, caseInsensitive) == true) rtrue;
         
         return false;
     ],
-    equalsOneOfCaseInsensitive[buf1 buf2 buf3 buf4;
-        return self.equalsoneof(buf1, buf2, buf3, buf4, true);
+    _bglText_equalsOneOfCaseInsensitive[buf1 buf2 buf3 buf4;
+        return self._bglText_equalsOneOf(buf1, buf2, buf3, buf4, true);
     ],
-    compareTo[other caseInsensitive retval;
-         retval = _bglBuf.compare(self.getBuf(), _bglStr.toAmbiguousBuffer(other), caseInsensitive); 
+    _bglText_compareTo[other caseInsensitive retval;
+         retval = _bglBuf._bglText_compare(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(other), caseInsensitive); 
         return retval;
     ],
-    indexOf[searchText startingIndex retval;
-         retval = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex); 
+    _bglText_indexOf[searchText startingIndex retval;
+         retval = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex); 
         return retval;
     ],
-    numOccurances[searchText startingIndex count n;
+    _bglText_numOccurances[searchText startingIndex count n;
         count = 0;
         
-            n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex);
+            n = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex);
             while(n >= 0) {
                 count++;
                 startingIndex = n;
-                n = _bglBuf.indexOf(self.getBuf(), _bglStr.toAmbiguousBuffer(searchText), startingIndex + 1);
+                n = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex + 1);
             }
         
         return count;
     ],
-    startsWith[buf2 caseInsensitive retval;
-         retval = _bglBuf.startsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); 
+    _bglText_startsWith[buf2 caseInsensitive retval;
+         retval = _bglBuf._bglText_startsWith(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(buf2), caseInsensitive); 
         return retval;
     ],
-    startsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+    _bglText_startsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
         
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.startsWith(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.startsWith(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.startsWith(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.startsWith(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_startsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_startsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_startsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_startsWith(buf4, caseInsensitive) == true) rtrue;
         
         return false;
     ],
-    endsWith[buf2 caseInsensitive retval;
-         retval = _bglBuf.endsWith(self.getBuf(), _bglStr.toAmbiguousBuffer(buf2), caseInsensitive); 
+    _bglText_endsWith[buf2 caseInsensitive retval;
+         retval = _bglBuf._bglText_endsWith(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(buf2), caseInsensitive); 
         return retval;
     ],
-    endsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
+    _bglText_endsWithOneOf[buf1 buf2 buf3 buf4 caseInsensitive;
         
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
-            if(self.endsWith(buf1, caseInsensitive) == true) rtrue;
-            if((~~(buf2 == true or false)) && self.endsWith(buf2, caseInsensitive) == true) rtrue;
-            if((~~(buf3 == true or false)) && self.endsWith(buf3, caseInsensitive) == true) rtrue;
-            if((~~(buf4 == true or false)) && self.endsWith(buf4, caseInsensitive) == true) rtrue;
+            if(self._bglText_endsWith(buf1, caseInsensitive) == true) rtrue;
+            if((~~(buf2 == true or false)) && self._bglText_endsWith(buf2, caseInsensitive) == true) rtrue;
+            if((~~(buf3 == true or false)) && self._bglText_endsWith(buf3, caseInsensitive) == true) rtrue;
+            if((~~(buf4 == true or false)) && self._bglText_endsWith(buf4, caseInsensitive) == true) rtrue;
         
         return false;
     ],
-    contains[searchText retval;
-         retval = (self.indexOf(searchText) > -1); 
+    _bglText_contains[searchText retval;
+         retval = (self._bglText_indexOf(searchText) > -1); 
         return retval;
     ],
-    indexOfFirstFalse[routine startingIndex retval;
-         retval = _bglBuf.indexOfFirstFalse(self.getBuf(), routine, startingIndex); 
+    _bglText_indexOfFirstFalse[routine startingIndex retval;
+         retval = _bglBuf._bglText_indexOfFirstFalse(self._bglText_getBuf(), routine, startingIndex); 
         return retval;
     ],
-    indexOfFirstTrue[routine startingIndex retval;
-         retval = _bglBuf.indexOfFirstTrue(self.getBuf(), routine, startingIndex); 
+    _bglText_indexOfFirstTrue[routine startingIndex retval;
+         retval = _bglBuf._bglText_indexOfFirstTrue(self._bglText_getBuf(), routine, startingIndex); 
         return retval;
     ],
-    insert[pos source count retval;
+    _bglText_insert[pos source count retval;
         
-            retval = self.clone();
-            _bglBuf.insert(retval.getBuf(), _bglStr.toAmbiguousBuffer(source), pos, count);
-            retval = retval.free();
-        
-        return retval;
-    ],
-    delete[pos count retval;
-        
-            retval = self.clone();
-            _bglBuf.delete(retval.getBuf(), pos, count);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_insert(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(source), pos, count);
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    replace[searchText replaceText retval stl;
+    _bglText_delete[pos count retval;
         
-            retval = self.clone();
-            searchText = _bglStr.toAmbiguousBuffer(searchText);
-            stl = _bglStr.ambiguousLock(searchText);
-            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
-            _bglBuf.replace(retval.getBuf(), searchText, replaceText);
-            _bglStr.ambiguousFree(searchText, stl);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_delete(retval._bglText_getBuf(), pos, count);
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    replaceAll[searchText replaceText retval stl;
+    _bglText_replace[searchText replaceText retval stl;
         
-            retval = self.clone();
-            searchText = _bglStr.toAmbiguousBuffer(searchText);
-            stl = _bglStr.ambiguousLock(searchText);
-            replaceText = _bglStr.toAmbiguousBuffer(replaceText);
-            _bglBuf.replaceAll(retval.getBuf(), searchText, replaceText);
-            _bglStr.ambiguousFree(searchText, stl);
-            retval = retval.free();
-        
-        return retval;
-    ],
-    toUpper[retval;
-        
-            retval = self.clone();
-            _bglBuf.toUpper(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(searchText);
+            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            _bglBuf._bglText_replace(retval._bglText_getBuf(), searchText, replaceText);
+            _bglStr._bglText_ambiguousFree(searchText, stl);
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    append[text retval lk;
-        lk=_bglstr.ambiguouslock(text);
+    _bglText_replaceAll[searchText replaceText retval stl;
         
-            retval = self.clone();
-            _bglBuf.appendBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
-            retval = retval.free();
-        
-        _bglstr.ambiguousfree(text, lk);
-        return retval;
-    ],
-    appendChar[c retval;
-        
-            retval = self.clone();
-            retval.setChar(retval.getLength(), c);
-            retval.setLength(retval.getLength() + 1);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(searchText);
+            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            _bglBuf._bglText_replaceAll(retval._bglText_getBuf(), searchText, replaceText);
+            _bglStr._bglText_ambiguousFree(searchText, stl);
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    prependChar[c one retval;
+    _bglText_toUpper[retval;
         
-            one = _bglStr.new();
-            one.setChar(0, c);
-            one.setLength(1);
-            retval = one.append(self);
-            one.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_toUpper(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    prepend[text retval lk;
-        lk=_bglstr.ambiguouslock(text);
+    _bglText_append[text retval lk;
+        lk=_bglstr._bglText_ambiguousLock(text);
         
-            retval = self.clone();
-            _bglBuf.prependBuffer(retval.getBuf(), _bglStr.toAmbiguousBuffer(text));
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_appendBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            retval = retval._bglText_free();
         
-        _bglstr.ambiguousfree(text, lk);
+        _bglstr._bglText_ambiguousFree(text, lk);
         return retval;
     ],
-    toLower[retval;
+    _bglText_appendChar[c retval;
         
-            retval = self.clone();
-            _bglBuf.toLower(retval.getBuf(), self.getBuf());
-            retval = retval.free();
-        
-        return retval;
-    ],
-    reverse[retval;
-        
-            retval = self.clone();
-            _bglBuf.reverse(retval.getBuf(), self.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            retval._bglText_setChar(retval._bglText_getLength(), c);
+            retval._bglText_setLength(retval._bglText_getLength() + 1);
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    trimLeft[retval;
+    _bglText_prependChar[c one retval;
         
-            retval = self.clone();
-            _bglBuf.trimLeft(retval.getBuf());
-            retval = retval.free();
-        
-        return retval;
-    ],
-    trimRight[retval;
-        
-            retval = self.clone();
-            _bglBuf.trimRight(retval.getBuf());
-            retval = retval.free();
+            one = _bglStr._bglText_new();
+            one._bglText_setChar(0, c);
+            one._bglText_setLength(1);
+            retval = one._bglText_append(self);
+            one._bglText_free();
         
         return retval;
     ],
-    trim[retval;
+    _bglText_prepend[text retval lk;
+        lk=_bglstr._bglText_ambiguousLock(text);
         
-            retval = self.clone();
-            _bglBuf.trim(retval.getBuf());
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_prependBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            retval = retval._bglText_free();
+        
+        _bglstr._bglText_ambiguousFree(text, lk);
+        return retval;
+    ],
+    _bglText_toLower[retval;
+        
+            retval = self._bglText_clone();
+            _bglBuf._bglText_toLower(retval._bglText_getBuf(), self._bglText_getBuf());
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    mid[start count retval;
+    _bglText_reverse[retval;
         
-            retval = _bglStr.new();
-            _bglBuf.mid(retval.getBuf(), self.getBuf(), start, count);
-            retval = retval.free();
-        
-        return retval;
-    ],
-    left[count retval;
-        
-            retval = _bglStr.new();
-            _bglBuf.left(retval.getBuf(), self.getBuf(), count);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_reverse(retval._bglText_getBuf(), self._bglText_getBuf());
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    right[count retval;
+    _bglText_trimLeft[retval;
         
-            retval = _bglStr.new();
-            _bglBuf.right(retval.getBuf(), self.getBuf(), count);
-            retval = retval.free();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trimLeft(retval._bglText_getBuf());
+            retval = retval._bglText_free();
         
         return retval;
     ],
-    format[_l_pattern p1 p2 p3 retval;
+    _bglText_trimRight[retval;
         
-            retval = _bglStr.new();
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trimRight(retval._bglText_getBuf());
+            retval = retval._bglText_free();
+        
+        return retval;
+    ],
+    _bglText_trim[retval;
+        
+            retval = self._bglText_clone();
+            _bglBuf._bglText_trim(retval._bglText_getBuf());
+            retval = retval._bglText_free();
+        
+        return retval;
+    ],
+    _bglText_mid[start count retval;
+        
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_mid(retval._bglText_getBuf(), self._bglText_getBuf(), start, count);
+            retval = retval._bglText_free();
+        
+        return retval;
+    ],
+    _bglText_left[count retval;
+        
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_left(retval._bglText_getBuf(), self._bglText_getBuf(), count);
+            retval = retval._bglText_free();
+        
+        return retval;
+    ],
+    _bglText_right[count retval;
+        
+            retval = _bglStr._bglText_new();
+            _bglBuf._bglText_right(retval._bglText_getBuf(), self._bglText_getBuf(), count);
+            retval = retval._bglText_free();
+        
+        return retval;
+    ],
+    _bglText_format[_l_pattern p1 p2 p3 retval;
+        
+            retval = _bglStr._bglText_new();
             if(_l_pattern == 0) _l_pattern = "$0";
-            _l_pattern = _bglStr.new(_l_pattern);  ! convert literal-or-otherwise to _bglString
-            _l_pattern.set(_l_pattern.replaceAll("$0", self));
+            _l_pattern = _bglStr._bglText_new(_l_pattern);  ! convert literal-or-otherwise to _bglString
+            _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$0", self));
 
-            if(p1 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$1", p1));
-            if(p2 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$2", p2));
-            if(p3 ~= 0) _l_pattern.set(_l_pattern.replaceAll("$3", p3));
+            if(p1 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$1", p1));
+            if(p2 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$2", p2));
+            if(p3 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$3", p3));
 
-            retval.set(_l_pattern);
-            _l_pattern.free();
-            retval = retval.free();
+            retval._bglText_set(_l_pattern);
+            _l_pattern._bglText_free();
+            retval = retval._bglText_free();
         
         return retval;
     ]
@@ -1470,20 +1007,20 @@ _bglClass_Inst inst1
     y = _bglHeapLocal(2);
     z = _bglHeapLocal(2);
     bglinit();
-    _bglArray.append(w, 0, bare1, 0);
-    _bglArray.sortDefault(w, 0, 0);
-    _bglArray.append(a, 0, 1, 0);
-    _bglArray.sortDefault(a, 0, 0);
-    _bglArray.append(o, 0, bare1, 0);
-    _bglArray.sortDefault(o, 0, 0);
-    _bglArray.append(s, 0, "a", _bgl_stringObj__opeq);
-    _bglArray.sortDefault(s, 0, _bgl_stringObj__oplteqgt);
-    _bglArray.append(x, 0, ord1, 0);
-    _bglArray.sortDefault(x, 0, _bgl_Ord__oplteqgt);
-    _bglArray.append(y, 0, inst1, 0);
-    _bglArray.sortDefault(y, 0, _bglOpRef__oplteqgt);
-    _bglArray.append(z, 0, bare1, 0);
-    _bglArray.sort(z, 0, _bglLambda_0);
+    _bglArray._bglArr_append(w, 0, bare1, 0);
+    _bglArray._bglArr_sortDefault(w, 0, 0);
+    _bglArray._bglArr_append(a, 0, 1, 0);
+    _bglArray._bglArr_sortDefault(a, 0, 0);
+    _bglArray._bglArr_append(o, 0, bare1, 0);
+    _bglArray._bglArr_sortDefault(o, 0, 0);
+    _bglArray._bglArr_append(s, 0, "a", _bgl_stringObj__opeq);
+    _bglArray._bglArr_sortDefault(s, 0, _bgl_stringObj__oplteqgt);
+    _bglArray._bglArr_append(x, 0, ord1, 0);
+    _bglArray._bglArr_sortDefault(x, 0, _bgl_Ord__oplteqgt);
+    _bglArray._bglArr_append(y, 0, inst1, 0);
+    _bglArray._bglArr_sortDefault(y, 0, _bglOpRef__oplteqgt);
+    _bglArray._bglArr_append(z, 0, bare1, 0);
+    _bglArray._bglArr_sort(z, 0, _bglLambda_0);
     _bglHeapLocalDrop();
     _bglHeapLocalDrop();
     _bglHeapLocalDrop();
@@ -1501,30 +1038,30 @@ _bglClass_Inst inst1
 ];
 
 [_bgl_string__opeqeq a b;
-    return _bglstr.areequal(a, b, false);
+    return _bglstr._bglText_areEqual(a, b, false);
 ];
 [_bgl_string__oplteqgt a b;
-    return _bglstr.comparevalues(a, b, false);
+    return _bglstr._bglText_compareValues(a, b, false);
 ];
 [_bgl_stringObj__opeqeq a b;
-    return _bglstr.areequal(a, b, false);
+    return _bglstr._bglText_areEqual(a, b, false);
 ];
 [_bgl_stringObj__oplteqgt a b;
-    return _bglstr.comparevalues(a, b, false);
+    return _bglstr._bglText_compareValues(a, b, false);
 ];
 [_bgl_stringObj_deinit s;
-     if(s ~= 0 && s ofclass _bglString) s.free(); 
+     if(s ~= 0 && s ofclass _bglString) s._bglText_free(); 
 ];
 [_bgl_stringObj__opeq cur _l_v;
     
             if(cur ~= 0 && cur ofclass _bglString) {
-                if(_l_v == 0) { cur.free(); return 0; }
-                cur.set(_l_v);                  ! reuse the allocation this slot already owns
+                if(_l_v == 0) { cur._bglText_free(); return 0; }
+                cur._bglText_set(_l_v);                  ! reuse the allocation this slot already owns
                 return cur;
             }
             if(_l_v == 0) return 0;
         
-    return _bglstr.new(_l_v);
+    return _bglstr._bglText_new(_l_v);
 ];
 [_bgl_Ord__oplteqgt a b;
     if (a.v < b.v) {
@@ -1536,80 +1073,80 @@ _bglClass_Inst inst1
     return 0;
 ];
 object _bglArray
-  with get [obj prop n;
+  with _bglArr_get [obj prop n;
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
-       set [obj prop n _l_v;
+       _bglArr_set [obj prop n _l_v;
     
             if(metaclass(obj)==object){ obj.&prop-->n = _l_v; return; }
             obj-->(n+1) = _l_v;
         
   ],
-       size [obj prop;
+       _bglArr_size [obj prop;
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
-       length [obj prop;
+       _bglArr_length [obj prop;
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
-       setLength [obj prop n cap;
+       _bglArr_setLength [obj prop n cap;
     if (n < 0) {
         print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
-    cap=self.size(obj,prop);
+    cap=self._bglArr_size(obj,prop);
     if (n > cap) {
         n=cap;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
-       setOwned [obj prop n _l_v assign cur;
+       _bglArr_setOwned [obj prop n _l_v assign cur;
     if (assign==0) {
-        self.set(obj, prop, n, _l_v);
+        self._bglArr_set(obj, prop, n, _l_v);
         return;
     }
-    cur = self.get(obj,prop,n);
-    if (self.owneddtor(obj,prop,1)==0) {
+    cur = self._bglArr_get(obj,prop,n);
+    if (self._bglarr_owneddtor(obj,prop,1)==0) {
         if (cur~=0) {
             assign(cur, _l_v);
         }
         else {
-            if ((~~self.refusesstruct(_l_v))) {
-                self.set(obj, prop, n, _l_v);
+            if ((~~self._bglarr_refusesstruct(_l_v))) {
+                self._bglArr_set(obj, prop, n, _l_v);
             }
         }
         return;
     }
-    self.set(obj, prop, n, assign(cur,_l_v));
+    self._bglArr_set(obj, prop, n, assign(cur,_l_v));
   ],
-       refusesStruct [_l_v;
+       _bglArr_refusesStruct [_l_v;
      if(metaclass(_l_v) ~= Object) rfalse; 
     print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
     return true;
   ],
-       append [obj prop val assign len;
-    len=self.length(obj,prop);
-    if (len >= self.size(obj,prop)) {
+       _bglArr_append [obj prop val assign len;
+    len=self._bglArr_length(obj,prop);
+    if (len >= self._bglArr_size(obj,prop)) {
         return false;
     }
-    if (assign~=0 && self.owneddtor(obj,prop,1)==0) {
-        if (self.refusesstruct(val)) {
+    if (assign~=0 && self._bglarr_owneddtor(obj,prop,1)==0) {
+        if (self._bglArr_refusesStruct(val)) {
             return false;
         }
-        self.set(obj, prop, len, val);
+        self._bglArr_set(obj, prop, len, val);
     }
     else {
-        self.setOwned(obj, prop, len, val, assign);
+        self._bglArr_setOwned(obj, prop, len, val, assign);
     }
-    self.setLength(obj, prop, len + 1);
+    self._bglArr_setLength(obj, prop, len + 1);
     return true;
   ],
-       ownedDtor [obj prop dtor b;
+       _bglArr_ownedDtor [obj prop dtor b;
     b = 0;
     
             if(dtor == 0 || metaclass(obj) == object) return dtor;
@@ -1618,39 +1155,435 @@ object _bglArray
             return dtor;
         
   ],
-       sortDefault [obj prop cmp;
+       _bglArr_sortDefault [obj prop cmp;
     if (cmp==0) {
-        self.sort(obj, prop, _bglarraycompareasc);
+        self._bglarr_sort(obj, prop, _bglarraycompareasc);
     }
     else {
-        self.sort(obj, prop, cmp);
+        self._bglarr_sort(obj, prop, cmp);
     }
   ],
-       invokeCompare [cmp a b;
+       _bglArr_invokeCompare [cmp a b;
      if(cmp ~= 0) return cmp(a, b); 
     return 0;
   ],
-       sort [obj prop _l_compare len i key j;
-    len=self.length(obj,prop);
+       _bglArr_sort [obj prop _l_compare len i key j;
+    len=self._bglArr_length(obj,prop);
     for (i = 1 : i < len : i++) {
-        key = self.get(obj,prop,i);
+        key = self._bglArr_get(obj,prop,i);
         j=i - 1;
-        while (j >= 0 && self.invokecompare(_l_compare,self.get(obj,prop,j),key) > 0) {
-            self.set(obj, prop, j + 1, self.get(obj,prop,j));
+        while (j >= 0 && self._bglArr_invokeCompare(_l_compare,self._bglArr_get(obj,prop,j),key) > 0) {
+            self._bglArr_set(obj, prop, j + 1, self._bglArr_get(obj,prop,j));
             j--;
         }
-        self.set(obj, prop, j + 1, key);
+        self._bglArr_set(obj, prop, j + 1, key);
     }
   ]
 ;
-[_bglAt arr i w n;
-    n = 0;
+object _bglBuf
+  with _stacktop 0,
+       _trackedcount 0,
+       _bglText_isTracked [buf p i;
+    p=buf;
+    if (p == 0) {
+        return false;
+    }
+    for (i = 0 : i < self._trackedcount : i++) {
+         if(_bglTrackedRegistry-->i == p) rtrue; 
+    }
+    return false;
+  ],
+       _registerTracked [buf;
     
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
+            if(self._trackedCount >= _BGL_TRACKED_CAP){
+                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
+                return;
+            }
+            _bglTrackedRegistry-->(self._trackedCount) = buf;
+        
+    self._trackedcount++;
+  ],
+       _bglText_size [buf;
+    if (buf == 0) {
+        return -1;
+    }
+    return buf-->(-1);
+  ],
+       _bglText_length [buf;
+    return buf-->(0);
+  ],
+       _bglText_setLength [buf newLength sz;
+    sz=self._bglText_size(buf);
+    if (sz > 0 && newlength > sz) {
+        newLength=sz;
+    }
+    buf-->(0) = newLength;
+  ],
+       _bglText_getChar [buf pos sz;
+    sz=self._bglText_size(buf);
+    if (sz < 0 || sz > pos) {
+        return buf->(pos + WORDSIZE);
+    }
+    return -1;
+  ],
+       _bglText_setAny [buf stringVal;
+    if (self._bglText_isTracked(stringVal)) {
+        self._bgltext_setfrombuffer(buf, stringVal);
+    }
+    else {
+        self._bgltext_setfromliteral(buf, stringVal);
+    }
+    return buf;
+  ],
+       _bglText_setFromLiteral [buf stringVal sz room;
+    sz=self._bglText_size(buf);
+    if (sz < 0) {
+        sz=bglstringdefaultsize;
+    }
+    sz=sz + WORDSIZE;
+     stringVal.print_to_array(buf, sz); 
+    room=self._bglText_size(buf);
+    if (room > 0 && self._bglText_length(buf) > room) {
+        self._bglbufoverrun(self._bglText_length(buf), room);
+    }
+    self._bglText_setLength(buf, self._bglText_length(buf));
+    return buf;
+  ],
+       _bglText_setFromBuffer [buf stringVal svlen;
+    svlen=self._bglText_length(stringVal);
+    self._bgltext_copy(buf, stringVal, svlen, 0, 0);
+    self._bglText_setLength(buf, svlen);
+    return buf;
+  ],
+       _bglText_copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
+    if (frompos == -1) {
+        fromPos = 0;
+    }
+    if (topos == -1) {
+        toPos = 0;
+    }
+    srcLen=self._bglText_length(fromBuf);
+    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
+        numCharsToCopy=srclen - frompos;
+    }
+    tgtSize=self._bglText_size(toBuf);
+    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
+        numCharsToCopy=tgtsize - topos;
+    }
+    frmPtr=frombuf + frompos + WORDSIZE;
+    toPtr=tobuf + topos + WORDSIZE;
+    @copy_table frmPtr toPtr numCharsToCopy;
+    self._bglText_setLength(toBuf, topos + numcharstocopy);
+    return tobuf;
+  ],
+       _bglBufOverrun [written room;
+    while (self._stacktop > 0) {
+        self._stacktop--;
+        @output_stream -1 * 3;
+    }
     
-];
+            print "^[Beguile run-time error: ", written, " characters were printed into room for ", room, "; raise ";
+            #Ifdef _bglOverrunSetting; print (string) _bglOverrunSetting; #Ifnot; print "the buffer's size"; #Endif;
+            print "]^";
+            quit;
+        
+  ],
+       _bglText_capture [buf maxBytes;
+    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
+    @output_stream 3 buf;
+    self._stacktop++;
+  ],
+       _bglText_release [buf room;
+    if (self._stacktop == 0) {
+        return 0;
+    }
+    self._stacktop--;
+    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
+    @output_stream -1 * 3;
+    room=self._bglText_size(buf);
+    if (room > 0 && self._bglText_length(buf) > room) {
+        self._bglBufOverrun(self._bglText_length(buf), room);
+    }
+    self._bglText_setLength(buf, self._bglText_length(buf));
+    return buf;
+  ],
+       print [buf len i c;
+    if (buf == 0) {
+        return buf;
+    }
+    if (len <= 0) {
+        len=self._bglText_length(buf);
+    }
+    for (i = 0 : i < len : i++) {
+        c=buf->(i + WORDSIZE);
+        if (c == 0) {
+            break;
+        }
+        @print_char c;
+    }
+    return buf;
+  ],
+       _bglText_equals [buf1 buf2 caseInsensitive len1 t c1 c2;
+    len1=self._bglText_length(buf1);
+    if (len1 ~= self._bglText_length(buf2)) {
+        return false;
+    }
+    for (t = 0 : t < len1 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
+    len1=self._bglText_length(buf1);
+    len2=self._bglText_length(buf2);
+    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
+    lim=_bgl_tempL0;
+    for (t = 0 : t < lim : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+            return _bgl_tempL0;
+        }
+    }
+    if (len1 == len2) {
+        return 0;
+    }
+    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
+    return _bgl_tempL0;
+  ],
+       _bglText_startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
+    len2=self._bglText_length(buf2);
+    if (self._bglText_length(buf1) < len2) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
+    len2=self._bglText_length(buf2);
+    offset=self._bglText_length(buf1) - len2;
+    if (offset < 0) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(offset + t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_mid [toBuf fromBuf fromPos numCharsToCopy len maxLen;
+    len=self._bglText_length(fromBuf);
+    if (frompos < 0) {
+        fromPos = 0;
+    }
+    if (frompos > len) {
+        fromPos=len;
+    }
+    maxLen=len - frompos;
+    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
+        numCharsToCopy=maxLen;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_left [toBuf fromBuf numCharsToCopy len;
+    len=self._bglText_length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_right [toBuf fromBuf numCharsToCopy len;
+    len=self._bglText_length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, len - numcharstocopy);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_insert [toBuf fromBuf toPos charCount len;
+    if (charcount <= 0) {
+        charCount=self._bglText_length(fromBuf);
+    }
+    len=self._bglText_length(toBuf);
+    if (topos < 0) {
+        toPos = 0;
+    }
+    if (topos > len) {
+        toPos=len;
+    }
+    self._bglText_copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
+    self._bglText_copy(toBuf, fromBuf, charCount, toPos, 0);
+    self._bglText_setLength(toBuf, len + charcount);
+    return tobuf;
+  ],
+       _bglText_prependBuffer [toBuf fromBuf;
+    self._bglText_insert(toBuf, fromBuf, 0, self._bglText_length(fromBuf));
+    return tobuf;
+  ],
+       _bglText_appendBuffer [toBuf fromBuf;
+    self._bglText_copy(toBuf, fromBuf, -1, self._bglText_length(toBuf), 0);
+    return tobuf;
+  ],
+       _bglText_delete [buf pos count len;
+    len=self._bglText_length(buf);
+    self._bglText_copy(buf, buf, len - count, pos, pos + count);
+    self._bglText_setLength(buf, len - count);
+    return buf;
+  ],
+       _bglText_replace [buf searchTextBuf replaceTextBuf searchLen pos;
+    searchLen=self._bglText_length(searchTextBuf);
+    pos=self._bgltext_indexof(buf,searchTextBuf,0);
+    if (pos == -1) {
+        return buf;
+    }
+    self._bglText_delete(buf, pos, searchLen);
+    self._bglText_insert(buf, replaceTextBuf, pos, 0);
+    return buf;
+  ],
+       _bglText_replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
+    searchLen=self._bglText_length(searchTextBuf);
+    rtlen=self._bglText_length(replaceTextBuf);
+    if (searchlen == 0) {
+        return buf;
+    }
+    pos=self._bgltext_indexof(buf,searchTextBuf,startingIndex);
+    while (pos ~= -1) {
+        self._bglText_delete(buf, pos, searchLen);
+        self._bglText_insert(buf, replaceTextBuf, pos, 0);
+        pos=self._bgltext_indexof(buf,searchTextBuf,pos + rtlen);
+    }
+    return buf;
+  ],
+       _bglText_indexOf [buf searchTextBuf startingIndex stblen blen o i;
+    stblen=self._bglText_length(searchTextBuf);
+    blen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o + stblen <= blen : o++) {
+        for (i = 0 : i < stblen : i++) {
+            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
+                break;
+            }
+        }
+        if (i == stblen) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_indexOfFirstTrue [buf pred startingIndex buflen o c;
+    buflen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_indexOfFirstFalse [buf pred startingIndex buflen o c;
+    buflen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    if (startingindex > buflen) {
+        return -1;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if ((~~pred(c))) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_toUpper [buf buflen t;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchartoupper(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       _bglText_toLower [buf buflen t;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchartolower(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       _bglText_reverse [buf buflen t c;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen / 2 : t++) {
+        c=buf->(t + WORDSIZE);
+        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
+        buf->(buflen - t - 1 + WORDSIZE) = c;
+    }
+    return buf;
+  ],
+       _bglText_trimLeft [buf;
+    while (self._bglText_length(buf) > 0 && self._bglText_getChar(buf,0) == ' ') {
+        self._bglText_delete(buf, 0, 1);
+    }
+    return buf;
+  ],
+       _bglText_trimRight [buf;
+    while (self._bglText_length(buf) > 0 && self._bglText_getChar(buf,self._bglText_length(buf) - 1) == ' ') {
+        self._bglText_delete(buf, self._bglText_length(buf) - 1, 1);
+    }
+    return buf;
+  ],
+       _bglText_trim [buf;
+    return self._bglText_trimRight(self._bglText_trimLeft(buf));
+  ]
+;
 [_bglCharToLower c;
     switch (c) {
         'A' to 'Z':
@@ -1718,19 +1651,6 @@ object _bglArray
         _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
     
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
-];
 object _bglStringLockStack
 ;
 [_bglUnsignedCompare x y u _l_v;
@@ -1750,7 +1670,6 @@ object _bglStringLockStack
     }
     return -1;
 ];
-array _bglsink --> 1;
 [_bglArrLength arr;
     
         if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
@@ -1769,6 +1688,14 @@ array _bglsink --> 1;
         if(arr == 0) rfalse;
         if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
         rfalse;
+    
+];
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = _bglArrSize(arr);
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
     
 ];
 [_bglHeapAlloc n kind need o b nb a i;
@@ -1986,9 +1913,23 @@ array _bglsink --> 1;
         return found;
     
 ];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
 array _bglfresh --> 48;
 array _bglheapstore --> 1536;
 array _bglheaptracelevel --> 1;
+array _bglsink --> 1;
 [_bglHeapAtPrompt now;
     
         if(_bglHeap == 0) return;

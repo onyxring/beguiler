@@ -13,11 +13,15 @@ extend _bglUi {
 /// The window the story prints to.
 superposed _bglObject _bglMainWindow {
     /// The window's handle: a Glk window id on Glulx, 0 on the Z-machine.
-    auto id  = {
+    auto id asI6 _bglMainWin_id = {
         int _id   = 0;
         int operator() { return _id; }
         void operator = (int newId){
             _id=newId;
         }
+    }
+    /// The window's width, in characters.
+    auto width asI6 _bglMainWin_width = {
+        int operator() { return _bglWinWidth(outer.id); }
     }
 }

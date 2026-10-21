@@ -373,7 +373,6 @@ classDef* bglParser::owningValueElementClass(const string& elementType){
 void bglParser::noteValueElementArray(arrayDeclaration& arr, classDef* hostClass, bool isLocal){
     classDef* cls = owningValueElementClass(arr.elementType);
     if(cls == nullptr) return;
-    if(arr.src.file.find("beguiLib") != string::npos) return;
     if(isLocal && arr.arraySize <= 0 && arr.declaredExpressionValue == nullptr)
         parsingError(format("Array '{0}' holds '{1}' values, each in an instance of its own, so it needs a "
             "capacity: `array<{1}> {0}[n]`.", arr.dName(), typeDisplayName(arr.elementType)));
@@ -405,9 +404,9 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
     if(!isExternal && getCurrentCompileContext() == eCompileContext::global && bglLanguageService::isI6StatementKeyword(arrDecl.name))
         parsingError(format("Array '{0}' is named like an Inform 6 keyword, built-in function or built-in property, which Inform 6 won't take "
                             "as an array's name; rename it.", name.originalValue.empty() ? (string)name : name.originalValue));
-    // Named like a property an included library emits (<linq>'s `all`): one I6 namespace, so another name.
-    if(!isExternal && getCurrentCompileContext() == eCompileContext::global && libraryPropertyNamed(arrDecl.name))
-        arrDecl.i6name = "_" + arrDecl.dName();
+    // Named like a member's property: one I6 namespace, so the array takes another name (§3.11).
+    if(!isExternal && getCurrentCompileContext() == eCompileContext::global && memberPropertyNamed(arrDecl.name))
+        arrDecl.i6name = "_g_" + arrDecl.dName();
     arrDecl.type = languageService.getType(elementType == "char" ? "bytearray" : "array");
     arrDecl.elementType = elementType;
     // An array of arrays of arrays isn't supported: rows of rows don't copy or free as rows do.
@@ -542,6 +541,8 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
             set<typeDef*> before(languageService.globals.begin(), languageService.globals.end());
             size_t postAt = postInjections.size();
             token first = file.getToken();
+            bool freshBefore = currentFunc != nullptr && currentFunc->makesFresh;
+            int marksBefore = freshMarks;
             expression* expr = parseExpression(first, {token::endStatement}, func, body);
             bool elementLike = !elementType.empty() && elementType != "var"
                                && !expr->resolvedType.empty() && expr->resolvedType != "var"
@@ -597,13 +598,12 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                         if(cap > 0) arrDecl.arraySize = cap;
                     }
                 if(body != nullptr && arrDecl.isByteArray && arrDecl.arraySize == 0 && !arrDecl.isRefLocal && !declaringRefArray
-                   && expr->resolvedType == "bytearray" && arrDecl.src.file.find("beguiLib") == string::npos
+                   && expr->resolvedType == "bytearray"
                    && srcText.find_last_not_of(" \t") != string::npos && srcText[srcText.find_last_not_of(" \t")] != ')')
                     parsingError(format("'{0}' copies an array<char> of unknown capacity: give it one (`array<char> {0}[n] = …;`), "
                                         "or share it with `ref array<char> {0} := …;`.", arrDecl.dName()));
                 bool sharedBuffer = srcText.find("_bglWorld") != string::npos;
-                bool holdsHandle = arrDecl.src.file.find("beguiLib") != string::npos
-                                || arrDecl.name.rfind("_bgl", 0) == 0
+                bool holdsHandle = arrDecl.name.rfind("_bgl", 0) == 0
                                 || arrDecl.isRaw || !sharedBuffer;
                 if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
@@ -639,6 +639,10 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                         if(plainName && !arrDecl.isRefLocal && !declaringRefArray) expr->tokens.assign(1, "_bglHeapCopyOf(" + srcText + ")");
                         if(!plainName && isStaticArrayText(srcText, func, body)) arrDecl.staticSource = true;   // nothing to own
                         else if(!plainName || (!arrDecl.isRefLocal && !declaringRefArray)) giveOwner(arrDecl);
+                        // The local takes the whole result (`= f(…)`), so the call left nothing for the routine to sweep.
+                        if(!plainName && !freshBefore && currentFunc != nullptr && freshMarks == marksBefore + 1
+                           && lastFreshCall == stripSpaces(srcText))
+                            currentFunc->makesFresh = false;
                     }
                 }
             }
@@ -1323,6 +1327,7 @@ static void markGlobalsReadEarly(const string& text){
 }
 
 void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isConst, functionDef* func, statementBlock* body){
+    const string gref = string(kGlobalEscapeMarker) + varDecl.name;   // mapped to its I6 name at emission
     // Global scope: record init body in globalInits for bglInit
     if(!isConst && body == nullptr && func == nullptr){
         classDef* cls = languageService.findClass(varDecl.type.name);
@@ -1332,7 +1337,7 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                 if(fn == nullptr || !fn->isEmitter || fn->params.size() != 0 || fn->name != "init") continue;
                 i6Block* blk = dynamic_cast<i6Block*>(fn->body);
                 if(blk == nullptr) continue;
-                emitterBindings gb; gb.self = varDecl.name; gb.val = varDecl.name; gb.trim = emitterTrim::ws;
+                emitterBindings gb; gb.self = gref; gb.val = gref; gb.trim = emitterTrim::ws;
                 string subbed = expandEmitterBody(blk, gb);
                 if(subbed.empty()) continue;
                 languageService.globalInits.push_back({varDecl.name, subbed});
@@ -1349,7 +1354,7 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
                         return f->isEmitter && dynamic_cast<i6Block*>(f->body) != nullptr; }, /*allowInherited*/false);
                     if(opm != nullptr){
                         auto* opFn = dynamic_cast<functionDef*>(opm);
-                        emitterBindings ab_; ab_.self = varDecl.name; ab_.val = varDecl.name;
+                        emitterBindings ab_; ab_.self = gref; ab_.val = gref;
                         ab_.trim = emitterTrim::ws; ab_.fn = opFn; ab_.args.push_back(rhsText);
                         string ab = expandEmitterBody(dynamic_cast<i6Block*>(opFn->body), ab_);
                         languageService.globalInits.push_back({varDecl.name, ab});
@@ -1367,14 +1372,14 @@ void bglParser::recordGlobalVariableInit(variableDeclaration& varDecl, bool isCo
         if(varDecl.declaredExpressionValue != nullptr
            && initializerNeedsRuntime(varDecl.declaredExpressionValue->text())){
             string rhs = varDecl.declaredExpressionValue->text();
-            string store = varDecl.name + " = " + rhs + ";";
+            string store = gref + " = " + rhs + ";";
             // A value class's global owns its instance: the value is copied into it through its operator =.
             if(classDef* vc = getDispatchClass(varDecl.type.name); vc != nullptr && isValueClass(vc) && !vc->isEmitterClass && !varDecl.isRefLocal)
                 if(functionDef* op = findAssignOperator(vc, varDecl.declaredExpressionValue->resolvedType,
                                                         [](functionDef* f){ return !f->isEmitter; }, true)){
                     mangleOverloadSetForReceiver(vc->name, "=");
                     if(op->i6name.empty()) op->i6name = mangleOperatorName(op->name);
-                    store = varDecl.name + "." + op->i6name + "(" + rhs + ");";
+                    store = gref + "." + op->i6name + "(" + rhs + ");";
                 }
             languageService.globalInits.push_back({varDecl.name, globalInitSetUp + store});
             globalInitSetUp.clear();
@@ -1427,13 +1432,13 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
         varDecl.i6name = "_" + varDecl.dName();
         varDecl.i6nameAvoidsKeyword = true;
     }
-    // A program global named like a property an included library's members use (<linq>'s `last`):
-    // Inform 6 keeps both in one namespace, so the global takes another I6 name.
-    else if(!isExternal && getCurrentCompileContext() == eCompileContext::global
-            && libraryPropertyNamed(varDecl.name)
+    // A global named like a member's property: Inform 6 keeps both in one namespace, so the global
+    // takes another I6 name (§3.11). A `property` declaration is that property.
+    else if(!isExternal && getCurrentCompileContext() == eCompileContext::global && varDecl.type.name != "property"
+            && memberPropertyNamed(varDecl.name)
             && [&]{ auto* g = languageService.findGlobalAs<variableDeclaration>(varDecl.name);
                     return g == nullptr || g->isPrePassStub || g == &varDecl; }())
-        varDecl.i6name = "_" + varDecl.dName();
+        varDecl.i6name = "_g_" + varDecl.dName();
     varDecl.isExternal=isExternal;
     varDecl.isConst=isConst;
     varDecl.isRefLocal=isRef;
@@ -1536,11 +1541,11 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     pendingInjections.clear();
 
     synthesizeClassLocalBacking(varDecl, isExternal, isConst, isRef, func, body, !symbol.is(token::endStatement));
-    if(func != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.src.file.find("beguiLib") == string::npos)
+    if(func != nullptr && !isRef && slotHoldsArray(varDecl.type.name))
         copyMemberArrayValue(varDecl.declaredExpressionValue);
     // A `var` or union local declared from a call's or chain's result takes it, as an array local does.
     if(func != nullptr && body != nullptr && !isRef && slotHoldsArray(varDecl.type.name) && varDecl.declaredExpressionValue != nullptr
-       && isWordArrayType(varDecl.declaredExpressionValue->resolvedType) && varDecl.src.file.find("beguiLib") == string::npos
+       && isWordArrayType(varDecl.declaredExpressionValue->resolvedType)
        && !isStaticArrayText(varDecl.declaredExpressionValue->text(), func, body)){
         string vt = varDecl.declaredExpressionValue->text();
         size_t z = vt.find_last_not_of(" \t");
@@ -1639,10 +1644,10 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         funcDef.i6name = "_" + funcDef.dName();
         funcDef.i6nameAvoidsKeyword = true;
     }
-    // Named like a library class's method (`<linq>`'s `first`): one I6 namespace holds both.
+    // Named like a member's property: one I6 namespace holds both, and the routine yields.
     if(!isEmitter && !isExternal && getCurrentCompileContext() == eCompileContext::global && funcDef.i6name.empty()
-       && funcDef.src.file.find("beguiLib") == string::npos && namesLibraryMethod(funcDef.name))
-        funcDef.i6name = "_" + funcDef.dName();
+       && memberPropertyNamed(funcDef.name) && !namesFixedGlobal(funcDef.name))   // a replaced I6 routine keeps its name
+        funcDef.i6name = "_g_" + funcDef.dName();
 
     // Register into globals EARLY (replacing any pre-scan stub) so that LSP error recovery
     // preserves partial parse state even if the body parse throws. The full body and params
@@ -1668,13 +1673,14 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             parsingError(format("'{0}' is already the name of the class declared at {1}; a function can't share it.",
                                 funcDef.dName(), languageService.declaredAt(same->name)));
     functionDef* overriddenDefault = nullptr;   // the `extern default` this definition takes over
-    // A program's own `extern` for a routine a binding declares is the signature it means to use.
-    if(isExternal && funcDef.src.file.find("beguiLib") == string::npos)
+    // A later `extern` of a routine, from another file, is the signature meant from here on; the overloads
+    // one file declares together stand side by side.
+    if(isExternal)
         languageService.globals.erase(remove_if(languageService.globals.begin(), languageService.globals.end(),
             [&](typeDef* g){
                 auto* ex = dynamic_cast<functionDef*>(g);
                 return ex && ex != &funcDef && ex->isExternal && !ex->isPrePassStub && ex->name == funcDef.name
-                    && ex->src.file.find("beguiLib") != string::npos;
+                    && ex->src.file != funcDef.src.file;
             }), languageService.globals.end());
     if(!isExternal && !isReplace){
         // Every declaration of it goes: the program may repeat the binding's `extern default`.
@@ -1722,7 +1728,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         }
     }
     // A library global of the name: reported here, before a use of the function reads the global instead.
-    if(!funcDef.isExternal && !funcDef.isEmitter && funcDef.i6name.empty() && funcDef.src.file.find("beguiLib") == string::npos)
+    if(!funcDef.isExternal && !funcDef.isEmitter && funcDef.i6name.empty())
         for(typeDef* g : languageService.globals)
             if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->name == funcDef.name
                && vd->type.name != "property" && vd->i6name.empty())
@@ -2439,4 +2445,68 @@ bool bglParser::hasOwner(const string& slot){
     if(currentFunc == nullptr) return false;
     for(auto& c : currentFunc->cleanups) if(c.first == "_bglown_" + slot) return true;
     return false;
+}
+
+// `alias print = bgl.output.print;` at file scope: the object's emitters of that name are called as
+// globals. Only emitters: they emit no routine of their own, so the same definition serves both.
+bool bglParser::processFunctionAlias(token nameTok){
+    file.getToken(token::assignment);
+    vector<token> path{file.getToken({eTokenType::identifier, eTokenType::dataType})};
+    while(file.peekToken().is(token::period)){
+        file.getToken();
+        path.push_back(file.getToken({eTokenType::identifier, eTokenType::dataType}));
+    }
+    file.getToken(token::endStatement);
+    auto shown = [](const token& t){ return t.originalValue.empty() ? t.value : t.originalValue; };
+    string name = shown(nameTok);
+    if(path.size() < 2)
+        return parsingError(format("alias '{0}': at file scope, an alias names an object's emitter: `alias {0} = obj.{0};`.", name));
+    objectDef* at = languageService.findGlobalAs<objectDef>(path[0].value);
+    string objPath = shown(path[0]);
+    for(size_t i = 1; at != nullptr && i + 1 < path.size(); i++){
+        objPath += "." + shown(path[i]);
+        variableDeclaration* step = nullptr;
+        for(typeMember* m : at->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == path[i].value && vd->isValueAlias) step = vd;
+        at = step ? languageService.findGlobalAs<objectDef>(step->type.name) : nullptr;
+    }
+    if(at == nullptr)
+        return parsingError(format("alias '{0}': '{1}' is not an object.", name, objPath));
+    if(path.back().value != nameTok.value)
+        return parsingError(format("alias '{0}': an alias of a member keeps its name; write `alias {1} = {2}.{1};`.",
+                                   name, shown(path.back()), objPath));
+    bool found = false;
+    for(typeMember* m : at->members)
+        if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == nameTok.value){
+            found = true;
+            if(!fd->isEmitter)
+                return parsingError(format("alias '{0}': '{1}.{0}' is a method; only an emitter can be aliased at file scope.", name, objPath));
+        }
+    if(!found)
+        return parsingError(format("alias '{0}': '{1}' has no emitter '{0}'.", name, objPath));
+    functionAliases.push_back({at, nameTok.value});
+    syncFunctionAliases();
+    return false;
+}
+
+// An aliased object's emitters join the globals, including overloads its extensions add later; one an
+// extension has replaced leaves them.
+void bglParser::syncFunctionAliases(){
+    if(functionAliases.empty()) return;
+    set<functionDef*> current;
+    for(auto& [obj, name] : functionAliases)
+        for(typeMember* m : obj->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == name && fd->isEmitter && !fd->isPrePassStub)
+                current.insert(fd);
+    if(current == functionAliasGlobals) return;
+    auto& g = languageService.globals;
+    g.erase(remove_if(g.begin(), g.end(), [&](typeDef* t){
+        auto* fd = dynamic_cast<functionDef*>(t);
+        return fd != nullptr && functionAliasGlobals.count(fd) && !current.count(fd); }), g.end());
+    for(auto& [obj, name] : functionAliases)   // in declaration order, as overloads are ranked
+        for(typeMember* m : obj->members)
+            if(auto* fd = dynamic_cast<functionDef*>(m); fd && current.count(fd) && !functionAliasGlobals.count(fd)
+               && find(g.begin(), g.end(), (typeDef*)fd) == g.end())
+                g.push_back(fd);
+    functionAliasGlobals = current;
 }

@@ -18,6 +18,8 @@ std::string replaceWord(std::string str, const std::string& from, const std::str
 // Prefixes a global read as `::name` where a local of that name would hide it in I6; removed from
 // the final output once the local has been renamed.
 inline constexpr const char* kGlobalEscapeMarker = "_bglG_";
+// A property name kept out of the local renames; unlike a global, it is emitted as written.
+inline constexpr const char* kPropertyEscapeMarker = "_bglP_";
 
 // Look up a type's original-case display name from the language service. Falls
 // back to the (lowercased) input when the type has no recorded displayName.

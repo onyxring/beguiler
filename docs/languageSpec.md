@@ -199,6 +199,7 @@ of contents.
   - [10.2 Value Aliases](#102-value-aliases)
   - [10.3 Alias Members on Emitter Classes](#103-alias-members-on-emitter-classes)
   - [10.4 `#using`](#104-using)
+  - [10.5 Global Emitter Aliases](#105-global-emitter-aliases)
 - [11 Objects](#11-objects)
   - [11.1 Overview](#111-overview)
   - [11.2 Declaring an Object](#112-declaring-an-object)
@@ -370,7 +371,7 @@ of contents.
   - [21.1 Overview](#211-overview)
   - [21.2 `bglInit()`](#212-bglinit)
   - [21.3 The `bgl` Namespace](#213-the-bgl-namespace)
-  - [21.4 `print()`, `printLine()`, `log()` and Article Helpers](#214-print-printline-log-and-article-helpers)
+  - [21.4 `bgl.output`: `print()`, `printLine()`, `log()` and Article Helpers](#214-bgloutput-print-printline-log-and-article-helpers)
   - [21.5 IF-Domain Types](#215-if-domain-types)
     - [21.5.1 `attribute` and `attributeList`](#2151-attribute-and-attributelist)
     - [21.5.2 `property`](#2152-property)
@@ -419,6 +420,7 @@ of contents.
     - [22.7.11 Window Output](#22711-window-output)
     - [22.7.12 Capabilities](#22712-capabilities)
   - [22.8 `<glulxImage>`](#228-glulximage)
+  - [22.9 `<stringObj>`](#229-stringobj)
 - [23 IF Library Bindings](#23-if-library-bindings)
   - [23.1 What a Binding Is](#231-what-a-binding-is)
   - [23.2 Available Bindings](#232-available-bindings)
@@ -566,7 +568,7 @@ the text printed. Program output appears in blocks tagged `text`. Inform 6 appea
 `i6`, and only in sections about emission (Part II and §15); emitter bodies, which are raw I6 by
 definition, are exempt. Examples use real keywords and real library names, and `Main` as the entry
 point, so that they compile in principle. An example that uses a name declared by the Inform 6
-Standard Library (`location`, `player`, `light`, `selfobj`, …) assumes `#include <i6StandardLibrary>`
+Standard Library (`location`, `player`, `light`, `selfobj`, …) assumes `#include <bindings/i6StandardLibrary>`
 (§23.2) and leaves the name undeclared.
 
 ### Asides
@@ -955,7 +957,7 @@ string, so `\"` inside a span is a compile-time error.
 
 An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
 only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `log()` accept it in the core runtime (§21.4). The emitter expands
+compile-time error. `print()` and `bgl.output.log()` accept it in the core runtime (§21.4). The emitter expands
 it to a sequence of statements, so the call must be a statement of its own; a call inside an
 expression is a compile-time error. An expression-bodied lambda whose body is such a call,
 `=> print($"…")`, is that statement (§4.14). A `stringObj` also takes one by assignment and by `+=`,
@@ -1212,7 +1214,7 @@ uint v = (uint)-1;   // the largest unsigned value
 An interpolated string (§1.6.5) contains several segments that cannot be reduced to a single value, so
 it has no corresponding runtime type. It may be passed only to an emitter that declares an
 `interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
-non-emitter function is a compile-time error. The core `print()` and `log()` accept it (§21.4); with the
+non-emitter function is a compile-time error. The core `print()` and `bgl.output.log()` accept it (§21.4); with the
 `<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3).
 
 ## 2.5 `null`
@@ -2212,7 +2214,8 @@ may shadow a global; inside its scope the bare name is the local and `::name` (�
   do not overlap, and a name is not visible after its block closes.
 
 **Warnings.**
-- Shadowing a global variable, object or type name. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
+- Shadowing a global variable, function (a library routine's too), object or type name; the warning names what is
+  shadowed. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
   and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
 - Shadowing a direct member of the enclosing class or object, or a member inherited from a base
   class; `self.name` reaches the member.
@@ -2329,10 +2332,13 @@ array, a whole object declaration, or a whole class declaration.
   test, or any typed use. Reference matching is case-insensitive, like all Beguile identity.
 - **Transitive.** A materialized declaration's own references materialize in turn; a superposed
   declaration may freely reference other superposed declarations.
-- **Whole declarations, plus `static` methods.** `superposed` applies to a function, global, object or
-  class. Inside a class body it applies only to a `static` method (`static superposed ⟨type⟩ ⟨name⟩(…)`),
+- **Whole declarations, plus methods.** `superposed` applies to a function, global, object or class.
+  Inside a class body it applies only to a `static` method (`static superposed ⟨type⟩ ⟨name⟩(…)`),
   which then materializes only when referenced (§8.4); on a non-`static` method it has no effect and
-  the compiler issues a warning.
+  the compiler issues a warning. Inside an object body it applies to a method, which stays in the object
+  only if it is called: as `⟨object⟩.⟨method⟩` from code that is part of the program, or from another of
+  the object's methods that stays. A method called only from Inform 6 code that the compiler doesn't
+  emit is not seen, and drops. On an object's data member it is a compile-time error.
 - **Rejected on** `extern`, `emitter` and `alias` classes, which have no definition to withhold, and
   on `extend class`, where it belongs to the original declaration.
 - `superposed` may appear in any position among the qualifiers.
@@ -2352,7 +2358,8 @@ superposed bool charIsVowel(char c){
 }
 
 superposed object worldHelpers {
-    array<object> getAll() { … }
+    superposed array<object> getAll() { … }      // dropped unless something calls worldHelpers.getAll
+    superposed int count() { … }
 }
 extend bgl { alias world = worldHelpers; }   // bgl.world.getAll() materializes worldHelpers
 ```
@@ -3875,7 +3882,7 @@ The declaration is written at file scope.
 
 A global emitter is declared at file scope and is used like a global function, with its body
 substituted at each use site. `$self` has no meaning in a global emitter. Global emitters may be
-overloaded; the overload is selected by argument type. `print()` and `log()` are global emitters
+overloaded; the overload is selected by argument type. `print()` is a global emitter
 (§21.4).
 
 **Example**
@@ -4437,8 +4444,8 @@ class is extended with `extend class`, and a struct with `extend struct`.
 
 Copying goes through the struct's **copy operator**, `operator =` taking the struct. A struct that declares
 none gets one that copies each field, as an assignment of that field would: a number is copied, a struct
-field through its own copy operator, a `stringObj` field's text, while a class or array field is a
-reference and the copy refers to the same object. It covers fields that `extend struct` adds. A struct
+field through its own copy operator, a `stringObj` field's text and an array field's elements (§12.5), while
+a class field or a `ref` field is a reference and the copy refers to the same object. It covers fields that `extend struct` adds. A struct
 declares its own copy operator to copy differently.
 
 - A struct doesn't inherit: it has no bases, and a class can't derive from it.
@@ -4924,7 +4931,7 @@ class FlyingFish : Flyer, Swimmer {
 **Syntax**
 
 ```syntax
-extend [ extern ] class ⟨name⟩ { ⟨member⟩ … }
+extend class ⟨name⟩ { ⟨member⟩ … }
 ```
 
 **Description**
@@ -4934,10 +4941,10 @@ member, and every instance gets each new variable with its initializer, or the t
 when it has none.
 
 Inform 6 owns an `extern` class's instances, including objects the library declares, so no
-extension can give them new storage. `extend class` on an `extern` class adds only emitters and
-`static` members; a variable declaration there is a compile-time error. `extend class`
-accepts what an `extern class` declaration does (§8.2.2): it gives the types of properties Inform 6
-already provides, as well as emitters and `static` members. `extend class` may not change a type parameter (§8.1.1), a pool size
+extension can give them new storage. A variable declared in an `extend` of an `extern` class gives the
+type of a property Inform 6 already provides, as one in an `extern class` declaration does (§8.2.2); it
+can't take a value there, since the instances aren't Beguile's to initialize. Whether a class is
+`extern` is its declaration's to say: `extern` on an `extend` is a compile-time error. `extend class` may not change a type parameter (§8.1.1), a pool size
 (§8.2.6) or the class's form (`primitive`, `superposed`). A struct is extended with `extend struct`. An `inline` member or
 `inline name;` appends to the class's positional order (§8.3.5). `replace` replaces an existing
 member; a `replace` that names no existing member is a warning, and the member is added.
@@ -5775,6 +5782,49 @@ island (§15.1.2).
 **See also** §3.8.3 — the resolution tiers; §15.1.2 — precompiler mode; §21.3 — the `bgl` namespace;
 Appendix B — the directive index.
 
+## 10.5 Global Emitter Aliases
+
+**Syntax**
+
+```syntax
+alias ⟨name⟩ = ⟨object⟩ [ .⟨member⟩ … ] .⟨name⟩ ;
+```
+
+**Description**
+
+At file scope, `alias` can make an object's emitters callable without their path. Every overload of
+`⟨name⟩` on the object is called as a global function of that name, including overloads that a later
+`extend` of the object adds. An overload that an `extend … { replace … }` replaces is replaced for the
+global name too.
+
+- The object path follows the rules of value aliases (§10.2).
+- The alias keeps the member's name.
+- Only emitters can be aliased. An emitter has no routine of its own, so the global name and the
+  member are the same definition. An object's ordinary method is a compile-time error here.
+- A global function of the same name, declared anywhere, joins the same overload set.
+
+The core declares the print family this way: `print`, `printLine` and `printName` live in
+`bgl.output` (§21.4) and are global through aliases.
+
+**Example**
+
+```bgl
+superposed object _report {
+    emitter void note(int v){ print "#", $v; }
+}
+alias note = _report.note;
+extend _report {
+    emitter void note(string v){ print (string)$v; }
+}
+
+void Main(){
+    note(3);          // _report.note(int)
+    note("done");     // _report.note(string), added after the alias
+}
+```
+
+**See also** §10.2 — value aliases; §21.4 — `bgl.output`.
+
 ---
 
 # 11 Objects
@@ -6061,6 +6111,32 @@ object, reachable only by an object-tree walk (§21.9).
 menu{ root, "text to display", {.type, .kind} };
 ```
 
+### 11.3.7 Members Declared with a Body
+
+**Syntax**
+
+```syntax
+⟨class-type⟩ ⟨name⟩ { ⟨positional and named members⟩ } [ ; ]
+```
+
+**Description**
+
+A member of a class type may be given its instance with a body, as a file-scope instance is (§11.2):
+`Pet dog { "rex", 3; }` in an object body means `Pet dog = Pet{ "rex", 3 };`. The body takes the same
+positional and named members as an inline object (§11.3.1). A member of any other type, or a `ref`
+member, takes its value with `=`.
+
+**Example**
+
+```bgl
+class Pet { inline string title; inline int legs; }
+
+object house {
+    Pet dog { "rex", 3; }
+    Pet cat { title = "tom"; legs = 4; }
+}
+```
+
 ## 11.4 Members and Type Inference
 
 **Description**
@@ -6328,7 +6404,8 @@ is needed for a member of a declared class.
 A `property` declaration introduces a property name that is not a member of any Beguile class,
 typically because it lives in I6 code, or because it is a run-time flag with no compile-time owner.
 The plain form defines the property; the `extern` form refers to one defined in I6. Both make the name
-available to `obj.provides(name)`.
+available to `obj.provides(name)`. A defined property is an Inform 6 *individual* property, which the
+Z-machine places no limit on; only an `additive` property (§11.7.2) is a common one.
 
 A property declaration carries no type. The type lives at each use site: every class or object member
 that contributes to the property declares its own type there. A non-additive property is
@@ -6593,6 +6670,8 @@ Any previously declared object may be extended. Inside the body:
 - A new member is declared with `=`, as in an object body.
 - `replace` replaces an existing method or member value. Adding a duplicate member without `replace`
   is a compile-time error; `replace` on a member that does not exist is a warning.
+- A replaced member keeps its kind: an accessor (`auto ⟨name⟩ = { … }`, §9.9) is replaced by an accessor,
+  and a value by a value. Changing the kind is a compile-time error.
 - `+=` appends to, and `-=` removes from, an existing collection member (`grammarRuleList` or
   `array<T>`). The member must exist and be a collection type; otherwise it is a compile-time error.
   `attributeList` accepts `=` only (§11.5.3). The grammar forms are specified in §13.5.
@@ -6697,8 +6776,9 @@ third is the one-element form of the second: a single value of the element type 
 from that array instead; the value's type decides which is meant. A local declared from a call's or a
 chain's result takes that array; one declared from another array gets a copy of its own, with that array's
 capacity; a sized declaration (`array<int> x[⟨n⟩] = src;`) copies into its declared capacity (§12.5, §12.6).
-At file scope the value is copied in at startup. The same shorthand applies to a
-list-typed class or object member (§11.5.3, §12.7). The fourth combines the first two: capacity `⟨n⟩`,
+These forms are for locals: a file-scope or member array is static data, so one declared from another array or a
+run-time value is a compile-time error; copy into it inside a routine instead. A local `array<char>` declared from
+another needs a capacity unless its source is a file-scope array, whose capacity it takes. The fourth combines the first two: capacity `⟨n⟩`,
 length the number of values, the remaining slots zeroed. A list longer than `⟨n⟩` is a compile-time
 error.
 
@@ -6873,14 +6953,24 @@ permanent storage and are never freed.
 A local array declared from a call's result or a chain's result (`array<int> e = evens(nums);`) takes that array:
 nothing is copied. One declared from another array (`array<int> c = a;` or `= obj.arr`) gets a copy of its own.
 
+A local `array<char>` is the exception: it lives in its routine's frame (§18.10), so returning one is a compile-time
+error; return a file-scope `array<char>` or a `stringObj` instead.
+
 A heap array lives as long as something refers to it, as in C# and TypeScript: a function may return its local
 array, append it to an array of arrays, or bind a `ref` global or member to it with `:=`, and the reference stays
 good. `<linq>` results (§22.5) are heap arrays too.
 
-Arrays are freed in two ways:
+Arrays are freed in three ways:
 
+- **At the end of the statement.** A call's or a chain's result that nothing takes is freed once the statement
+  that used it is done: `f()[0]`, `f().length`, `a.filter(…) == b`. A result is taken by a local (an array, `ref`,
+  `var` or union local), a parameter, a `for … in` (for the loop), anything that outlives the routine, or a pin.
+  An Inform 6 routine given a result takes nothing: pin the array if the I6 code keeps it. A function whose every
+  `return` hands back a file-scope array (as `bgl.world`'s queries do, §21) returns that array itself: there is
+  nothing to free or own.
 - **At the routine's exit.** A local array that no reference has left is freed as its routine returns,
-  and so is an array a local took from a call or a chain.
+  and so is an array a local took from a call or a chain, and the rows of a local array of arrays that its own
+  `{ … }` initializer made and nothing else took. Rows it gained later are left to the collector.
   A returned array passes to the caller instead. A routine containing an `#i6` block leaves its local
   arrays to the collector, since the raw code may have kept one.
 - **By the collector.** The rest are freed by a mark-and-sweep collector when nothing refers to them.
@@ -6888,7 +6978,17 @@ Arrays are freed in two ways:
   has been allocated since it last ran. Lifetime is reachability, not turns: an array kept in a global,
   a property or another live array survives any number of prompts.
 
-The heap's size is the `heapSize` setting (§17.4). Running out is a run-time error that names it.
+The collector finds references from declared types. Its roots are the globals and properties whose type can
+hold an array (an array type, `var`, or a union with one of them), the elements of file-scope and member
+arrays of such a type, the local arrays and struct variables of routines still running, and the arrays pinned with
+`bgl.gc.keep` (§21.15). It follows them through the arrays they reach. A reference it can't see, one held
+only by Inform 6 code or in a local variable, doesn't keep an array: pin the array instead. An Inform 6
+global declared to Beguile with an array type (`extern array<int> held;`) is typed, so it is a root.
+
+The heap's size is the `heapSize` setting (§17.4). When it runs out, the collector runs at once (keeping the
+results still on their way somewhere) and the allocation is tried again; running out after that is a run-time
+error that names the setting. A debug build of a program with a library binding also has a `heap` verb that
+prints the heap's size, the words in use and the most ever in use, for setting `heapSize`.
 
 `bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
 and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of
@@ -6907,9 +7007,8 @@ array<int> keep = build();      // keep takes build's array
 int n = keep[0];                // → 1
 ```
 
-> **Conservative collection.** The collector treats every word of memory outside the heap as a
-> possible reference. An integer that happens to equal an array's address keeps that array until the
-> next collection; a live array is never freed.
+> **Arrays held by Inform 6.** The collector reads only typed slots, so an array that Inform 6 code holds
+> without `bgl.gc.keep` is freed at the next collection, and a later use of it reads freed memory (§15.4.1).
 
 > **Element instances.** An array of a struct owns its slots' instances (§12.10), and freeing the
 > array releases them. A function can return such an array; the instances go with it.
@@ -6938,7 +7037,7 @@ its own, with the declared capacity and initializer.
 
 `holder.rows = src;` copies into the member, and `d = holder.rows;` copies out of it (§12.5); `array<int> c =
 holder.rows;` gives a local a copy of its own. A member array is its owner's data, with no address of its own, so
-it can't be passed as an argument: pass its owner, or copy it into an array first.
+it can't be passed as an argument or returned: pass its owner, or copy it into an array first.
 
 A member array is declared with a capacity or at least one element. In a class body, a member every
 object must give is declared `required` with neither (§8.3.6); one that may stay empty declares room,
@@ -7081,7 +7180,9 @@ element of `⟨type⟩`.
 
 **Description**
 
-The element type of an array may itself be an array type, to any depth. A nested initializer supplies
+The element type of an array may itself be an array type, two deep at most: `array<array<T>>`. A third level is
+a compile-time error; keep it in a class member instead. A struct can't hold an array of arrays either (its
+instances are copied and pooled member by member); a struct member may be a `ref` to one kept elsewhere. A nested initializer supplies
 one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
 `array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
@@ -7090,8 +7191,11 @@ arrays are allocated per call with it (§12.6). A wrong
 element type or a wrong nesting depth in an initializer is a compile-time error.
 
 A slot holds a reference to its inner array. `grid[i] = row;` copies `row` into the array the slot holds, as `=`
-on any array does (§12.5); appending (`grid += row;`) stores `row` itself in the new slot, and the outer array then
-keeps it alive.
+on any array does (§12.5). Appending
+(`grid += row;`) stores `row` itself in the new slot, and the outer array then keeps it alive. A member array has
+no address of its own, so storing one as a row (or in a `var`) stores a copy. A whole `grid = other;` treats each
+row as an element: a row `grid` already holds is copied into, and a slot past `grid`'s length takes a copy of
+`other`'s row, so the two stay independent.
 
 **Example**
 
@@ -7151,11 +7255,29 @@ slots, handed to a slot the first time it is stored into or one of its members i
 never stored into), starting from the struct's defaults. `a[i] = v` and `a += v` copy `v` into the slot's instance
 through the struct's copy operator. `remove`, `removeValue`, `-=`, `clear` and a local array's exit give instances
 back, so each call of a routine, a recursive one included, has instances of its own; a program that holds more
-filled slots at once than it declared runs out, which is a run-time error.
+filled slots at once than it declared runs out: the collector runs first, giving back the instances of arrays
+nothing refers to any more, and only then is it a run-time error.
 
 An array of a struct with no capacity of its own (a `<linq>` result, a returned array, a local declared from
 another array) holds the instances of the array it came from: changing an element through it changes the source,
-and removing one gives nothing back.
+and removing one gives nothing back. It has no instances to copy a new element into, so adding one (`+=`, `append`,
+`insert`, `push`, a store past its length) is a run-time error; declare the array with a capacity to grow it:
+
+```bgl
+#include <linq>
+struct Coin { int value; }
+array<Coin> purse = { Coin{ value = 5; }, Coin{ value = 20; }, Coin{ value = 10; } };
+Coin spare;
+array<Coin> big = purse.filter((Coin c) => c.value >= 10);       // shares purse's coins
+big += spare;                                                     // run-time error
+array<Coin> mine[8] = purse.filter((Coin c) => c.value >= 10);   // eight coins of its own, two copied in
+mine += spare;                                                    // copied into the third
+```
+
+Such a view of a routine's own array of structs lives no longer than that routine: the instances go back when it
+returns. Returning one, binding a global or member to one with `:=`, or keeping one in a global or member `var`
+is a compile-time error; copy it into an array with a capacity of its own first. A view pinned for Inform 6 code
+(`bgl.gc.keep`) is the program's to keep from outliving its source.
 
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
@@ -7164,6 +7286,10 @@ and removing one gives nothing back.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance, which stays the array's.
+- Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
+  `ref` to an element follows that element to its new place.
+- A view is valid only while its source is unchanged: once the source removes or clears an element, the view may
+  still show that instance, which another array can then be given.
 - An element store into a member array of a class that manages its own storage (`stringObj`) reads
   the slot twice, so its index is a variable or a constant; a computed index is a compile-time error.
 
@@ -8986,8 +9112,9 @@ void Epilogue() { print("The End.^"); }  // overrides it; no replace needed
 
 > **Arrays given to I6.** A local array is freed as its routine returns unless Beguile code stored it
 > somewhere lasting (§12.6). I6 code that keeps an array it was given, in a global of its own or an
-> `#i6` block's variable, needs one that lives on: mark it with `bgl.gc.keep(a)` first (§21.15), or pass a
-> file-scope array.
+> `#i6` block's variable, needs one that lives on: pin it with `bgl.gc.keep(a)` first (§21.15), and
+> `bgl.gc.unpin(a)` once the I6 code lets go, or pass a file-scope array. The collector can't see a reference
+> held only in Inform 6.
 
 **See also** §6.1, §6.5, §12.6.
 
@@ -9444,7 +9571,7 @@ own `Include` directives against the same set.
 ## 17.4 Runtime Settings
 
 These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
-must be at least 1, and `heapSize` at least 64.
+must be at least 1, and `heapSize` 0 (the target's default) or at least 64.
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -9979,7 +10106,7 @@ or object, when a named member does not exist, or when the member is not of an i
 enclosing class or object, or a capturable name from an enclosing function:
 
 ```text
-Local variable 'score' shadows global of the same name; the global is unreachable from this scope.
+Local variable 'score' shadows the global variable 'score'; '::score' reaches it.
 Parameter 'name' shadows a member of class 'Thing'.
 ```
 
@@ -10034,8 +10161,14 @@ message and halts the story with `quit`, except where stated.
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
-| `bgl.gc.free` given an array already freed (§21.15) | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
-| `bgl.gc.free` given a file-scope or member array (§21.15) | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
+| `bgl.gc.free` given an array already freed (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
+| `bgl.gc.free` given a file-scope or member array (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
+| Copying into a `ref array` bound to nothing (§12.5) — the program continues | `[Beguile run-time error: copying into an array that is null; bind it with := first]` | Bind it with `:=`. |
+| Copying into an array that was freed (§21.15) — the program continues | `[Beguile run-time error: copying into an array that was freed]` | — |
+| An array index out of range (§12.3) — the program continues | `[Beguile run-time error: array index I is outside the N elements it holds; the read is skipped]` | — |
+| Every instance of a struct in use (§12.10) — the program stops | `[Beguile run-time error: all N instances of S are in use: …]` | Declare more slots, or let arrays go sooner. |
+| Adding a struct to an array that shares its elements (§12.10) — the program continues | `[Beguile run-time error: adding a struct to an array that shares its elements; …]` | Declare the array with a capacity. |
+| `first()` or `last()` of an empty array of structs (§22.5) — the program stops | `[Beguile run-time error: first() of an empty array of values; check count() first]` | Check `count()` first. |
 | An array `length` assigned beyond the word range (§12.3) | `[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]` | — |
 | `<string>` pool full (§22.3) — the program stops | `[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]` | Raise `bglStringPoolReserve`. |
 | `<buf>` registry full (§22.2) | `[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]` | Raise `bglTrackedBufferReserve`. |
@@ -10088,7 +10221,7 @@ hand-written `.inf` beside the source.
   bundle**, `<source file name>.bgldbg`, beside the transpiled file.
 - Inform 6 is run with `-D`, so the library's debugging features are present: its debugging verbs
   (`tree`, `purloin`, `actions`, …) and action tracing.
-- The symbol `DEBUG` is defined (Appendix F), which turns on `log()` (§21.4). The library bindings
+- The symbol `DEBUG` is defined (Appendix F), which turns on `bgl.output.log()` (§21.4). The library bindings
   declare their debugging verbs only under it, so a program that names one outside `#if DEBUG` fails
   to compile in an ordinary build.
 
@@ -10137,7 +10270,7 @@ The Beguile Language Runtime (BLR) is the library of Beguile source that every p
 The core provides:
 
 - the `bgl` namespace and its target-specific branches (§21.3);
-- the output routines `print()` and `log()` and the article helpers (§21.4);
+- the output routines in `bgl.output` and the article helpers (§21.4);
 - the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `_bglPrimitive`, `eType` (§21.5);
 - the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§21.6–§21.8);
 - object-tree queries, `bgl.world` (§21.9);
@@ -10208,7 +10341,7 @@ int roll = bgl.util.random.get(6);       // 1..6
 
 **See also** §10, §10.4, §22.
 
-## 21.4 `print()`, `printLine()`, `log()` and Article Helpers
+## 21.4 `bgl.output`: `print()`, `printLine()`, `log()` and Article Helpers
 
 **Syntax**
 
@@ -10216,7 +10349,8 @@ int roll = bgl.util.random.get(6);       // 1..6
 print( ⟨value⟩ ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
 printLine( [ ⟨value⟩ ] ) ;
-log( ⟨value⟩ ) ;
+bgl.output.spaces( ⟨n⟩ ) ;
+bgl.output.log( ⟨value⟩ ) ;
 printName( ⟨obj⟩ ) ;
 bgl.printRules.a( ⟨obj⟩ ) ;   bgl.printRules.cA( ⟨obj⟩ ) ;
 bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
@@ -10224,7 +10358,9 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 **Description**
 
-`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
+The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
+
+`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
 `print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
@@ -10232,11 +10368,13 @@ The name `(name)` prints is the object's `instanceName` (§11.5.4); an object wi
 
 `printLine(v)` prints `v` exactly as `print(v)` would, through whichever overload is current for its type, then a newline; `printLine()` prints just the newline. It takes an interpolated string too. It is not I6's `print_ret`: it does not return from the enclosing function.
 
-`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
+`bgl.output.spaces(n)` prints `n` spaces, and nothing when `n` is 0 or less.
 
-The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article and is a file-scope function.
+`bgl.output.log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
-> **Why they are namespaced.** In Inform 6 `a`, `an`, `the`, `A` and `The` are context-sensitive keywords, meaningful only in the `print (rule) value` slot; they are not I6 identifiers, and an I6 program may freely name a variable or object `the`. Beguile models them as ordinary emitters, which would otherwise put four very common words at file scope in every program.
+The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article.
+
+> **Why they are namespaced.** In Inform 6 `a`, `an`, `the`, `A` and `The` are context-sensitive keywords, meaningful only in the `print (rule) value` slot; they are not I6 identifiers, and an I6 program may freely name a variable or object `the`. Beguile models them as ordinary emitters, which would otherwise put four very common words at file scope in every program. The rest of the output routines live in `bgl.output` for the same reason: a log is a likely object in a game. Only the `print` family is also global.
 
 **Example**
 
@@ -10247,7 +10385,7 @@ void Main() {
     print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
     bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
     printLine($"Weight: {2}");                     // → Weight: 2, then a newline
-    log("reached Main");                           // output only in a debug build
+    bgl.output.log("reached Main");                // output only in a debug build
 }
 ```
 
@@ -10382,7 +10520,7 @@ These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replac
 **Example**
 
 ```bgl
-#include <i6StandardLibrary>
+#include <bindings/i6StandardLibrary>
 
 grammar extraLines {
     grammarRule hang = { PutOn, {.hang, HELD, .on, NOUN} };   // a verb and a pattern of pattern elements
@@ -10533,7 +10671,7 @@ print( ⟨value⟩ ) ;
 **Example**
 
 ```bgl
-#include <i6StandardLibrary>
+#include <bindings/i6StandardLibrary>
 void describeLamp() { print("It flickers."); }
 object lamp { stringOrRoutine description; }
 
@@ -10754,6 +10892,9 @@ void Main() {
 bgl.ui.mainWin.id
 bgl.ui.statusBar.id
 bgl.ui.statusBar.height [ = ⟨lines⟩ ]
+bgl.ui.mainWin.width
+bgl.ui.statusBar.width
+bgl.ui.statusBar.moveCursor( ⟨col⟩ , ⟨line⟩ )
 ```
 
 **Description**
@@ -10763,8 +10904,11 @@ The core defines the two root windows of the display as objects under `bgl.ui`. 
 | Member | Type | Description |
 |---|---|---|
 | `bgl.ui.mainWin.id` | `int` | The main window handle. `0` until a binding or the program assigns it. |
-| `bgl.ui.statusBar.id` | `int` | The status window handle. `0` until assigned; `null` under a binding on the Z-machine, which has no window handles. |
+| `bgl.ui.statusBar.id` | `int` | The status window handle. `0` until assigned; `0` and read-only under a binding on the Z-machine, which has no window handles. |
 | `bgl.ui.statusBar.height` | `int` | The status window's height in lines. Writing it splits the status window to that height. |
+| `bgl.ui.mainWin.width` | `int` | The main window's width in characters. Read-only; `<glulxWindow>` makes it writable (§22.7.4). |
+| `bgl.ui.statusBar.width` | `int` | The status window's width in characters. Read-only; `<glulxWindow>` makes it writable (§22.7.4). |
+| `bgl.ui.statusBar.moveCursor(col, line)` | `void` | Moves the status window's cursor to column `col`, line `line`, both counted from 0. Output must be going to the status window. |
 
 **Example**
 
@@ -10775,6 +10919,10 @@ bgl.ui.statusBar.height = 2;
 > **[Glulx]** Without a binding, writing `statusBar.height` opens a text-grid window above the root window on first write and re-arranges it thereafter.
 
 > **[Z-machine]** Without a binding, writing `statusBar.height` splits the upper window to that height.
+
+> **[Glulx]** `width` is 80 until the window is open. Glk measures a text-buffer window in units of its font's `0`, so with a proportional font the main window's width is approximate.
+
+> **[Z-machine]** Both windows are as wide as the screen, so both `width`s read the header's screen width.
 
 **See also** §22.6, §22.7, §23.3.8.
 
@@ -11149,14 +11297,16 @@ print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}"
 | Member | Returns | Description |
 |---|---|---|
 | `bgl.gc.free(a)` | `void` | Frees array `a` now instead of at the next collection. A later use of it through another reference reads freed memory. |
-| `bgl.gc.keep(a)` | `void` | Keeps local array `a` past its routine's exit, for I6 code that holds on to it (§15.4.1). The collector still frees it once nothing refers to it. |
+| `bgl.gc.keep(a)` | `void` | Pins array `a`, for I6 code that holds on to it (§15.4.1): it lives until `unpin` or `free`, whatever refers to it. |
+| `bgl.gc.unpin(a)` | `void` | Hands a pinned array back to the collector, which frees it once nothing refers to it. |
 | `bgl.gc.collect()` | `void` | Frees every heap array that nothing refers to. |
-| `bgl.gc.used` | `int` | Words of the heap in blocks in use. |
+| `bgl.gc.used` | `int` | Words of the heap in blocks in use. A block may take a few spare words that were too few to split off, so the same arrays can read slightly differently as the heap fragments. |
 | `bgl.gc.size` | `int` | Words the heap holds for blocks. |
+| `bgl.gc.peak` | `int` | The most words ever in blocks in use: what `heapSize` must hold. |
 
 The library bindings collect at the prompt (§23). `collect()` is for a program or library that runs
-without one: call it where no array still needed is held only in a local variable, since the collector
-can't see a running routine's locals.
+without one: call it where no array still needed is held only in a local variable. The collector sees a running routine's
+declared local arrays, but not a local variable that refers to an array.
 
 **Example**
 
@@ -11506,7 +11656,7 @@ Operations are *non-terminals*, which return a typed array and may be chained fu
 | `distinct()` | `array<T>` | The first occurrence of each value. |
 | `orderBy()` | `array<T>` | A sorted copy, by signed word value; the source is unchanged. |
 | `orderBy(compare)` | `array<T>` | A sorted copy using `func<int, T, T>`. |
-| `first()` / `last()` | `T` | The first / last element; `0` when empty. |
+| `first()` / `last()` | `T` | The first / last element; `0` when empty, or a run-time error for a struct, which has no `0`. |
 | `count()` | `int` | The same as `length`. |
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
@@ -11677,7 +11827,7 @@ void Main() {
 `width` and `height` are readable on every window and root; reading queries the live window. Writing re-arranges the window within its parent pair. Only the axis a window was split *along* can be written — `height` for an `Up`/`Down` split, `width` for a `Left`/`Right` split — because the other dimension is dictated by the sibling window. This is enforced at two levels:
 
 - **At compile time**, when the window is held as its orientation view: a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
-- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `log()` (§21.4).
+- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `bgl.output.log()` (§21.4).
 
 `moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size. Glk keeps a split's axis, so a window split `Up` or `Down` moves only up or down, and one split `Left` or `Right` only left or right: a `…Horz` view hides `moveLeft` and `moveRight`, a `…Vert` view hides `moveUp` and `moveDown`, and on the permissive surface a move across the axis does nothing and reports a programming error. They are not available on the roots.
 
@@ -11963,6 +12113,35 @@ Does not require `bglInit()`. Does not require `generateBlorb`, but without pack
 
 **See also** §17.6, §21.12, §22.7.
 
+## 22.9 `<stringObj>`
+
+**Purpose.** An alternative to `<string>` (§22.3) whose `stringObj` buffers grow as text is written into them.
+
+**Include**
+
+```bgl
+#include <stringObj>     // in place of <string>; includes <buf>
+```
+
+**Description**
+
+`<stringObj>` provides the same types, operators and methods as `<string>`, with the same lifecycle: `bglStringPoolReserve` string objects (default `10`), taken on declaration and released at scope exit. Only the storage behind them differs. Each string's characters live in a block of the string heap, a single array of `bglStringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block. There is no per-string limit: a string can hold as much text as the heap has room for.
+
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `bglStringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. Captured text longer than that is cut off at that length, and so is a literal copied into a `stringObj`. Text built with `+=` and the other operators has no such limit.
+
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. If there is still no room, the program stops with a run-time error. Each capture under way keeps `bglStringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
+Both sizes are Inform 6 constants, set before the include:
+
+```bgl
+#i6 { Constant bglStringHeapSize 8192; Constant bglStringCaptureSize 1024; }
+#include <stringObj>
+```
+
+`<stringObj>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
+
+**See also** §22.2, §22.3.
+
 ---
 
 # 23 IF Library Bindings
@@ -12109,7 +12288,7 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 |---|---|---|
 | `bgl.ui.statusBar.height` read | the library's tracked current height | the library's tracked current height |
 | `bgl.ui.statusBar.height` write | the library's status-line-height routine | sets the library's persistent height and splits immediately |
-| `bgl.ui.statusBar.id` | the library's status window (Glulx); `null` (Z-machine) | `null` |
+| `bgl.ui.statusBar.id` | the library's status window (Glulx); `0`, read-only (Z-machine) | `0`, read-only |
 | `bgl.ui.mainWin.id` | the library's main window | the core's (`0`) |
 
 ### 23.3.9 Banner Texts
@@ -12718,7 +12897,7 @@ case-insensitive, like all Beguile identifiers.
 | `beguilerPatch` | `3` | Patch version component. |
 | `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. |
 | `TARGET_ZCODE` | (defined, no value) | Defined when the `target` setting is a Z-machine version. |
-| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `log()` output in an ordinary build (§21.4). |
+| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `bgl.output.log()` output in an ordinary build (§21.4). |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
 set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`
@@ -13001,7 +13180,7 @@ need `#include <array>`.
 | `copy(other)` | method on `bglAllocated` | core | §21.8 |
 | `count()` | method on `array<T>` | `<linq>` | §22.5 |
 | `create([p1[, p2[, p3]]])` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
-| `DEBUG` | symbol (defined by `--debug`; enables `log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
+| `DEBUG` | symbol (defined by `--debug`; enables `bgl.output.log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
 | `deinit()`, `static deinit(T v)` | lifecycle emitter / value-form method on a class | core | §8.5, §12.10 |
 | `delete(pos, count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `destroy()` | method on a pooled class (author-declared; run by `delete`) | core | §8.2.6 |
@@ -13067,12 +13246,14 @@ need `#include <array>`.
 | `length`, `size` | property on `children` (read-only) | core | §11.5.2, §21.5.7 |
 | `light`, `container`, `scenery`, `static`, … (library attributes) | value (`attribute`) | binding | §23.3.4 |
 | `location`, `player`, `actor`, `score`, `turns` | variable (extern) | binding | §23.3.4 |
-| `log(v)` | function | core | §21.4 |
+| `bgl.output` | namespace | core | §21.4 |
+| `bgl.output.log(v)` | function | core | §21.4 |
+| `bgl.output.spaces(n)` | function | core | §21.4 |
 | `map(f)` | method on `array<T>` | `<linq>` | §22.5 |
 | `measureStyle(styleType, hint)`, `styleHonored(styleType, hint)` | method on `window` | `<glulxWindow>` | §22.7.9 |
 | `meta` | member on `verb` | core | §13.2.4 |
 | `mid(start, count)`, `left(count)`, `right(count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `moveCursor(col, line)` | method on `textGridWindow`, `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.6 |
+| `moveCursor(col, line)` | method on `bgl.ui.statusBar`, `textGridWindow` | core; `<glulxWindow>` | §21.10, §22.7.6 |
 | `moveUp()`, `moveDown()`, `moveLeft()`, `moveRight()` | method on `window` | `<glulxWindow>` | §22.7.4 |
 | `name` | property (additive, on `object`) | core | §11.7.2, §21.5.2 |
 | `NO_ATTRIBUTE` | constant | core | §21.5.1 |
@@ -13091,10 +13272,10 @@ need `#include <array>`.
 | `prepend(item)` | method on `array<T>` | `<array>` | §22.4 |
 | `print()` | method on `_bglObject` (author-defined override) | core | §21.4 |
 | `print()` | method on `string`, `stringObj` | `<string>` | §22.3 |
-| `print(v)` | function (overloaded by type) | core | §21.4 |
-| `printLine([v])` | function (`print(v)`, then a newline) | core | §21.4 |
+| `print(v)` | function (overloaded by type; global alias of `bgl.output.print`) | core | §10.5, §21.4 |
+| `printLine([v])` | function (`print(v)`, then a newline; global alias of `bgl.output.printLine`) | core | §10.5, §21.4 |
 | `print(v)`, `printLine([v])` (window output) | method on the text window types, `bgl.ui.mainWin`; `print` on `bgl.ui.statusBar` | `<glulxWindow>` | §22.7.11 |
-| `printName(obj)` | function | core | §21.4 |
+| `printName(obj)` | function (global alias of `bgl.output.printName`) | core | §10.5, §21.4 |
 | `priority` | member on `verb` | core | §13.2.5 |
 | `property` | type | core | §11.7, §21.5.2 |
 | `provides(prop)` | method on `object` | core | §11.7.1, §21.5.2 |
@@ -13149,7 +13330,7 @@ need `#include <array>`.
 | `var` | type | core | §2.6 |
 | `verb` | type | core | §13.2, §21.5.4 |
 | `void` | type | core | §2.2 |
-| `width` | member on `window`, the roots | `<glulxWindow>` | §22.7.4 |
+| `width` | member on `bgl.ui.mainWin`, `bgl.ui.statusBar` (read-only), `window` | core; `<glulxWindow>` (writable) | §21.10, §22.7.4 |
 | `width`, `height` | property on `glulxImage` (read-only); methods `width()`, `height()` on `eImages` | `<glulxImage>` | §22.8 |
 | `window` | type | `<glulxWindow>` | §22.7.1 |
 
@@ -13183,7 +13364,7 @@ is specified in the section named in the last column; this table does not add li
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
 | Include nesting depth | 255 | both | §14.1.6, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
-| Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default; at least 64 | both | §12.6, §17.4 |
+| Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default (also for 0); otherwise at least 64 | both | §12.6, §17.4 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |
 | String objects in the `<string>` pool (`bglStringPoolReserve`); running out stops the program | 10 by default | both | §22.3 |
 | Tracked `<buf>` buffers beyond the `<string>` pool's (`bglTrackedBufferReserve`) | 116 by default | both | §22.2 |

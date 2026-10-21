@@ -1,0 +1,99 @@
+//===================================================================================================
+// center.bgl — center text in the window being printed to, word-wrapped; or inset it between margins.
+//---------------------------------------------------------------------------------------------------
+//     bgl.ui.center("Fourscore and seven years ago our fathers brought forth on this continent a new nation.", 20);
+//     bgl.ui.inset("Text indented from both edges of the window.");
+// Lines break after a space, '?', '/', '-' or ':', and at each '^'. The text may be a string, a routine
+// that prints it, or an object, whose name is printed.
+//===================================================================================================
+#once
+#include <buf>
+
+/// How centered text shows in reverse video.
+enum centerHighlight {
+    none = 0,       /// Not at all.
+    textOnly = 1,   /// The text, but not the spaces before it.
+    all = 2         /// The text and the spaces before it.
+}
+
+/// The longest text bgl.ui.center() and bgl.ui.inset() take, in characters.
+const int centerBufferSize = 1024;
+array<char> _centerText[centerBufferSize];
+
+extend _bglUi {
+    /// Print `text` centered, wrapped at `maxWidth` characters (the window's width when 0). `leftAlign`
+    /// centers the block but keeps its lines flush left; `frame`, when given, is called with 0 for the width
+    /// it adds to a line, then with 1 and 2 to print what goes before and after each line; `subIndent`
+    /// indents every line after the first.
+    emitter void center(var text, int maxWidth = 0, centerHighlight highlight = centerHighlight.none, bool leftAlign = false,
+                        func<int, int> frame = null, int subIndent = 0){ _center($text, $maxWidth, $highlight, $leftAlign, $frame, $subIndent) }
+    /// Print `text` wrapped between margins of `margin` columns (8 when 0), its lines flush left. `subIndent`
+    /// indents every line after the first.
+    emitter void inset(var text, int margin = 0, int subIndent = 0){ _inset($text, $margin, $subIndent) }
+}
+
+superposed void _center(var text, int maxWidth, centerHighlight highlight, bool leftAlign, func<int, int> frame, int subIndent) {
+    int padding = 0;
+    if(frame != null) padding = frame(0) / 2;
+    bgl.printRules.fixed;
+    int width = _centerWidth() - 2;   // keep the outermost columns blank
+    if(maxWidth == 0 || maxWidth > width) maxWidth = width;
+
+    bgl.util.buf.capture(_centerText, centerBufferSize);
+    if(typeof(text) == eType.string) print((string)text);
+    else if(typeof(text) == eType.routine) { func<bool> f = (func<bool>)text; if(f()) maxWidth = width; }
+    else if(typeof(text) == eType.object) print((object)text);
+    bgl.util.buf.release();
+
+    int len = _centerText.length;
+    int lineStart = 0;
+    int lineEnd = 0;
+    for(int o = 0; o <= len; o++) {
+        char c = o < len ? _centerText[o] : ' ';
+        bool newLine = o < len && (c == 10 || c == 13);
+        if(o < len && (_centerBreaks(c) || newLine)) lineEnd = o;
+        if(!newLine && o < len && o - lineStart <= maxWidth) continue;
+
+        // Print the line from lineStart to lineEnd, keeping a breaking character that is visible.
+        bool keepBreak = lineEnd < len && _centerBreaks(_centerText[lineEnd]) && _centerText[lineEnd] != ' ';
+        if(keepBreak) lineEnd++;
+        if(o == len) lineEnd = o;
+        int offset = leftAlign ? (width + 2 - maxWidth) / 4 : width / 2 - (lineEnd - lineStart) / 2;
+        if(lineStart > 0) offset = offset + subIndent;
+
+        if(highlight == centerHighlight.all) bgl.printRules.reverse;
+        bgl.printRules.fixed;
+        bgl.output.spaces(offset - padding);
+        if(highlight != centerHighlight.none) bgl.printRules.reverse;
+        bgl.printRules.fixed;
+        if(frame != null) frame(1);
+        for(int i = lineStart; i < lineEnd; i++) print(_centerText[i]);
+        if(frame != null) frame(2);
+        if(highlight != centerHighlight.all) bgl.printRules.roman;
+        bgl.printRules.fixed;
+        print("^");
+
+        lineStart = keepBreak ? lineEnd : lineEnd + 1;
+        lineEnd = lineStart;
+    }
+    bgl.printRules.roman;
+}
+
+superposed void _inset(var text, int margin, int subIndent) {
+    if(margin == 0) margin = 8;
+    _center(text, _centerWidth() - margin * 2, centerHighlight.none, true, null, subIndent);
+}
+
+// The width of the window being printed to: on the Z-machine, every window is the main window's width.
+superposed int _centerWidth() {
+    #if TARGET_GLULX
+        int win = _bglCurrentWindow();
+        if(win != 0) return _bglWinWidth(win);
+    #endif
+    return bgl.ui.mainWin.width;
+}
+
+// The characters a line may break after.
+superposed bool _centerBreaks(char c) {
+    return c == ' ' || c == '?' || c == '/' || c == '-' || c == ':';
+}

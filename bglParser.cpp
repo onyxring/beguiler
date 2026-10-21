@@ -528,6 +528,11 @@ static void mangleOverloadSet(vector<typeMember*>& members, const string& method
         }
         // `print()` keeps its name: the runtime prints a value through `x.print()` (`provides print`).
         else if(fd->name == "print" && fd->params.empty()) continue;
+        // Overloads given one `asI6` name are told apart from it, as unnamed ones are from the method's name.
+        else if(!fd->asI6Name.empty()){
+            string m = mangleObjectMethodName(fd);
+            fd->i6name = fd->asI6Name + m.substr(fd->name.size());
+        }
         // A method renamed for a global of its name (`_m_show`) is told apart from the global by its arity too.
         else if(fd->i6name.empty() || fd->i6name.rfind("_m_", 0) == 0)
             fd->i6name = mangleObjectMethodName(fd);
@@ -671,7 +676,7 @@ void bglParser::validateGlobalNameClashes(){
         bool isExternVar = vd && vd->isExternal && !vd->isPrePassStub && vd->type.name != "property" && vd->type.name != "attribute";
         if(!isExternFn && !isExternVar) continue;
         const sourceLocation& src = isExternFn ? fd->src : vd->src;
-        if(src.file.empty() || src.file.find("beguiLib") != string::npos) continue;
+        if(src.file.empty()) continue;
         string name = lower(g->i6name.empty() ? g->dName() : g->i6name);
         auto [it, fresh] = externs.emplace(name, g);
         if(fresh || it->second == g || (dynamic_cast<functionDef*>(it->second) != nullptr) == isExternFn) continue;
@@ -695,7 +700,7 @@ void bglParser::validateGlobalNameClashes(){
            && fd->src.file.find("bindings") != string::npos)
             libraryRoutines.emplace(lower(fd->i6name.empty() ? fd->dName() : fd->i6name), fd);
     for(auto& [name, sym] : seen){
-        if(sym.kind == "function" || sym.src.file.find("beguiLib") != string::npos) continue;
+        if(sym.kind == "function") continue;
         if(auto r = libraryRoutines.find(name); r != libraryRoutines.end())
             parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the extern routine '{4}'; Inform 6 keeps "
                 "these in one namespace, ignoring case, so rename the {2} or give it an `asI6` name.",
@@ -703,7 +708,7 @@ void bglParser::validateGlobalNameClashes(){
     }
     for(auto& [name, sym] : seen){
         auto lib = library.find(name);
-        if(lib == library.end() || sym.src.file.find("beguiLib") != string::npos) continue;
+        if(lib == library.end()) continue;
         auto* lv = dynamic_cast<variableDeclaration*>(lib->second);
         bool libProperty = lv != nullptr && lv->type.name == "property";
         if(libProperty)   // the program's own `property` of the name is that property
@@ -738,7 +743,7 @@ void bglParser::validateVerbNameClashes(bool early){
                     if(od->isExternal || dynamic_cast<verbObjectDef*>(od)) continue;
                     kind = "object"; gsrc = od->src;
                 } else continue;   // a function is called, never named bare, so it can't be taken for the verb
-                if(gsrc.file.empty() || gsrc.file.find("beguiLib") != string::npos) continue;
+                if(gsrc.file.empty()) continue;
                 parsingError(format("{0}:{1}:1: {2} '{3}' has the same name as the extern verb '{4}'; a verb is a "
                     "global name, so rename the {2}.", gsrc.file, gsrc.line, kind, g->dName(), v->dName()));
             }
@@ -787,7 +792,7 @@ void bglParser::resolveArrayInitialGlobals(){
     for(typeDef* g : languageService.globals){
         auto* ad = dynamic_cast<arrayDeclaration*>(g);
         auto* list = ad != nullptr ? dynamic_cast<initializerList*>(ad->declaredExpressionValue) : nullptr;
-        if(list == nullptr || ad->src.file.find("beguiLib") != string::npos) continue;
+        if(list == nullptr) continue;
         for(expression* e : list->elements){
             if(e == nullptr || dynamic_cast<initializerList*>(e) != nullptr || e->tokens.size() != 1) continue;
             string word = e->tokens[0];
@@ -839,7 +844,7 @@ void bglParser::validateEqualityPairs(){
                     if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == "!=" && fd->params.size() == eq->params.size()
                        && fd->params.back()->type.name == eq->params.back()->type.name) ne = true;
             }
-        if(eq == nullptr || ne || eq->src.file.empty() || eq->src.file.find("beguiLib") != string::npos) continue;
+        if(eq == nullptr || ne || eq->src.file.empty()) continue;
         // After the parse no file is open, so the location comes from the declaration.
         cerr << format("{0}:{1}:{2}: warning: " + kindWord(cls) + " '{3}' declares operator == but not operator !=, so != "
             "still compares identity; declare operator != too.", eq->src.file, eq->src.line, max(1, eq->src.col),
@@ -1242,12 +1247,14 @@ void bglParser::mangleGlobalOverloadSet(const string& name){
     set<string> signatures;
     for(functionDef* fd : group) signatures.insert(mangleObjectMethodName(fd));
     if(signatures.size() < 2) return;
-    // A name renamed only to keep clear of a library name (`_compare`) takes its overload's name instead.
+    // A name renamed only to keep clear of a keyword or a member (`_print`, `_g_compare`) takes its overload's name instead.
     for(functionDef* fd : group)
-        if(fd->i6name.empty() || fd->i6name == "_" + fd->dName()) fd->i6name = mangleObjectMethodName(fd);
+        if(fd->i6name.empty() || fd->i6name == "_" + fd->dName() || fd->i6name == "_g_" + fd->dName())
+            fd->i6name = mangleObjectMethodName(fd);
 }
 
 void bglParser::assignGlobalFunctionOverloadMangling(){
+    syncFunctionAliases();
     set<string> seen;
     for(typeDef* g : languageService.globals)
         if(auto* fd = dynamic_cast<functionDef*>(g))
@@ -1558,7 +1565,7 @@ void bglParser::mangleClassFamilyOverloadSet(classDef* cls, const string& method
     // which the runtime and the library send directly.
     bool isOperator = !isalpha((unsigned char)methodName[0]) && methodName[0] != '_';
     if(isOperator && (methodName == "=" || methodName == "?" || methodName == "operator()" || methodName == "()")) return;
-    auto isLibrary = [](classDef* c){ return c->baseClasses.empty() || c->src.file.find("beguiLib") != string::npos; };
+    auto isLibrary = [](classDef* c){ return c->baseClasses.empty(); };
     auto ancestors = [&](classDef* c){
         set<classDef*> out; vector<classDef*> work(c->baseClasses.begin(), c->baseClasses.end());
         while(!work.empty()){ classDef* x = work.back(); work.pop_back();
@@ -2473,7 +2480,17 @@ bool bglParser::processNextStatement(abstractObject& contextObject) {
 // statement bodies like `if(x) doSomething();`.
 bool bglParser::processStatementDispatch(token tok, abstractObject& contextObject) {
     size_t postBefore = postInjections.size();
+    stringMarkLeftOpen = false;
     bool r = processStatementDispatchInner(tok, contextObject);
+    // Strings held by a statement no single expression of which was the whole statement (an interpolated
+    // print, expanded one segment at a time) are released after it.
+    if(stringMarkLeftOpen){
+        stringMarkLeftOpen = false;
+        auto* drain = new i6RawNode();
+        drain->text = "_bglStringLockStack._bglText_stackDrain(0, 0);";
+        drain->cooked = true;
+        postInjections.push_back(drain);
+    }
     // What a statement leaves to run after it (a `?.` guard's closing brace) follows it, not the next one.
     if(postInjections.size() > postBefore)
         if(auto* f = dynamic_cast<functionDef*>(&contextObject))
@@ -2488,10 +2505,10 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
     if(!grammarInitialized) initGrammarTable();
     sourceLocation stmtLoc = file.currentLocation();
     struct stmtExprScope {
-        int& base; bool& open; int savedBase; bool savedOpen;
-        stmtExprScope(int& b, bool& o, int depth) : base(b), open(o), savedBase(b), savedOpen(o) { base = depth; open = false; }
-        ~stmtExprScope(){ base = savedBase; open = savedOpen; }
-    } exprScope(stmtExprBase, optStringMarkOpen, exprParseDepth);
+        int& base; bool& open; bool& leftOpen; int savedBase; bool savedOpen;
+        stmtExprScope(int& b, bool& o, bool& l, int depth) : base(b), open(o), leftOpen(l), savedBase(b), savedOpen(o) { base = depth; open = false; }
+        ~stmtExprScope(){ leftOpen = open; base = savedBase; open = savedOpen; }
+    } exprScope(stmtExprBase, optStringMarkOpen, stringMarkLeftOpen, exprParseDepth);
     // A routine's top-level statement starts its chain temporaries afresh; nested ones keep counting.
     if(currentFunc != nullptr && !activeBlockStack.empty() && activeBlockStack.back() == currentFunc->body)
         currentFunc->nextChainTemp = 0;
@@ -2612,6 +2629,10 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
         return processObjectExtension(tok);
 
     if(!q.isExtern && tok.is("grammar")) return processGrammarDeclaration();
+
+    if(q.isAlias && getCurrentCompileContext() == eCompileContext::global
+       && (tok.is(eTokenType::identifier) || tok.isDataType()) && file.peekToken().is(token::assignment))
+        return processFunctionAlias(tok);
 
     // Named union declaration: `union Name = A | B [ { members } ]`. `union` is a soft keyword
     // (handled here like `grammar`), so it stays usable as an identifier elsewhere. It takes no
@@ -3309,9 +3330,12 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
             size_t savedSpanStream = file.interpSpanStream;
             file.interpSpanDepth = 0; file.interpSpanClosed = exprFirst.is(token::braceClose); file.interpSpanStream = file.streamDepth();
             try {
+                interpSegmentDepth++;
                 exprNode = parseExpression(exprFirst, {"}"}, func, body);
+                interpSegmentDepth--;
                 file.interpSpanDepth = savedSpanDepth; file.interpSpanClosed = savedSpanClosed; file.interpSpanStream = savedSpanStream;
             } catch(...) {
+                interpSegmentDepth--;
                 file.interpSpanDepth = savedSpanDepth; file.interpSpanClosed = savedSpanClosed; file.interpSpanStream = savedSpanStream;
                 // Leave the reader past the whole string, so recovery doesn't start inside it.
                 allowVoidReturnExpr = savedAllowVoid;

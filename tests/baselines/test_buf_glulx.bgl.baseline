@@ -103,7 +103,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 array _bglstreamcounts --> 2;
 Array _bglhdr__bglbufstreamstack --> $9084 0;
@@ -117,469 +116,6 @@ array _bglbufglulxstreams table 16;
     Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
     Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
 
-object _bglBuf
-  with _stacktop 0,
-       _trackedcount 0,
-       isTracked [buf p i;
-    p=buf;
-    if (p == 0) {
-        return false;
-    }
-    for (i = 0 : i < self._trackedcount : i++) {
-         if(_bglTrackedRegistry-->i == p) rtrue; 
-    }
-    return false;
-  ],
-       _registerTracked [buf;
-    
-            if(self._trackedCount >= _BGL_TRACKED_CAP){
-                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
-                return;
-            }
-            _bglTrackedRegistry-->(self._trackedCount) = buf;
-        
-    self._trackedcount++;
-  ],
-       _unregisterTracked [buf p i;
-    p=buf;
-    for (i = self._trackedcount - 1 : i >= 0 : i--) {
-        
-                if(_bglTrackedRegistry-->i == p){
-                    self._trackedCount--;
-                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
-                    return;
-                }
-            
-    }
-  ],
-       size [buf;
-    if (buf == 0) {
-        return -1;
-    }
-    return buf-->(-1);
-  ],
-       length [buf;
-    return buf-->(0);
-  ],
-       setLength [buf newLength sz;
-    sz=self.size(buf);
-    if (sz > 0 && newlength > sz) {
-        newLength=sz;
-    }
-    buf-->(0) = newLength;
-  ],
-       getChar [buf pos sz;
-    sz=self.size(buf);
-    if (sz < 0 || sz > pos) {
-        return buf->(pos + WORDSIZE);
-    }
-    return -1;
-  ],
-       setchar_3_bytearray_int_int [buf pos val sz;
-    sz=self.size(buf);
-    if (sz == -1 || sz > pos) {
-        buf->(pos + WORDSIZE) = val;
-    }
-  ],
-       setchar_3_bytearray_int_char [buf pos val sz;
-    sz=self.size(buf);
-    if (sz == -1 || sz > pos) {
-        buf->(pos + WORDSIZE) = val;
-    }
-  ],
-       set_2_bytearray_string [buf stringVal;
-    return self.setany(buf,stringval);
-  ],
-       set_2_bytearray_bytearray [buf src;
-    return self.setfrombuffer(buf,src);
-  ],
-       setAny [buf stringVal;
-    if (self.istracked(stringVal)) {
-        self.setfrombuffer(buf, stringVal);
-    }
-    else {
-        self.setfromliteral(buf, stringVal);
-    }
-    return buf;
-  ],
-       setFromLiteral [buf stringVal sz;
-    sz=self.size(buf);
-    if (sz < 0) {
-        sz=bglstringdefaultsize;
-    }
-    sz=sz + WORDSIZE;
-     stringVal.print_to_array(buf, sz); 
-    self.setLength(buf, self.length(buf));
-    return buf;
-  ],
-       setFromBuffer [buf stringVal svlen;
-    svlen=self.length(stringVal);
-    self.copy(buf, stringVal, svlen, 0, 0);
-    self.setLength(buf, svlen);
-    return buf;
-  ],
-       copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
-    if (frompos == -1) {
-        fromPos = 0;
-    }
-    if (topos == -1) {
-        toPos = 0;
-    }
-    srcLen=self.length(fromBuf);
-    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
-        numCharsToCopy=srclen - frompos;
-    }
-    tgtSize=self.size(toBuf);
-    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
-        numCharsToCopy=tgtsize - topos;
-    }
-    frmPtr=frombuf + frompos + WORDSIZE;
-    toPtr=tobuf + topos + WORDSIZE;
-    @mcopy numCharsToCopy frmPtr toPtr;
-    self.setLength(toBuf, topos + numcharstocopy);
-    return tobuf;
-  ],
-       capture [buf maxBytes s;
-    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
-    if (maxbytes == 0) {
-        s=self.size(buf);
-        if ((s < 0)) {
-            maxBytes=bglstringdefaultsize;
-        }
-        else {
-            maxBytes=s;
-        }
-    }
-    _bglAt(_bglbufglulxstreams, self._stacktop, 1)-->0 = __glkHook(72);
-    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, _bglfilemodewrite, 662));
-    self._stacktop++;
-  ],
-       release [buf;
-    if (self._stacktop == 0) {
-        return 0;
-    }
-    self._stacktop--;
-    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
-    __glkHook(68, __glkHook(72), _bglstreamcounts);
-    self.setLength(buf,  _bglstreamcounts-->1 );
-    __glkHook(71,  _bglAt(_bglbufglulxstreams, self._stacktop, 0)-->0 );
-    return buf;
-  ],
-       stackLen [;
-    return self._stacktop;
-  ],
-       print [buf len;
-    if (buf == 0) {
-        return buf;
-    }
-    if (len <= 0) {
-        len=self.length(buf);
-    }
-    __glkHook(132, buf + WORDSIZE, len);
-    return buf;
-  ],
-       equals [buf1 buf2 caseInsensitive len1 t c1 c2;
-    len1=self.length(buf1);
-    if (len1 ~= self.length(buf2)) {
-        return false;
-    }
-    for (t = 0 : t < len1 : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       compare [buf1 buf2 caseInsensitive len1 len2 lim t c1 c2 _bgl_tempL0;
-    len1=self.length(buf1);
-    len2=self.length(buf2);
-    if (len1 < len2) { _bgl_tempL0 = len1; } else { _bgl_tempL0 = len2; }
-    lim=_bgl_tempL0;
-    for (t = 0 : t < lim : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            if (c1 < c2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
-            return _bgl_tempL0;
-        }
-    }
-    if (len1 == len2) {
-        return 0;
-    }
-    if (len1 < len2) { _bgl_tempL0 = -1; } else { _bgl_tempL0 = 1; }
-    return _bgl_tempL0;
-  ],
-       startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
-    len2=self.length(buf2);
-    if (self.length(buf1) < len2) {
-        return false;
-    }
-    for (t = 0 : t < len2 : t++) {
-        c1=buf1->(t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
-    len2=self.length(buf2);
-    offset=self.length(buf1) - len2;
-    if (offset < 0) {
-        return false;
-    }
-    for (t = 0 : t < len2 : t++) {
-        c1=buf1->(offset + t + WORDSIZE);
-        c2=buf2->(t + WORDSIZE);
-        if (caseInsensitive) {
-            c1 = _bglchartolower(c1);
-            c2 = _bglchartolower(c2);
-        }
-        if (c1 ~= c2) {
-            return false;
-        }
-    }
-    return true;
-  ],
-       mid [toBuf fromBuf fromPos numCharsToCopy len maxLen;
-    len=self.length(fromBuf);
-    if (frompos < 0) {
-        fromPos = 0;
-    }
-    if (frompos > len) {
-        fromPos=len;
-    }
-    maxLen=len - frompos;
-    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
-        numCharsToCopy=maxLen;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       left [toBuf fromBuf numCharsToCopy len;
-    len=self.length(fromBuf);
-    if (numcharstocopy > len) {
-        numCharsToCopy=len;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       right [toBuf fromBuf numCharsToCopy len;
-    len=self.length(fromBuf);
-    if (numcharstocopy > len) {
-        numCharsToCopy=len;
-    }
-    if (numcharstocopy < 0) {
-        numCharsToCopy = 0;
-    }
-    self.copy(toBuf, fromBuf, numCharsToCopy, 0, len - numcharstocopy);
-    self.setLength(toBuf, numCharsToCopy);
-    return tobuf;
-  ],
-       insert [toBuf fromBuf toPos charCount len;
-    if (charcount <= 0) {
-        charCount=self.length(fromBuf);
-    }
-    len=self.length(toBuf);
-    if (topos < 0) {
-        toPos = 0;
-    }
-    if (topos > len) {
-        toPos=len;
-    }
-    self.copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
-    self.copy(toBuf, fromBuf, charCount, toPos, 0);
-    self.setLength(toBuf, len + charcount);
-    return tobuf;
-  ],
-       prepend_2_bytearray_bytearray [toBuf fromBuf;
-    return self.prependbuffer(tobuf,frombuf);
-  ],
-       prependBuffer [toBuf fromBuf;
-    self.insert(toBuf, fromBuf, 0, self.length(fromBuf));
-    return tobuf;
-  ],
-       append_2_bytearray_bytearray [toBuf fromBuf;
-    return self.appendbuffer(tobuf,frombuf);
-  ],
-       appendBuffer [toBuf fromBuf;
-    self.copy(toBuf, fromBuf, -1, self.length(toBuf), 0);
-    return tobuf;
-  ],
-       append_2_bytearray_string [toBuf text len sz n saved;
-    len=self.length(toBuf);
-    sz=self.size(toBuf);
-    if (sz < 0) {
-        sz=bglstringdefaultsize;
-    }
-    n = 0;
-    saved = 0;
-    
-            saved = (toBuf + len)-->0;
-            text.print_to_array(toBuf + len, sz - len);
-            n = (toBuf + len)-->0;
-            (toBuf + len)-->0 = saved;
-        
-    self.setLength(toBuf, len + n);
-    return tobuf;
-  ],
-       prepend_2_bytearray_string [toBuf text len total;
-    len=self.length(toBuf);
-    self.append_2_bytearray_string(toBuf, text);
-    total=self.length(toBuf);
-    self.reverserange(toBuf, 0, total);
-    self.reverserange(toBuf, 0, total - len);
-    self.reverserange(toBuf, total - len, total);
-    return tobuf;
-  ],
-       reverseRange [buf from _l_to w c;
-    w=WORDSIZE;
-    for (_l_to = _l_to - 1 : from < _l_to : from++) {
-        c=buf->(from + w);
-        buf->(from + w) = buf->(_l_to + w);
-        buf->(_l_to + w) = c;
-        _l_to--;
-    }
-  ],
-       delete [buf pos count len;
-    len=self.length(buf);
-    self.copy(buf, buf, len - count, pos, pos + count);
-    self.setLength(buf, len - count);
-    return buf;
-  ],
-       replace [buf searchTextBuf replaceTextBuf searchLen pos;
-    searchLen=self.length(searchTextBuf);
-    pos=self.indexof(buf,searchTextBuf,0);
-    if (pos == -1) {
-        return buf;
-    }
-    self.delete(buf, pos, searchLen);
-    self.insert(buf, replaceTextBuf, pos, 0);
-    return buf;
-  ],
-       replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
-    searchLen=self.length(searchTextBuf);
-    rtlen=self.length(replaceTextBuf);
-    if (searchlen == 0) {
-        return buf;
-    }
-    pos=self.indexof(buf,searchTextBuf,startingIndex);
-    while (pos ~= -1) {
-        self.delete(buf, pos, searchLen);
-        self.insert(buf, replaceTextBuf, pos, 0);
-        pos=self.indexof(buf,searchTextBuf,pos + rtlen);
-    }
-    return buf;
-  ],
-       indexOf [buf searchTextBuf startingIndex stblen blen o i;
-    stblen=self.length(searchTextBuf);
-    blen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    for (o = startingindex : o + stblen <= blen : o++) {
-        for (i = 0 : i < stblen : i++) {
-            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
-                break;
-            }
-        }
-        if (i == stblen) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       indexOfFirstTrue [buf pred startingIndex buflen o c;
-    buflen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    for (o = startingindex : o < buflen : o++) {
-        c = buf->(o + WORDSIZE);
-        if (pred(c)) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       indexOfFirstFalse [buf pred startingIndex buflen o c;
-    buflen=self.length(buf);
-    if (startingindex < 0) {
-        startingIndex = 0;
-    }
-    if (startingindex > buflen) {
-        return -1;
-    }
-    for (o = startingindex : o < buflen : o++) {
-        c = buf->(o + WORDSIZE);
-        if ((~~pred(c))) {
-            return o;
-        }
-    }
-    return -1;
-  ],
-       toUpper [buf buflen t;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen : t++) {
-        buf->(t + WORDSIZE) = _bglchartoupper(buf->(t + WORDSIZE));
-    }
-    return buf;
-  ],
-       toLower [buf buflen t;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen : t++) {
-        buf->(t + WORDSIZE) = _bglchartolower(buf->(t + WORDSIZE));
-    }
-    return buf;
-  ],
-       reverse [buf buflen t c;
-    buflen=self.length(buf);
-    for (t = 0 : t < buflen / 2 : t++) {
-        c=buf->(t + WORDSIZE);
-        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
-        buf->(buflen - t - 1 + WORDSIZE) = c;
-    }
-    return buf;
-  ],
-       trimLeft [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,0) == ' ') {
-        self.delete(buf, 0, 1);
-    }
-    return buf;
-  ],
-       trimRight [buf;
-    while (self.length(buf) > 0 && self.getchar(buf,self.length(buf) - 1) == ' ') {
-        self.delete(buf, self.length(buf) - 1, 1);
-    }
-    return buf;
-  ],
-       trim [buf;
-    return self.trimright(self.trimleft(buf));
-  ]
-;
 Array _bglcap_bufa -> 0 0 0 64;
 Array bufa -> (WORDSIZE + 64);
 Array _bglcap_bufb -> 0 0 0 64;
@@ -587,78 +123,78 @@ Array bufb -> (WORDSIZE + 64);
 Array _bglcap_bufsmall -> 0 0 0 16;
 Array bufsmall -> (WORDSIZE + 16);
 [exerciseLength szA n tr;
-    szA=_bglBuf.size(bufa);
-    _bglBuf.setLength(bufa, 0);
-    n=_bglBuf.length(bufa);
-    tr=_bglBuf.isTracked(bufa);
+    szA=_bglBuf._bglText_size(bufa);
+    _bglBuf._bglText_setLength(bufa, 0);
+    n=_bglBuf._bglText_length(bufa);
+    tr=_bglBuf._bglText_isTracked(bufa);
 ];
 [exerciseChars c0 c1 c2;
     _bglByteAt(bufa, 0, 1)->0 = 'A';
     _bglByteAt(bufa, 1, 1)->0 = 'B';
     _bglByteAt(bufa, 31, 1)->0 = 'Z';
-    c0=_bglbuf.getchar(bufa, 0);
-    c1=_bglbuf.getchar(bufa, 1);
+    c0=_bglbuf._bglText_getChar(bufa, 0);
+    c1=_bglbuf._bglText_getChar(bufa, 1);
     c2= _bglByteAt(bufa, 0, 0)->0;
 ];
 [exerciseSet;
-    _bglbuf.set_2_bytearray_string(bufa, "hello world");
-    _bglbuf.set_2_bytearray_bytearray(bufb, bufa);
-    _bglbuf.setfromliteral(bufsmall, "tight");
+    _bglbuf._bglText_set_2_bytearray_string(bufa, "hello world");
+    _bglbuf._bglText_set_2_bytearray_bytearray(bufb, bufa);
+    _bglbuf._bglText_setFromLiteral(bufsmall, "tight");
 ];
 [exerciseCopy;
-    _bglbuf.copy(bufb, bufa, -1, 0, 0);
-    _bglbuf.copy(bufb, bufa, 4, 8, 2);
-    _bglbuf.copy(bufb, bufa, 3, 0, 0);
+    _bglbuf._bglText_copy(bufb, bufa, -1, 0, 0);
+    _bglbuf._bglText_copy(bufb, bufa, 4, 8, 2);
+    _bglbuf._bglText_copy(bufb, bufa, 3, 0, 0);
 ];
 [exerciseStream depth1 depth0;
-    _bglbuf.capture(bufa, 0);
-    _bglbuf.capture(bufb, 32);
-    depth1=_bglbuf.stacklen();
-    _bglbuf.release();
-    _bglbuf.release();
-    depth0=_bglbuf.stacklen();
+    _bglbuf._bglText_capture(bufa, 0);
+    _bglbuf._bglText_capture(bufb, 32);
+    depth1=_bglbuf._bglText_stackLen();
+    _bglbuf._bglText_release();
+    _bglbuf._bglText_release();
+    depth0=_bglbuf._bglText_stackLen();
 ];
 [exercisePrint;
     _bglbuf.print(bufa, -1);
     _bglbuf.print(bufa, 5);
 ];
 [exerciseCompare eq eqi sw ew;
-    eq=_bglbuf.equals(bufa, bufb, false);
-    eqi=_bglbuf.equals(bufa, bufb, true);
-    sw=_bglbuf.startswith(bufa, bufb, false);
-    ew=_bglbuf.endswith(bufa, bufb, false);
+    eq=_bglbuf._bglText_equals(bufa, bufb, false);
+    eqi=_bglbuf._bglText_equals(bufa, bufb, true);
+    sw=_bglbuf._bglText_startsWith(bufa, bufb, false);
+    ew=_bglbuf._bglText_endsWith(bufa, bufb, false);
 ];
 [exerciseSubstring;
-    _bglbuf.mid(bufb, bufa, 0, 4);
-    _bglbuf.mid(bufb, bufa, 2, -1);
-    _bglbuf.left(bufb, bufa, 10);
-    _bglbuf.right(bufb, bufa, 5);
+    _bglbuf._bglText_mid(bufb, bufa, 0, 4);
+    _bglbuf._bglText_mid(bufb, bufa, 2, -1);
+    _bglbuf._bglText_left(bufb, bufa, 10);
+    _bglbuf._bglText_right(bufb, bufa, 5);
 ];
 [exerciseInsert;
-    _bglbuf.insert(bufa, bufb, 0, 3);
-    _bglbuf.prepend_2_bytearray_bytearray(bufa, bufb);
-    _bglbuf.append_2_bytearray_bytearray(bufa, bufb);
-    _bglbuf.delete(bufa, 0, 1);
+    _bglbuf._bglText_insert(bufa, bufb, 0, 3);
+    _bglbuf._bglText_prepend_2_bytearray_bytearray(bufa, bufb);
+    _bglbuf._bglText_append_2_bytearray_bytearray(bufa, bufb);
+    _bglbuf._bglText_delete(bufa, 0, 1);
 ];
 [exerciseReplace;
-    _bglbuf.replace(bufa, bufb, bufsmall);
-    _bglbuf.replaceall(bufa, bufb, bufsmall, 0);
-    _bglbuf.replaceall(bufa, bufb, bufsmall, 5);
+    _bglbuf._bglText_replace(bufa, bufb, bufsmall);
+    _bglbuf._bglText_replaceAll(bufa, bufb, bufsmall, 0);
+    _bglbuf._bglText_replaceAll(bufa, bufb, bufsmall, 5);
 ];
 [isLetter c;
     return _bglCharIsAlpha(c);
 ];
 [exerciseSearch p p2 t f;
-    p=_bglbuf.indexof(bufa, bufb, 0);
-    p2=_bglbuf.indexof(bufa, bufb, 3);
-    t=_bglbuf.indexoffirsttrue(bufa, _bglLambda_0, 0);
-    f=_bglbuf.indexoffirstfalse(bufa, _bglLambda_1, 2);
+    p=_bglbuf._bglText_indexOf(bufa, bufb, 0);
+    p2=_bglbuf._bglText_indexOf(bufa, bufb, 3);
+    t=_bglbuf._bglText_indexOfFirstTrue(bufa, _bglLambda_0, 0);
+    f=_bglbuf._bglText_indexOfFirstFalse(bufa, _bglLambda_1, 2);
 ];
 [exerciseTransform;
-    _bglbuf.toupper(bufa);
-    _bglbuf.tolower(bufa);
-    _bglbuf.reverse(bufa);
-    _bglbuf.trim(bufa);
+    _bglbuf._bglText_toUpper(bufa);
+    _bglbuf._bglText_toLower(bufa);
+    _bglbuf._bglText_reverse(bufa);
+    _bglbuf._bglText_trim(bufa);
 ];
 [main;
     bglinit();
@@ -699,19 +235,412 @@ Array bufsmall -> (WORDSIZE + 16);
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;
 ];
-[_bglAt arr i w n;
-    n = 0;
+object _bglBuf
+  with _stacktop 0,
+       _trackedcount 0,
+       _bglText_isTracked [buf p i;
+    p=buf;
+    if (p == 0) {
+        return false;
+    }
+    for (i = 0 : i < self._trackedcount : i++) {
+         if(_bglTrackedRegistry-->i == p) rtrue; 
+    }
+    return false;
+  ],
+       _registerTracked [buf;
     
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
+            if(self._trackedCount >= _BGL_TRACKED_CAP){
+                print "^[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]^";
+                return;
+            }
+            _bglTrackedRegistry-->(self._trackedCount) = buf;
+        
+    self._trackedcount++;
+  ],
+       _bglText_size [buf;
+    if (buf == 0) {
+        return -1;
+    }
+    return buf-->(-1);
+  ],
+       _bglText_length [buf;
+    return buf-->(0);
+  ],
+       _bglText_setLength [buf newLength sz;
+    sz=self._bglText_size(buf);
+    if (sz > 0 && newlength > sz) {
+        newLength=sz;
+    }
+    buf-->(0) = newLength;
+  ],
+       _bglText_getChar [buf pos sz;
+    sz=self._bglText_size(buf);
+    if (sz < 0 || sz > pos) {
+        return buf->(pos + WORDSIZE);
+    }
+    return -1;
+  ],
+       _bglText_set_2_bytearray_string [buf stringVal;
+    return self._bgltext_setany(buf,stringval);
+  ],
+       _bglText_set_2_bytearray_bytearray [buf src;
+    return self._bgltext_setfrombuffer(buf,src);
+  ],
+       _bglText_setAny [buf stringVal;
+    if (self._bglText_isTracked(stringVal)) {
+        self._bgltext_setfrombuffer(buf, stringVal);
+    }
+    else {
+        self._bgltext_setfromliteral(buf, stringVal);
+    }
+    return buf;
+  ],
+       _bglText_setFromLiteral [buf stringVal sz room;
+    sz=self._bglText_size(buf);
+    if (sz < 0) {
+        sz=bglstringdefaultsize;
+    }
+    sz=sz + WORDSIZE;
+     stringVal.print_to_array(buf, sz); 
+    room=self._bglText_size(buf);
+    if (room > 0 && self._bglText_length(buf) > room) {
+        self._bglbufoverrun(self._bglText_length(buf), room);
+    }
+    self._bglText_setLength(buf, self._bglText_length(buf));
+    return buf;
+  ],
+       _bglText_setFromBuffer [buf stringVal svlen;
+    svlen=self._bglText_length(stringVal);
+    self._bgltext_copy(buf, stringVal, svlen, 0, 0);
+    self._bglText_setLength(buf, svlen);
+    return buf;
+  ],
+       _bglText_copy [toBuf fromBuf numCharsToCopy toPos fromPos srcLen tgtSize frmPtr toPtr;
+    if (frompos == -1) {
+        fromPos = 0;
+    }
+    if (topos == -1) {
+        toPos = 0;
+    }
+    srcLen=self._bglText_length(fromBuf);
+    if (numcharstocopy < 0 || numcharstocopy + frompos > srclen) {
+        numCharsToCopy=srclen - frompos;
+    }
+    tgtSize=self._bglText_size(toBuf);
+    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
+        numCharsToCopy=tgtsize - topos;
+    }
+    frmPtr=frombuf + frompos + WORDSIZE;
+    toPtr=tobuf + topos + WORDSIZE;
+    @mcopy numCharsToCopy frmPtr toPtr;
+    self._bglText_setLength(toBuf, topos + numcharstocopy);
+    return tobuf;
+  ],
+       _bglBufOverrun [written room;
+    if (self._stacktop > 0) {
+        __glkHook(71,  _bglAt(_bglbufglulxstreams, 0, 0)-->0 );
+        self._stacktop = 0;
+    }
     
-];
+            print "^[Beguile run-time error: ", written, " characters were printed into room for ", room, "; raise ";
+            #Ifdef _bglOverrunSetting; print (string) _bglOverrunSetting; #Ifnot; print "the buffer's size"; #Endif;
+            print "]^";
+            quit;
+        
+  ],
+       _bglText_capture [buf maxBytes s;
+    _bglAt(_bglbufstreamstack, self._stacktop, 1)-->0 = buf;
+    if (maxbytes == 0) {
+        s=self._bglText_size(buf);
+        if ((s < 0)) {
+            maxBytes=bglstringdefaultsize;
+        }
+        else {
+            maxBytes=s;
+        }
+    }
+    _bglAt(_bglbufglulxstreams, self._stacktop, 1)-->0 = __glkHook(72);
+    __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, _bglfilemodewrite, 662));
+    self._stacktop++;
+  ],
+       _bglText_release [buf room;
+    if (self._stacktop == 0) {
+        return 0;
+    }
+    self._stacktop--;
+    buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
+    __glkHook(68, __glkHook(72), _bglstreamcounts);
+    __glkHook(71,  _bglAt(_bglbufglulxstreams, self._stacktop, 0)-->0 );
+    room=self._bglText_size(buf);
+    if (room > 0 &&  _bglstreamcounts-->1  > room) {
+        self._bglBufOverrun( _bglstreamcounts-->1 , room);
+    }
+    self._bglText_setLength(buf,  _bglstreamcounts-->1 );
+    return buf;
+  ],
+       _bglText_stackLen [;
+    return self._stacktop;
+  ],
+       print [buf len;
+    if (buf == 0) {
+        return buf;
+    }
+    if (len <= 0) {
+        len=self._bglText_length(buf);
+    }
+    __glkHook(132, buf + WORDSIZE, len);
+    return buf;
+  ],
+       _bglText_equals [buf1 buf2 caseInsensitive len1 t c1 c2;
+    len1=self._bglText_length(buf1);
+    if (len1 ~= self._bglText_length(buf2)) {
+        return false;
+    }
+    for (t = 0 : t < len1 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_startsWith [buf1 buf2 caseInsensitive len2 t c1 c2;
+    len2=self._bglText_length(buf2);
+    if (self._bglText_length(buf1) < len2) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_endsWith [buf1 buf2 caseInsensitive len2 offset t c1 c2;
+    len2=self._bglText_length(buf2);
+    offset=self._bglText_length(buf1) - len2;
+    if (offset < 0) {
+        return false;
+    }
+    for (t = 0 : t < len2 : t++) {
+        c1=buf1->(offset + t + WORDSIZE);
+        c2=buf2->(t + WORDSIZE);
+        if (caseInsensitive) {
+            c1 = _bglchartolower(c1);
+            c2 = _bglchartolower(c2);
+        }
+        if (c1 ~= c2) {
+            return false;
+        }
+    }
+    return true;
+  ],
+       _bglText_mid [toBuf fromBuf fromPos numCharsToCopy len maxLen;
+    len=self._bglText_length(fromBuf);
+    if (frompos < 0) {
+        fromPos = 0;
+    }
+    if (frompos > len) {
+        fromPos=len;
+    }
+    maxLen=len - frompos;
+    if (numcharstocopy == -1 || numcharstocopy > maxlen) {
+        numCharsToCopy=maxLen;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, fromPos);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_left [toBuf fromBuf numCharsToCopy len;
+    len=self._bglText_length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, 0);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_right [toBuf fromBuf numCharsToCopy len;
+    len=self._bglText_length(fromBuf);
+    if (numcharstocopy > len) {
+        numCharsToCopy=len;
+    }
+    if (numcharstocopy < 0) {
+        numCharsToCopy = 0;
+    }
+    self._bglText_copy(toBuf, fromBuf, numCharsToCopy, 0, len - numcharstocopy);
+    self._bglText_setLength(toBuf, numCharsToCopy);
+    return tobuf;
+  ],
+       _bglText_insert [toBuf fromBuf toPos charCount len;
+    if (charcount <= 0) {
+        charCount=self._bglText_length(fromBuf);
+    }
+    len=self._bglText_length(toBuf);
+    if (topos < 0) {
+        toPos = 0;
+    }
+    if (topos > len) {
+        toPos=len;
+    }
+    self._bglText_copy(toBuf, toBuf, len - topos, topos + charcount, toPos);
+    self._bglText_copy(toBuf, fromBuf, charCount, toPos, 0);
+    self._bglText_setLength(toBuf, len + charcount);
+    return tobuf;
+  ],
+       _bglText_prepend_2_bytearray_bytearray [toBuf fromBuf;
+    return self._bgltext_prependbuffer(tobuf,frombuf);
+  ],
+       _bglText_prependBuffer [toBuf fromBuf;
+    self._bglText_insert(toBuf, fromBuf, 0, self._bglText_length(fromBuf));
+    return tobuf;
+  ],
+       _bglText_append_2_bytearray_bytearray [toBuf fromBuf;
+    return self._bgltext_appendbuffer(tobuf,frombuf);
+  ],
+       _bglText_appendBuffer [toBuf fromBuf;
+    self._bglText_copy(toBuf, fromBuf, -1, self._bglText_length(toBuf), 0);
+    return tobuf;
+  ],
+       _bglText_delete [buf pos count len;
+    len=self._bglText_length(buf);
+    self._bglText_copy(buf, buf, len - count, pos, pos + count);
+    self._bglText_setLength(buf, len - count);
+    return buf;
+  ],
+       _bglText_replace [buf searchTextBuf replaceTextBuf searchLen pos;
+    searchLen=self._bglText_length(searchTextBuf);
+    pos=self._bgltext_indexof(buf,searchTextBuf,0);
+    if (pos == -1) {
+        return buf;
+    }
+    self._bglText_delete(buf, pos, searchLen);
+    self._bglText_insert(buf, replaceTextBuf, pos, 0);
+    return buf;
+  ],
+       _bglText_replaceAll [buf searchTextBuf replaceTextBuf startingIndex searchLen rtlen pos;
+    searchLen=self._bglText_length(searchTextBuf);
+    rtlen=self._bglText_length(replaceTextBuf);
+    if (searchlen == 0) {
+        return buf;
+    }
+    pos=self._bgltext_indexof(buf,searchTextBuf,startingIndex);
+    while (pos ~= -1) {
+        self._bglText_delete(buf, pos, searchLen);
+        self._bglText_insert(buf, replaceTextBuf, pos, 0);
+        pos=self._bgltext_indexof(buf,searchTextBuf,pos + rtlen);
+    }
+    return buf;
+  ],
+       _bglText_indexOf [buf searchTextBuf startingIndex stblen blen o i;
+    stblen=self._bglText_length(searchTextBuf);
+    blen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o + stblen <= blen : o++) {
+        for (i = 0 : i < stblen : i++) {
+            if (buf->(o + i + WORDSIZE) ~= searchtextbuf->(i + WORDSIZE)) {
+                break;
+            }
+        }
+        if (i == stblen) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_indexOfFirstTrue [buf pred startingIndex buflen o c;
+    buflen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if (pred(c)) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_indexOfFirstFalse [buf pred startingIndex buflen o c;
+    buflen=self._bglText_length(buf);
+    if (startingindex < 0) {
+        startingIndex = 0;
+    }
+    if (startingindex > buflen) {
+        return -1;
+    }
+    for (o = startingindex : o < buflen : o++) {
+        c = buf->(o + WORDSIZE);
+        if ((~~pred(c))) {
+            return o;
+        }
+    }
+    return -1;
+  ],
+       _bglText_toUpper [buf buflen t;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchartoupper(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       _bglText_toLower [buf buflen t;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen : t++) {
+        buf->(t + WORDSIZE) = _bglchartolower(buf->(t + WORDSIZE));
+    }
+    return buf;
+  ],
+       _bglText_reverse [buf buflen t c;
+    buflen=self._bglText_length(buf);
+    for (t = 0 : t < buflen / 2 : t++) {
+        c=buf->(t + WORDSIZE);
+        buf->(t + WORDSIZE) = buf->(buflen - t - 1 + WORDSIZE);
+        buf->(buflen - t - 1 + WORDSIZE) = c;
+    }
+    return buf;
+  ],
+       _bglText_trimLeft [buf;
+    while (self._bglText_length(buf) > 0 && self._bglText_getChar(buf,0) == ' ') {
+        self._bglText_delete(buf, 0, 1);
+    }
+    return buf;
+  ],
+       _bglText_trimRight [buf;
+    while (self._bglText_length(buf) > 0 && self._bglText_getChar(buf,self._bglText_length(buf) - 1) == ' ') {
+        self._bglText_delete(buf, self._bglText_length(buf) - 1, 1);
+    }
+    return buf;
+  ],
+       _bglText_trim [buf;
+    return self._bglText_trimRight(self._bglText_trimLeft(buf));
+  ]
+;
 [_bglByteAt arr i w n;
     n = 0;
     
@@ -807,6 +736,14 @@ Array bufsmall -> (WORDSIZE + 16);
     return result;
 ];
 array _bglsink --> 1;
+[_bglAt arr i w n;
+    n = 0;
+    
+        n = _bglArrSize(arr);
+        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
+        return _bglOutOfRange(i, n, w);
+    
+];
 [_bglArrSize arr;
      return arr-->0; 
 ];

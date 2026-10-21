@@ -45,26 +45,27 @@ primitive class string {
 }
 
 //-- Printing ------------------------------------------------------------------
-emitter void print(string str){ print (string)$str; }                    /// Print `str`.
-emitter void print(interpolatedStringLiteral v){ $v; }                   /// Print an interpolated string.
-emitter void print(stringLiteral str){ print (string)$str; }             /// Print a string literal.
+extend _bglOutput {
+    emitter void print(string str){ print (string)$str; }                    /// Print `str`.
+    emitter void print(interpolatedStringLiteral v){ $v; }                   /// Print an interpolated string.
+    emitter void print(stringLiteral str){ print (string)$str; }             /// Print a string literal.
 
-//-- Debug logging -------------------------------------------------------------
-/// Print an interpolated string in debug builds only.
-emitter void log(interpolatedStringLiteral v){
-    ##if DEBUG
-    $v;
-    ##endif
-}
-/// Print a string literal in debug builds only.
-emitter void log(stringLiteral msg){
-    ##if DEBUG
-    print (string)$msg;
-    ##endif
-}
-/// Print `msg` in debug builds only.
-emitter void log(string msg){
-    ##if DEBUG
-    print (string)$msg;
-    ##endif
+    /// Print an interpolated string in debug builds only.
+    emitter void log(interpolatedStringLiteral v){
+        ##if DEBUG
+        $v;
+        ##endif
+    }
+    /// Print a string literal in debug builds only.
+    emitter void log(stringLiteral msg){
+        ##if DEBUG
+        print (string)$msg;
+        ##endif
+    }
+    /// Print `msg` in debug builds only.
+    emitter void log(string msg){
+        ##if DEBUG
+        print (string)$msg;
+        ##endif
+    }
 }

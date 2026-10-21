@@ -1,0 +1,39 @@
+/* -----------------------------------------------------------------------------
+    _output.bgl - Output
+    Provides `bgl.output`: print() in every form, printLine(), printName(), spaces()
+    and the debug-only log(). print, printLine and printName are also global names.
+    Each type adds its own print() overload here with `extend _bglOutput`.
+
+    Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
+   -----------------------------------------------------------------------------*/
+#once
+
+/// Printing to the current output.
+superposed _bglObject _bglOutput {
+    //-- print -----------------------------------------------------------------
+    emitter void print(var val){ print $val; }                                                           /// Print a value of a type with no print() of its own.
+    emitter void print(_bglObject val){ if($val provides print) $val.print(); else print (name)$val;}  /// Print an object: its own print() if it has one, otherwise its name.
+    emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }                                  /// Print `val` the way `print(val)` would, then a newline.
+    emitter void printLine(interpolatedStringLiteral val){ $val; print "^"; }                            /// Print an interpolated string, then a newline.
+    emitter void printLine(){ print "^"; }                                                               /// Print a newline.
+    emitter void printName(object o){ print (name)$o; }                                                  /// Print an object's name, with no article.
+
+    //-- Spacing ---------------------------------------------------------------
+    emitter void spaces(int n){ spaces $n; }                                                            /// Print `n` spaces.
+
+    //-- Debug output ----------------------------------------------------------
+    /// Print `msg`, but only in a debug build.
+    emitter void log(var msg){
+        ##if DEBUG
+        $i6Expr(print($msg));
+        ##endif
+    }
+}
+
+extend bgl {
+    alias output = _bglOutput;   /// Printing to the current output.
+}
+
+alias print     = _bglOutput.print;       // the print family is called without a path
+alias printLine = _bglOutput.printLine;
+alias printName = _bglOutput.printName;

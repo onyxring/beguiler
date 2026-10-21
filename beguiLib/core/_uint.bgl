@@ -69,4 +69,6 @@ superposed void _bglPrintUint(int v){
     print(_bglUnsignedDiv(v, 10));
     print(_bglUnsignedMod(v, 10));
 }
-emitter void print(uint c){ _bglPrintUint($c); }   /// Print `c` as an unsigned number.
+extend _bglOutput {
+    emitter void print(uint c){ _bglPrintUint($c); }   /// Print `c` as an unsigned number.
+}

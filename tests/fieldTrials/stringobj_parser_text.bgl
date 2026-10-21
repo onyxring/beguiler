@@ -1,0 +1,245 @@
+/*  Field trial — exercises the Beguile compiler against the Inform 6 standard library.
+    A hardening test: not a game, not an example, not for reuse.  */
+
+// Exercises: <stringObj> meeting the parser and the world model — an item class whose short_name()
+// prints a stringObj member; object names captured into strings by interpolation ({o}, {noun}); a
+// list of the room's names built into one string; the player's TOPIC words (consult_from/consult_words)
+// copied into a stringObj by write/rename/echo/match/find/tally verbs; a notebook object that
+// accumulates entries well past 494 characters (then 3000) and is searched with indexOf/contains/mid;
+// a description() routine that prints stringObj members; content comparisons of typed text against
+// stored text (==, !=, =~, compareTo with and without case folding); a wipe and rebuild of the notebook.
+
+#beguilerSettings {
+    target = z5;
+    includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 12288;   // tally copies the 3000-character notebook, and slices the copy, while it is live
+}
+
+#i6 { Constant bglStringPoolReserve 24; }
+
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+#include <stringObj>
+
+extend class object {
+    stringOrRoutine description;
+}
+
+// An object named by a stringObj member.
+class item : object {
+    stringObj label;
+    bool short_name() {
+        print(label);
+        return true;
+    }
+}
+
+stringObj stored = "Red Ball";
+
+object roomA {
+    "Room A";
+    description = "A plain room.";
+    attributes = {light};
+}
+
+item ball {
+    label = "red ball";
+    name = {.red, .ball};
+    parent = roomA;
+    description = "A ball.";
+}
+
+item cube {
+    label = "blue cube";
+    name = {.blue, .cube};
+    parent = roomA;
+    description = "A cube.";
+}
+
+item lamp {
+    label = "green lamp";
+    name = {.green, .lamp};
+    parent = roomA;
+    description = "A lamp.";
+}
+
+item notebook {
+    stringObj text;
+    int entries = 0;
+    name = {.notebook};
+    parent = roomA;
+    bool short_name() {
+        print($"notebook ({text.length})");
+        return true;
+    }
+    void description() {
+        print($"Notebook: {text.length} chars, last entry [{text.right(15)}].^");
+    }
+}
+
+// Off-stage: only puts the words the verbs take into the dictionary.
+object lexicon {
+    "lexicon";
+    name = {.alpha, .beta, .gamma, .needle, .zeta, .zebra, .amber, .orb, .red, .blue, .green, .ball, .omega};
+}
+
+// The text of a dictionary word, captured from its printed form.
+stringObj wordText(dictionaryWord w) {
+    stringObj s;
+    if (w == null) {
+        s = "?";
+        return s;
+    }
+    s.capture();
+    print(w);
+    s.release();
+    return s;
+}
+
+// The words of the topic, joined by spaces.
+stringObj topicText() {
+    stringObj s;
+    wn = consult_from;
+    for (int i = 0; i < consult_words; i++) {
+        dictionaryWord w = NextWord();
+        if (i > 0) s += " ";
+        s += wordText(w);
+    }
+    return s;
+}
+
+bool Initialise() {
+    location = roomA;
+    return false;
+}
+
+#includeI6 "grammar"
+
+verb Names {
+    meta = true;
+    grammar = {.names};
+    void handler() {
+        stringObj list;
+        int total = 0;
+        int n = 0;
+        for (object o in roomA.children) if (o != player) total++;
+        for (object o in roomA.children) {
+            if (o == player) continue;
+            n++;
+            if (n > 1) {
+                if (n == total) list += " and ";
+                else list += ", ";
+            }
+            list += $"{o}";
+        }
+        printLine($"Names: {list} ({list.length} chars, {total} objects).");
+    }
+}
+
+verb Rename {
+    grammar = {.rename, NOUN, .to, TOPIC};
+    void handler() {
+        item it = (item)noun;
+        it.label = topicText();
+        printLine($"Renamed to {it.label}.");
+    }
+}
+
+verb Tag {
+    grammar = {.tag, NOUN};
+    void handler() {
+        stringObj s = $"{noun}";
+        s += "!";
+        printLine($"Tag: {s} ({s.length}).");
+    }
+}
+
+verb Loud {
+    grammar = {.loud, NOUN};
+    void handler() {
+        stringObj s = $"{noun}";
+        printLine(s.toUpper());
+    }
+}
+
+verb Echo {
+    grammar = {.echo, TOPIC};
+    void handler() {
+        stringObj t = topicText();
+        printLine($"You say: [{t}] ({consult_words} words, {t.length} chars).");
+    }
+}
+
+verb Match {
+    grammar = {.match, TOPIC};
+    void handler() {
+        stringObj typed = topicText();
+        item b = ball;
+        printLine($"Typed [{typed}]: == stored {typed == stored}, != stored {typed != stored}, =\~ stored {typed =~ stored}.");
+        printLine($"compareTo {typed.compareTo(stored)}, folded {typed.compareTo(stored, true)}, same as ball {typed == b.label}, upper {typed.toUpper() == "RED BALL"}.");
+    }
+}
+
+verb Write {
+    grammar = {.write, TOPIC};
+    void handler() {
+        notebook.entries++;
+        notebook.text += $"{notebook.entries}:";
+        notebook.text += topicText();
+        notebook.text += ";";
+        printLine("Written.");
+    }
+}
+
+verb Size {
+    meta = true;
+    grammar = {.size};
+    void handler() {
+        printLine($"Notebook: {notebook.text.length} chars, {notebook.entries} entries.");
+    }
+}
+
+verb Find {
+    grammar = {.find, TOPIC};
+    void handler() {
+        stringObj w = topicText();
+        int at = notebook.text.indexOf(w);
+        if (at < 0) printLine($"{w} not found (contains {notebook.text.contains(w)}).");
+        else printLine($"{w} at {at} (contains {notebook.text.contains(w)}).");
+    }
+}
+
+verb Tally {
+    grammar = {.tally, TOPIC};
+    void handler() {
+        stringObj w = topicText();
+        stringObj rest = notebook.text;
+        int count = 0;
+        int at = rest.indexOf(w);
+        while (at >= 0) {
+            count++;
+            rest = rest.mid(at + w.length, 9999);
+            at = rest.indexOf(w);
+        }
+        printLine($"{w} appears {count} times.");
+    }
+}
+
+verb Ends {
+    meta = true;
+    grammar = {.ends};
+    void handler() {
+        stringObj t = notebook.text;
+        printLine($"Starts [{t.left(19)}] ends [{t.right(15)}] starts with 1: {t.startsWith("1:")} ends with semicolon: {t.endsWith(";")}.");
+    }
+}
+
+verb Wipe {
+    grammar = {.wipe};
+    void handler() {
+        notebook.text = "";
+        notebook.entries = 0;
+        printLine("Wiped.");
+    }
+}

@@ -12,7 +12,7 @@ case-insensitive, like all Beguile identifiers.
 | `beguilerPatch` | `3` | Patch version component. |
 | `TARGET_GLULX` | (defined, no value) | Defined when the `target` setting is `Glulx`. |
 | `TARGET_ZCODE` | (defined, no value) | Defined when the `target` setting is a Z-machine version. |
-| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `log()` output in an ordinary build (§21.4). |
+| `DEBUG` | (defined, no value) | Defined in a debug build (`--debug`, §20.3). A program can also turn it on itself with `#redef DEBUG` (§14.2.2), for example to keep `bgl.output.log()` output in an ordinary build (§21.4). |
 
 The version symbols are read-only and derived from the compiler's own version. The target symbols are
 set from the `target` setting (§17.3) before any source is read, so they are available to every `#if`

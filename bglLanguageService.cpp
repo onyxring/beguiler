@@ -120,6 +120,19 @@ eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& b
            :                                 beguilerSettings.rewritePaths.value_or(true); // unset = enabled
         return eSettingKind::boolean;
     }
+    else if(auto it = beguilerSettings.intSettings.find(key); it != beguilerSettings.intSettings.end()){
+        iv = it->second;
+        return eSettingKind::integer;
+    }
+    else if(auto* cd = languageService.findClass("beguilerSettingstype")){
+        // Any other int setting the schema declares (an extension's too): its default.
+        for(typeMember* m : cd->members)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(m); vd && vd->name == key && vd->type.name == "int"){
+                iv = languageService.getClassFieldIntDefault("beguilerSettingstype", key, 0);
+                return eSettingKind::integer;
+            }
+        return eSettingKind::unknown;
+    }
     else return eSettingKind::unknown;
     return eSettingKind::str;
 }

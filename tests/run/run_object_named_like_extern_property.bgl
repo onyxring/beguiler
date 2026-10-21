@@ -1,0 +1,13 @@
+// run_object_named_like_extern_property — an object named like an extern property (`initial`) yields
+// its Inform 6 name; the property keeps its own.
+// EXPECT_OUTPUT: 4
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; attributes = {light}; }
+object initial { int n = 4; }
+bool Initialise() { location = roomA; print(initial.n); rfalse; }
+#includeI6 "grammar"

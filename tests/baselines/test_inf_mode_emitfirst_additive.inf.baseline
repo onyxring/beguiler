@@ -105,7 +105,6 @@ object _glulx
     return 0;
 ];
 object bgl
-  with glulx _glulx
 ;
 ! test_inf_mode_emitfirst_additive.inf — Slice 5c: #emitfirst is additive across all
 ! references in the same source file. Multiple #bglDecl islands each contributing an
@@ -144,7 +143,7 @@ object bgl
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
-    @copy sp api;
+     @copy sp api; 
     args=_vararg_count - 1;
     @glk api args retval;
     return retval;

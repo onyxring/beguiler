@@ -4,7 +4,7 @@
 - [21.1 Overview](#211-overview)
 - [21.2 `bglInit()`](#212-bglinit)
 - [21.3 The `bgl` Namespace](#213-the-bgl-namespace)
-- [21.4 `print()`, `printLine()`, `log()` and Article Helpers](#214-print-printline-log-and-article-helpers)
+- [21.4 `bgl.output`: `print()`, `printLine()`, `log()` and Article Helpers](#214-bgloutput-print-printline-log-and-article-helpers)
 - [21.5 IF-Domain Types](#215-if-domain-types)
   - [21.5.1 `attribute` and `attributeList`](#2151-attribute-and-attributelist)
   - [21.5.2 `property`](#2152-property)
@@ -41,7 +41,7 @@ The Beguile Language Runtime (BLR) is the library of Beguile source that every p
 The core provides:
 
 - the `bgl` namespace and its target-specific branches (§21.3);
-- the output routines `print()` and `log()` and the article helpers (§21.4);
+- the output routines in `bgl.output` and the article helpers (§21.4);
 - the IF-domain types: `attribute`, `property`, `dictionaryWord`, `verb`, the grammar types, `bglClass`, `parentProp`, `childrenProp`, `_bglObject`, `_bglPrimitive`, `eType` (§21.5);
 - the numeric, character and allocation utilities: `uint`, `bgl.util.math`, `bgl.util.random`, the `char` methods, `bglAllocated` (§21.6–§21.8);
 - object-tree queries, `bgl.world` (§21.9);
@@ -112,7 +112,7 @@ int roll = bgl.util.random.get(6);       // 1..6
 
 **See also** §10, §10.4, §22.
 
-## 21.4 `print()`, `printLine()`, `log()` and Article Helpers
+## 21.4 `bgl.output`: `print()`, `printLine()`, `log()` and Article Helpers
 
 **Syntax**
 
@@ -120,7 +120,8 @@ int roll = bgl.util.random.get(6);       // 1..6
 print( ⟨value⟩ ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
 printLine( [ ⟨value⟩ ] ) ;
-log( ⟨value⟩ ) ;
+bgl.output.spaces( ⟨n⟩ ) ;
+bgl.output.log( ⟨value⟩ ) ;
 printName( ⟨obj⟩ ) ;
 bgl.printRules.a( ⟨obj⟩ ) ;   bgl.printRules.cA( ⟨obj⟩ ) ;
 bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
@@ -128,7 +129,9 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 **Description**
 
-`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
+The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
+
+`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
 `print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
@@ -136,11 +139,13 @@ The name `(name)` prints is the object's `instanceName` (§11.5.4); an object wi
 
 `printLine(v)` prints `v` exactly as `print(v)` would, through whichever overload is current for its type, then a newline; `printLine()` prints just the newline. It takes an interpolated string too. It is not I6's `print_ret`: it does not return from the enclosing function.
 
-`log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
+`bgl.output.spaces(n)` prints `n` spaces, and nothing when `n` is 0 or less.
 
-The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article and is a file-scope function.
+`bgl.output.log()` accepts the same arguments as `print()` and is a debug-only output: it produces output only when the symbol `DEBUG` is defined: in a debug build (§20.3), or when the program turns it on with `#redef DEBUG` (§14.2.2). Its arguments are parsed and type-checked in every build, so a release build still diagnoses errors inside a `log()` call.
 
-> **Why they are namespaced.** In Inform 6 `a`, `an`, `the`, `A` and `The` are context-sensitive keywords, meaningful only in the `print (rule) value` slot; they are not I6 identifiers, and an I6 program may freely name a variable or object `the`. Beguile models them as ordinary emitters, which would otherwise put four very common words at file scope in every program.
+The article helpers print a world-tree object with an article: `a(obj)` → "a lamp", `cA(obj)` → "A lamp", `the(obj)` → "the lamp", `cThe(obj)` → "The lamp". They are members of `bgl.printRules` (§21.11), so they are written qualified, or `#using bgl.printRules;` (§10.4) brings the short spelling into a file — which is how they read best inside interpolated text. `printName(obj)` → "lamp" prints the bare short name with no article.
+
+> **Why they are namespaced.** In Inform 6 `a`, `an`, `the`, `A` and `The` are context-sensitive keywords, meaningful only in the `print (rule) value` slot; they are not I6 identifiers, and an I6 program may freely name a variable or object `the`. Beguile models them as ordinary emitters, which would otherwise put four very common words at file scope in every program. The rest of the output routines live in `bgl.output` for the same reason: a log is a likely object in a game. Only the `print` family is also global.
 
 **Example**
 
@@ -151,7 +156,7 @@ void Main() {
     print($"You see {bgl.printRules.a(lamp)}.");   // → You see a brass lamp.
     bgl.printRules.cThe(lamp); print(" glows.");   // → The brass lamp glows.
     printLine($"Weight: {2}");                     // → Weight: 2, then a newline
-    log("reached Main");                           // output only in a debug build
+    bgl.output.log("reached Main");                // output only in a debug build
 }
 ```
 
@@ -658,6 +663,9 @@ void Main() {
 bgl.ui.mainWin.id
 bgl.ui.statusBar.id
 bgl.ui.statusBar.height [ = ⟨lines⟩ ]
+bgl.ui.mainWin.width
+bgl.ui.statusBar.width
+bgl.ui.statusBar.moveCursor( ⟨col⟩ , ⟨line⟩ )
 ```
 
 **Description**
@@ -667,8 +675,11 @@ The core defines the two root windows of the display as objects under `bgl.ui`. 
 | Member | Type | Description |
 |---|---|---|
 | `bgl.ui.mainWin.id` | `int` | The main window handle. `0` until a binding or the program assigns it. |
-| `bgl.ui.statusBar.id` | `int` | The status window handle. `0` until assigned; `null` under a binding on the Z-machine, which has no window handles. |
+| `bgl.ui.statusBar.id` | `int` | The status window handle. `0` until assigned; `0` and read-only under a binding on the Z-machine, which has no window handles. |
 | `bgl.ui.statusBar.height` | `int` | The status window's height in lines. Writing it splits the status window to that height. |
+| `bgl.ui.mainWin.width` | `int` | The main window's width in characters. Read-only; `<glulxWindow>` makes it writable (§22.7.4). |
+| `bgl.ui.statusBar.width` | `int` | The status window's width in characters. Read-only; `<glulxWindow>` makes it writable (§22.7.4). |
+| `bgl.ui.statusBar.moveCursor(col, line)` | `void` | Moves the status window's cursor to column `col`, line `line`, both counted from 0. Output must be going to the status window. |
 
 **Example**
 
@@ -679,6 +690,10 @@ bgl.ui.statusBar.height = 2;
 > **[Glulx]** Without a binding, writing `statusBar.height` opens a text-grid window above the root window on first write and re-arranges it thereafter.
 
 > **[Z-machine]** Without a binding, writing `statusBar.height` splits the upper window to that height.
+
+> **[Glulx]** `width` is 80 until the window is open. Glk measures a text-buffer window in units of its font's `0`, so with a proportional font the main window's width is approximate.
+
+> **[Z-machine]** Both windows are as wide as the screen, so both `width`s read the header's screen width.
 
 **See also** §22.6, §22.7, §23.3.8.
 

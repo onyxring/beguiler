@@ -1646,6 +1646,7 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
 
 bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, const vector<expression*>& args,
                                                          functionDef* func, statementBlock* body){
+    syncFunctionAliases();
     GlobalCallMatch result;
     // A local or parameter func<> of the name is nearer than any routine (`func<int,int> cap; cap(4)`).
     if(func != nullptr && (qualifyFromParams(name, func) || qualifyFromBodyLocals(name, body) || qualifyFromAncestorBlocks(name, body)))
@@ -2216,7 +2217,14 @@ string bglParser::resolveI6Name(const string& spec){
         }
         if(overloads.size() == 1){
             functionDef* fd = overloads.front();
-            if(fd->isEmitter) return notReferenceable(fd->dName());
+            if(fd->isEmitter){
+                // An emitter sharing its name with a variable: the variable is the one with an I6 name.
+                if(!hasSig)
+                    for(typeDef* g : languageService.globals)
+                        if(g->name == path && dynamic_cast<functionDef*>(g) == nullptr)
+                            return g->i6name.empty() ? g->name : g->i6name;
+                return notReferenceable(fd->dName());
+            }
             mangleGlobalOverloadSet(fd->name);
             return fd->i6name.empty() ? fd->name : fd->i6name;
         }
@@ -2676,8 +2684,9 @@ string bglParser::clashRenamedMember(const string& name){
     if(i6SetupGlobals.count(name)) return "_m_" + name;
     if(isI6SystemFunction(name)) return "_m_" + name;
     if(name == "main") return "_m_" + name;   // every I6 library defines a `Main` routine
-    // Inform 6 keeps properties, globals, objects and routines in one namespace. A `property` global
-    // names this very property; an emitter emits no symbol.
+    // Inform 6 keeps properties, globals, objects and routines in one namespace. A member yields only to
+    // a global whose I6 name can't move: an `extern`, or a name an `asI6` clause chose. A Beguile global
+    // of the member's name yields instead (§3.11).
     for(typeDef* g : languageService.globals){
         if(g->name != name){
             // A global emitted under an `asI6` name holds that name in I6 (`attribute spent asI6 drained`).
@@ -2686,11 +2695,9 @@ string bglParser::clashRenamedMember(const string& name){
             if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->isEmitter) continue;
             return "_m_" + name;
         }
-        if(auto* vd = dynamic_cast<variableDeclaration*>(g)){ if(vd->type.name != "property") return "_m_" + name; }
-        else if(auto* fd = dynamic_cast<functionDef*>(g)){ if(!fd->isEmitter) return "_m_" + name; }
     }
-    if(languageService.findObjectType(name) != nullptr) return "_m_" + name;
-    for(verbObjectDef* v : languageService.verbs) if(v->name == name) return "_m_" + name;
+    if(namesFixedGlobal(name)) return "_m_" + name;
+    for(verbObjectDef* v : languageService.verbs) if(v->name == name && v->isExternal) return "_m_" + name;
     return "";
 }
 
@@ -2729,43 +2736,19 @@ string bglParser::objectsClassName(const string& t){
     return od != nullptr && od->objectClass != nullptr ? od->objectClass->name : "";
 }
 
-bool bglParser::namesLibraryMethod(const string& name){
-    auto has = [&](const vector<typeMember*>& members){
-        for(typeMember* m : members)
-            if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == name && !fd->isEmitter && !fd->isStatic
-               && fd->src.file.find("beguiLib") != string::npos)
-                return true;
-        return false;
-    };
-    for(typeDef* g : languageService.globals){
-        if(auto* cd = dynamic_cast<classDef*>(g); cd && has(cd->members)) return true;
-        if(auto* od = dynamic_cast<objectDef*>(g); od && has(od->members)) return true;
-    }
-    return false;
-}
-
-bool bglParser::namesLibraryGlobal(const string& name){
-    // A name the library's own Beguile code also defines as a routine (`print`) is one the compiler
-    // calls by name: overloading it doesn't move the methods.
-    for(typeDef* g : languageService.globals)
-        if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == name && !fd->isExternal
-           && fd->src.file.find("beguiLib") != string::npos
-           && !(fd->replacedFunc != nullptr && fd->replacedFunc->isExternal))   // a library routine it replaces is Inform 6's
-            return false;
+// A global whose Inform 6 name can't move (an `extern`, or a routine replacing one), so a member of the
+// name yields to it. A Beguile global of the name yields to the member instead.
+bool bglParser::namesFixedGlobal(const string& name){
     for(typeDef* g : languageService.globals){
         if(g->name != name) continue;
-        // A variable or const (the binding's or the program's), as Inform 6 keeps it in the same namespace.
         if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
             if(vd->type.name == "property" || vd->isNamespaceAlias()) continue;
-            if(vd->isExternal || vd->src.file.find("beguiLib") == string::npos) return true;
+            if(vd->isExternal) return true;
         }
         else if(auto* fd = dynamic_cast<functionDef*>(g)){
-            // A routine the binding declares, or one of the program's own (not the library's Beguile code).
-            if(!fd->isEmitter && (fd->isExternal || (!fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos)
-                                  || (fd->replacedFunc != nullptr && fd->replacedFunc->isExternal)))
-                return true;
+            if(!fd->isEmitter && (fd->isExternal || (fd->replacedFunc != nullptr && fd->replacedFunc->isExternal))) return true;
         }
-        else if(auto* od = dynamic_cast<objectDef*>(g)){ if(dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
+        else if(auto* od = dynamic_cast<objectDef*>(g)){ if(od->isExternal && dynamic_cast<verbObjectDef*>(od) == nullptr) return true; }
     }
     return false;
 }
@@ -2956,10 +2939,13 @@ bool bglParser::memberArrayIsTracked(const std::string& ownerNameIn, const std::
     // A member renamed away from a clash (`_m_sizes`) is looked up by its own name.
     const string propName = propNameIn.rfind("_m_", 0) == 0 && clashRenamedMember(propNameIn.substr(3)) == propNameIn
                           ? propNameIn.substr(3) : propNameIn;
-    // An owner written as its I6 name (`_box` for an object named by a reserved word) is that object.
+    // An owner written as its I6 name (`_box` for a reserved word, `_g_press` for a member's name) is that object.
     string ownerName = ownerNameIn;
     for(typeDef* t : languageService.objectInstances)
-        if(!t->i6name.empty() && t->i6nameAvoidsKeyword && t->i6name == ownerNameIn){ ownerName = t->name; break; }
+        if(!t->i6name.empty() && t->i6name == ownerNameIn){ ownerName = t->name; break; }
+    if(ownerName == ownerNameIn)
+        for(typeDef* g : languageService.globals)
+            if(auto* od = dynamic_cast<objectDef*>(g); od && !od->i6name.empty() && od->i6name == ownerNameIn){ ownerName = od->name; break; }
     auto check = [&](vector<typeMember*>& members) -> int {   // -1 unknown, 0 raw, 1 tracked
         for(typeMember* m : members)
             if(auto* ad = dynamic_cast<arrayDeclaration*>(m))
@@ -5529,6 +5515,7 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                                                          vector<vector<interpolatedSegment>>& interpSegmentsPerArg,
                                                          functionDef* func, statementBlock* body){
     GlobalCallBinding out;
+    syncFunctionAliases();
     // Mangle the overload set (if this name has one) BEFORE resolving, so the matched overload
     // already carries its i6name — the expression path emits its call text immediately, long
     // before the post-parse safety-net pass runs.
@@ -5558,11 +5545,11 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
         ensureOwnPrintOverload(args[0]->resolvedType);
     }
     GlobalCallMatch gcm = resolveGlobalCall(name, args, func, body);
-    // The library's overload was chosen though the program's own function of the name takes the call too.
-    if(gcm.match != nullptr && gcm.match->src.file.find("beguiLib") != string::npos && !looseIdentifierMode)
+    // An overload from another file was chosen though one in this call's file takes the call too.
+    if(gcm.match != nullptr && !gcm.match->src.file.empty() && !looseIdentifierMode)
         for(typeDef* g : languageService.globals)
             if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd != gcm.match && fd->name == name && !fd->isPrePassStub
-               && !fd->src.file.empty() && fd->src.file.find("beguiLib") == string::npos){
+               && !fd->src.file.empty() && fd->src.file != gcm.match->src.file && func != nullptr && fd->src.file == func->src.file){
                 size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
                 if(args.size() < req || args.size() > fd->params.size()) continue;
                 // A union or `var` parameter is meant to lose to a more specific overload (§2.8).
@@ -5582,7 +5569,7 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                     }
                 }
                 if(fits){
-                    parsingWarning(format("this call goes to the '{0}' declared in {2}, which fits it better than the program's own "
+                    parsingWarning(format("this call goes to the '{0}' declared in {2}, which fits it better than this file's "
                         "'{0}' (line {1}); give the program's function another name, or pass all its arguments.",
                         gcm.match->dName(), fd->src.line, filesystem::path(gcm.match->src.file).filename().string()));
                     break;
@@ -6323,17 +6310,11 @@ string bglParser::defaultArgText(functionDef* fd, paramDef* p){
     return out;
 }
 
-// A property an included library's class or object member emits (a program's own members named like
-// a global are renamed instead, so only the library's count).
-bool bglParser::libraryPropertyNamed(const string& name){
-    // A pre-scan stub has no source of its own; its owner's says where it comes from.
-    auto emitsProperty = [&](typeMember* m, const string& ownerFile) -> bool {
+// A property some class or object member emits under this plain name, whoever declared it. A routine,
+// global, array or object of the name yields to it (§3.11).
+bool bglParser::memberPropertyNamed(const string& name){
+    auto emitsProperty = [&](typeMember* m, const string&) -> bool {
         if(m->name != name) return false;
-        string own;
-        if(auto* fd = dynamic_cast<functionDef*>(m)) own = fd->src.file;
-        else if(auto* vd = dynamic_cast<variableDeclaration*>(m)) own = vd->src.file;
-        const string& file = own.empty() ? ownerFile : own;
-        if(file.find("beguiLib") == string::npos) return false;
         if(auto* fd = dynamic_cast<functionDef*>(m))
             return !fd->isEmitter && !fd->isStatic && fd->i6name.empty();
         if(auto* vd = dynamic_cast<variableDeclaration*>(m))
@@ -6346,6 +6327,10 @@ bool bglParser::libraryPropertyNamed(const string& name){
     }
     for(typeDef* t : languageService.objectInstances)
         if(auto* od = dynamic_cast<objectDef*>(t)) for(typeMember* m : od->members) if(emitsProperty(m, od->src.file)) return true;
+    // A free-standing `property` declaration is a property of that name too.
+    for(typeDef* g : languageService.globals)
+        if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->type.name == "property" && vd->name == name && vd->i6name.empty())
+            return true;
     return false;
 }
 
