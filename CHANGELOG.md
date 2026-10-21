@@ -2,57 +2,7 @@
 
 ## [Unreleased]
 
-Library (beguiLib):
-- `<extensions/general/center>`: `bgl.ui.center()` and `bgl.ui.inset()` print
-  text centered or between margins, word-wrapped, in any window.
-- `bgl.output` holds every output routine: `print()`, `printLine()`,
-  `printName()`, `spaces()` and `log()`. Types add their `print()` overloads
-  there with `extend _bglOutput`.
-- `bgl.ui.mainWin.width`, `bgl.ui.statusBar.width` and
-  `bgl.ui.statusBar.moveCursor()` work on both targets without `<glulxWindow>`.
-- `<buf>` ships only the methods a program uses.
-- `<stringObj>`, an alternative to `<string>` (include one or the other): each
-  `stringObj` buffer is a block in a string heap and grows as text is written
-  into it, so a string is no longer limited to 494 characters. Its sizes are the
-  `stringHeapSize` and `stringCaptureSize` settings, and in a debug build the
-  `heap` verb reports the most the run needed, for sizing it for release.
-
-Language:
-- `alias name = obj.name;` at file scope makes an object's emitters callable as
-  globals. `print`, `printLine` and `printName` are global this way; `log()` is
-  now `bgl.output.log()`, so authors can name objects `log`.
-- `replace` keeps a member's kind: an accessor can be replaced only by an
-  accessor, and a value only by a value.
-- The library compiles under the same rules as any program; the compiler no
-  longer asks where code comes from.
-- One rule decides Inform 6 name clashes: a routine, global, array or object
-  named like a member property is emitted as `_g_<name>`; a member yields
-  (`_m_<name>`) only to externs, `asI6` names and other fixed names. Raw Inform 6
-  names a renamed global with `$i6Name(x)`; its bare name is an error.
-- A later `extern` of a routine from another file replaces the earlier
-  signature, whoever declared it.
-- An extension can declare int settings of its own (`extend class
-  beguilerSettingsType { int x; }`) and read them as `#beguilerSettings.x`.
-- A member initializer can read an extern only if it is `const`: declare an
-  Inform 6 object typed by its class as `extern const Tray trayA;`.
-
-Fixes:
-- On the Z-machine, a capture or a literal longer than its string's buffer
-  was written past the buffer (with `<string>`, over the next string) and then
-  silently cut off. The program now stops with an error naming the setting to
-  raise, on both targets. With `<stringObj>`, a long literal is kept whole when
-  the heap has room.
-- On the Z-machine, `bgl.ui.statusBar.id` is now an accessor that returns `0`;
-  it was a plain `null` value, and code that read it as an accessor failed at
-  run time.
-- A method declared below its caller and returning `array<T>` keeps its
-  element type in the call.
-- A routine no longer sweeps fresh arrays after every statement when its calls
-  return file-scope arrays, or when a local takes a call's whole result.
-- An emitter body naming an Inform 6 compiler constant such as `WORDSIZE` is no
-  longer rejected when a Beguile emitter shares its name.
-
-## [0.1.0-preview.5] - 2026-10-18
+## [0.1.0-preview.5] - 2026-10-20
 
 Language:
 - Type kinds: primitive, reference and value types, with two roots (`_bglObject`
@@ -75,6 +25,23 @@ Language:
   `$i6Name` / `$i6Expr`, enum and bnum emitter methods, Glulx hyperlinks,
   `literal` values, bare `=>` lambdas, a ternary over unrelated types resolves to
   their union, and order-independent forward references throughout.
+- `alias name = obj.name;` at file scope makes an object's emitters callable as
+  globals. `print`, `printLine` and `printName` are global this way; `log()` is
+  now `bgl.output.log()`, so authors can name objects `log`.
+- `replace` keeps a member's kind: an accessor can be replaced only by an
+  accessor, and a value only by a value.
+- The library compiles under the same rules as any program; the compiler no
+  longer asks where code comes from.
+- One rule decides Inform 6 name clashes: a routine, global, array or object
+  named like a member property is emitted as `_g_<name>`; a member yields
+  (`_m_<name>`) only to externs, `asI6` names and other fixed names. Raw Inform 6
+  names a renamed global with `$i6Name(x)`; its bare name is an error.
+- A later `extern` of a routine from another file replaces the earlier
+  signature, whoever declared it.
+- An extension can declare int settings of its own (`extend class
+  beguilerSettingsType { int x; }`) and read them as `#beguilerSettings.x`.
+- A member initializer can read an extern only if it is `const`: declare an
+  Inform 6 object typed by its class as `extern const Tray trayA;`.
 
 Library (beguiLib):
 - New layout: core, language extensions at the root (`#include <array>`),
@@ -85,6 +52,19 @@ Library (beguiLib):
   direction and see into the next room.
 - Doc comments across the author-facing surface; article print rules moved to
   `bgl.printRules`.
+- `<extensions/general/center>`: `bgl.ui.center()` and `bgl.ui.inset()` print
+  text centered or between margins, word-wrapped, in any window.
+- `bgl.output` holds every output routine: `print()`, `printLine()`,
+  `printName()`, `spaces()` and `log()`. Types add their `print()` overloads
+  there with `extend _bglOutput`.
+- `bgl.ui.mainWin.width`, `bgl.ui.statusBar.width` and
+  `bgl.ui.statusBar.moveCursor()` work on both targets without `<glulxWindow>`.
+- `<buf>` ships only the methods a program uses.
+- `<stringObj>`, an alternative to `<string>` (include one or the other): each
+  `stringObj` buffer is a block in a string heap and grows as text is written
+  into it, so a string is no longer limited to 494 characters. Its sizes are the
+  `stringHeapSize` and `stringCaptureSize` settings, and in a debug build the
+  `heap` verb reports the most the run needed, for sizing it for release.
 
 Editor and debugger (with beguilex):
 - The debugger reads arrays in their current layout, shows signed numbers,
@@ -103,6 +83,22 @@ Quality:
 - Hardening rounds (field trials, spec doc tests, a feature-interaction matrix,
   LSP probes, heap and measurement rounds) found and fixed several hundred
   defects; the regression suite is 998 tests.
+
+Fixes:
+- On the Z-machine, a capture or a literal longer than its string's buffer
+  was written past the buffer (with `<string>`, over the next string) and then
+  silently cut off. The program now stops with an error naming the setting to
+  raise, on both targets. With `<stringObj>`, a long literal is kept whole when
+  the heap has room.
+- On the Z-machine, `bgl.ui.statusBar.id` is now an accessor that returns `0`;
+  it was a plain `null` value, and code that read it as an accessor failed at
+  run time.
+- A method declared below its caller and returning `array<T>` keeps its
+  element type in the call.
+- A routine no longer sweeps fresh arrays after every statement when its calls
+  return file-scope arrays, or when a local takes a call's whole result.
+- An emitter body naming an Inform 6 compiler constant such as `WORDSIZE` is no
+  longer rejected when a Beguile emitter shares its name.
 
 ## [0.1.0-preview.4] - 2026-09-09
 
