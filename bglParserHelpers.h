@@ -44,6 +44,7 @@ string missingReturnMessage(functionDef& fd);
 // all-paths-return; a switch with a default case where every case body all-
 // paths-returns. Loops (for/while/do) do NOT count — body may not execute.
 bool allPathsReturn(statementBlock* blk);
+bool isInescapableLoop(statement* s);   // an infinite loop no `break` leaves
 
 // True if a class has at least one stored (non-emitter, non-static, non-attribute,
 // non-grammar) data field declared directly on it — a field whose value would

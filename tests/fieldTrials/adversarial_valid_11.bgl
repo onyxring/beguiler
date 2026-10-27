@@ -8,7 +8,7 @@
 // value and an emitter method; a primitive newtype over int with `=`, `()`, `+`, `-` and `==`/`!=`
 // overloads and emitter values, switched on with a range and a `#defineI6` case, thrown and caught by
 // its type; a global emitter called from a lambda; an `alias class` over object whose objects hold a
-// stringOrRoutine (one a routine) and a `literal func<void>` given by only some of them, tested with
+// iStringOrRoutine (one a routine) and a `literal func<void>` given by only some of them, tested with
 // provides() and called; a pooled class sized by a `const int` with bglAllocated, a two-argument
 // create(), destroy(), statics and its own print() reaching the global one through `::`; a named
 // accessor class with an `operator auto()` read by `auto`; a class with an `inline` capacity, a
@@ -82,7 +82,7 @@ emitter void chime() { print "[roof]"; }
 
 alias class landing for object {
     int level;
-    stringOrRoutine plate;
+    iStringOrRoutine plate;
     literal func<void> onArrive;
 }
 

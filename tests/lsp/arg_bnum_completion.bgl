@@ -1,0 +1,6 @@
+bnum winFlags { }
+bnum winPlace : winFlags { left = 0, right = 1 }
+bnum winScale : winFlags { fixed = 16, proportional = 32 }
+bnum itemFlag { portable, fragile }
+void open(winFlags method){ }
+void main(){ open(left | ); }

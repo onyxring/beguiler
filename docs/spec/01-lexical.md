@@ -314,13 +314,14 @@ A span holds any expression, including one with braces of its own, such as a lam
 A string literal inside a span is written with plain quotes; escapes belong to the characters of a
 string, so `\"` inside a span is a compile-time error.
 
-An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
-only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `bgl.output.log()` accept it in the core runtime (§21.4). The emitter expands
+Passed to an emitter that declares an `interpolatedStringLiteral` parameter (§2.4.2), an interpolated
+string is expanded in place. `print()` and `bgl.output.log()` accept it in the core runtime (§21.4). The emitter expands
 it to a sequence of statements, so the call must be a statement of its own; a call inside an
 expression is a compile-time error. An expression-bodied lambda whose body is such a call,
 `=> print($"…")`, is that statement (§4.14). A `stringObj` also takes one by assignment and by `+=`,
-capturing its output (§22.3).
+capturing its output (§22.3). Anywhere else it is used as a value, it becomes a routine that prints it each time it runs: a
+`var`, an `interpolatedString`, a `func<void>`, or a type that holds one (such as the library's `iString`)
+takes it that way (§2.4.3).
 
 The parts print left to right as they are reached, so a call in a span that prints output of its own
 prints it at that point: in `print($"ran {f()}.")`, "ran " appears before anything `f` prints.

@@ -30,7 +30,7 @@
 #include <buf>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

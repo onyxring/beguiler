@@ -1,0 +1,23 @@
+// run_interpolated_string_untyped — an interpolated string becomes a routine that prints it wherever its type
+// doesn't say otherwise: a var, an auto, a var argument, an array<var> element and a ?: branch all read the
+// value live.
+// EXPECT_OUTPUT: var 2
+// EXPECT_OUTPUT: auto 2
+// EXPECT_OUTPUT: arg 2
+// EXPECT_OUTPUT: element 2
+// EXPECT_OUTPUT: other 2
+#beguilerSettings { target = z5; }
+int n = 1;
+void show(var v){ func<void> f = (func<void>)v; f(); }
+array<var> items = {0, $"element {n}", "plain"};
+void main(){
+    bglInit();
+    var v = $"var {n}";
+    auto a = $"auto {n}";
+    n = 2;
+    func<void> f = (func<void>)v; f(); printLine("");
+    print(a); printLine("");
+    show($"arg {n}"); printLine("");
+    func<void> g = (func<void>)items[1]; g(); printLine("");
+    print(n == 1 ? $"one {n}" : $"other {n}"); printLine("");
+}

@@ -69,7 +69,7 @@ bool g_tent;       // the tent has been entered
 // Rooms share their exits and defaults through a class.
 class Room : object {
     attributes = {light};
-    stringOrRoutine description;
+    iStringOrRoutine description;
     string cant_go = "That way is blocked.";
     ref object n_to;
     ref object s_to;

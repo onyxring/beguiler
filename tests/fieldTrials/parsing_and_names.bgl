@@ -19,7 +19,7 @@
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 

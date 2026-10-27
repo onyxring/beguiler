@@ -31,25 +31,25 @@ object cloakroom{
     attributeList attributes = {light, general};
 }
 extend class object { 
-    string description; 
-    ref object s_to; 
-    ref object e_to; 
-    ref object w_to; 
-    ref object n_to;  
+    iString description; 
+    iStringOrObject s_to; 
+    iStringOrObject e_to; 
+    iStringOrObject w_to; 
+    iStringOrObject n_to;  
 }
 object foyer{
-    short_name="Foyer of the Opera House";
+    "Foyer of the Opera House";
     description = "You are standing in a spacious hall, splendidly decorated
         in red and gold, with glittering chandeliers overhead. The entrance 
         from the street is to the north, and there are doorways south and west.";
     s_to = bar;
     w_to = cloakroom;
-    string n_to = "You've only just arrived, and besides, the weather outside 
+    n_to = "You've only just arrived, and besides, the weather outside 
         seems to be getting worse."; 
     attributes = {light}; 
 }
 object bar{
-    short_name="Foyer bar";
+    "Foyer bar";
     description="The bar, much rougher than you'd have guessed after the 
         opulence of the foyer to the north, is completely empty. There seems 
         to be some sort of message scrawled in the sawdust on the floor.";
@@ -71,9 +71,8 @@ object bar{
     attributes = {!light};
 }
 object cloak {
-    object parent=selfobj;
-    string short_name = "velvet cloak";
-    string description = "A handsome cloak, of velvet trimmed with satin, and 
+    "velvet cloak", selfobj;
+    description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
     rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
@@ -102,18 +101,14 @@ object cloak {
     attributes = {clothing, general, worn}; 
 }
 object hook { 
-    string short_name = "small brass hook";
-    object parent = cloakroom;
-    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
-    bool description() {
-        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
-    }
+    "small brass hook", cloakroom;
+    name = {.small, .brass, .hook, .peg};
+    description = $"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}";
     attributes = {scenery, supporter}; 
 }
 object message {
-    string short_name = "scrawled message";
-    object parent = bar;
-    rawArray<dictionaryWord> name = {.message, .sawdust, .floor};
+    "scrawled message", bar;
+    name = {.message, .sawdust, .floor};
     bool description() {
         if (number < 2) {
             score++; 

@@ -1,0 +1,3 @@
+#beguilerSettings { target = z5; informName = "none"; stringHeapSize = 4000; stringCaptureSize = 256; }
+#include <string>
+void main(){ bglInit(); }

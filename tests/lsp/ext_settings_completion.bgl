@@ -1,0 +1,5 @@
+#beguilerSettings { target = z5; informName = "none";
+    
+}
+#include <string>
+void main(){ bglInit(); }

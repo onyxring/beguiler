@@ -7,6 +7,9 @@ Constant beguiler = 5;
     Global _bglLinqActiveDepth = 0;
 
 constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 1536;
+#Ifdef _bglHeapWords;#Endif;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -54,7 +57,7 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
     _bglInitDone = 1;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
- Constant NO_ATTRIBUTE 0; 
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 object _zcode
 ;
 object bgl
@@ -177,14 +180,14 @@ object _bglArray
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
-       _bglArr_setLength [obj prop n cap;
+       _bglArr_setLength [obj prop n room;
     if (n < 0) {
         print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
-    cap=self._bglArr_size(obj,prop);
-    if (n > cap) {
-        n=cap;
+    room=self._bglArr_size(obj,prop);
+    if (n > room) {
+        n=room;
     }
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
@@ -559,7 +562,7 @@ array _bglsink --> 1;
     
 ];
 [_bglHeapInit words bm i;
-    words = 1536;
+    words=_bglheapwords;
     bm = 0;
     i = 0;
     _bglheapstore-->0 = 0;

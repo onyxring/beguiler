@@ -30,7 +30,7 @@
 #define SHOW_BONUS
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum eHue { hueRed, hueGreen, hueBlue }

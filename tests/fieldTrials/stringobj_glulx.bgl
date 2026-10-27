@@ -20,7 +20,7 @@
 #includeI6 "parser"
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
-#include <stringObj>
+#include <string>
 #include <glulxWindow>
 
 stringObj g;

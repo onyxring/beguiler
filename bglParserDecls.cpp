@@ -797,6 +797,7 @@ void bglParser::checkLocalVariableShadowing(const variableDeclaration& varDecl, 
                     if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                 }
                 if(dynamic_cast<verbObjectDef*>(g) != nullptr) continue;   // a verb's name is exempt (§3.10)
+                if(!shadowWarnable(g)) continue;   // declared where this file can't see it
                 if(auto* cd = dynamic_cast<classDef*>(g))
                     parsingWarning("Local variable '" + varDecl.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this routine the name means the variable, though the class still declares types.");
@@ -1101,7 +1102,8 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             }
 
             varDecl.declaredExpressionValue = list;
-        } else if(first.is("$") && file.peekToken(1).is(eTokenType::quote)){
+        } else if(first.is("$") && file.peekToken(1).is(eTokenType::quote) && !takesInterpolatedRoutine((string)dataType)
+                  && lowerText((string)dataType) != "auto"){
             // Interpolated string literal initializer: string s = $"..."
             varDecl.interpSegments = parseInterpolatedSegments(func, body);
             endInterpolatedStatement();
@@ -1110,6 +1112,8 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             varDecl.declaredExpressionValue = rhs;
             // Emitter lookup for operator=(interpolatedstringliteral)
             classDef* classType=languageService.findClass((string)dataType);
+            if(classType == nullptr)
+                parsingError(interpolatedTargetError((string)dataType));
             if(classType != nullptr){
                 functionDef* assignOp = dynamic_cast<functionDef*>(findMemberInHierarchy(classType, [&](typeMember* m){
                     auto* fn = dynamic_cast<functionDef*>(m);
@@ -1122,7 +1126,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
                     }
                 }
                 if(!assignOp)
-                    parsingError(format("Type '{0}' has no operator=(interpolatedStringLiteral) emitter", (string)dataType));
+                    parsingError(interpolatedTargetError((string)dataType));
             }
         } else {
             // Set expected type for the RHS so name resolution can disambiguate (e.g. an
@@ -2396,6 +2400,32 @@ void bglParser::rejectUnionInto(expression* val, classDef* target){
 }
 
 // What a local of a global's name hides, for the shadowing warning: "the extern function 'Cap'".
+// A local warns about the global it hides when the global is in its own file or in one its file includes,
+// directly or through others: the file's author could see it. A name declared in a file that includes this
+// one (a program, round a library or an extension) isn't this file's concern.
+bool bglParser::shadowWarnable(typeDef* g){
+    const string here = file.currentLocation().file;
+    string there;
+    if(auto* st = dynamic_cast<statement*>(g)) there = st->src.file;   // a variable or array
+    else if(auto* fd = dynamic_cast<functionDef*>(g)) there = fd->src.file;
+    else if(auto* od = dynamic_cast<objectDef*>(g)) there = od->src.file;
+    else if(auto* cd = dynamic_cast<classDef*>(g)) there = cd->src.file;
+    else if(auto* ed = dynamic_cast<enumDef*>(g)) there = ed->src.file;
+    if(there.empty() || here.empty() || there == here) return true;
+    set<string> seen{here};
+    vector<string> work{here};
+    while(!work.empty()){
+        string f = work.back(); work.pop_back();
+        auto it = includedBy.find(f);
+        if(it == includedBy.end()) continue;
+        for(const string& inc : it->second){
+            if(inc == there) return true;
+            if(seen.insert(inc).second) work.push_back(inc);
+        }
+    }
+    return false;
+}
+
 string bglParser::shadowedGlobal(typeDef* g){
     bool ext = dynamic_cast<functionDef*>(g) ? dynamic_cast<functionDef*>(g)->isExternal
              : dynamic_cast<objectDef*>(g) ? dynamic_cast<objectDef*>(g)->isExternal

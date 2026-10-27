@@ -17,7 +17,7 @@
 #include <bindings/i6StandardLibrary>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum eVerdict { pass, halt }

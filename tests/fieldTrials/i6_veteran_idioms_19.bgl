@@ -51,7 +51,7 @@ extern int weighings;
 extern void PrintGrams(int n);
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
     ref object n_to;
     ref object s_to;
     ref object e_to;

@@ -33,7 +33,7 @@
 #include <array>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 //-- Interval: a struct through recursion -----------------------------------------------------

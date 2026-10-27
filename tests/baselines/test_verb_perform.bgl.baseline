@@ -15,6 +15,9 @@ Replace banner;
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 16384;
+#Ifdef _bglHeapWords;#Endif;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -62,10 +65,10 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
     _bglInitDone = 1;
     #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
 ];
- Constant NO_ATTRIBUTE 0; 
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 object _glulx
 ;
-[_bglGlkEvent event context buffer _l_target known n typed;
+[_bglGlkEvent event context inputBuf _l_target known n typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
@@ -79,11 +82,11 @@ object _glulx
     }
     typed = 0;
     if (context == 0) {
-        typed=_bglsuspendlineinput(buffer);
+        typed=_bglsuspendlineinput(inputBuf);
     }
      _l_target(); 
     if (context == 0) {
-        _bglresumelineinput(buffer, typed);
+        _bglresumelineinput(inputBuf, typed);
     }
     return true;
 ];
@@ -157,7 +160,7 @@ verb 'wibble'
     <(##take) (ball)>;
     rtrue;
 ];
-[_bglSuspendLineInput buffer typed;
+[_bglSuspendLineInput inputBuf typed;
     typed = 0;
     
             glk_cancel_line_event(gg_mainwin, _bglLineEvent);
@@ -165,11 +168,11 @@ verb 'wibble'
         
     return typed;
 ];
-[_bglResumeLineInput buffer typed;
+[_bglResumeLineInput inputBuf typed;
     
             DrawStatusLine();
             L__M(##Prompt);
-            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
+            glk_request_line_event(gg_mainwin, inputBuf + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
         
 ];
 [_bgl_float__oplteqgt a b;

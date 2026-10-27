@@ -82,7 +82,7 @@ given, the rule is per property:
 | `informName` / `informPath` | Command line (`-inform=`) wins over both; between the two block properties, `informPath` wins over `informName` (§16.5). |
 | `includePaths` | Additive. Command-line entries are added first, then block entries in the order they are parsed. |
 | `filterVerbSplitWarnings` | Command line wins. |
-| `beguiLibPath` | The command line (`-lib=`, or the default) locates the library for the core files loaded before the program's own source is read; a block value replaces it for every `#include` processed after the block. |
+| `beguiLibPath` | Command line wins. Otherwise the entry file's block names the library for the whole program, read before any of it (§17.1). |
 
 `--debug`, `--lsp` and pass-through switches have no settings equivalent; `generateBlorb`,
 `blorbAssetPath`, `economy`, `omitUnusedRoutines`, `autoInitialize`, `release`, `serial`, the runtime

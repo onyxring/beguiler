@@ -9,7 +9,7 @@
 // only); delete inside a children loop; an object parented to the library's LibraryExtensions
 // object supplying ext_messages, ext_parsenoun and ext_timepasses; the ParseNoun and InitGlkWindow
 // entry points; additive before on a class and an object both running; a routine description held
-// in a stringOrRoutine; extern routines the binding leaves out (IndirectlyContains,
+// in a iStringOrRoutine; extern routines the binding leaves out (IndirectlyContains,
 // CommonAncestor, ObjectIsUntouchable, PrintToBuffer into an array<char>); PlayerTo, TestScope and
 // PronounNotice; 32-bit arithmetic, uint, hex and binary literals inside interpolations and
 // bgl.asm opcodes; switch with value lists, ranges and guards together, and switch on dictionary
@@ -77,7 +77,7 @@ array<char> nameBuf[24];
 
 class Room : object {
     attributes = light;
-    stringOrRoutine description;
+    iStringOrRoutine description;
     ref object n_to;
     ref object s_to;
 }

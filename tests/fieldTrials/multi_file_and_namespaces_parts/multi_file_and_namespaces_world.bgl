@@ -1,7 +1,7 @@
 /*  Field trial part — included by multi_file_and_namespaces.bgl. Not a trial on its own.  */
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum eSize { small, medium, large }

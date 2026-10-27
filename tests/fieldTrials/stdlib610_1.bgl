@@ -47,7 +47,7 @@ object LibraryMessages {
 #include <array>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // ---- counters, kept in a namespace object --------------------------------------------------------

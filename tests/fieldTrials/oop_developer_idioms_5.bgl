@@ -28,7 +28,7 @@
 #include <string>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum eStatus { Open = 1, Held, Shipped, Cancelled }

@@ -25,6 +25,34 @@ CASES = [
     dict(name='includePaths class', doc='tests/lsp/include_path_class.bgl', at=(1, 0), no_diagnostics=True),
     # An error inside a class body is the only diagnostic: recovery leaves the class and the rest intact.
     dict(name='recovery inside a class body', doc='tests/lsp/class_error_recovery.bgl', at=(1, 0), diagnostics=1),
+    # A setting an extension declares completes in a #beguilerSettings block above its include.
+    dict(name='extension setting completion', doc='tests/lsp/ext_settings_completion.bgl', at=(2, 4),
+         has=['stringHeapSize', 'stringCaptureSize', 'target']),
+    # An extension's settings, set above its include, raise no diagnostic.
+    dict(name='extension settings valid', doc='tests/lsp/ext_settings_valid.bgl', at=(1, 0), no_diagnostics=True),
+    # A misspelled int setting is still reported once the whole program is read.
+    # `return` in a routine that returns an enum offers its members, then in-scope values of that type.
+    dict(name='enum return completion', doc='tests/lsp/return_enum_completion.bgl', at=(4, 11),
+         has=['calm', 'wary', 'angry', 'm'], lacks=['true', 'b']),
+    # `return` in a routine that returns bool offers true and false.
+    dict(name='bool return completion', doc='tests/lsp/return_bool_completion.bgl', at=(3, 11),
+         has=['true', 'false', 'b'], lacks=['calm', 'm']),
+    # A union return type offers the values of each of its enum and bool members.
+    dict(name='union return completion', doc='tests/lsp/return_union_completion.bgl', at=(6, 11),
+         has=['calm', 'angry', 'true', 'false', 'b', 'm'], lacks=['count']),
+    # A union of an enum and a routine type offers the enum's members and routine values in scope.
+    dict(name='enum or routine return completion', doc='tests/lsp/return_union_routine_completion.bgl', at=(6, 11),
+         has=['calm', 'wary', 'angry', 'act', 'react'], lacks=['true', 'b']),
+    # A base bnum offers the values of the bnums built on it, also after `|` in a combination.
+    dict(name='bnum return completion', doc='tests/lsp/return_bnum_completion.bgl', at=(8, 18),
+         has=['left', 'right', 'fixed', 'proportional', 's'], lacks=['portable', 'true', 'b']),
+    # A base-bnum parameter offers the values of the bnums built on it, also after `|`.
+    dict(name='bnum argument completion', doc='tests/lsp/arg_bnum_completion.bgl', at=(6, 24),
+         has=['left', 'right', 'fixed', 'proportional'], lacks=['portable']),
+    # A routine-typed parameter offers routines of a fitting signature by name.
+    dict(name='routine argument completion', doc='tests/lsp/arg_routine_completion.bgl', at=(4, 19),
+         has=['react'], lacks=['score']),
+    dict(name='unknown int setting', doc='tests/lsp/ext_settings_unknown.bgl', at=(1, 0), diagnostics=1),
 ]
 
 def run_case(case):

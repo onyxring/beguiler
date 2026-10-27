@@ -156,6 +156,16 @@ static bool i6IslandMayReturn(i6RawNode* raw){
     return false;
 }
 
+// An infinite loop (`while(true)`, `for(;;)`, `do…while(true)`, `do…until(false)`) with no `break` out of it:
+// control leaves it only by `return`.
+bool isInescapableLoop(statement* s){
+    if(auto* ws = dynamic_cast<whileStatement*>(s)) return isConstTrueCondition(ws->condition) && !loopBodyHasEscapingBreak(ws->body);
+    if(auto* fs = dynamic_cast<forStatement*>(s)) return isConstTrueCondition(fs->condition) && !loopBodyHasEscapingBreak(fs->body);
+    if(auto* ds = dynamic_cast<doStatement*>(s))
+        return (ds->isWhile ? isConstTrueCondition(ds->condition) : isConstFalseCondition(ds->condition)) && !loopBodyHasEscapingBreak(ds->body);
+    return false;
+}
+
 bool allPathsReturn(statementBlock* blk){
     if(blk == nullptr) return false;
     for(statement* s : blk->statements){

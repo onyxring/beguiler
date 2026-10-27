@@ -8,8 +8,8 @@
 //     a closed door shows its `remoteClosed`;
 //   - the room's `cant_look` (the eight compass directions) or `cant_look_alt` (up, down, in and out);
 //   - the library's own message.
-// A `remoteDescription` routine is told the direction it is seen from. Each property is a string, or a
-// routine that prints.
+// Each property is a string, plain or interpolated, or a method that prints; a `remoteDescription`
+// method is told the direction it is seen from.
 //
 // Include it after the library's verblib: its verbs use the library's globals.
 //
@@ -24,13 +24,13 @@ property u_look;  property d_look;  property in_look; property out_look;
 property cant_look; property cant_look_alt; property remoteClosed; property remoteDescription;
 
 extend class object {
-    stringOrRoutine n_look;  stringOrRoutine s_look;  stringOrRoutine e_look;  stringOrRoutine w_look;
-    stringOrRoutine ne_look; stringOrRoutine nw_look; stringOrRoutine se_look; stringOrRoutine sw_look;
-    stringOrRoutine u_look;  stringOrRoutine d_look;  stringOrRoutine in_look; stringOrRoutine out_look;
-    stringOrRoutine cant_look;           /// Nothing to see that way, for the eight compass directions.
-    stringOrRoutine cant_look_alt;       /// Nothing to see that way, for up, down, in and out.
-    stringOrRoutine remoteClosed;        /// A closed door seen from its room.
-    stringOrRoutine remoteDescription;   /// This room seen from next door; a routine is told the direction.
+    iString n_look;  iString s_look;  iString e_look;  iString w_look;
+    iString ne_look; iString nw_look; iString se_look; iString sw_look;
+    iString u_look;  iString d_look;  iString in_look; iString out_look;
+    iString cant_look;           /// Nothing to see that way, for the eight compass directions.
+    iString cant_look_alt;       /// Nothing to see that way, for up, down, in and out.
+    iString remoteClosed;        /// A closed door seen from its room.
+    iString remoteDescription;   /// This room seen from next door; a routine is told the direction.
 }
 
 verb LookDirection {

@@ -1,0 +1,4 @@
+void react(){ }
+int score(int n){ return n; }
+void later(func<void> f){ }
+void main(){ later(); react(); }

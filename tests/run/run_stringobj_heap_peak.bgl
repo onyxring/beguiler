@@ -8,7 +8,7 @@
 // INPUT: y
 #beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; stringHeapSize = 3000; }
 #include <bindings/i6StandardLibrary>
-#include <stringObj>
+#include <string>
 #includeI6 "parser"
 #includeI6 "verblib"
 object roomA { short_name = "Room A"; attributes = {light}; }

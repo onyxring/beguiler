@@ -2,7 +2,7 @@
     A hardening test: not a game, not an example, not for reuse.  */
 
 // Exercises: an eleventh PunyInform program, built on area pairs no earlier program combined: an
-// object's `auto { }` accessor over a `stringOrRoutine` whose setter tests `typeof` and counts through
+// object's `auto { }` accessor over a `iStringOrRoutine` whose setter tests `typeof` and counts through
 // `outer`; a class whose emitter members feed a `try`/`throw`/`catch` method and a `?.`/`??` chain; a
 // struct whose methods index arrays of arrays (a local one and one passed in), and an array of
 // arrays of that struct built from inline objects; recursive routines over an enum (counting and
@@ -267,9 +267,9 @@ object dial {
     int routineSets = 0;
     int textSets = 0;
     auto face = {
-        stringOrRoutine _src = "blank";
-        stringOrRoutine operator () { return _src; }
-        void operator = (stringOrRoutine v) {
+        iStringOrRoutine _src = "blank";
+        iStringOrRoutine operator () { return _src; }
+        void operator = (iStringOrRoutine v) {
             _src = v;
             if (typeof(v) == eType.routine) outer.routineSets++;
             else outer.textSets++;

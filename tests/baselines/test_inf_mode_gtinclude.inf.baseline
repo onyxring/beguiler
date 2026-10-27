@@ -1,4 +1,4 @@
- Constant NO_ATTRIBUTE 0; 
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 ! test_inf_mode_gtinclude.inf — .inf-mode positive baseline.
 !
 ! Regression for the current-file-relative include rewrite.

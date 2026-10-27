@@ -5,7 +5,7 @@
 // EXPECT_OUTPUT: 701 characters were printed into room for
 // EXPECT_OUTPUT: raise the stringCaptureSize setting
 #beguilerSettings { target = glulx; informName = "none"; }
-#include <stringObj>
+#include <string>
 #include "glulxConsole.bgl"
 stringObj after = "AFTER";
 void main(){

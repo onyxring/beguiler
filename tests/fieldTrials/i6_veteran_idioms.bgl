@@ -55,7 +55,7 @@ extern object sibling(object o);
 extern bool IndirectlyContains(object o1, object o2);
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
     ref object e_to;
     ref object w_to;
 }

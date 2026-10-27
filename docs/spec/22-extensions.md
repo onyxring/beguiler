@@ -21,7 +21,7 @@
   - [22.7.11 Window Output](#22711-window-output)
   - [22.7.12 Capabilities](#22712-capabilities)
 - [22.8 `<glulxImage>`](#228-glulximage)
-- [22.9 `<stringObj>`](#229-stringobj)
+- [22.9 `<archive/string>`](#229-archivestring)
 <!-- /toc -->
 
 ## 22.1 Overview
@@ -156,7 +156,7 @@ Two types, for two different things:
 | Type | The slot holds | Mutable | Lifecycle |
 |---|---|---|---|
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
-| `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
+| `stringObj` | a buffer of its own, a block in the string heap | yes | allocated on declaration, released at scope exit |
 
 A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own, and so is passing a `stringObj` where a `string` parameter is expected: the parameter takes `stringObj`, or `string | stringObj` for either. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
 
@@ -228,18 +228,35 @@ void Main() {
 }
 ```
 
+**Storage**
+
+Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
+
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
+
+Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
+
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
 **Settings**
 
-The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). Each buffer is `bglStringDefaultSize` bytes (default `500`, §22.2), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+Both sizes are settings that `<string>` declares (§17.4); unset or `0`, they take the defaults above:
+
+```bgl
+#beguilerSettings { stringHeapSize = 8192; stringCaptureSize = 1024; }
+#include <string>
+```
+
+In a debug build of a program with a library binding, the `heap` verb also reports the string heap: its size, the bytes in use, and the most the run has needed. That figure allows for compaction and growth, so a `stringHeapSize` set to it holds the same run; set it from a debug playthrough to shrink the heap for release.
+
+The string objects themselves come from a pool of `bglStringPoolReserve` (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). It is an I6 constant, set before the include:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }
 #include <string>
 ```
-
-> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
-> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
-> large.
 
 `bglStringPoolReserve` is unrelated to `framePoolSize` (§17.4), which sizes the Z-machine local-variable overflow pool.
 
@@ -247,7 +264,7 @@ The pool holds `bglStringPoolReserve` string objects (default `10`); every live 
 
 Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by a printer that accepts a literal, a `stringObj`, a buffer or a routine (which it runs). For use of `stringObj` as an array element type — the slot allocates on first write and is released when the element is dropped — see §12.10.
 
-**See also** §2.2, §12.10, §21.2, §22.2.
+**See also** §2.2, §12.10, §21.2, §22.2, §22.9.
 
 ## 22.4 `<array>`
 
@@ -802,37 +819,29 @@ Does not require `bglInit()`. Does not require `generateBlorb`, but without pack
 
 **See also** §17.6, §21.12, §22.7.
 
-## 22.9 `<stringObj>`
+## 22.9 `<archive/string>`
 
-**Purpose.** An alternative to `<string>` (§22.3) whose `stringObj` buffers grow as text is written into them.
+**Purpose.** The earlier `<string>`, kept for comparison: the same types, operators and methods as `<string>` (§22.3), but each `stringObj` has a buffer of fixed size.
 
 **Include**
 
 ```bgl
-#include <stringObj>     // in place of <string>; includes <buf>
+#include <archive/string>   // in place of <string>; includes <buf>
 ```
 
 **Description**
 
-`<stringObj>` provides the same types, operators and methods as `<string>`, with the same lifecycle: `bglStringPoolReserve` string objects (default `10`), taken on declaration and released at scope exit. Only the storage behind them differs. Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
-
-Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
-
-A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
-
-Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
-
-When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
-
-Both sizes are settings that `<stringObj>` declares (§17.4); unset or `0`, they take the defaults above:
+Each `stringObj` takes a buffer of `bglStringDefaultSize` bytes (default `500`, §22.2) from a pool of `bglStringPoolReserve` (default `10`), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
 
 ```bgl
-#beguilerSettings { stringHeapSize = 8192; stringCaptureSize = 1024; }
-#include <stringObj>
+#i6 { Constant bglStringPoolReserve 32; }
+#include <archive/string>
 ```
 
-In a debug build of a program with a library binding, the `heap` verb also reports the string heap: its size, the bytes in use, and the most the run has needed. That figure allows for compaction and growth, so a `stringHeapSize` set to it holds the same run; set it from a debug playthrough to shrink the heap for release.
+> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
+> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
+> large.
 
-`<stringObj>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
+`<archive/string>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
 
 **See also** §22.2, §22.3.

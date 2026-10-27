@@ -1,0 +1,41 @@
+// run_istring — the bindings' iString and iStringOrObject: a description and an exit each take a
+// plain or an interpolated string, read each time it prints; an exit also takes a room, or a
+// method standing in for it.
+// EXPECT_OUTPUT: interpolated:1 object:1
+// EXPECT_OUTPUT: A 60W lamp.
+// EXPECT_OUTPUT: Room B
+// EXPECT_OUTPUT: The way west is bricked up.
+// EXPECT_OUTPUT: The 3 storms block the way.
+// EXPECT_OUTPUT: The door is stuck.
+// INPUT: examine lamp
+// INPUT: e
+// INPUT: w
+// INPUT: n
+// INPUT: s
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+extend class object {
+    iString description;
+    iStringOrObject e_to; iStringOrObject w_to; iStringOrObject n_to; iStringOrObject s_to;
+}
+int watts = 40;
+int storms = 3;
+object roomA { "Room A"; description = "Room A."; attributes = {light}; e_to = roomB; }
+object lamp { "lamp", roomA; name = {.lamp}; description = $"A {watts}W lamp.^"; }
+object roomB {
+    "Room B"; description = "Room B."; attributes = {light};
+    w_to = "The way west is bricked up.";
+    n_to = $"The {storms} storms block the way.^";
+    object s_to(){ rtrue("The door is stuck."); }
+}
+bool Initialise() {
+    location = roomA;
+    watts = 60;
+    printLine($"interpolated:{(int)lamp.description.isInterpolated()} object:{(int)roomA.e_to.isObject()}");
+    rfalse;
+}
+#includeI6 "grammar"

@@ -262,7 +262,7 @@ The heap's size is the `heapSize` setting (§17.4). When it runs out, the collec
 results still on their way somewhere) and the allocation is tried again; running out after that is a run-time
 error that names the setting. A debug build of a program with a library binding also has a `heap` verb that
 prints the heap's size, the words in use and the most ever in use, for setting `heapSize` (and the same for
-`<stringObj>`'s string heap, §22.9).
+`<string>`'s string heap, §22.3).
 
 `bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
 and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of

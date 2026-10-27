@@ -30,7 +30,7 @@ const int DOOR_TURNS = 2;       // the doors stay open this many turns
 #include <bindings/i6StandardLibrary>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum heading { idle, up, down }

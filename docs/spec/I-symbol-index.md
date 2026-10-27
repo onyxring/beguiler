@@ -171,11 +171,17 @@ need `#include <array>`.
 | `insert(pos, src)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `int` | type | core | §2.2 |
 | `intLiteral`, `negativeIntLiteral`, `stringLiteral`, `charLiteral`, `dictionaryWordLiteral`, `interpolatedStringLiteral` | type (literal pseudo-type) | core | §2.4 |
+| `interpolatedString` | type (a routine that prints an interpolated string) | core | §2.4.3 |
+| `iString` | type (named union: `string \| interpolatedString`) | binding | §2.8.2, §21.5.10, §23.3.7 |
+| `iStringOrObject` | type (named union: `iString`'s members and `object`) | binding | §21.5.10, §23.3.7 |
+| `iStringOrRoutine` | type (named union: `iString`'s members and `func<void>`) | binding | §21.5.10, §23.3.7 |
 | `nullLiteral` | type (literal pseudo-type: the type of `null`) | core | §2.5 |
 | `is(Class)` | method on `object` | core | §21.5.6 |
 | `isEmpty()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `isLower()`, `isUpper()`, `isAlpha()`, `isNumeric()`, `isAlphaNumeric()`, `isVowel()`, `isConsonant()` | method on `char` | core | §21.7 |
-| `isRoutine()` | method on `stringOrRoutine` | binding | §21.5.10 |
+| `isInterpolated()` | method on `iString` | binding | §21.5.10 |
+| `isObject()` | method on `iStringOrObject` | binding | §21.5.10 |
+| `isRoutine()` | method on `iStringOrRoutine` | binding | §21.5.10 |
 | `isTracked()` | method on `array<T>` | `<array>` | §22.4 |
 | `itobj`, `himobj`, `herobj` | variable (pronoun objects) | binding | §23.4 |
 | `length` | property on `array<T>` (assignable with `<array>`) | core; `<array>` | §12.3, §22.4 |
@@ -241,7 +247,6 @@ need `#include <array>`.
 | `story`, `headline` | constant (I6) and `extern string` | binding | §23.3.2 |
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
-| `stringOrRoutine` | type (named union) | binding | §2.8.2, §21.5.10, §23.3.7 |
 | `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the struct below) | core | §7.7 |
 | `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
 | `styleSheet` | type (struct; one `style` per style type) | `<glulxWindow>` | §22.7.7 |

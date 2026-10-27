@@ -912,6 +912,7 @@ static bool endsInReturn(statementBlock* body){
     if(it == body->statements.rend()) return false;
     statement* last = *it;
     if(dynamic_cast<returnStatement*>(last) != nullptr || dynamic_cast<throwStatement*>(last) != nullptr) return true;   // a throw leaves too
+    if(isInescapableLoop(last)) return true;   // left only by `return`
     if(auto* is = dynamic_cast<ifStatement*>(last)) return endsInReturn(is->thenBlock) && endsInReturn(is->elseBlock);
     if(auto* sw = dynamic_cast<switchStatement*>(last)){
         bool hasDefault = false;
@@ -2992,10 +2993,11 @@ void i6Emitter::emitFunction(functionDef* funcNode){
         for(statement* stmt : body->statements)
             emitStatement(stmt, "    ");
     // emit deinit cleanups at implicit end of function (fall-through path)
-    if(currentCleanups != nullptr && !endsInReturn(body))
+    bool fallsThrough = !endsInReturn(body);
+    if(currentCleanups != nullptr && fallsThrough)
         for(auto& [varName, body] : inReverse(*currentCleanups))
             out << "    " << spillWord(body) << "\n";   // a spilled local is freed through its frame slot
-    if(currentSpillCount > 0 && !endsInReturn(body))   // a final return freed the frame already
+    if(currentSpillCount > 0 && fallsThrough)   // a final return freed the frame already
         out << format("    _bglFrameFree({0});\n", currentSpillCount);
     currentCleanups = nullptr;
     currentSweep.clear();

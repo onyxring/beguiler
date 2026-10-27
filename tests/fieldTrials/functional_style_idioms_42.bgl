@@ -36,7 +36,7 @@
 #include <linq>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 const int TRAILCAP = 12;

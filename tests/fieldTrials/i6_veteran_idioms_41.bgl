@@ -45,7 +45,7 @@ object LibraryMessages {
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 array<string> bandName = {"letter", "small packet", "parcel", "heavy parcel"};

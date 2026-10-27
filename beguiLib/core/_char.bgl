@@ -12,7 +12,7 @@
 primitive class charLiteral {
     emitter char operator();    /// Convert to a `char`.
     char operator auto();       /// Convert implicitly to a `char`.
-    replace emitter void print(){ print (char)$val; }   /// Print the character.
+    emitter void print(){ print (char)$val; }   /// Print the character.
 
     emitter char operator + (int c){$val+$c}        /// The character `c` codes after this one.
     emitter char operator - (int c){$val-$c}        /// The character `c` codes before this one.
@@ -44,7 +44,7 @@ primitive class char {
     emitter char operator + (char c){$val+$c}       /// The character whose code is the sum of the two codes.
     emitter char operator - (char c){$val-$c}       /// The character whose code is the difference of the two codes.
 
-    replace emitter void print(){ print (char)$val; }   /// Print the character.
+    emitter void print(){ print (char)$val; }   /// Print the character.
 }
 extend _bglOutput {
     /// Print a character.

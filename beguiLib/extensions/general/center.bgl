@@ -1,8 +1,8 @@
 //===================================================================================================
 // center.bgl — center text in the window being printed to, word-wrapped; or inset it between margins.
 //---------------------------------------------------------------------------------------------------
-//     bgl.ui.center("Fourscore and seven years ago our fathers brought forth on this continent a new nation.", 20);
-//     bgl.ui.inset("Text indented from both edges of the window.");
+//     bgl.output.center("Fourscore and seven years ago our fathers brought forth on this continent a new nation.", 20);
+//     bgl.output.inset("Text indented from both edges of the window.");
 // Lines break after a space, '?', '/', '-' or ':', and at each '^'. The text may be a string, a routine
 // that prints it, or an object, whose name is printed.
 //===================================================================================================
@@ -16,11 +16,11 @@ enum centerHighlight {
     all = 2         /// The text and the spaces before it.
 }
 
-/// The longest text bgl.ui.center() and bgl.ui.inset() take, in characters.
+/// The longest text bgl.output.center() and bgl.output.inset() take, in characters.
 const int centerBufferSize = 1024;
 array<char> _centerText[centerBufferSize];
 
-extend _bglUi {
+extend _bglOutput {
     /// Print `text` centered, wrapped at `maxWidth` characters (the window's width when 0). `leftAlign`
     /// centers the block but keeps its lines flush left; `frame`, when given, is called with 0 for the width
     /// it adds to a line, then with 1 and 2 to print what goes before and after each line; `subIndent`

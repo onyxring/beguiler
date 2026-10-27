@@ -1,0 +1,14 @@
+// A routine whose last statement is an infinite loop left only by `return` has no fall-through path, so its
+// end-of-routine cleanup (freeing a local array's frame) isn't emitted after the loop: Inform 6 would warn
+// that it can never be reached. Each `return` frees the frame itself.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int firstOver(int limit){
+    array<char> scratch[8];
+    int i = 0;
+    while(true){
+        scratch[0] = 'x';
+        if(i > limit) return i;
+        i++;
+    }
+}
+void main(){ print(firstOver(3)); }

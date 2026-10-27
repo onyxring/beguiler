@@ -29,7 +29,7 @@
 #include <array>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 attribute marked;

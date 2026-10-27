@@ -201,7 +201,10 @@ void bglParser::rejectEscapingLambda(const expression* e, const string& where){
     while(v.size() > 2 && v.front() == '(' && v.back() == ')') v = v.substr(1, v.size() - 2);
     if(v.rfind("_bglLambda_", 0) != 0 || v.find_first_of("(,") != string::npos) return;
     string captured = capturedByLambdaIn(e);
-    if(!captured.empty())
+    if(!captured.empty() && e->resolvedType == "interpolatedstring")
+        parsingError(format("An interpolated string {0} prints after the locals it reads are gone, so it cannot "
+            "read them; this one reads '{1}'.", where, captured));
+    else if(!captured.empty())
         parsingError(format("A lambda {0} runs after the variables it captures are gone, so it cannot "
             "capture them; this one captures '{1}'.", where, captured));
 }
@@ -1228,6 +1231,7 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
                         const string& t = vd->type.name;
                         if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                     }
+                    if(!shadowWarnable(g)) continue;   // declared where this file can't see it
                     if(auto* cd = dynamic_cast<classDef*>(g))   // a type, not a global `::` reaches
                         parsingWarning("Loop variable '" + name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                             + "'; in the loop the name means the variable, though it still names the type in declarations.");
@@ -4014,6 +4018,8 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             }
             if(!found && leftType->name == "bytearraylength")
                 parsingError("an array<char>'s length is assignable only with #include <buf>.");
+            if(!found && valueTypeName == "interpolatedstringliteral")
+                parsingError(interpolatedTargetError(leftType->name));
             if(!found)
                 parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName(leftType->name)));
         }
@@ -4114,8 +4120,9 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
         }
     }
 
-    // Interpolated string literal on RHS: var = $"..."
-    if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)){
+    // Interpolated string literal on RHS: var = $"..." (a routine type takes it through the expression)
+    if(file.peekToken(1).is("$") && file.peekToken(2).is(eTokenType::quote)
+       && !(leftType != nullptr && takesInterpolatedRoutine(leftType->name))){
         file.getToken();  // consume '$'
         assignExpr.interpSegments = parseInterpolatedSegments(func, body);
         endInterpolatedStatement();

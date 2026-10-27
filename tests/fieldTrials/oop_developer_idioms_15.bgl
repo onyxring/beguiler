@@ -30,7 +30,7 @@
 #define STRICT_BAYS
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

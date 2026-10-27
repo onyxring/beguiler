@@ -109,7 +109,9 @@ private:
     // Completion case: `includePaths = "..."` directory segments inside #beguilerSettings.
     json completeIncludePathsDir(const std::string& uri, int line, int col, const std::string& lineText,
                                  bool insideBsBlock, bool& handled);
-    // Completion case: a call argument whose parameter type is an enum -> that enum's members.
+    // Append an enum's values (a base bnum's include its derived bnums'); false if `type` isn't one.
+    bool appendEnumValues(json& items, std::vector<std::string>& types, const std::string& type, bool bnumOnly);
+    // Completion case: a call argument whose parameter type is an enum or bnum -> its values.
     json completeEnumArgument(const std::string& uri, int line, int col, const std::string& lineText,
                               const std::string& docText, bool& handled);
     // Append the in-scope symbols `fits` accepts (see definition).
@@ -118,6 +120,9 @@ private:
     // Completion case: a typed (non-enum) call argument -> in-scope symbols assignable to that type.
     json completeTypedArgument(const std::string& uri, int line, int col, const std::string& lineText,
                                const std::string& docText, bool& handled);
+    // Completion case: `return ▮` in a routine returning an enum or bool -> its values.
+    json completeReturnValue(const std::string& uri, int line, int col, const std::string& lineText,
+                             const std::string& docText, bool& handled);
     // Completion case: `#include <...>` beguiLib library names.
     json completeAngleInclude(int line, int col, const std::string& lineText, bool& handled);
     // Completion case: class-header inheritance position (`class Foo : |`, `alias class Foo for |`).

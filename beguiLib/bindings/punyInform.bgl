@@ -386,15 +386,26 @@ extern verb OopsCorrection { }  /// replace the mistyped word with second (meta)
 
 //-- General bits of I6-to-Beguile setup ----------------------------------------
 
-// stringOrRoutine is a convenience union type, since the library uses this pattern regularly.
-union stringOrRoutine = string | func<void> {
-    emitter bool isRoutine() { metaclass($val) == Routine }
+/// A string, plain or interpolated; an interpolated one is evaluated each time it prints.
+union iString = string | interpolatedString {
+    emitter bool isInterpolated() { metaclass($val) == Routine }   /// True when the value is an interpolated string.
 }
 extend _bglOutput {
-    emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
+    emitter void print(iString v){ _bglPrintOrRun($v) }   /// Print the text.
+}
+/// An iString the library prints or an object it uses, such as an exit.
+union iStringOrObject = string | interpolatedString | object {
+    emitter bool isObject() { metaclass($val) == Object }   /// True when the value is an object.
+}
+/// An iString or a routine that prints, such as a lambda or a routine assigned while the game runs.
+union iStringOrRoutine = string | interpolatedString | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }   /// True when the value is a routine, an interpolated string included.
+}
+extend _bglOutput {
+    emitter void print(iStringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
 }
 // A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
-superposed void _bglPrintOrRun(stringOrRoutine v){
+superposed void _bglPrintOrRun(iStringOrRoutine v){
     #i6 {
         if(metaclass(v) == Routine) v();
         else print (string)v;
@@ -402,7 +413,10 @@ superposed void _bglPrintOrRun(stringOrRoutine v){
 }
 // The library lets every object override its instanceName with the short_name property.
 extend class object {
-    stringOrRoutine short_name;
+    // Positional, as in an Inform 6 object header: the name, then the parent (`object hook { "brass hook", cloakroom; }`).
+    inline instanceName;
+    inline parent;
+    iString short_name;
 }
 
 // The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata. Let's reuse these and keep their definitions all the same.

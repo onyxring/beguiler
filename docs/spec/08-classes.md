@@ -659,7 +659,10 @@ positional in this class, is a compile-time error.
 A class's positional order is its own list — its `inline` members and the members it re-lists, in
 declaration order — followed by each base's order, **subclass first**. A member appears once, where it
 is first listed, so a subclass that re-lists an inherited member decides its position; one that
-doesn't places its own `inline` members ahead of the inherited ones. The positional and named forms,
+doesn't places its own `inline` members ahead of the inherited ones. Slots that an `extern` class lists come
+after the program's own, as the root's name does, unless a class of the program re-lists them itself. The library
+bindings make `object`'s name and parent positional this way (§23), so an object can open as an Inform 6 object
+header does: `object hook { "small brass hook", cloakroom; }`. The positional and named forms,
 their separators and the error cases are specified in §11.3.1. A positional value is type-checked
 against the member it fills, as a named one is.
 

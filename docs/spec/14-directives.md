@@ -71,7 +71,8 @@ extension is supplied by the compiler and must not be written.
 The search is deterministic: the root folder's files are checked first, then each subfolder in
 alphabetical order, depth first, and the first match wins. Matching is case-insensitive
 (`<String>` and `<string>` are the same include) regardless of the file system. A file that is not
-found is a compile-time error.
+found is a compile-time error. Only the library is searched: the source folder and `includePaths` are
+the quoted form's (§14.1.2).
 
 A folder prefix is optional: `#include <⟨name⟩>` is equivalent to the
 canonical `#include <⟨folder⟩/…/⟨name⟩>` naming the folder in which the search finds `name.bgl`,
@@ -107,6 +108,11 @@ file, then each `includePaths` directory (§17.3), trying *path*`.bgl` first and
 written. Subdirectory paths are permitted and resolve relative to each directory searched. Either `/`
 or `\` may be used as a separator. Matching is case-insensitive. A file that is not found is a
 compile-time error.
+
+The two forms search separate spaces. A quoted include never finds a file in the Beguile library, even
+when a directory it searches lies inside the library: the library and its shipped extensions are
+included only with angle brackets (§14.1.1), and a quoted include of one is a compile-time error that
+names the angle-bracket form.
 
 A file may be included more than once; a file that must be processed only once guards itself with
 `#once` (§14.1.6).

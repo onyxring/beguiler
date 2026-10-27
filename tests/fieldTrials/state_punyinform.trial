@@ -8,7 +8,7 @@ Log: []
 Ticks 0, rings 0, live 0, churns 0.
 > counters
 Token pool free 4.
-Heap free 17, live 17.
+Heap free 17, live 1.
 Frame top 0, locks 0, appends 0.
 > make 3
 Made token 3.
@@ -30,7 +30,7 @@ Log: [+3 +5 r1 ]
 Ticks 5, rings 1, live 2, churns 0.
 > counters
 Token pool free 2.
-Heap free 15, live 19.
+Heap free 15, live 3.
 Frame top 0, locks 0, appends 0.
 > save
 >> sv1
@@ -52,7 +52,7 @@ Log: [+3 +5 r1 +9 -9 -5 ]
 Ticks 10, rings 1, live 1, churns 1.
 > counters
 Token pool free 3.
-Heap free 16, live 18.
+Heap free 16, live 2.
 Frame top 0, locks 0, appends 0.
 > restore
 >> sv1
@@ -64,7 +64,7 @@ Log: [+3 +5 r1 ]
 Ticks 5, rings 1, live 2, churns 0.
 > counters
 Token pool free 2.
-Heap free 15, live 19.
+Heap free 15, live 3.
 Frame top 0, locks 0, appends 0.
 > make 6
 Made token 6.
@@ -77,7 +77,7 @@ Log: [+3 +5 r1 ]
 Ticks 5, rings 1, live 2, churns 0.
 > counters
 Token pool free 2.
-Heap free 15, live 19.
+Heap free 15, live 3.
 Frame top 0, locks 0, appends 0.
 > free
 Freed token 5.
@@ -90,7 +90,7 @@ Log: [+3 +5 r1 ]
 Ticks 5, rings 1, live 2, churns 0.
 > counters
 Token pool free 2.
-Heap free 15, live 19.
+Heap free 15, live 3.
 Frame top 0, locks 0, appends 0.
 > make 7
 Made token 7.
@@ -107,7 +107,7 @@ Log: [+3 +5 r1 +7 +8 ]
 Ticks 7, rings 1, live 4, churns 0.
 > counters
 Token pool free 0.
-Heap free 13, live 21.
+Heap free 13, live 5.
 Frame top 0, locks 0, appends 0.
 > restart
 >> y
@@ -122,7 +122,7 @@ Log: []
 Ticks 0, rings 0, live 0, churns 0.
 > counters
 Token pool free 4.
-Heap free 17, live 17.
+Heap free 17, live 1.
 Frame top 0, locks 0, appends 0.
 > look
 Room A
@@ -137,7 +137,7 @@ Log: []
 Ticks 1001, rings 0, live 0, churns 1000.
 > counters
 Token pool free 4.
-Heap free 17, live 17.
+Heap free 17, live 1.
 Frame top 0, locks 0, appends 0.
 > make 1
 Made token 1.
@@ -164,7 +164,7 @@ Log: [+1 +2 r1 ]
 Ticks 1307, rings 1, live 2, churns 1000.
 > counters
 Token pool free 2.
-Heap free 15, live 19.
+Heap free 15, live 3.
 Frame top 0, locks 0, appends 0.
 > free
 Freed token 2.
@@ -188,6 +188,6 @@ Log: [ s0 s0 s0 s0 s0 s0 s0 s0 s0 s0 s0 s0 s0 ]
 Ticks 1571, rings 1, live 0, churns 1000.
 > counters
 Token pool free 4.
-Heap free 17, live 17.
+Heap free 17, live 1.
 Frame top 0, locks 0, appends 0.
 

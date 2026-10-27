@@ -28,7 +28,7 @@ primitive class float {
     emitter bool operator == (float v){ _bglFloatEq($val, $v) }  /// True when the values are equal.
     emitter bool operator != (float v){ (~~_bglFloatEq($val, $v)) }  /// True when the values differ.
 
-    replace emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal rounded to four places.
+    emitter void print(){ _bglFloatPrintDecimal($val); }  /// Print the value as a decimal rounded to four places.
 
     /// Compare two floats for sorting: -1, 0 or 1.
     static int operator <=> (var a, var b) {

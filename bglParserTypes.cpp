@@ -1464,6 +1464,18 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
         }
     }
     for(size_t i = 0; i < maxP; i++) if(enumConflict[i]) h.positionalEnum[i] = "";
+    // A routine type every candidate takes at a position: an interpolated string there becomes the routine.
+    // An emitter's interpolatedStringLiteral parameter takes the text itself instead.
+    h.positionalRoutine.assign(maxP, "");
+    vector<char> routineConflict(maxP, 0);
+    for(auto* fd : candidates)
+        for(size_t i = 0; i < maxP; i++){
+            string r = i < fd->params.size() && !fd->isEmitter && takesInterpolatedRoutine(fd->params[i]->type.name)
+                     ? fd->params[i]->type.name : "";
+            if(r.empty() || (!h.positionalRoutine[i].empty() && h.positionalRoutine[i] != r)) routineConflict[i] = 1;
+            else h.positionalRoutine[i] = r;
+        }
+    for(size_t i = 0; i < maxP; i++) if(routineConflict[i]) h.positionalRoutine[i] = "";
     // An accessor class some candidate takes at a position: the argument is read as the accessor itself,
     // so that overload can match it exactly (`show(Level)` beside `show(int)`).
     h.positionalAccessor.assign(maxP, nullptr);
@@ -1579,15 +1591,16 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             firstArgTok = file.getToken();
             continue;
         }
-        if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote)){
+        bool routineArg = namedArgName.empty() && posIdx < braceHints.positionalRoutine.size() && !braceHints.positionalRoutine[posIdx].empty();
+        if(firstArgTok.is("$") && file.peekToken(1).is(eTokenType::quote) && !routineArg){
             // Interpolated string literal argument: func($"...")
             vector<interpolatedSegment> segs = parseInterpolatedSegments(func, body);
             expression* arg = new expression();
             arg->resolvedType = "interpolatedstringliteral";
             token sep = file.getToken();
             if(!sep.is(token::comma) && !sep.is(token::parenClose))
-                parsingError("An interpolated string has no value, so it can't be part of an expression "
-                             "(`$\"…\".length`, `$\"…\" + x`). Assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
+                parsingError("An interpolated string can't be an operand (`$\"…\".length`, `$\"…\" + x`), since it becomes a routine "
+                             "that prints it. Assign it to a stringObj (`stringObj s = $\"…\";`) for its text now.");
             arg->terminator = sep.value;
             result.args.push_back(arg);
             result.namedArgNames.push_back(namedArgName);
@@ -1605,6 +1618,7 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                 currentExpectedType = it != braceHints.namedEnum.end() ? it->second : "";
             } else {
                 currentExpectedType = posIdx < braceHints.positionalEnum.size() ? braceHints.positionalEnum[posIdx] : "";
+                if(routineArg && firstArgTok.is("$")) currentExpectedType = braceHints.positionalRoutine[posIdx];
             }
             {
                 string nm = namedArgName;
@@ -4386,6 +4400,8 @@ bool bglParser::isTypeCompatible(std::string argType, std::string paramType){
     if(argType == "nullliteral") return true;   // `null`, the empty reference, fits every type
     if(argType == paramType) return true;
     if((argType == "bool" && paramType == "ebool") || (argType == "ebool" && paramType == "bool")) return true;   // §2.2
+    // An interpolatedString is a routine that prints, so it goes wherever a func<void> does.
+    if(argType == "interpolatedstring" && isTypeCompatible("func<void>", paramType)) return true;
     // A nested array<char> element keeps its spelled type; the declared form is byteArray.
     auto byteForm = [](const std::string& t){ return t == "array<char>" ? std::string("bytearray") : t; };
     if(byteForm(argType) == byteForm(paramType)) return true;
@@ -6361,9 +6377,9 @@ void bglParser::emitDeferredConversions(){
 // used as a value, which it has none of.
 void bglParser::endInterpolatedStatement(){
     if(!file.peekToken().is(token::endStatement) && file.peekToken().is(eTokenType::oper))
-        parsingError("An interpolated string has no value, so it can't be part of an expression "
-                     "such as a ?: branch or an operand. Pass it straight to print() or an emitter that takes "
-                     "interpolatedStringLiteral, or assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
+        parsingError("An interpolated string can't be an operand, since it becomes a routine that prints it. "
+                     "Print it, give it a type that holds a routine, or assign it to a stringObj (`stringObj s = $\"…\";`) "
+                     "for its text now.");
     file.getToken(token::endStatement);
 }
 

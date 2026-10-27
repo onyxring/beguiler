@@ -20,10 +20,10 @@
 #includeI6 "parser"
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
-#include <stringObj>
+#include <string>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // An object named by a stringObj member.

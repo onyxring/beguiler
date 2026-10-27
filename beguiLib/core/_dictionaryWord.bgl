@@ -10,7 +10,7 @@
 /// The type of a `.word` literal before it is assigned or compared; it converts to `dictionaryWord`.
 primitive class dictionaryWordLiteral {
     dictionaryWord operator auto();  /// Convert implicitly to a `dictionaryWord`.
-    replace emitter void print(){ print (address) $val }   /// Print the word.
+    emitter void print(){ print (address) $val }   /// Print the word.
 }
 
 /// A word in the story's dictionary, the unit a grammar matches: `.lamp` for the singular, `..lamps` for the plural.
@@ -24,7 +24,7 @@ primitive class dictionaryWord : patternElement {
     emitter bool operator != (dictionaryWordLiteral v){ $val ~= $v }   /// True when they are different words.
     emitter bool operator == (_bglObject v){ $val == $v }              /// True when there is no word (`null`).
     emitter bool operator != (_bglObject v){ $val ~= $v }              /// True when there is a word.
-    replace emitter void print(){ print (address) $val }   /// Print the word.
+    emitter void print(){ print (address) $val }   /// Print the word.
 }
 
 extend _bglOutput {

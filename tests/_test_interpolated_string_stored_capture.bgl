@@ -1,0 +1,6 @@
+// Negative test: an interpolatedString kept past its routine can't read the routine's locals.
+// EXPECT_ERROR: prints after the locals it reads are gone
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+interpolatedString g;
+void main(){ int n = 4; g = $"n={n}"; print(g); }

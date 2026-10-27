@@ -30,7 +30,7 @@
 #define PANEL_STEP 0.5
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA { "Room A"; description = "Room A."; attributes = {light}; }

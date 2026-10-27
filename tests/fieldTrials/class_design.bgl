@@ -13,7 +13,7 @@
 #include <array>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

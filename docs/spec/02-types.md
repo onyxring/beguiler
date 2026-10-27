@@ -7,6 +7,7 @@
 - [2.4 Literal Pseudo-Types](#24-literal-pseudo-types)
   - [2.4.1 `negativeIntLiteral`](#241-negativeintliteral)
   - [2.4.2 `interpolatedStringLiteral`](#242-interpolatedstringliteral)
+  - [2.4.3 `interpolatedString`](#243-interpolatedstring)
 - [2.5 `null`](#25-null)
 - [2.6 The `var` Type](#26-the-var-type)
 - [2.7 Enumerations](#27-enumerations)
@@ -166,7 +167,52 @@ An interpolated string (§1.6.5) contains several segments that cannot be reduce
 it has no corresponding runtime type. It may be passed only to an emitter that declares an
 `interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
 non-emitter function is a compile-time error. The core `print()` and `bgl.output.log()` accept it (§21.4); with the
-`<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3).
+`<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3). Where a routine is
+expected, it becomes one: see `interpolatedString` (§2.4.3).
+
+### 2.4.3 `interpolatedString`
+
+**Description**
+
+An `interpolatedString` is a routine that prints an interpolated string: assigning `$"…"` to one makes the
+routine. Its spans are evaluated each time it prints, not when it is assigned. The routine returns true and
+prints no line break; nothing in Beguile reads the return, which is for Inform 6 callers such as a
+library's `short_name`.
+
+An interpolated string used as a value becomes a routine that prints it, unless what receives it says otherwise:
+
+| Receives it | It becomes | Its spans are evaluated |
+|---|---|---|
+| `stringObj` (`=`, `+=`) | the text, captured into the string (§22.3) | once, at the assignment |
+| `interpolatedString`, `func<void>`, a union holding one and no `stringObj` (`iString`, `iStringOrRoutine`), `var`, `auto`, or an element of an initializer list | a routine that prints it | each time it prints |
+| an emitter's `interpolatedStringLiteral` parameter (`print($"…")`) | statements, in place | there |
+| `string`, or another type that holds neither | a compile-time error | — |
+
+An `interpolatedString` converts to `func<void>`, so it goes wherever a `func<void>` does. `print()` and
+`printLine()` print one.
+
+As a member of an object or a class, the routine is the object's own: its spans read the object's members
+(`{watts}` is `self.watts`), and a class's default serves every instance. It reads them when printed through
+the member, `print(lamp.label)`; a copy of the value held elsewhere is a plain routine, which has no
+object. In a routine's body it is a lambda (§4.14): it captures the locals it reads, with their values when
+it is made, so one kept past its routine can't read them (a compile-time error).
+
+**Example**
+
+```bgl
+#include <string>
+int watts = 60;
+stringObj snap          = $"{watts}W";   // the text now: "60W"
+interpolatedString live = $"{watts}W";   // a routine that prints it
+watts = 100;
+print(snap);   // 60W
+print(live);   // 100W
+
+object lamp {
+    int watts = 60;
+    short_name = $"{watts}W lamp";        // a library property that takes a string or a routine
+}
+```
 
 ## 2.5 `null`
 
@@ -467,7 +513,7 @@ A named union gives a union a name and a place for members. It must have at leas
 types and takes no qualifiers. The bodyless form may be given members later with `extend`.
 
 Compatibility is hybrid: for assignment and passing, a named union is transparent (a
-`stringOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for
+`textOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for
 member lookup it is nominal (only a value statically typed as the named union sees its members).
 
 Members are emitters (§7.2), inlined by static type, or `static` methods. Printing a named union is
@@ -477,9 +523,9 @@ argument's static type (§21.4).
 **Example**
 
 ```bgl
-union stringOrRoutine = string | func<void> ;
+union textOrRoutine = string | func<void> ;
 
-void show(stringOrRoutine v) {              // also accepts a string | func<void>
+void show(textOrRoutine v) {              // also accepts a string | func<void>
     if(typeof(v) == eType.routine) { func<void> f = (func<void>)v; f(); }
     else print((string)v);
 }
@@ -487,9 +533,9 @@ void show(stringOrRoutine v) {              // also accepts a string | func<void
 
 **Notes**
 
-> **In the library.** The library bindings ship `stringOrRoutine`, with its `print` overload and an
-> `isRoutine` member, for the I6 "string-or-routine" properties such as `description` (§21.5.10,
-> §23.3.7).
+> **In the library.** The library bindings ship `iString` and `iStringOrObject`, with a `print`
+> overload and members reporting which type a value holds, for the properties the library prints, such
+> as `description` (§21.5.10, §23.3.7).
 
 ## 2.9 Function Types
 

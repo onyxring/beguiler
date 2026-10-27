@@ -5,7 +5,7 @@
 // EXPECT_OUTPUT: 701 characters were printed into room for
 // EXPECT_OUTPUT: raise the stringCaptureSize setting
 #beguilerSettings { target = z5; informName = "none"; }
-#include <stringObj>
+#include <string>
 stringObj after = "AFTER";
 void main(){
     bglInit();

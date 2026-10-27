@@ -563,6 +563,9 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
     parser.reset();
     languageService.reset();
     beguilerSettings = beguilerSettingsDef();
+    // Each document is read with the library the server started with, unless its own settings name another.
+    static const string startLibPath = settings.libPath;
+    settings.libPath = startLibPath;
     beguilerSettings.includePaths = cliIncludePaths;
     parser.lspMode = true;
     parser.lspErrors.clear();
@@ -599,6 +602,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
             while(cur < text.size() && depth > 0) { if(text[cur]=='{') depth++; else if(text[cur]=='}') depth--; cur++; }
             string block = text.substr(open + 1, cur - open - 2);
             preReadIncludePaths(block, entryPointPath);   // as the compiler does before its pre-scan
+            preReadLibPath(block, entryPointPath);
             string lower = block;
             transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             size_t k = lower.find("target");
@@ -683,6 +687,7 @@ bool LspServer::parseDocumentInEntryContext(const string& uri) {
         parser.preScanFile(entryPointPath, &entryContent);
         parser.resolveStubParamAliases();
         parser.parseFile(entryPointPath, &entryContent);
+        parser.checkDeferredSettings();
     } catch(exception& e) { errors.push_back(e.what()); }
       catch(...) { errors.push_back("Unknown compilation error"); }
     cout.rdbuf(oldCout);
@@ -730,6 +735,9 @@ void LspServer::parseDocument(const string& uri) {
     parser.reset();
     languageService.reset();
     beguilerSettings = beguilerSettingsDef();
+    // Each document is read with the library the server started with, unless its own settings name another.
+    static const string startLibPath = settings.libPath;
+    settings.libPath = startLibPath;
     // Re-seed CLI include paths (from -includepaths=, i.e. the beguiler.includePaths setting):
     // the reset above wipes them and LSP mode never runs parseArgs(). The document's own
     // #beguilerSettings.includePaths is appended later during the parse. Without this, quoted
@@ -781,6 +789,7 @@ void LspServer::parseDocument(const string& uri) {
             }
             string block = text.substr(open + 1, cur - open - 2);
             preReadIncludePaths(block, path);   // as the compiler does before its pre-scan
+            preReadLibPath(block, path);
             string lower = block;
             transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
             size_t k = lower.find("target");
@@ -878,6 +887,7 @@ void LspServer::parseDocument(const string& uri) {
         parser.preScanFile(path, content);
         parser.resolveStubParamAliases();
         parser.parseFile(path, content);
+        parser.checkDeferredSettings();
     } catch(exception& e) {
         errors.push_back(e.what());
     } catch(...) {
@@ -2457,6 +2467,8 @@ json LspServer::completeQuotedInclude(const string& uri, int line, int col, cons
                 string curCanon;
                 try { curCanon = filesystem::canonical(curFile).string(); } catch(...) {}
 
+                std::error_code libEc;
+                const string libCanon = settings.libPath.empty() ? "" : filesystem::weakly_canonical(settings.libPath, libEc).string();
                 // Search roots in resolution order: source dir, then each includePath
                 // (as-is, and — if relative — also resolved against the source dir).
                 vector<filesystem::path> roots;
@@ -2483,6 +2495,13 @@ json LspServer::completeQuotedInclude(const string& uri, int line, int col, cons
                         if(ext != ".bgl") continue;
                         // A file can't include itself.
                         try { if(!curCanon.empty() && filesystem::canonical(p).string() == curCanon) continue; } catch(...) {}
+                        // The Beguile library is reached only by `#include <…>`.
+                        {
+                            std::error_code lec;
+                            string c = filesystem::weakly_canonical(p, lec).string();
+                            if(!libCanon.empty() && c.size() > libCanon.size() && c.compare(0, libCanon.size(), libCanon) == 0
+                               && (c[libCanon.size()] == '/' || c[libCanon.size()] == '\\')) continue;
+                        }
                         // Name = path relative to this root, forward slashes, no ".bgl".
                         filesystem::path rel = filesystem::relative(p, root, ec);
                         if(ec || rel.empty()) continue;
@@ -2680,6 +2699,32 @@ static bool findCallSlot(const string& lineText, int col, string& funcName, stri
 }
 
 // Completion case: a call argument whose parameter type is an enum -> that enum's members.
+// Append the values of enum or bnum `type` — for a base bnum, those of every bnum built on it — and
+// record each contributing type's name in `types`. False when `type` is not an enum (or, with
+// `bnumOnly`, not a bnum).
+bool LspServer::appendEnumValues(json& items, vector<string>& types, const string& type, bool bnumOnly) {
+    enumDef* target = nullptr;
+    for(typeDef* t : languageService.objectTypes)
+        if(auto* e = dynamic_cast<enumDef*>(t); e && e->name == type) { target = e; break; }
+    if(!target || (bnumOnly && !target->isBnum)) return false;
+    for(typeDef* t : languageService.objectTypes) {
+        auto* ed = dynamic_cast<enumDef*>(t);
+        if(!ed) continue;
+        bool within = false;
+        for(enumDef* e = ed; e && !within; e = e->isBnum ? e->baseBnum : nullptr) within = (e == target);
+        if(!within) continue;
+        types.push_back(ed->name);
+        for(enumValueDef* ev : ed->namedValues) {
+            json item = {{"label", ev->name}, {"kind", 13}, {"sortText", "0"},   // CompletionItemKind.EnumMember
+                         {"detail", ed->displayName.empty() ? ed->name : ed->displayName}};
+            if(!ev->docComment.empty())
+                item["documentation"] = {{"kind", "markdown"}, {"value", ev->docComment}};
+            items.push_back(item);
+        }
+    }
+    return true;
+}
+
 json LspServer::completeEnumArgument(const string& uri, int line, int col, const string& lineText,
                                      const string& docText, bool& handled) {
     handled = false;
@@ -2691,30 +2736,19 @@ json LspServer::completeEnumArgument(const string& uri, int line, int col, const
     // specific enough to be safe in prose: it only produces items when the enclosing `(`
     // has a resolvable callee whose active parameter is an enum, so an incidental `(` in
     // narrative text yields nothing and falls through to the normal phases.
-    {
-        string funcName, objName;
-        int argIndex = 0, slotStart = 0;
-        if(findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)
-           && lineText.substr(slotStart, std::max(0, std::min(col, (int)lineText.size()) - slotStart)).find('.') == string::npos) {   // `f(x.|` completes x's members
-            vector<paramDef*> params = resolveCalleeParams(uri, line, col, funcName, objName, docText);
-            if(argIndex < (int)params.size()) {
-                string ptype = params[argIndex]->type.name;  // lowercased type name
-                for(typeDef* t : languageService.objectTypes) {
-                    auto* ed = dynamic_cast<enumDef*>(t);
-                    if(!ed || ed->name != ptype) continue;
-                    json items = json::array();
-                    for(enumValueDef* ev : ed->namedValues) {
-                        json item = {{"label", ev->name}, {"kind", 13},  // CompletionItemKind.EnumMember
-                                     {"detail", ed->displayName.empty() ? ed->name : ed->displayName}};
-                        if(!ev->docComment.empty())
-                            item["documentation"] = {{"kind", "markdown"}, {"value", ev->docComment}};
-                        items.push_back(item);
-                    }
-                    if(!items.empty()) { handled = true; return items; }
-                    break;
-                }
-            }
-        }
+    string funcName, objName;
+    int argIndex = 0, slotStart = 0;
+    if(!findCallSlot(lineText, col, funcName, objName, argIndex, slotStart)) return json();
+    string slot = lineText.substr(slotStart, std::max(0, std::min(col, (int)lineText.size()) - slotStart));
+    if(slot.find('.') != string::npos) return json();   // `f(x.|` completes x's members
+    bool combining = slot.find_first_of("|&^") != string::npos;   // `f(left | ▮)` continues a bnum combination
+    vector<paramDef*> params = resolveCalleeParams(uri, line, col, funcName, objName, docText);
+    if(argIndex >= (int)params.size()) return json();
+    json items = json::array();
+    vector<string> types;
+    if(appendEnumValues(items, types, params[argIndex]->type.name, combining) && !items.empty()) {
+        handled = true;
+        return items;
     }
     return json();
 }
@@ -2741,6 +2775,19 @@ void LspServer::appendScopeItems(json& items, std::set<string>& seen, const stri
     };
     auto addFn = [&](functionDef* fd) {
         if(!fd || fd->isPrePassStub) return;
+        if(typed && !fd->isValueEmitter && fd->name[0] != '_' && !seen.count(fd->name)) {
+            // A routine-typed slot takes the routine itself: offer the bare name, not a call.
+            string ref = "func<" + (fd->returnType.name.empty() ? string("void") : fd->returnType.name);
+            for(paramDef* p : fd->params) ref += "," + p->type.name;
+            ref += ">";
+            if(fits(ref)) {
+                seen.insert(fd->name);
+                json item = {{"label", fd->dName()}, {"kind", 3}, {"detail", typeDisplay(ref)}};
+                if(!fd->docComment.empty()) item["documentation"] = {{"kind", "markdown"}, {"value", fd->docComment}};
+                items.push_back(item);
+                return;
+            }
+        }
         if(!accept(fd->name, fd->returnType.name)) return;
         json item = {{"label", fd->dName()}, {"kind", fd->isValueEmitter ? 6 : 3},
                      {"detail", fd->returnType.dName()}};
@@ -2850,6 +2897,67 @@ json LspServer::completeTypedArgument(const string& uri, int line, int col, cons
     std::set<string> seen;
     appendScopeItems(items, seen, uri, line, col, docText, fits, /*typed*/true);
 
+    handled = true;
+    return json{{"isIncomplete", false}, {"items", items}};
+}
+
+// Completion case: `return ▮` in a routine that returns an enum, bnum, bool, or a union holding one -> their
+// values first, then the in-scope symbols of the return type or one of its members. After `return a | ▮`
+// only bnum values are offered.
+json LspServer::completeReturnValue(const string& uri, int line, int col, const string& lineText,
+                                    const string& docText, bool& handled) {
+    handled = false;
+    int end = std::min(col, (int)lineText.size());
+    int i = end;
+    while(i > 0 && (isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_')) i--;
+    int ws = i;
+    while(i > 0 && isspace((unsigned char)lineText[i-1])) i--;
+    // `return a | b | ▮` continues a bnum combination: step back over the operands to the `return`.
+    bool combining = false;
+    while(i > 0 && (lineText[i-1] == '|' || lineText[i-1] == '&' || lineText[i-1] == '^')) {
+        combining = true;
+        i--;
+        while(i > 0 && isspace((unsigned char)lineText[i-1])) i--;
+        while(i > 0 && (isalnum((unsigned char)lineText[i-1]) || lineText[i-1] == '_' || lineText[i-1] == '.')) i--;
+        ws = i;
+        while(i > 0 && isspace((unsigned char)lineText[i-1])) i--;
+    }
+    if(ws == i || i < 6 || lineText.compare(i - 6, 6, "return") != 0) return json();
+    if(i > 6 && (isalnum((unsigned char)lineText[i-7]) || lineText[i-7] == '_' || lineText[i-7] == '.')) return json();
+    FunctionContext ctx = functionContext(uri, line, col);
+    if(ctx.chain.empty()) return json();
+    string rtype = ctx.chain.front()->returnType.name;
+    // A union offers the values of each member; a named union stands for its members.
+    vector<string> members;
+    string expanded = parser.unionExpansionOf(rtype);
+    if(!expanded.empty() || bglParser::isUnionType(rtype))
+        members = bglParser::splitUnionType(expanded.empty() ? rtype : expanded);
+    else
+        members.push_back(rtype);
+
+    json items = json::array();
+    vector<string> offered;   // the value types whose in-scope symbols are offered too
+    for(const string& mt : members) {
+        if(mt == "bool") {
+            if(combining) continue;
+            for(const char* b : {"true", "false"})
+                items.push_back({{"label", b}, {"kind", 14}, {"detail", "bool"}, {"sortText", "0"}});
+            offered.push_back(mt);
+            continue;
+        }
+        appendEnumValues(items, offered, mt, combining);
+    }
+    if(offered.empty()) return json();
+    std::set<string> seen;
+    for(const json& it : items) seen.insert(it["label"].get<string>());
+    appendScopeItems(items, seen, uri, line, col, docText, [&](const string& type) {
+        if(!combining) {
+            if(type == rtype) return true;
+            for(const string& mt : members)
+                if(type == mt || (mt.rfind("func<", 0) == 0 && parser.isTypeCompatible(type, mt))) return true;
+        }
+        return std::find(offered.begin(), offered.end(), type) != offered.end();
+    }, /*typed*/true);
     handled = true;
     return json{{"isIncomplete", false}, {"items", items}};
 }
@@ -3731,6 +3839,7 @@ json LspServer::handleCompletion(const json& params) {
     if(json r = completeClassHeader(col, lineText, handled); handled) return r;
     if(json r = completeDottedMember(uri, line, col, lineText, handled); handled) return r;
     if(json r = completeTypedArgument(uri, line, col, lineText, docText, handled); handled) return r;
+    if(json r = completeReturnValue(uri, line, col, lineText, docText, handled); handled) return r;
     if(json r = completeGrammarPattern(line, col, docText, handled); handled) return r;
     if(json r = completeAttributeListLiteral(line, col, docText, handled); handled) return r;
     if(json r = completeExtendBody(line, col, docText, handled); handled) return r;

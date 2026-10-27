@@ -396,7 +396,30 @@ bool bglParser::tryConsumePropertyClassReadChain(token first, functionDef* func,
 // Parse a lambda expression. The opening '(' has already been consumed — or, for the bare
 // `=> body` form (bareArrow), the `=>` itself, and there is no parameter list.
 // Builds a lifted global functionDef, adds it to languageService.globals, returns its name.
-string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerBody, bool bareArrow){
+// A type an interpolated string becomes a routine for: interpolatedString, func<void>, or a union holding
+// one of them and no stringObj (which takes the text instead).
+// An interpolated string assigned to a type that can neither hold the routine it becomes nor capture its text.
+string bglParser::interpolatedTargetError(const string& type){
+    return format("'{0}' can't hold an interpolated string, which becomes a routine that prints it: give it a type "
+                  "that holds a routine, such as var or interpolatedString, or a stringObj for its text now.", typeDisplayName(type));
+}
+
+bool bglParser::takesInterpolatedRoutine(const string& type){
+    string t = lowerText(type);
+    if(t == "interpolatedstring" || t == "func<void>" || t == "var") return true;
+    vector<string> members;
+    if(isUnionType(t)) members = splitUnionType(t);
+    else if(classDef* u = languageService.findClass(t); u != nullptr && !u->unionMembers.empty())
+        for(auto& m : u->unionMembers) members.push_back(lowerText(m));
+    bool routine = false;
+    for(const string& m : members){
+        if(m == "stringobj") return false;
+        routine = routine || m == "interpolatedstring" || m == "func<void>";
+    }
+    return routine;
+}
+
+string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerBody, bool bareArrow, bool interpolatedBody){
     functionDef& fd = *(new functionDef());
     fd.name = format("_bglLambda_{0}", lambdaCounter++);
     fd.isLambda = true;
@@ -431,6 +454,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
                     if(gt == "grammartoken" || gt == "attribute" || gt == "property" || gt == "verb" || gv->isNamespaceAlias()) continue;
                 }
                 if(dynamic_cast<verbObjectDef*>(g) != nullptr) continue;
+                if(!shadowWarnable(g)) continue;   // declared where this file can't see it
                 if(auto* cd = dynamic_cast<classDef*>(g))
                     warnOnceHere("Parameter '" + shown + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                         + "'; in this lambda the name means the parameter, though it still names the type in declarations.");
@@ -477,8 +501,33 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     lambdaOuterBlockStack = savedBlockStack;
     activeBlockStack.clear();
 
-    token bodyStart = file.getToken();
-    if(bodyStart.is(token::braceOpen)){
+    token bodyStart = interpolatedBody ? token() : file.getToken();
+    if(interpolatedBody){
+        // An interpolated string's routine: it prints the text, its spans evaluated each time it runs.
+        functionDef* savedFunc = currentFunc;
+        currentFunc = &fd;
+        vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
+        pendingInjections.clear(); postInjections.clear();
+        openCompileContext(eCompileContext::codeBlock, lambdaBody);
+        auto& printIt = *(new assignmentStatement());
+        printIt.src = fd.src;
+        bool savedInMemberInit = inMemberInitializer;
+        inMemberInitializer = false;   // the routine runs as the object's: a bare name is its member
+        try { printIt.interpSegments = parseInterpolatedSegments(&fd, lambdaBody); }
+        catch(...) { inMemberInitializer = savedInMemberInit; throw; }
+        inMemberInitializer = savedInMemberInit;
+        printIt.emitterBody = "$v";
+        printIt.emitterParam = "v";
+        printIt.assignedExpression = new expression();
+        printIt.assignedExpression->resolvedType = "interpolatedstringliteral";
+        for(statement* inj : pendingInjections) lambdaBody->statements.push_back(inj);
+        lambdaBody->statements.push_back(&printIt);
+        for(statement* inj : postInjections) lambdaBody->statements.push_back(inj);
+        closeCompileContext(eCompileContext::codeBlock);
+        pendingInjections = savedPending; postInjections = savedPost;
+        currentFunc = savedFunc;
+        fd.returnType.name = "void";
+    } else if(bodyStart.is(token::braceOpen)){
         // Block body
         functionDef* savedFunc = currentFunc;
         currentFunc = &fd;
@@ -6362,10 +6411,16 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);
         }
+        else if(cur.value == "$" && file.peekToken().is(eTokenType::quote)
+                && (takesInterpolatedRoutine(currentExpectedType) || (currentExpectedType.empty() && expr->tokens.empty()))){
+            // Assigned to a routine type: a routine that prints the text, which runs each time it is printed.
+            expr->tokens.push_back(parseLambdaExpr(st.func, st.body, true, true));
+            expr->resolvedType = "interpolatedstring";
+        }
         else if(cur.value == "$" && file.peekToken().is(eTokenType::quote))
-            parsingError("An interpolated string has no value, so it can't be part of an expression "
-                         "such as a ?: branch or an operand. Pass it straight to print() or an emitter that takes "
-                         "interpolatedStringLiteral, or assign it to a stringObj (`stringObj s = $\"…\";`) and use that.");
+            parsingError("An interpolated string can't be an operand, since it becomes a routine that prints it. "
+                         "Print it, give it a type that holds a routine, or assign it to a stringObj (`stringObj s = $\"…\";`) "
+                         "for its text now.");
         else if(cur.is("new") && !cur.is(eTokenType::dictionaryWord)) step = parseExprNew(st);
         else if((cur.is(eTokenType::dataType) || cur.is(eTokenType::identifier))
                 && getDispatchClass(cur.value) != nullptr && file.peekToken().is(token::braceOpen))

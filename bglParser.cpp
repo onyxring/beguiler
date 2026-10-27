@@ -89,9 +89,19 @@ static filesystem::path resolveCaseInsensitive(const filesystem::path& base, con
 // Tries each root + filename, optionally with an added extension. Path separators are
 // normalized first; every path component is then matched case-insensitively (see
 // resolveCaseInsensitive). Returns the resolved absolute path, or empty if not found.
+// With `outsideLibrary`, a file in the Beguile library is never the answer: the library is reached only by
+// `#include <…>`, so a quoted include and the library's names can't overlap.
 string resolveIncludePath(const string& filename, const string& extension,
                                   const filesystem::path& sourceDir,
-                                  const vector<string>& searchPaths){
+                                  const vector<string>& searchPaths, bool outsideLibrary){
+    std::error_code lec;
+    const string lib = outsideLibrary && !settings.libPath.empty() ? filesystem::weakly_canonical(settings.libPath, lec).string() : "";
+    auto inLibrary = [&](const filesystem::path& p){
+        if(lib.empty()) return false;
+        std::error_code ec;
+        string c = filesystem::weakly_canonical(p, ec).string();
+        return c.size() > lib.size() && c.compare(0, lib.size(), lib) == 0 && (c[lib.size()] == '/' || c[lib.size()] == '\\');
+    };
     string normalized = filename;
     for(char& c : normalized)
         if(c == '/' || c == '\\') c = filesystem::path::preferred_separator;
@@ -107,21 +117,21 @@ string resolveIncludePath(const string& filename, const string& extension,
         string dummy;
         for(const auto& root : roots){
             filesystem::path cand = root / filesystem::path(normalized + extension);
-            if(lookupVirtualFile(cand.string(), dummy))
+            if(lookupVirtualFile(cand.string(), dummy) && !inLibrary(cand))
                 return cand.lexically_normal().string();
             if(!extension.empty()){
                 cand = root / filesystem::path(normalized);
-                if(lookupVirtualFile(cand.string(), dummy))
+                if(lookupVirtualFile(cand.string(), dummy) && !inLibrary(cand))
                     return cand.lexically_normal().string();
             }
         }
     }
     for(const auto& root : roots){
         filesystem::path r = resolveCaseInsensitive(root, filesystem::path(normalized + extension));
-        if(!r.empty()) return filesystem::canonical(r).string();
+        if(!r.empty() && !inLibrary(r)) return filesystem::canonical(r).string();
         if(!extension.empty()){
             r = resolveCaseInsensitive(root, filesystem::path(normalized));
-            if(!r.empty()) return filesystem::canonical(r).string();
+            if(!r.empty() && !inLibrary(r)) return filesystem::canonical(r).string();
         }
     }
     return "";
@@ -134,6 +144,20 @@ string rewritePathSeps(const string& path){
     for(char& c : result)
         if(c == '/' || c == '\\') c = settings.pathSep;
     return result;
+}
+
+// A #beguilerSettings block's `beguiLibPath = "dir"`: the library the program is read with, named before the
+// pre-scan reaches the core library — in the compiler and in the language server alike. -lib= wins. A relative
+// path is relative to the file the block is in.
+void preReadLibPath(const string& rawBlock, const string& settingsFile){
+    if(settings.libPathFromCommandLine) return;
+    static const regex entry(R"re(beguilibpath\s*=\s*"([^"]*)")re", regex::icase);
+    smatch m;
+    if(!regex_search(rawBlock, m, entry)) return;
+    filesystem::path lib = filesystem::path(rewritePathSeps(m[1].str()));
+    if(lib.is_relative()) lib = filesystem::absolute(filesystem::path(settingsFile).parent_path()) / lib;
+    std::error_code ec;
+    settings.libPath = filesystem::weakly_canonical(lib, ec).string();
 }
 
 // A #beguilerSettings block's `includePaths = "a,b"` lines (all of them), added to the include search
@@ -764,11 +788,9 @@ void bglParser::validateVerbNameClashes(bool early){
             if(g == v || lower(g->dName()) != name) continue;
             string kind; sourceLocation gsrc;
             if(auto* fd = dynamic_cast<functionDef*>(g)){
-                // A program's own emitter is a global name too (`rule;` would reach the verb); the library's
-                // emitters are left to the library-name checks.
-                bool libraryEmitter = fd->isEmitter && (fd->src.file.empty()
-                    || fd->src.file.find(settings.libPath) == 0);
-                if(libraryEmitter || (fd->isPrePassStub && !early) || fd->isReplacedDead) continue;
+                // An emitter is a global name too (`rule;` would reach the verb); a built-in one has no source.
+                bool builtinEmitter = fd->isEmitter && fd->src.file.empty();
+                if(builtinEmitter || (fd->isPrePassStub && !early) || fd->isReplacedDead) continue;
                 kind = fd->isEmitter ? "emitter" : "function"; gsrc = fd->src;
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(g)){
                 if(vd->isNamespaceAlias() || (vd->isPrePassStub && !early) || vd->isInstanceBacking || vd->isSynthetic) continue;
@@ -1019,7 +1041,7 @@ void bglParser::checkTypedPropertyMemberTypes(){
                             if(auto* cad = dynamic_cast<arrayDeclaration*>(cm); cad && cad != ad && propOf(cad) == prop) return true;
                 return false;
             };
-            bool isText = vd->type.name == "string" || vd->type.name == "stringorroutine";
+            bool isText = holdsString(vd->type.name);
             if(ad == nullptr && isText && !declaredAsArray(propName)) continue;
             if(ad == nullptr && isText){
                 string where = vd->src.line > 0 ? format("{0}:{1}:1: ", vd->src.file, vd->src.line) : string();
@@ -1990,6 +2012,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
     usingImports.clear();
     usingObjectImports.clear();
 
+    if(file.getNumberOfOpenFiles() > 0) includedBy[file.currentLocation().file].insert(absPath);
     try{
         if(contentOverride)
             file.openText(*contentOverride, absPath, 1);  // LSP path: parse the editor buffer directly
@@ -3064,6 +3087,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
                             if(t == "grammartoken" || t == "attribute" || t == "property" || t == "verb") continue;
                         }
                         if(dynamic_cast<verbObjectDef*>(g) != nullptr) continue;   // a verb, exempt as a local is (§3.10)
+                        if(!shadowWarnable(g)) continue;   // declared where this file can't see it
                         if(auto* cd = dynamic_cast<classDef*>(g))   // a type, not a global `::` reaches
                             warnOnce("Parameter '" + param.name + "' has the name of " + (cd->isUnion() ? "union '" : "class '") + g->dName()
                                 + "'; in this routine the name means the parameter, though it still names the type in declarations.");
@@ -3072,25 +3096,9 @@ bool bglParser::processParameterList(functionDef& funcDef){
                     }
                 if(definedSymbols.count(param.name))
                     warnOnce("Parameter '" + param.name + "' has the name of a #define symbol; in this routine the name means the parameter.");
-                // A static method has no receiver, so a member can't be shadowed.
-                if(currentClass != nullptr && !funcDef.isStatic){
-                    for(typeMember* m : currentClass->members)
-                        if(m->name == param.name)
-                            warnOnce("Parameter '" + param.name + "' shadows a member of class '" + currentClass->dName() + "'.");
-                    // Walk base class hierarchy for inherited members (vars and functions) — warning only
-                    function<void(classDef*)> checkBases = [&](classDef* c){
-                        for(typeMember* m : c->members)
-                            if(m->name == param.name)
-                                if(dynamic_cast<variableDeclaration*>(m) || dynamic_cast<functionDef*>(m))
-                                    warnOnce("Parameter '" + param.name + "' shadows inherited member '" + param.name + "' from class '" + c->dName() + "'.");
-                        for(classDef* base : c->baseClasses) checkBases(base);
-                    };
-                    for(classDef* base : currentClass->baseClasses) checkBases(base);
-                }
-                if(currentObject != nullptr)
-                    for(typeMember* m : currentObject->members)
-                        if(m->name == param.name)
-                            warnOnce("Parameter '" + param.name + "' shadows a member of object '" + currentObject->dName() + "'.");
+                // A parameter named like a member of its class or object isn't warned about: as in C# and
+                // C++, `width` taking the value for `self.width` is the usual way to name it, and a
+                // parameter's name is part of the routine's interface (named arguments).
                 currentStatementSrc = savedSrc;
             }
             tok=file.getToken(); // "=", ",", or ")"
@@ -3526,15 +3534,6 @@ void bglParser::parsingWarning(string msg){
             fileName = get<1>(detail);
             curLine  = get<2>(detail);
             curCol   = get<3>(detail);
-        }
-        // Suppress warnings that originate in the runtime library (BLR): they concern the
-        // compiler's own internals, which the user cannot act on. (I6 warnings that map into
-        // the BLR are filtered the same way when I6 runs.)
-        if(!settings.libPath.empty() && !fileName.empty()){
-            std::error_code ec;
-            string f   = filesystem::weakly_canonical(fileName, ec).string();
-            string lib = filesystem::weakly_canonical(settings.libPath, ec).string();
-            if(!lib.empty() && f.rfind(lib, 0) == 0) return;
         }
         warningMessage=format("{0}:{1}:{2}: warning: {3}",fileName,curLine,curCol,msg);
     }

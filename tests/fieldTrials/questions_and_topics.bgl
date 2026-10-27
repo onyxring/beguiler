@@ -19,7 +19,7 @@
 #includeI6 "verblib"
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

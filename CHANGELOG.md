@@ -2,6 +2,54 @@
 
 ## [Unreleased]
 
+Library (beguiLib):
+- `<string>` is now the heap-based runtime that was `<stringObj>`: each
+  `stringObj` buffer grows as text is written, with no 494-character limit. The
+  pool-based runtime is kept as `<archive/string>`; a program includes one or
+  the other.
+- `center()` and `inset()` moved from `bgl.ui` to `bgl.output`.
+- The library bindings replace `stringOrRoutine` with `iString`
+  (`string | interpolatedString`), a string plain or interpolated, for
+  properties such as `description` and `short_name`; `iStringOrRoutine`, which
+  also holds a routine, for a lambda or a routine assigned while the game runs;
+  and `iStringOrObject`, for direction properties that hold a room or a message.
+- The library bindings make an object's name and parent positional, as in an
+  Inform 6 object header: `object hook { "small brass hook", cloakroom; }`.
+
+Language:
+- An interpolated string used as a value becomes a routine that prints it,
+  unless it is assigned to a `stringObj`: a `var`, an `auto`, a `var` argument
+  and an element of an initializer list take one (`array<var> a = {$"…"};`).
+- `interpolatedString`: an interpolated string assigned to one, to a
+  `func<void>`, or to a library property that takes a string or a routine
+  (`short_name = $"{watts}W lamp";`) becomes a routine that prints it, its
+  expressions evaluated each time it prints. Assigned to a `stringObj`, it is
+  the text at that moment. `print()` and `printLine()` print one.
+- Positional slots an `extern` class lists come after the program's own, as
+  the root's name always has.
+- `#include "…"` never finds a file in the Beguile library, which is included
+  only with `#include <…>`; quoting one is an error naming the bracket form.
+- `beguiLibPath` in the entry file's settings now names the library for the
+  whole program (the core included); `-lib=` still wins, and a relative path is
+  relative to the entry file. Another file naming a different library is an error.
+- The library compiles without warnings, and its warnings are no longer hidden.
+  A local is warned about hiding a global only when the global is in its own
+  file or one it includes.
+- A parameter named like a member of its class or object is no longer warned
+  about (`void resize(int width) { self.width = width; }`).
+- `heapSize` and `worldBufSize` are read by the library like any other setting;
+  `worldBufSize = 0` is now an error, as `heapSize` below 64 was.
+
+Editor:
+- After `return` in a routine that returns an enum, `bnum`, `bool`, or a union
+  holding one, completion offers the possible values first (for a base `bnum`,
+  those of the `bnum`s built on it), then values of that type in scope. After
+  `return left | ` it offers the `bnum` values again.
+- A call argument typed as a base `bnum` offers the values of the `bnum`s built
+  on it, also after `|`.
+- An argument or return value of a routine type (`func<…>`) offers the routines
+  whose signature fits, by name.
+
 ## [0.1.0-preview.5] - 2026-10-20
 
 Language:

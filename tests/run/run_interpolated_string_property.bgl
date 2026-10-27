@@ -1,0 +1,31 @@
+// run_interpolated_string_property — an interpolated string as a library property that takes a string or a
+// routine (short_name, description): the routine prints the text each time and returns true, so the
+// library prints nothing more.
+// EXPECT_OUTPUT: You can see a 60W lamp here.
+// EXPECT_OUTPUT: A lamp of 60 watts.
+// EXPECT_OUTPUT: You can see a 100W lamp here.
+// EXPECT_OUTPUT: A lamp of 100 watts.
+// INPUT: x lamp
+// INPUT: brighten
+// INPUT: look
+// INPUT: x lamp
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#include <string>
+#includeI6 "parser"
+#includeI6 "verblib"
+extend class object { iStringOrRoutine description; }
+object roomA { short_name = "Room A"; attributes = {light}; description = "A plain room."; }
+object lamp {
+    "lamp";
+    name = {.lamp};
+    parent = roomA;
+    int watts = 60;
+    short_name = $"{watts}W lamp";
+    description = $"A lamp of {self.watts} watts.";
+}
+verb Brighten { grammar = {.brighten}; void handler() { lamp.watts += 40; print("Brighter.^"); } }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

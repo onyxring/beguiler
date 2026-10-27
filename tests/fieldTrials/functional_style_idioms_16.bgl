@@ -32,7 +32,7 @@
 #define DIAL_SLOTS 4
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA { "Room A"; description = "Room A."; attributes = {light}; }

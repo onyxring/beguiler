@@ -407,8 +407,9 @@ may shadow a global; inside its scope the bare name is the local and `::name` (�
 - Shadowing a global variable, function (a library routine's too), object or type name; the warning names what is
   shadowed. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
   and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
-- Shadowing a direct member of the enclosing class or object, or a member inherited from a base
-  class; `self.name` reaches the member.
+- A local or loop variable shadowing a direct member of the enclosing class or object, or a member
+  inherited from a base class; `self.name` reaches the member. A parameter may share a member's name
+  without a warning, as in C# and C++: `void resize(int width) { self.width = width; }`.
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
 - A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 

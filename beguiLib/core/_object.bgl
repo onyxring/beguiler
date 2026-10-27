@@ -45,11 +45,11 @@ extern emitter class parentProp{
         _bglMoveTo($self, $v)
     }
     /// True when the parent is `v`; compare with null to test for no parent.
-    emitter eBool operator == (_bglObject v){
+    replace emitter eBool operator == (_bglObject v){
         parent($self) == $v
     }
     /// True unless the parent is `v`.
-    emitter eBool operator != (_bglObject v){
+    replace emitter eBool operator != (_bglObject v){
         parent($self) ~= $v
     }
     /// The parent object.

@@ -128,12 +128,13 @@ or object, when a named member does not exist, or when the member is not of an i
 #using 'myLib.x': member not found; directive ignored
 ```
 
-**Shadowing.** A local variable, parameter or loop variable that hides a global, a member of the
-enclosing class or object, or a capturable name from an enclosing function:
+**Shadowing.** A local variable, parameter or loop variable that hides a global or a capturable name
+from an enclosing function, or a local or loop variable that hides a member of the enclosing class or
+object (a parameter may share a member's name):
 
 ```text
 Local variable 'score' shadows the global variable 'score'; '::score' reaches it.
-Parameter 'name' shadows a member of class 'Thing'.
+Local variable 'name' shadows a member of class 'Thing'.
 ```
 
 **Object-member ambiguity.** Inside an object body, a bare identifier that resolves at file scope but
@@ -187,8 +188,8 @@ message and halts the story with `quit`, except where stated.
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
-| The string heap is full (§22.9) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
-| Text printed into a string buffer runs past its room (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names: `stringCaptureSize` with `<stringObj>`, `bglStringDefaultSize` with `<string>`. |
+| The string heap is full (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
+| Text printed into a string buffer runs past its room (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
 | `bgl.gc.free` given an array already freed (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
 | `bgl.gc.free` given a file-scope or member array (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
 | Copying into a `ref array` bound to nothing (§12.5) — the program continues | `[Beguile run-time error: copying into an array that is null; bind it with := first]` | Bind it with `:=`. |

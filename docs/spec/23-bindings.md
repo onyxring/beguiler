@@ -125,7 +125,7 @@ A binding declares, as `extern`:
 
 Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's; and a program's own `extern` declaration of a library routine replaces the binding's.
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4). Both bindings also make the object's name and its `parent` positional, in that order (§8.3.5), so an object can open as an Inform 6 object header does: `object hook { "small brass hook", cloakroom; }`.
 
 A declaration on an `extern` class, the binding's or a program's `extend class object { … }` (§8.7.1),
 only gives a library property its type; it gives no object the property. An object holds a property
@@ -152,7 +152,7 @@ It also declares the `grammarToken` enum (§21.5.5) with the parser's token name
 
 ### 23.3.7 Shared Types
 
-Each binding declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
+Each binding declares `iString`, `iStringOrObject` and `iStringOrRoutine` (§21.5.10), with `print()` overloads for `iString` and `iStringOrRoutine`. Their behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
 
 ### 23.3.8 Status Bar and Main Window
 
@@ -208,7 +208,7 @@ returns what the library expects of it, which the table gives as the method's re
 | `initial` | describe the object in a room before it is first moved | `string initial` or `void initial()` |
 | `when_open`, `when_closed`, `when_on`, `when_off` | describe an openable or switchable object in a room | `string` or a `void` method |
 | `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
-| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, or `bool short_name()`: true when it printed the whole name |
+| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, an interpolated string (§2.4.3), or `bool short_name()`: true when it printed the whole name |
 | `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
 | `plural` | name several identical objects | `string plural` or a `void` method |
 | `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |

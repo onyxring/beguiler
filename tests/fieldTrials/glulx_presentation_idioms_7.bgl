@@ -9,7 +9,7 @@
 // rules written into a grid; a pooled menu class with operator [] and operator []= over a member
 // array<string> (self[i] inside the class), an owned named accessor whose setter clamps (read,
 // assigned, ++ and += through it), and ?? choosing between two pooled menus; choice objects with
-// positional slots ahead of the name and a stringOrRoutine member (a string on most, a lambda on one)
+// positional slots ahead of the name and a iStringOrRoutine member (a string on most, a lambda on one)
 // printed into a grid and into the main window; bgl.world.instances() with a predicate filling a
 // menu; a uint checksum with wrapping multiply, ^= and >>, modulo and unsigned compares; throw/catch
 // from a row lookup two calls deep, once thrown from inside an interpolated string; a bglSize returned
@@ -52,7 +52,7 @@ class choice : object {
     inline string label;
     inline int    rank;
     deco look = 0;
-    stringOrRoutine detail = "No detail.";
+    iStringOrRoutine detail = "No detail.";
 }
 
 object roomA {

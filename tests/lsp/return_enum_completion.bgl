@@ -1,0 +1,6 @@
+enum eMood { calm, wary, angry }
+eMood moodFor(int n){
+    eMood m = calm;
+    return 
+}
+void main(){ moodFor(1); }

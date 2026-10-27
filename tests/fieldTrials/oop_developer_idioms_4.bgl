@@ -25,7 +25,7 @@
 #include <array>
 
 alias class Entity for object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum Place { Head = 0, Body = 1, Hand = 2 }

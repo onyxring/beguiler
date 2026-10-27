@@ -326,12 +326,15 @@ class bglParser {
         int stmtExprBase = 0;
         bool resolvingCallee = false;   // the name being resolved is called (its '(' already read)
         bool optStringMarkOpen = false;
+        map<string, set<string>> includedBy;   // each file → the files it #includes
+        bool shadowWarnable(typeDef* g);       // a local here may be warned about hiding global g
         int interpSegmentDepth = 0;   // parsing the expression of an interpolated string's `{ }` span
         bool stringMarkLeftOpen = false;   // the statement just parsed ended with held strings undrained
         void holdHoistedString(class i6RawNode* inj, const std::string& temp, const std::string& type);
         bool allowEmptyExpr = false;
         set<statement*> captureLoads;   // a lambda's capture load: runs before its statement, never inside a ?: branch   // a `for(;;)` header part is parsing
         void applySchemaDefaults(); // apply beguilerSettingsType default values to any unset settings fields
+        void checkDeferredSettings(); // report settings the block named before any declaration of them, once the program is read
         void defineSymbol(const string& name, const string& value = ""){ definedSymbols[name] = value; }
         bool isSymbolDefined(const string& name) const { return definedSymbols.count(name) > 0; }
         // Like defineSymbol but immutable (the `#declare` path): user code cannot #define/#redef it.
@@ -530,6 +533,10 @@ class bglParser {
         // "A|B…" structural expansion of a named-union type name; "" if not a named union. Used by
         // isTypeCompatible to make a named union transparent for assignment/passing.
         std::string unionExpansionOf(const std::string& typeName);
+        bool holdsString(const std::string& typeName);   // string, or a union holding string
+        std::string interpolatedTargetError(const std::string& type);
+        static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
+        static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
         // Declarative build-time editing of a previously-declared array's baked initializer:
         // `extend <array> { inject/remove/move ... }`. Edits the initializerList in place; the
         // normal array baking then emits the result. Generic (any array of elements/references).
@@ -747,7 +754,8 @@ class bglParser {
         bool genericTypeIsUnionHead();
         string maybeParseUnionTail(const std::string& firstType);
         string readUnionMemberType();       // reads one complete member type (base + func<>/array<> tail) after a '|'
-        string parseLambdaExpr(functionDef* func, statementBlock* body, bool bareArrow = false);  // parses lambda, lifts to global, returns lifted name
+        string parseLambdaExpr(functionDef* func, statementBlock* body, bool bareArrow = false, bool interpolatedBody = false);  // parses lambda, lifts to global, returns lifted name
+        bool takesInterpolatedRoutine(const string& type);   // `$"…"` assigned to it becomes a routine that prints the text
 
         bool processStatement(token, abstractObject& = emptyContainer);
         bool staticArrayDeclaredBelow(const string& path);
@@ -1241,8 +1249,6 @@ class bglParser {
         // The emitter `operator =` of `cls` that takes a `valueType`, inherited ones included, or null.
         functionDef* emitterAssignOperator(classDef* cls, const string& valueType);
     private:
-        static bool isUnionType(const std::string& t);              // true if t has a top-level '|' (a union type name)
-        static std::vector<std::string> splitUnionType(const std::string& t);  // split a union name into its member type names
         // Canonical name for a union of these members: flattened, sorted and deduped, so the same
         // set always names the same type and a single member collapses back to itself.
         static std::string canonicalUnionOf(std::vector<std::string> members);
@@ -1360,6 +1366,7 @@ class bglParser {
             // Where every candidate's parameter is `ref`, the argument names an instance, not its getter's value.
             vector<char> positionalRef;
             vector<classDef*> positionalAccessor;   // an accessor class a candidate takes there (null when none or several)
+            vector<string> positionalRoutine;       // the routine type every candidate takes there, which a `$"…"` becomes ("" otherwise)
             vector<functionDef*> candidates;          // for a `{ … }` the positions disagree on: those taking the call's argument count
             set<string> namedRef;
             string receiverType;   // a method's receiver: a `property` argument names its member
@@ -1597,3 +1604,4 @@ class bglParser {
 
 extern bglParser parser;
 void preReadIncludePaths(const std::string& rawBlock, const std::string& settingsFile);
+void preReadLibPath(const std::string& rawBlock, const std::string& settingsFile);

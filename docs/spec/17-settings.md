@@ -47,19 +47,21 @@ command line counts as written before any block (§16.4). Two exceptions:
   dropped).
 - `release` and `seriesNumber` treat `0` as "not set", so a block that assigns `0` does not fix them.
 
-**Entry-file properties.** Six properties are read from the entry source file before parsing begins,
+**Entry-file properties.** These properties are read from the entry source file before parsing begins,
 by a textual scan of its `#beguilerSettings` blocks:
 
 - `target`
 - `includePaths`
+- `beguiLibPath`
 - `generateBlorb`
 - `blorbAssetPath`
 - `autoInitialize`
-- `worldBufSize`
-- `heapSize`
+- every `int` property set to an integer literal, including those the library and extensions declare
+  (`heapSize`, `worldBufSize`, `<string>`'s `stringHeapSize`)
 
-The asset scan, the compile-time target symbols used by `#if` during the pre-scan, and the include
-search path used to resolve forward references all come from this early read. These properties must
+The asset scan, the compile-time target symbols used by `#if` during the pre-scan, the library the
+program is read with, the include search path used to resolve forward references, and the sizes the core
+library reads as it is parsed all come from this early read. These properties must
 therefore be written in the entry file, as literal values, not in an included file.
 
 **Example**
@@ -85,7 +87,7 @@ These properties locate external tools. They are never written to the generated 
 | --- | --- | --- | --- |
 | `informPath` | string | none | Full path to the Inform 6 compiler binary. Wins over `informName`. |
 | `informName` | string | `"inform"` | File name of the Inform 6 binary, looked up next to the `beguiler` binary. `"none"` skips the Inform 6 hand-off. |
-| `beguiLibPath` | string | `"beguiLib"` | Directory of the Beguile system library, replacing the binary-adjacent default for includes processed after the block. |
+| `beguiLibPath` | string | `"beguiLib"` | Directory of the Beguile system library, replacing the binary-adjacent default for the whole program; `-lib=` wins. A relative path is relative to the entry file's folder. Set in the entry file: a block in another file naming a different library is a compile-time error. |
 | `includePaths` | string | none | One or more directories, comma-separated, added to the search path for both `#include "…"` and `#includeI6` (§18.4). Additive across blocks and with `-includepaths=`. |
 
 A regular `"…"` `includePaths` entry is normalized: separators are rewritten (§18.5), a relative path
@@ -110,8 +112,10 @@ own `Include` directives against the same set.
 
 ## 17.4 Runtime Settings
 
-These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
-must be at least 1, and `heapSize` 0 (the target's default) or at least 64.
+These properties size runtime structures in the generated code. `framePoolSize` must be at least 1, and
+`heapSize` 0 (the target's default) or at least 64; `worldBufSize` takes its default when unset or 0.
+`heapSize` and `worldBufSize` are declared by the core library itself (`core/_gc`, `core/_bglWorld`),
+with `extend class beguilerSettingsType`, as an extension declares its own (§17.7).
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |

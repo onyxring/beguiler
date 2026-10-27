@@ -101,25 +101,25 @@ object cloakroom{
     attributeList attributes = {light, general};
 }
 extend class object { 
-    string description; 
-    object s_to; 
-    object e_to; 
-    object w_to; 
-    object n_to;  
+    iString description; 
+    iStringOrObject s_to; 
+    iStringOrObject e_to; 
+    iStringOrObject w_to; 
+    iStringOrObject n_to;  
 }
 object foyer{
-    short_name="Foyer of the Opera House";
+    "Foyer of the Opera House";
     description = "You are standing in a spacious hall, splendidly decorated
         in red and gold, with glittering chandeliers overhead. The entrance 
         from the street is to the north, and there are doorways south and west.";
     s_to = bar;
     w_to = cloakroom;
-    string n_to = "You've only just arrived, and besides, the weather outside 
+    n_to = "You've only just arrived, and besides, the weather outside 
         seems to be getting worse."; 
     attributes = {light}; 
 }
 object bar{
-    short_name="Foyer bar";
+    "Foyer bar";
     description="The bar, much rougher than you'd have guessed after the 
         opulence of the foyer to the north, is completely empty. There seems 
         to be some sort of message scrawled in the sawdust on the floor.";
@@ -141,9 +141,8 @@ object bar{
     attributes = {!light};
 }
 object cloak {
-    object parent=selfobj;
-    string short_name = "velvet cloak";
-    string description = "A handsome cloak, of velvet trimmed with satin, and 
+    "velvet cloak", selfobj;
+    description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
     rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
@@ -172,18 +171,14 @@ object cloak {
     attributes = {clothing, general, worn}; 
 }
 object hook { 
-    string short_name = "small brass hook";
-    object parent = cloakroom;
-    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
-    bool description() {
-        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
-    }
+    "small brass hook", cloakroom;
+    name = {.small, .brass, .hook, .peg};
+    description = $"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}";
     attributes = {scenery, supporter}; 
 }
 object message {
-    string short_name = "scrawled message";
-    object parent = bar;
-    rawArray<dictionaryWord> name = {.message, .sawdust, .floor};
+    "scrawled message", bar;
+    name = {.message, .sawdust, .floor};
     bool description() {
         if (number < 2) {
             score++; 
@@ -386,10 +381,11 @@ There's quite a bit of substance to Beguile routines which will become more appa
 - Beguile routines always have a return type, even if that type means "No return type". That's the case here, where the return type is `void`. If you attempt to return a value from a `void` routine, Beguile will tell you that's not allowed.
 - Parameters are enclosed in parentheses.  There are no parameters to the `DeathMessage` routine, so the parenthetical is empty.
 - The body of a routine is contained within braces; the routine name and parameters are always  outside of, and precede, the body.
-- The name of a Beguile routine is usually emitted exactly to I6 as it is in Beguile.
+- The name of a Beguile routine is usually emitted to I6 exactly as it is written in Beguile, as `DeathMessage` is here.
 
-  > ***Note**: There are a few features which, when used, cause this to not hold true.  For example, Beguile supports signature overloading, allowing you to define two routines with the same name, but taking different parameters.  In this case, Beguiler employs a technique called "name mangling" which emits different I6 names entirely.*
-  >
+  > ***Note**: There are a few cases where it isn't, each because I6 couldn't accept the name as written.  Beguile supports signature overloading, allowing you to define two routines with the same name, but taking different parameters; I6 doesn't, so Beguiler employs a technique called "name mangling", emitting each under a name of its own (`greet(int)` and `greet(string)` become `greet_1_int` and `greet_1_string`).  I6 also keeps routines, globals, objects and properties in a single namespace, so a routine named like a property, whether the library declares it (`describe`) or one of your own classes or objects does, is emitted as `_g_describe`; one named like an I6 statement (`box`) is emitted as `_box`.*
+
+  > ***Note**: Your Beguile code never notices any of this: calls follow the emitted name automatically.  It matters only in raw I6 (an `#i6` block, or an emitter's body), where `$i6Name(describe)` supplies the emitted name.  Naming a routine renamed for a property directly in raw I6 is a compile-time error, rather than a silent call to the wrong thing.*
 
 - Notice the single statement in `DeathMessage`. In Beguile, `print` is a global routine, not a language construct.  This distinction has more nuance than it may seem at first glance.  We'll see some of this when we revisit `print` in a bit.
 
@@ -517,17 +513,18 @@ A few additional key differences between Beguile objects and I6 objects become a
   > ***Note**: The members of the list, assigned to an `attributeList` instance, must be instances of the `attribute` class.  Beguile will throw an error otherwise.*
   >
 
+I wrote `cloakroom` the long way on purpose: every member typed, every value named.  Beguile doesn't require most of that, and the rooms and objects that follow use the briefer syntax.
+
 ### Member Type Inference
 The next section introduces the `extend` keyword:
 
 ```
 extend class object { 
-    string short_name;
-    string description; 
-    object s_to; 
-    object e_to; 
-    object w_to; 
-    object n_to;  
+    iString description; 
+    iStringOrObject s_to; 
+    iStringOrObject e_to; 
+    iStringOrObject w_to; 
+    iStringOrObject n_to;  
 }
 ```
 
@@ -537,26 +534,57 @@ Here we extend `object` by giving the types of several library properties.  On t
 
 ```
 object foyer{
+    "Foyer of the Opera House";
     description = "You are standing in a spacious hall, splendidly decorated
         in red and gold, with glittering chandeliers overhead. The entrance 
         from the street is to the north, and there are doorways south and west.";
     s_to = bar;
     w_to = cloakroom;
-    string n_to = "You've only just arrived, and besides, the weather outside 
+    n_to = "You've only just arrived, and besides, the weather outside 
         seems to be getting worse."; 
-    short_name="Foyer of the Opera House";
     attributes = {light}; 
 }
 ```
 
-Notice that most of the members don't have types specified.  For example, the `description` member of `foyer` is understood to be of type `string` because `foyer` is an `object` and our `extend`-ed `object` declaration predefines `description` that way.  The same is true of `s_to` and `w_to`, both of which are of type `object`.
+Notice that most of the members don't have types specified.  For example, the `description` member of `foyer` is understood to be of type `iString` because `foyer` is an `object` and our `extend`-ed `object` declaration predefines `description` that way.  The same is true of `s_to`, `w_to` and `n_to`, which are understood to be `iStringOrObject`s.
 
 > ***Note**: The "Type Inference" rule is an example of the **Ease of Use** principle applied.*
 
-Two points of clarification:
+A few points of clarification:
 
-- `n_to`, which would normally be inferred as type `object` has been overridden to type `string`.  We could just as easily have declared the default types for direction properties as `string`, then overridden `s_to` and `w_to` to be `objects`.  Either way is acceptable.
-- You might note that we neither defined the default type for `attributes` as type `attributeList` nor `short_name` as type `string`, and Beguiler still accepted the property without error.  This is because the `attributes` and `short_name` property types are already set on the `object` definition, even without `extend`-ing it.  We declared the type explicitly on the `cloakroom` object to further the example.  Had we left that particular member untyped, even without the `extend object` code, the example would still have compiled.
+- `iString` is a union type, which the bindings supply: a `string`, either plain, as `description` is here, or interpolated, which is evaluated each time it's printed.  We'll see the interpolated form when we get to the `hook`.
+- `iStringOrObject` is another union type the bindings supply.  A direction property holds either the room it leads to, as `s_to` and `w_to` do here, or an `iString` the library prints instead of moving the player, as `n_to` does.
+- I6 also lets a direction property be a routine, which decides where the exit leads.  In Beguile, write that as a method, `object e_to(){ ... }`, which declares its own type, so the union doesn't need to list one.
+- You might note that we neither defined the default type for `attributes` as type `attributeList`, nor gave the `foyer` a `short_name` at all, and Beguiler still accepted it without error.  The `attributes` property type is already set on the `object` definition, even without `extend`-ing it.  The name is a story of its own...
+
+#### The Object's Name
+
+Look at the first line of the `foyer`:
+
+```
+"Foyer of the Opera House";
+```
+
+This is a *positional* value: a value with no member name, which fills a slot the class marks as positional.  `object`'s slots are its name, then its parent, which mirrors the header of an I6 object declaration.  The `foyer` emits as:
+
+```
+object foyer "Foyer of the Opera House"
+  with ...
+```
+
+...which is exactly what an I6 developer would write.  The `cloakroom` set its name through `short_name` instead.  Both work, just as they do in I6; the library prints `short_name` when an object has one, and the name from the header when it doesn't.
+
+Positional slots are something any class can declare, with the `inline` qualifier.  The `punyInform` and `i6StandardLibrary` bindings declare `object`'s:
+
+```
+extend class object {
+    inline instanceName;
+    inline parent;
+    ...
+}
+```
+
+`instanceName` is the object's name as Beguile knows it; `inline` with no type re-lists a member the class already has, making it positional.  We'll see the second slot, `parent`, on the `cloak`.
 
 > ***Note**: From the sequencing of the above examples, you might suspect that objects declared *before* `object` was `extend`-ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.*
 
@@ -674,9 +702,8 @@ Our locations now covered, we turn to the `cloak` object:
 
 ```
 object cloak {
-    object parent=selfobj;
-    string short_name = "velvet cloak";
-    string description = "A handsome cloak, of velvet trimmed with satin, and 
+    "velvet cloak", selfobj;
+    description = "A handsome cloak, of velvet trimmed with satin, and 
         slightly spattered with raindrops. Its blackness is so deep that it 
         almost seems to suck light from the room.";
     rawArray<dictionaryWord> name = {.handsome, .dark, .black, .velvet, .satin, .cloak}; 
@@ -710,13 +737,26 @@ A few elements stand out, warranting clarification.
 
 #### Positioning in the World Map
 
-A counterpoint to I6, which allows the object's parent to be declared on the first line of the object declarations (or alternatively, adjacent to the previous declaration with the `->` syntax), Beguile objects are explicitly set via the `parent` member:
+I6 declares an object's parent in its header, right after the name (or alternatively, adjacent to the previous declaration with the `->` syntax).  Beguile's `cloak` does the same, with the second of `object`'s positional slots:
 
 ```
-object parent=selfobj;
+"velvet cloak", selfobj;
 ```
 
-This member variable is the primary means of positioning objects in the world model, both in the object declaration context, but also at runtime, as we'll see later.
+The name fills the first slot and the parent the second, so the `cloak` emits as:
+
+```
+object cloak "velvet cloak" selfobj
+  with ...
+```
+
+The slot is the object's `parent` member, which can also be set by name, as any member can:
+
+```
+object parent = selfobj;
+```
+
+Either way, `parent` is the primary means of positioning objects in the world model, both in the object declaration context, but also at runtime, as we'll see later.  The rooms have no parent, so they give only a name.
 
 #### Dictionary Words
 
@@ -750,6 +790,12 @@ Above is a `dictionaryWord` literal, which begins with a period (`.`).  This exa
 
 > ***Note**: Plural words are represented with **two** dots, while singular words are represented with **one**.  So: `..dimes` is equivalent to I6's `'dimes//p'`.*
 
+Since `object` already declares `name` this way, its type can be inferred, just like `description`.  The `hook` and the `message`, which follow, take the briefer form:
+
+```
+name = {.small, .brass, .hook, .peg};
+```
+
 #### Adjusting Attributes
 
 The `cloak` object's `before` routine goes a bit further than just testing attributes with `has` and `hasnt`; it adjusts them:
@@ -774,20 +820,17 @@ The hook object has one significant element which needs to be called out...
 
 ```
 object hook { 
-    string short_name = "small brass hook";
-    object parent = cloakroom;
-    rawArray<dictionaryWord> name = {.small, .brass, .hook, .peg};
-    bool description() {
-        rtrue($"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}");       
-    }
+    "small brass hook", cloakroom;
+    name = {.small, .brass, .hook, .peg};
+    description = $"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}";
     attributes = {scenery, supporter}; 
 }       
 ```
 
-Specifically, within the `description` routine, which prints an interpolated string:
+Specifically, the value assigned to `description` is an interpolated string:
 
 ```
-    $"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}"
+$"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}"
 ```
 
 Beguile borrows Interpolated Strings from C#.  Interpolated strings begin with `$` and are processed just like normal strings, except that everything bounded by `{`braces`}` is interpreted as Beguile code, rather than a raw quoted string.
@@ -801,6 +844,26 @@ So the above string is interpolated as beginning with...
 ```
 cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"
 ```
+
+The question is *when* it evaluates that expression.  The hook's description has to change as the cloak moves, so it can't be worked out once, when the game starts.  Recall that `description` is an `iString`.  An interpolated string assigned to an `iString` *becomes* a routine: one which prints the string, evaluating the braces each time it's printed.  The `hook` emits as:
+
+```
+object hook "small brass hook" cloakroom
+  with name 'small' 'brass' 'hook' 'peg',
+       description _bglLambda_0
+  has scenery supporter
+;
+...
+[_bglLambda_0 _bgl_tempL0;
+    print "It's just a small brass hook, ";
+    if (parent(cloak) == hook) { _bgl_tempL0 = "with a cloak hanging on it.^"; } else { _bgl_tempL0 = "screwed to the wall.^"; }
+    print (string)_bgl_tempL0;
+];
+```
+
+...which is the description routine an I6 developer would have written by hand.  The routine returns `true`, as the library expects of a routine which printed the text, but, unlike `print_ret`, it adds no newline.
+
+> ***Note**: It's the type receiving an interpolated string which decides what it becomes.  Assigned to a `stringObj` (see Strings, below), it's the text at that moment; assigned to an `iString`, or anything else which can hold a routine, it's a routine which prints the text each time.*
 
 ### Conditional Operators
 
@@ -963,7 +1026,7 @@ The split is the part worth slowing down for, because it has no I6 equivalent:
 | Type | What the slot holds | Mutable? | Costs |
 |---|---|---|---|
 | `string` | a **pointer** to static text — exactly I6's address-of-literal | no | nothing |
-| `stringObj` | a **buffer it owns**, taken from the string pool | yes | a pool slot |
+| `stringObj` | a **buffer it owns**, a block in the string heap that grows as text is written | yes | a pool slot |
 
 An I6 dev already knows the first one: it is the packed literal address. `stringObj` is the thing I6 makes you hand-roll with buffers, given a type.
 
@@ -1064,7 +1127,7 @@ names += "apple";
 names.sort();                    // ordered by content, not by address
 ```
 
-> ***Note**: Including `<string>` does come with a runtime cost: a small string pool and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
+> ***Note**: Including `<string>` does come with a runtime cost: a small string heap and the dispatch routines that make typed comparisons work.  If your game is content-string heavy, the cost is well-paid.  If you're only printing literals and never comparing them, you don't need the extension and shouldn't include it.*
 
 #### `print` is a routine, not a statement
 
@@ -1098,7 +1161,18 @@ print "You picked up ";
 print count;
 print " ";
 print (name)item;
-print ".");
+print ".";
+```
+
+- What receives the interpolated string decides what it becomes.  Passed to `print`, it prints right there, as above.  Assigned to a `stringObj`, it's captured: the string holds the text as it was at that moment.  Assigned to something which can hold a routine (an `iString` or `interpolatedString` variable or member, such as `description`), it becomes a routine which prints the text, its braces evaluated each time it's printed, as the hook's description was.
+
+``` bgl
+int watts = 60;
+stringObj snap          = $"{watts}W";   // the text, now
+interpolatedString live = $"{watts}W";   // a routine which prints it
+watts = 100;
+print(snap);                             // 60W
+print(live);                             // 100W
 ```
 
 - Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through to I6 (which translates it into a new line).

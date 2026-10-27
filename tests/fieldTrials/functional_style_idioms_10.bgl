@@ -6,7 +6,7 @@
 // with indexOf in an array<dictionaryWord> and returns a bnum through parsed_number, and a SCOPE()
 // routine that places the results of a <linq> chain in scope; a bnum of item traits combined with `|`
 // and `&` inside lambdas, folded from 0, and queried by <linq> over array<eTrait> with a captured bnum
-// parameter; stringOrRoutine `description`s given lambdas in object definitions and reassigned at run
+// parameter; iStringOrRoutine `description`s given lambdas in object definitions and reassigned at run
 // time to a lambda, a named function and a ternary between a string and a function; overloads that
 // differ only in the func<> parameter's signature (func<int, int>, func<bool, int>, func<void, int>)
 // given lambdas and named functions; an object used as a namespace of func<> members and an
@@ -30,7 +30,7 @@
 #include <linq>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 //-- Plain functions -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 // run_stringobj_heap_glulx — the Glulx form of run_stringobj_heap.
 // EXPECT_OUTPUT: grow 600 replace 780 ABCDEFde capture [n=42 second] nest (4(3(2(1)))) churn 230 keep 55 second firstxx
 #beguilerSettings { target = glulx; informName = "none"; }
-#include <stringObj>
+#include <string>
 #include "glulxConsole.bgl"
 stringObj keep1 = "first";
 stringObj keep2 = "second";

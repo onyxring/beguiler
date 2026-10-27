@@ -11,7 +11,12 @@ global _bgl_sw;
     Default bglStringDefaultSize 500;
 
 constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 16384;
+#Ifdef _bglHeapWords;#Endif;
 constant _bglFilemodeWrite = 1;
+constant bglStringHeapSize = 5120;
+constant bglStringCaptureSize = 512;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -62,15 +67,15 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
     _bglInitializeStringBuffers();
 
 ];
- Constant NO_ATTRIBUTE 0; 
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 object _glulx
 ;
-[_bglSuspendLineInput buffer;
+[_bglSuspendLineInput inputBuf;
     return 0;
 ];
-[_bglResumeLineInput buffer typed;
+[_bglResumeLineInput inputBuf typed;
 ];
-[_bglGlkEvent event context buffer _l_target known n typed;
+[_bglGlkEvent event context inputBuf _l_target known n typed;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
@@ -84,11 +89,11 @@ object _glulx
     }
     typed = 0;
     if (context == 0) {
-        typed=_bglsuspendlineinput(buffer);
+        typed=_bglsuspendlineinput(inputBuf);
     }
      _l_target(); 
     if (context == 0) {
-        _bglresumelineinput(buffer, typed);
+        _bglresumelineinput(inputBuf, typed);
     }
     return true;
 ];
@@ -118,7 +123,7 @@ array _bglbufglulxstreams table 16;
     Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
 
 
-    Constant _bglOverrunSetting "bglStringDefaultSize";        ! what <buf> names when printed text overruns its room
+    Constant _bglOverrunSetting "the stringCaptureSize setting (stringHeapSize, for a literal)";   ! what <buf> names when printed text overruns its room
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
     Array _bglStringLockStackSlots --> bglStringLockStackSize;
     Global _bglStringLockStackTop = 0;
@@ -126,11 +131,402 @@ array _bglbufglulxstreams table 16;
     Global _bglStringLockStackMarkTop = 0;
     Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
     Global _bglStrAppendTop = 0;
-    ! bglStringDefaultSize is declared in <buf>, already in scope.
+    Constant _bglStrTempCount = bglBufferPoolReserve - bglStringPoolReserve;
+    Constant _bglStrStartSize 16;                               ! a new string's capacity, in chars
+    Array _bglStrHeap -> bglStringHeapSize;
+    Global _bglStrHeapTop = 0;                                  ! bytes in use, from the start of the heap
+    Global _bglStrCaptures = 0;                                 ! captures under way (reported by the debug usage line)
 
-    Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
+    class _bglBufferWrapper(_bglStrTempCount) with _bglText_buf 0;       ! buffer-as-object so it can move between sentinel containers
 
-    class _bglBufferWrapper(bglBufferPoolReserve) with _bglText_buf 0;   ! buffer-as-object so it can move between sentinel containers
+    ! Whether `x` is a pool string. `ofclass` faults on a value that isn't an object, and a buffer's
+    ! address can arrive wherever a string can.
+    [ _bglStrIs x; return metaclass(x) == Object && x ofclass _bglString; ];
+
+    ! The string whose own buffer `b` is, or 0.
+    [ _bglStrOwnerOf b; if(_bglStrInHeap(b) && _bglStrIs(b-->(-2))) return b-->(-2); return 0; ];
+
+    [ _bglStrBlockBytes cap; return 3 * WORDSIZE + ((cap + WORDSIZE - 1) / WORDSIZE) * WORDSIZE; ];
+
+    ! Whether buffer `b` is being captured into: output is going to its address, so it can't move.
+    [ _bglStrCapturing b  i;
+        for(i = 1 : i <= _bglBuf._stackTop : i++) if(_bglBufStreamStack-->i == b) rtrue;   ! element k of the array is at -->(k + 1)
+        rfalse;
+    ];
+
+    ! Whether `b` is a buffer in the string heap.
+    [ _bglStrInHeap b; return b >= _bglStrHeap + 2 * WORDSIZE && b < _bglStrHeap + bglStringHeapSize; ];
+
+    ! Point the tracked-buffer registry's entry for `old` at `new`.
+    [ _bglStrRetrack old new  i;
+        for(i = 0 : i < _bglBuf._trackedCount : i++)
+            if(_bglTrackedRegistry-->i == old){ _bglTrackedRegistry-->i = new; return; }
+    ];
+
+    #Ifdef DEBUG;
+    Global _bglStrHeapPeak = 0;                                 ! the most bytes the heap has needed
+    ! The bytes the heap needs now: what compaction couldn't give back (live strings at their length,
+    ! temporaries, and blocks being captured into).
+    [ _bglStrNeeded growing newLen  o b n owner need keep;
+        for(o = 0 : o < _bglStrHeapTop : o = o + n){
+            b = _bglStrHeap + o;
+            n = _bglStrBlockBytes(b-->1);
+            owner = b-->0;
+            if(owner == 0) continue;
+            if(owner ofclass _bglString && _bglStrCapturing(b + 2 * WORDSIZE) == false){
+                if(owner in _bglObjectHeap) continue;   ! a free string's block can be dropped
+                keep = b-->2;
+                if(owner == growing) keep = newLen;   ! a write about to make it this long
+                if(keep < _bglStrStartSize) keep = _bglStrStartSize;
+                need = need + _bglStrBlockBytes(keep);
+            }
+            else need = need + n;
+        }
+        return need;
+    ];
+    ! Record what the heap needs as a block of `extra` bytes is taken, or as `growing` becomes `newLen`
+    ! chars long: everything compaction can't give back, plus the new block.
+    [ _bglStrNotePeak growing newLen extra  need;
+        need = _bglStrNeeded(growing, newLen) + extra;
+        if(need > _bglStrHeapPeak) _bglStrHeapPeak = need;
+    ];
+    ! A literal `len` chars long set into `s`, whose block holds `cap`: what growing it would need.
+    [ _bglStrNoteLiteral s len cap;
+        if(len > cap) _bglStrNotePeak(0, 0, _bglStrBlockBytes(len));
+        else _bglStrNotePeak(s, len);
+    ];
+    ! The `heap` debug verb's line for the string heap.
+    [ _bglStrHeapReport;
+        _bglStrNotePeak();
+        print "String heap: ", bglStringHeapSize, " bytes; ", _bglStrNeeded(), " in use, ", _bglStrHeapPeak, " at most.^";
+    ];
+    #Endif;
+
+    ! A block of `cap` chars for `owner` at the free end: its buffer, or 0 when it doesn't fit.
+    [ _bglStrBump owner cap  b n;
+        n = _bglStrBlockBytes(cap);
+        if(_bglStrHeapTop + n > bglStringHeapSize) return 0;
+        b = _bglStrHeap + _bglStrHeapTop;
+        _bglStrHeapTop = _bglStrHeapTop + n;
+        b-->0 = owner; b-->1 = cap; b-->2 = 0;
+        return b + 2 * WORDSIZE;
+    ];
+
+    ! Debug builds: what the string heap holds, by kind of owner.
+    [ _bglStrUsage  o b n owner live free temps cap big;
+        for(o = 0 : o < _bglStrHeapTop : o = o + n){
+            b = _bglStrHeap + o;
+            n = _bglStrBlockBytes(b-->1);
+            owner = b-->0;
+            if(owner == 0){ free = free + n; if(n > big) big = n; }
+            else if(owner ofclass _bglBufferWrapper) temps = temps + n;
+            else { live = live + n; cap = cap + b-->2; }
+        }
+        print "[string heap: ", _bglStrHeapTop, " of ", bglStringHeapSize, " bytes in use; strings ", live, " (", cap, " chars of text), temporaries ", temps, ", free blocks ", free, " (largest ", big, "), captures ", _bglStrCaptures, "]^";
+    ];
+
+    ! A block of `cap` chars for `owner` without moving any: at the free end, or in the first free
+    ! block big enough (split when the rest can hold a block). Its buffer, or 0.
+    [ _bglStrPlace owner cap  buf o b n need rest;
+        buf = _bglStrBump(owner, cap);
+        if(buf) return buf;
+        need = _bglStrBlockBytes(cap);
+        for(o = 0 : o < _bglStrHeapTop : o = o + n){
+            b = _bglStrHeap + o;
+            n = _bglStrBlockBytes(b-->1);
+            if(b-->0 ~= 0) continue;
+            ! Merge the free blocks that follow into this one.
+            while(o + n < _bglStrHeapTop && (b + n)-->0 == 0){
+                n = n + _bglStrBlockBytes((b + n)-->1);
+                b-->1 = n - 3 * WORDSIZE;
+            }
+            if(o + n == _bglStrHeapTop){ _bglStrHeapTop = o; return _bglStrBump(owner, cap); }   ! a free run at the end is the free end
+            if(n < need) continue;
+            rest = n - need;
+            if(rest >= 3 * WORDSIZE){
+                b-->1 = cap;
+                (b + need)-->0 = 0; (b + need)-->1 = rest - 3 * WORDSIZE; (b + need)-->2 = 0;
+            }
+            b-->0 = owner; b-->2 = 0;
+            return b + 2 * WORDSIZE;
+        }
+        return 0;
+    ];
+
+    [ _bglStrHeapFull  w;
+        while(_bglBuf._stackTop > 0) _bglBuf._bglText_release();   ! a capture would swallow the message
+        #Ifdef TARGET_GLULX;
+            ! Print in a text-buffer window: the status grid may be current, and at startup none is open.
+            for(w = glk($0020, 0, 0) : w ~= 0 && glk($0028, w) ~= 3 : w = glk($0020, w, 0)) ;
+            if(w == 0) w = glk($0023, 0, 0, 0, 3, 0);
+            glk($002F, w);
+        #Ifnot; w = 0;
+        #Endif;
+        print "^[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]^";
+        #Ifdef DEBUG; _bglStrUsage(); #Endif;
+        quit;
+    ];
+
+    ! A new block of `cap` chars for `owner`. It never moves another block: it is taken in the
+    ! middle of operations that hold buffers by address.
+    [ _bglStrAlloc owner cap  buf;
+        #Ifdef DEBUG; _bglStrNotePeak(0, 0, _bglStrBlockBytes(cap)); #Endif;
+        buf = _bglStrPlace(owner, cap);
+        if(buf == 0) _bglStrHeapFull();
+        _bglBuf._registerTracked(buf);
+        return buf;
+    ];
+
+    ! Slide the blocks down over the free ones. Every move updates the owner and the registry. A
+    ! free string keeps its text, trimmed to its length, since a freed result is still read until
+    ! the pool hands its string out again; with `dropFree`, free strings lose their blocks too (each
+    ! takes a new one when it is next used) and live strings give up their spare room. Free temporary buffers lose theirs. A temporary buffer
+    ! in use stays put; the gap before it becomes a free block.
+    [ _bglStrCompact dropFree  o b step n to owner moved dst keep;
+        to = 0;
+        for(o = 0 : o < _bglStrHeapTop : o = o + step){
+            b = _bglStrHeap + o;
+            step = _bglStrBlockBytes(b-->1);
+            n = step;
+            owner = b-->0;
+            ! The second pass trims a live string's spare room too; it grows again when it needs to.
+            if(dropFree && owner ~= 0 && owner ofclass _bglString && (owner in _bglObjectHeap) == false
+               && _bglStrCapturing(b + 2 * WORDSIZE) == false){   ! not ~~(…) && …: Inform 6 negates the whole chain
+                keep = b-->2;
+                if(keep < _bglStrStartSize) keep = _bglStrStartSize;
+                if(_bglStrBlockBytes(keep) + 3 * WORDSIZE <= n){ b-->1 = keep; n = _bglStrBlockBytes(keep); }
+            }
+            if(owner ~= 0 && owner in _bglObjectHeap && owner ofclass _bglString){
+                if(~~dropFree){
+                    keep = b-->2;
+                    if(keep < _bglStrStartSize) keep = _bglStrStartSize;
+                    if(_bglStrBlockBytes(keep) + 3 * WORDSIZE <= n){ b-->1 = keep; n = _bglStrBlockBytes(keep); }   ! the slack must hold a block
+                } else {
+                    _bglBuf._unregisterTracked(b + 2 * WORDSIZE);
+                    owner._underlyingBuffer = 0;
+                    owner = 0;
+                }
+            }
+            if(owner == 0) continue;
+            if(owner ofclass _bglBufferWrapper || _bglStrCapturing(b + 2 * WORDSIZE)){
+                if(to ~= o){ dst = _bglStrHeap + to; dst-->0 = 0; dst-->1 = o - to - 3 * WORDSIZE; dst-->2 = 0; }
+                to = o + n;
+                if(n < step){ dst = _bglStrHeap + to; dst-->0 = 0; dst-->1 = step - n - 3 * WORDSIZE; dst-->2 = 0; to = o + step; }
+                continue;
+            }
+            if(to ~= o){
+                dst = _bglStrHeap + to;
+                moved = dst + 2 * WORDSIZE;
+                #Ifdef TARGET_ZCODE;
+                    @copy_table b dst n;
+                #Ifnot;
+                    @mcopy n b dst;
+                #Endif;
+                _bglStrRetrack(b + 2 * WORDSIZE, moved);
+                if(owner ofclass _bglString) owner._underlyingBuffer = moved;
+                else owner._bglText_buf = moved;
+            }
+            to = to + n;
+        }
+        _bglStrHeapTop = to;
+    ];
+
+    ! Move string `s`'s block to the end of the heap, sliding the blocks after it down: the two runs are
+    ! swapped in place by three reversals, so no spare room is needed. False when a block after it can't
+    ! move (a temporary, or one being captured into).
+    [ _bglStrToEnd s  buf b n end o step bb owner moved nb;
+        buf = s._bglText_getBuf();
+        b = buf - 2 * WORDSIZE;
+        n = _bglStrBlockBytes(buf-->(-1));
+        end = _bglStrHeap + _bglStrHeapTop;
+        if(b + n == end) rtrue;
+        for(o = (b + n) - _bglStrHeap : o < _bglStrHeapTop : o = o + step){
+            bb = _bglStrHeap + o;
+            step = _bglStrBlockBytes(bb-->1);
+            owner = bb-->0;
+            if(owner ~= 0 && (owner ofclass _bglBufferWrapper || _bglStrCapturing(bb + 2 * WORDSIZE))) rfalse;
+        }
+        _bglStrReverse(b, b + n);
+        _bglStrReverse(b + n, end);
+        _bglStrReverse(b, end);
+        for(o = b - _bglStrHeap : o < _bglStrHeapTop - n : o = o + step){
+            bb = _bglStrHeap + o;
+            step = _bglStrBlockBytes(bb-->1);
+            owner = bb-->0;
+            if(owner == 0) continue;
+            moved = bb + 2 * WORDSIZE;
+            _bglStrRetrack(moved + n, moved);
+            if(owner ofclass _bglString) owner._underlyingBuffer = moved;
+            else owner._bglText_buf = moved;
+        }
+        nb = end - n + 2 * WORDSIZE;
+        _bglStrRetrack(buf, nb);
+        s._underlyingBuffer = nb;
+        rtrue;
+    ];
+    [ _bglStrReverse from to  t;
+        to--;
+        while(from < to){ t = from->0; from->0 = to->0; to->0 = t; from++; to--; }
+    ];
+
+    ! Room in string `s` for `need` chars: its buffer, which may have moved. Grows by half again,
+    ! in place when its block is the last one.
+    [ _bglStrEnsure s need compacted  buf b cap newCap len nb from to;
+        buf = s._bglText_getBuf();
+        cap = buf-->(-1);
+        #Ifdef DEBUG; if(need <= cap && need > buf-->0) _bglStrNotePeak(s, need); #Endif;   ! a write is about to lengthen it
+        if(need <= cap) return buf;
+        newCap = cap + cap / 2;
+        if(newCap < need) newCap = need;
+        #Ifdef DEBUG; _bglStrNotePeak(0, 0, _bglStrBlockBytes(newCap)); #Endif;   ! the old block is copied into the new one
+        b = buf - 2 * WORDSIZE;
+        ! The last block may take less than half again: whatever room is left, if that holds `need`.
+        if(b + _bglStrBlockBytes(cap) == _bglStrHeap + _bglStrHeapTop
+           && (b - _bglStrHeap) + _bglStrBlockBytes(newCap) > bglStringHeapSize
+           && (b - _bglStrHeap) + _bglStrBlockBytes(need) <= bglStringHeapSize)
+            newCap = (bglStringHeapSize - (b - _bglStrHeap) - 3 * WORDSIZE) / WORDSIZE * WORDSIZE;
+        if(b + _bglStrBlockBytes(cap) == _bglStrHeap + _bglStrHeapTop
+           && (b - _bglStrHeap) + _bglStrBlockBytes(newCap) <= bglStringHeapSize){
+            _bglStrHeapTop = (b - _bglStrHeap) + _bglStrBlockBytes(newCap);
+            buf-->(-1) = newCap;
+            return buf;
+        }
+        nb = _bglStrPlace(s, newCap);
+        if(nb == 0 && newCap > need) nb = _bglStrPlace(s, need);
+        if(nb == 0){
+            ! Compacted and still no room for a copy: grow in place, as the last block.
+            if(compacted == 2 && _bglStrToEnd(s)) return _bglStrEnsure(s, need, 3);
+            if(compacted >= 2) _bglStrHeapFull();
+            _bglStrCompact(compacted == 1);   ! a second pass drops free strings' blocks too
+            return _bglStrEnsure(s, need, compacted + 1);
+        }
+        len = buf-->0;
+        from = buf + WORDSIZE;
+        to = nb + WORDSIZE;
+        #Ifdef TARGET_ZCODE;
+            @copy_table from to len;
+        #Ifnot;
+            @mcopy len from to;
+        #Endif;
+        nb-->0 = len;
+        b-->0 = 0;
+        _bglStrRetrack(buf, nb);
+        s._underlyingBuffer = nb;
+        return nb;
+    ];
+
+    ! `s += text`: grows s's own block and copies in only the new text.
+    [ _bglStrAppendInPlace s text  src lk lk2;
+        if(text == s) return s._bglText_setFromStr(s._bglText_append(text));   ! `s += s` reads what it writes
+        lk = _bglStr._bglText_ambiguousLock(text);   ! an ephemeral argument must outlive the growth below
+        src = _bglStr._bglText_toAmbiguousBuffer(text);
+        lk2 = _bglStr._bglText_ambiguousLock(src);
+        _bglStrEnsure(s, s._bglText_getLength() + _bglBuf._bglText_length(src));
+        if(_bglStrIs(text)) src = text._bglText_getBuf();   ! growing may have moved it
+        _bglBuf._bglText_appendBuffer(s._bglText_getBuf(), src);
+        _bglStr._bglText_ambiguousFree(src, lk2);
+        _bglStr._bglText_ambiguousFree(text, lk);
+        return s;
+    ];
+
+    [ _bglStrAppendCharInPlace s c  len;
+        len = s._bglText_getLength();
+        _bglStrEnsure(s, len + 1);
+        s._bglText_setChar(len, c);
+        s._bglText_setLength(len + 1);
+        return s;
+    ];
+
+    ! The value-based methods (`_bglStr.left(s, n)` and the rest) read `s` as a string: a string is used
+    ! as it is, locked while it is read if it is a freed result, and anything else is made into one.
+    Array _bglStrReadLocks --> 16;
+    Global _bglStrReadTop = 0;
+    [ _bglStrRead s;
+        if(_bglStrIs(s) == false) return _bglStr._bglText_new(s);
+        _bglStrReadLocks-->_bglStrReadTop = _bglStr._bglText_ambiguousLock(s);
+        _bglStrReadTop++;
+        return s;
+    ];
+    [ _bglStrReadDone str s;
+        if(str ~= s){ str._bglText_free(); return; }
+        _bglStrReadTop--;
+        _bglStr._bglText_ambiguousFree(s, _bglStrReadLocks-->_bglStrReadTop);
+    ];
+
+    ! The room a literal printed for buffer `buf` would have: to the heap's end from its block when that is
+    ! the last one, else the free end.
+    [ _bglStrLiteralRoom buf  b;
+        b = buf - 2 * WORDSIZE;
+        if(b + _bglStrBlockBytes(buf-->(-1)) == _bglStrHeap + _bglStrHeapTop) return bglStringHeapSize - (b - _bglStrHeap) - 3 * WORDSIZE;
+        return bglStringHeapSize - _bglStrHeapTop - 3 * WORDSIZE;
+    ];
+
+    ! Set string `s` to literal `lit` by printing it into the heap's free end, which a capture's worth
+    ! of room makes safe: in place when s's block is the last one, else at the end, then copied or
+    ! claimed. False when the free end is too small (the caller renders into a temporary).
+    [ _bglStrSetLiteral s lit  buf b cap len n top nb;
+        buf = s._bglText_getBuf();
+        if(_bglStrCapturing(buf)) rfalse;   ! output is going to its address
+        ! A literal's length is known only once it is printed: make the free end roomy first.
+        if(_bglStrLiteralRoom(buf) < 4 * bglStringCaptureSize){ _bglStrCompact(true); buf = s._bglText_getBuf(); }
+        cap = buf-->(-1);
+        b = buf - 2 * WORDSIZE;
+        if(b + _bglStrBlockBytes(cap) == _bglStrHeap + _bglStrHeapTop){
+            ! A literal runs no code as it prints, so it may use all the room to the end of the heap.
+            if((b - _bglStrHeap) + _bglStrBlockBytes(bglStringCaptureSize) > bglStringHeapSize) rfalse;
+            buf-->(-1) = bglStringHeapSize - (b - _bglStrHeap) - 3 * WORDSIZE;
+            _bglBuf._bglText_setFromLiteral(buf, lit);
+            len = buf-->0;
+            #Ifdef DEBUG; _bglStrNoteLiteral(s, len, cap); #Endif;
+            if(len < cap) len = cap;
+            buf-->(-1) = len;
+            _bglStrHeapTop = (b - _bglStrHeap) + _bglStrBlockBytes(len);
+            rtrue;
+        }
+        top = _bglStrHeapTop;
+        if(top + _bglStrBlockBytes(bglStringCaptureSize) > bglStringHeapSize) rfalse;
+        nb = _bglStrHeap + top + 2 * WORDSIZE;
+        nb-->(-1) = bglStringHeapSize - top - 3 * WORDSIZE;
+        _bglBuf._bglText_setFromLiteral(nb, lit);
+        len = nb-->0;
+        #Ifdef DEBUG; _bglStrNoteLiteral(s, len, cap); #Endif;
+        if(len <= cap){ _bglBuf._bglText_setFromBuffer(buf, nb); rtrue; }
+        ! Claim the printed text as s's new block; its old one is free.
+        n = _bglStrBlockBytes(len);
+        (nb - 2 * WORDSIZE)-->0 = s;
+        nb-->(-1) = len;
+        _bglStrHeapTop = top + n;
+        b-->0 = 0;
+        _bglStrRetrack(buf, nb);
+        s._underlyingBuffer = nb;
+        rtrue;
+    ];
+
+    ! How many times `search` occurs in `buf`, each match after the last.
+    [ _bglStrCount buf search  n pos slen;
+        slen = _bglBuf._bglText_length(search);
+        if(slen == 0) return 0;
+        pos = _bglBuf._bglText_indexOf(buf, search, 0);
+        while(pos ~= -1){ n++; pos = _bglBuf._bglText_indexOf(buf, search, pos + slen); }
+        return n;
+    ];
+
+    ! Give back what string `s`'s block holds beyond `keep` chars: the free end when the block is the
+    ! last one, otherwise a free block of its own.
+    [ _bglStrTrim s keep  buf b cap n rest;
+        buf = s._bglText_getBuf(1);
+        if(buf == 0) return;
+        cap = buf-->(-1);
+        if(keep < _bglStrStartSize) keep = _bglStrStartSize;
+        n = _bglStrBlockBytes(keep);
+        rest = _bglStrBlockBytes(cap) - n;
+        if(rest < 3 * WORDSIZE) return;
+        b = buf - 2 * WORDSIZE;
+        buf-->(-1) = keep;
+        if(b + n + rest == _bglStrHeap + _bglStrHeapTop){ _bglStrHeapTop = _bglStrHeapTop - rest; return; }
+        b = b + n;
+        b-->0 = 0; b-->1 = rest - 3 * WORDSIZE; b-->2 = 0;
+    ];
 
     object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
     object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
@@ -178,11 +574,13 @@ array _bglbufglulxstreams table 16;
         ]
         !find the allocated object wrapper for the given buffer
     ,	_findAllocatedObjFromBuffer[b o;
+            if(b == 0) return 0;   ! a temporary whose block was dropped holds 0
             objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
             !find the unallocated object wrapper for the given buffer
     ,	_findAvailableObjFromBuffer[b o;
+            if(b == 0) return 0;
             objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
@@ -211,52 +609,56 @@ array _bglbufglulxstreams table 16;
             return retval;
         ]
     ,	_bglText_freeString[str; !take a specific allocated string, and free it for later use
+            if(_bglStrOwnerOf(str)) str = _bglStrOwnerOf(str);   ! a string's own buffer stands for the string
             self._bglText_freeBuffer(self._findAllocatedObj(str));
             self._freeObj(self._findAllocatedObj(str));
 
             return str;
         ]
     ,	_bglText_reclaimString[b retval; !take a previously freed string and lock it again
+            if(_bglStrOwnerOf(b)) b = _bglStrOwnerOf(b);
             retval = self._reclaimObj(self._findAvailableObj(b));
             if(retval~=0) self._bglText_reclaimBuffer(retval._bglText_getBuf(true));
             return retval;
         ]
-    ,	_bglText_allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
-            retval = self._allocateObj(_bglBufferWrapper)._bglText_buf;
+    ,	_bglText_allocateBuffer[retval o; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+            o = self._allocateObj(_bglBufferWrapper);
+            retval = o._bglText_buf;
             _bglBuf._bglText_setLength(retval,0);
             return retval;
         ]
     ,	_bglText_freeBuffer[b; !take a specific buffer and free it for later allocation
+            if(_bglStrOwnerOf(b)) return b;   ! a string's own buffer goes with the string
             self._freeObj(self._findAllocatedObjFromBuffer(b));
             return b;
         ]
     ,	_bglText_reclaimBuffer[b retval;
+            if(_bglStrOwnerOf(b)) return b;
             retval = self._reclaimObj(self._findAvailableObjFromBuffer(b));
             if(retval~=0) return retval._bglText_buf;
             return 0;
         ]
     , 	_bglText_isLocked[obj;
+            if(_bglStrOwnerOf(obj)) return true;   ! a string's own buffer stays with it
             if(self._findAllocatedObj(obj)) return true;
             if(self._findAllocatedObjFromBuffer(obj)) return true;
             return false;
         ]
     ,	_bglText_isFree[obj;
+            if(_bglStrOwnerOf(obj)) obj = _bglStrOwnerOf(obj);
             if(self._findAvailableObj(obj)) return true;
             if(self._findAvailableObjFromBuffer(obj)) return true;
             return false;
         ]
     ;
 
-    ! _bglConvertToSizedBuffer was here. Ported to Beguile-native in <string>
-    ! (see string.bgl). I6-side callers (currently _bglInitializeStringBuffers)
-    ! invoke it by name as an ordinary I6 routine.
 
     [_bglInitializeStringBuffers
             i obj;
+        ! The temporary buffers come first, and keep their blocks: they are held by address.
         for(i=0:_bglBufferWrapper.remaining()>0:i++){
             obj=_bglBufferWrapper.create();
-            obj._bglText_buf=_bglDsbuf+(i*bglStringDefaultSize);
-            obj._bglText_buf=_bglConvertToSizedBuffer(obj._bglText_buf,bglStringDefaultSize);
+            obj._bglText_buf=_bglStrAlloc(obj, bglStringCaptureSize);
             move obj to _bglObjectHeap;
         }
 
@@ -267,21 +669,13 @@ array _bglbufglulxstreams table 16;
         }
     ];
 
-[_bglConvertToSizedBuffer b sz result;
-    if (_bglbuf._bglText_isTracked(b)) {
-        return b;
-    }
-    result = b + WORDSIZE + 2;
-    result-->(-1) = sz - WORDSIZE - WORDSIZE - 2;
-    _bglbuf._registertracked(result);
-    return result;
-];
 object _bglStr
   with _bglText_new [unkStr retval lck;
     
             lck    = self._bglText_ambiguousLock(unkStr);
             retval = _bglStringPool._bglText_allocateString();
-            if(unkStr ~= 0) retval._bglText_set(unkStr);
+            if(_bglStrIs(unkStr)) retval._bglText_setFromStr(unkStr);
+            else if(unkStr ~= 0) retval._bglText_set(unkStr);
             else retval._bglText_setLength(0);   ! a pooled buffer still holds its last text
             self._bglText_ambiguousFree(unkStr, lck);
             retval = retval._bglText_lock();
@@ -292,30 +686,29 @@ object _bglStr
     retval = self._bglText_new(0);
     
             n = chars-->0;
-            i = _bglBuf._bglText_size(retval._bglText_getBuf());   ! -1 when the buffer carries no capacity
-            if(i >= 0 && n > i) n = i;
+            _bglStrEnsure(retval, n);
             for(i = 0 : i < n : i++) retval._bglText_setChar(i, chars->(i + WORDSIZE));
             retval._bglText_setLength(n);
             retval = retval._bglText_free();
         
     return retval;
   ],
-       _bglText_format [s _l_pattern p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
-    lk_pattern=self._bgltext_ambiguouslock(_l_pattern);
+       _bglText_format [s fmt p1 p2 p3 lk_pattern lk_p1 lk_p2 lk_p3 str tmp;
+    lk_pattern=self._bgltext_ambiguouslock(fmt);
     lk_p1=self._bgltext_ambiguouslock(p1);
     lk_p2=self._bgltext_ambiguouslock(p2);
     lk_p3=self._bgltext_ambiguouslock(p3);
-    str = self._bglText_new(s);
-     tmp = str._bglText_format(_l_pattern, p1, p2, p3); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_format(fmt, p1, p2, p3); _bglStrReadDone(str, s); 
     self._bgltext_ambiguousfree(p3, lk_p3);
     self._bgltext_ambiguousfree(p2, lk_p2);
     self._bgltext_ambiguousfree(p1, lk_p1);
-    self._bgltext_ambiguousfree(_l_pattern, lk_pattern);
+    self._bgltext_ambiguousfree(fmt, lk_pattern);
     return tmp;
   ],
        _bglText_toAmbiguousBuffer [unkStr retval;
     
-            if(unkStr ofclass _bglString) return unkStr._bglText_getBuf();
+            if(_bglStrIs(unkStr)) return unkStr._bglText_getBuf();
             ! A null string reads as the empty one.
             if(unkStr == 0){
                 retval = _bglStringPool._bglText_allocateBuffer();
@@ -369,46 +762,46 @@ object _bglStr
     return retval;
   ],
        _bglText_getLength [s str n;
-    str = self._bglText_new(s);
-     n = str._bglText_getLength(); str._bglText_free(); 
+    str = _bglstrread(s);
+     n = str._bglText_getLength(); _bglStrReadDone(str, s); 
     return n;
   ],
        _bglText_getChar [s pos str r;
-    str = self._bglText_new(s);
-     r = str._bglText_getChar(pos); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_getChar(pos); _bglStrReadDone(str, s); 
     return r;
   ],
        _bglText_indexOf [s searchText startingIndex lk_searchText str r;
     lk_searchText=self._bglText_ambiguousLock(searchtext);
-    str = self._bglText_new(s);
-     r = str._bglText_indexOf(searchText, startingIndex); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_indexOf(searchText, startingIndex); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(searchText, lk_searchText);
     return r;
   ],
        _bglText_startsWith [s prefix caseInsensitive lk_prefix str r;
     lk_prefix=self._bglText_ambiguousLock(prefix);
-    str = self._bglText_new(s);
-     r = str._bglText_startsWith(prefix, caseInsensitive); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_startsWith(prefix, caseInsensitive); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(prefix, lk_prefix);
     return r;
   ],
        _bglText_endsWith [s suffix caseInsensitive lk_suffix str r;
     lk_suffix=self._bglText_ambiguousLock(suffix);
-    str = self._bglText_new(s);
-     r = str._bglText_endsWith(suffix, caseInsensitive); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_endsWith(suffix, caseInsensitive); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(suffix, lk_suffix);
     return r;
   ],
        _bglText_contains [s searchText lk_searchText str r;
     lk_searchText=self._bglText_ambiguousLock(searchtext);
-    str = self._bglText_new(s);
-     r = str._bglText_contains(searchText); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_contains(searchText); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(searchText, lk_searchText);
     return r;
   ],
        _bglText_isEmpty [s str r;
-    str = self._bglText_new(s);
-     r = str._bglText_isEmpty(); str._bglText_free(); 
+    str = _bglstrread(s);
+     r = str._bglText_isEmpty(); _bglStrReadDone(str, s); 
     return r;
   ],
        _bglText_beginAppend [s t;
@@ -417,90 +810,90 @@ object _bglStr
     return s;
   ],
        _bglText_endAppend [s t;
-     _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t._bglText_release(); s._bglText_setFromStr(s._bglText_append(t)); t._bglText_free(); 
+     _bglStrAppendTop--; t = _bglStrAppendTemps-->_bglStrAppendTop; t._bglText_release(); _bglStrAppendInPlace(s, t); t._bglText_free(); 
     return s;
   ],
        _bglText_append [s text lk_text str tmp;
     lk_text=self._bglText_ambiguousLock(text);
-    str = self._bglText_new(s);
-     tmp = str._bglText_append(text); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_append(text); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(text, lk_text);
     return tmp;
   ],
        _bglText_appendChar [s c str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_appendChar(c); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_appendChar(c); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_prependChar [s c str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_prependChar(c); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_prependChar(c); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_prepend [s text lk_text str tmp;
     lk_text=self._bglText_ambiguousLock(text);
-    str = self._bglText_new(s);
-     tmp = str._bglText_prepend(text); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_prepend(text); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(text, lk_text);
     return tmp;
   ],
        _bglText_toUpper [s str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_toUpper(); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_toUpper(); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_toLower [s str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_toLower(); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_toLower(); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_trimLeft [s str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_trimLeft(); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_trimLeft(); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_trimRight [s str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_trimRight(); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_trimRight(); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_reverse [s str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_reverse(); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_reverse(); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_mid [s start count str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_mid(start, count); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_mid(start, count); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_left [s count str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_left(count); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_left(count); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_right [s count str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_right(count); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_right(count); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_insert [s pos source lk_source str tmp;
     lk_source=self._bglText_ambiguousLock(source);
-    str = self._bglText_new(s);
-     tmp = str._bglText_insert(pos, source); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_insert(pos, source); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(source, lk_source);
     return tmp;
   ],
        _bglText_delete [s pos count str tmp;
-    str = self._bglText_new(s);
-     tmp = str._bglText_delete(pos, count); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_delete(pos, count); _bglStrReadDone(str, s); 
     return tmp;
   ],
        _bglText_replace [s searchText replaceText lk_searchText lk_replaceText str tmp;
     lk_searchText=self._bglText_ambiguousLock(searchtext);
     lk_replaceText=self._bglText_ambiguousLock(replacetext);
-    str = self._bglText_new(s);
-     tmp = str._bglText_replace(searchText, replaceText); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_replace(searchText, replaceText); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(replaceText, lk_replaceText);
     self._bglText_ambiguousFree(searchText, lk_searchText);
     return tmp;
@@ -508,8 +901,8 @@ object _bglStr
        _bglText_replaceAll [s searchText replaceText lk_searchText lk_replaceText str tmp;
     lk_searchText=self._bglText_ambiguousLock(searchtext);
     lk_replaceText=self._bglText_ambiguousLock(replacetext);
-    str = self._bglText_new(s);
-     tmp = str._bglText_replaceAll(searchText, replaceText); str._bglText_free(); 
+    str = _bglstrread(s);
+     tmp = str._bglText_replaceAll(searchText, replaceText); _bglStrReadDone(str, s); 
     self._bglText_ambiguousFree(replaceText, lk_replaceText);
     self._bglText_ambiguousFree(searchText, lk_searchText);
     return tmp;
@@ -548,7 +941,7 @@ class _bglString(bglstringpoolreserve)
     _bglText_getBuf[suppressAllocation retval;
         
             if(self._underlyingBuffer == 0 && suppressAllocation == 0)
-                self._underlyingBuffer = _bglStringPool._bglText_allocateBuffer();
+                self._underlyingBuffer = _bglStrAlloc(self, _bglStrStartSize);
             retval = self._underlyingBuffer;
         
         return retval;
@@ -596,48 +989,67 @@ class _bglString(bglstringpoolreserve)
             lckSelf = _bglStr._bglText_ambiguousLock(self);
             ab      = _bglStr._bglText_toAmbiguousBuffer(unkStr);
             lckBuf  = _bglStr._bglText_ambiguousLock(ab);
+            _bglStrEnsure(self, _bglBuf._bglText_length(ab));
+            if(_bglStrIs(unkStr)) ab = unkStr._bglText_getBuf();   ! growing may have moved it
             _bglBuf._bglText_setAny(self._bglText_getBuf(), ab);
             _bglStr._bglText_ambiguousFree(ab, lckBuf);
             _bglStr._bglText_ambiguousFree(self, lckSelf);
         
         return self;
     ],
-    _bglText_setFromLit[lit;
+    _bglText_setFromLit[lit tmp;
         
             ! A null string (a `?.` chain that stopped) is the empty one.
             if(lit == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
-            ! Direct setFromLiteral — caller knows lit is a packed string.
-            _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), lit);
+            if(_bglStrSetLiteral(self, lit)) return self;
+            ! Rendered into a temporary first: its length decides how far the string grows.
+            tmp = _bglStringPool._bglText_allocateBuffer();
+            _bglBuf._bglText_setFromLiteral(tmp, lit);
+            _bglStrEnsure(self, _bglBuf._bglText_length(tmp));
+            _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), tmp);
+            _bglStringPool._bglText_freeBuffer(tmp);
         
         return self;
     ],
-    _bglText_setFromStr[src;
+    _bglText_setFromStr[src lk dst from;
         
             ! A null string (a `?.` chain that stopped) is the empty one.
             if(src == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
             ! A literal or string passed where a stringObj is expected arrives as packed text.
-            if(metaclass(src) == String){ _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), src); return self; }
+            if(metaclass(src) == String) return self._bglText_setFromLit(src);
+            ! It fits: nothing grows, so nothing moves and the source needs no lock.
+            dst = self._bglText_getBuf(); from = src._bglText_getBuf();
+            if(from-->0 <= dst-->(-1)){ _bglBuf._bglText_setFromBuffer(dst, from); return self; }
+            lk = _bglStr._bglText_ambiguousLock(src);   ! a temporary source must outlive the growth below
+            _bglStrEnsure(self, src._bglText_getLength());
             _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), src._bglText_getBuf());
+            _bglStr._bglText_ambiguousFree(src, lk);
         
         return self;
     ],
     _bglText_setLength[newLength;
-         _bglBuf._bglText_setLength(self._bglText_getBuf(), newLength); 
+         _bglStrEnsure(self, newLength); _bglBuf._bglText_setLength(self._bglText_getBuf(), newLength); 
         return self;
     ],
     _bglText_setChar[pos val;
         
             if(val > 255) val = '?';   ! one byte per character: beyond Latin-1 reads as '?', as captured text does
+            _bglStrEnsure(self, pos + 1);
             self._bglText_getBuf()->(pos + WORDSIZE) = val;
         
         return self;
     ],
     _bglText_capture[;
-         _bglBuf._bglText_capture(self._bglText_getBuf()); 
+         _bglStrEnsure(self, bglStringCaptureSize); _bglStrCaptures++; _bglBuf._bglText_capture(self._bglText_getBuf()); 
         return self;
     ],
-    _bglText_release[;
-         _bglBuf._bglText_release(); 
+    _bglText_release[len;
+        
+            _bglBuf._bglText_release();
+            _bglStrCaptures--;
+            len = _bglBuf._bglText_length(self._bglText_getBuf());
+            _bglStrTrim(self, len);
+        
         return self;
     ],
     _bglText_captureOutput[o r;
@@ -749,10 +1161,16 @@ class _bglString(bglstringpoolreserve)
          retval = _bglBuf._bglText_indexOfFirstTrue(self._bglText_getBuf(), routine, startingIndex); 
         return retval;
     ],
-    _bglText_insert[pos source count retval;
+    _bglText_insert[pos source count retval src lk n;
         
             retval = self._bglText_clone();
-            _bglBuf._bglText_insert(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(source), pos, count);
+            src = _bglStr._bglText_toAmbiguousBuffer(source);
+            lk = _bglStr._bglText_ambiguousLock(src);
+            n = count; if(n <= 0) n = _bglBuf._bglText_length(src);
+            _bglStrEnsure(retval, retval._bglText_getLength() + n);
+            if(_bglStrIs(source)) src = source._bglText_getBuf();
+            _bglBuf._bglText_insert(retval._bglText_getBuf(), src, pos, count);
+            _bglStr._bglText_ambiguousFree(src, lk);
             retval = retval._bglText_free();
         
         return retval;
@@ -765,26 +1183,44 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    _bglText_replace[searchText replaceText retval stl;
+    _bglText_replace[searchText replaceText retval stl rtl st rt n grow;
         
             retval = self._bglText_clone();
-            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
-            stl = _bglStr._bglText_ambiguousLock(searchText);
-            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
-            _bglBuf._bglText_replace(retval._bglText_getBuf(), searchText, replaceText);
-            _bglStr._bglText_ambiguousFree(searchText, stl);
+            st = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(st);
+            rt = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            rtl = _bglStr._bglText_ambiguousLock(rt);
+            grow = _bglBuf._bglText_length(rt) - _bglBuf._bglText_length(st);
+            if(grow > 0){
+                n = 1;
+                _bglStrEnsure(retval, retval._bglText_getLength() + n * grow);
+                if(_bglStrIs(searchText)) st = searchText._bglText_getBuf();
+                if(_bglStrIs(replaceText)) rt = replaceText._bglText_getBuf();
+            }
+            _bglBuf._bglText_replace(retval._bglText_getBuf(), st, rt);
+            _bglStr._bglText_ambiguousFree(rt, rtl);
+            _bglStr._bglText_ambiguousFree(st, stl);
             retval = retval._bglText_free();
         
         return retval;
     ],
-    _bglText_replaceAll[searchText replaceText retval stl;
+    _bglText_replaceAll[searchText replaceText retval stl rtl st rt n grow;
         
             retval = self._bglText_clone();
-            searchText = _bglStr._bglText_toAmbiguousBuffer(searchText);
-            stl = _bglStr._bglText_ambiguousLock(searchText);
-            replaceText = _bglStr._bglText_toAmbiguousBuffer(replaceText);
-            _bglBuf._bglText_replaceAll(retval._bglText_getBuf(), searchText, replaceText);
-            _bglStr._bglText_ambiguousFree(searchText, stl);
+            st = _bglStr._bglText_toAmbiguousBuffer(searchText);
+            stl = _bglStr._bglText_ambiguousLock(st);
+            rt = _bglStr._bglText_toAmbiguousBuffer(replaceText);
+            rtl = _bglStr._bglText_ambiguousLock(rt);
+            grow = _bglBuf._bglText_length(rt) - _bglBuf._bglText_length(st);
+            if(grow > 0){
+                n = _bglStrCount(retval._bglText_getBuf(), st);
+                _bglStrEnsure(retval, retval._bglText_getLength() + n * grow);
+                if(_bglStrIs(searchText)) st = searchText._bglText_getBuf();
+                if(_bglStrIs(replaceText)) rt = replaceText._bglText_getBuf();
+            }
+            _bglBuf._bglText_replaceAll(retval._bglText_getBuf(), st, rt);
+            _bglStr._bglText_ambiguousFree(rt, rtl);
+            _bglStr._bglText_ambiguousFree(st, stl);
             retval = retval._bglText_free();
         
         return retval;
@@ -797,11 +1233,16 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    _bglText_append[text retval lk;
+    _bglText_append[text retval src lk2 lk;
         lk=_bglstr._bglText_ambiguousLock(text);
         
             retval = self._bglText_clone();
-            _bglBuf._bglText_appendBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            src = _bglStr._bglText_toAmbiguousBuffer(text);
+            lk2 = _bglStr._bglText_ambiguousLock(src);
+            _bglStrEnsure(retval, retval._bglText_getLength() + _bglBuf._bglText_length(src));
+            if(_bglStrIs(text)) src = text._bglText_getBuf();
+            _bglBuf._bglText_appendBuffer(retval._bglText_getBuf(), src);
+            _bglStr._bglText_ambiguousFree(src, lk2);
             retval = retval._bglText_free();
         
         _bglstr._bglText_ambiguousFree(text, lk);
@@ -826,11 +1267,16 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    _bglText_prepend[text retval lk;
+    _bglText_prepend[text retval src lk2 lk;
         lk=_bglstr._bglText_ambiguousLock(text);
         
             retval = self._bglText_clone();
-            _bglBuf._bglText_prependBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
+            src = _bglStr._bglText_toAmbiguousBuffer(text);
+            lk2 = _bglStr._bglText_ambiguousLock(src);
+            _bglStrEnsure(retval, retval._bglText_getLength() + _bglBuf._bglText_length(src));
+            if(_bglStrIs(text)) src = text._bglText_getBuf();
+            _bglBuf._bglText_prependBuffer(retval._bglText_getBuf(), src);
+            _bglStr._bglText_ambiguousFree(src, lk2);
             retval = retval._bglText_free();
         
         _bglstr._bglText_ambiguousFree(text, lk);
@@ -876,43 +1322,49 @@ class _bglString(bglstringpoolreserve)
         
         return retval;
     ],
-    _bglText_mid[start count retval;
+    _bglText_mid[start count retval n;
         
             retval = _bglStr._bglText_new();
+            n = self._bglText_getLength(); if(count < n) n = count;
+            _bglStrEnsure(retval, n);
             _bglBuf._bglText_mid(retval._bglText_getBuf(), self._bglText_getBuf(), start, count);
             retval = retval._bglText_free();
         
         return retval;
     ],
-    _bglText_left[count retval;
+    _bglText_left[count retval n;
         
             retval = _bglStr._bglText_new();
+            n = self._bglText_getLength(); if(count < n) n = count;
+            _bglStrEnsure(retval, n);
             _bglBuf._bglText_left(retval._bglText_getBuf(), self._bglText_getBuf(), count);
             retval = retval._bglText_free();
         
         return retval;
     ],
-    _bglText_right[count retval;
+    _bglText_right[count retval n;
         
             retval = _bglStr._bglText_new();
+            n = self._bglText_getLength(); if(count < n) n = count;
+            _bglStrEnsure(retval, n);
             _bglBuf._bglText_right(retval._bglText_getBuf(), self._bglText_getBuf(), count);
             retval = retval._bglText_free();
         
         return retval;
     ],
-    _bglText_format[_l_pattern p1 p2 p3 retval;
+    _bglText_format[fmt p1 p2 p3 retval;
         
             retval = _bglStr._bglText_new();
-            if(_l_pattern == 0) _l_pattern = "$0";
-            _l_pattern = _bglStr._bglText_new(_l_pattern);  ! convert literal-or-otherwise to _bglString
-            _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$0", self));
+            if(fmt == 0) fmt = "$0";
+            fmt = _bglStr._bglText_new(fmt);  ! convert literal-or-otherwise to _bglString
+            fmt._bglText_set(fmt._bglText_replaceAll("$0", self));
 
-            if(p1 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$1", p1));
-            if(p2 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$2", p2));
-            if(p3 ~= 0) _l_pattern._bglText_set(_l_pattern._bglText_replaceAll("$3", p3));
+            if(p1 ~= 0) fmt._bglText_set(fmt._bglText_replaceAll("$1", p1));
+            if(p2 ~= 0) fmt._bglText_set(fmt._bglText_replaceAll("$2", p2));
+            if(p3 ~= 0) fmt._bglText_set(fmt._bglText_replaceAll("$3", p3));
 
-            retval._bglText_set(_l_pattern);
-            _l_pattern._bglText_free();
+            retval._bglText_set(fmt);
+            fmt._bglText_free();
             retval = retval._bglText_free();
         
         return retval;
@@ -1075,6 +1527,18 @@ object _bglBuf
             _bglTrackedRegistry-->(self._trackedCount) = buf;
         
     self._trackedcount++;
+  ],
+       _unregisterTracked [buf p i;
+    p=buf;
+    for (i = self._trackedcount - 1 : i >= 0 : i--) {
+        
+                if(_bglTrackedRegistry-->i == p){
+                    self._trackedCount--;
+                    _bglTrackedRegistry-->i = _bglTrackedRegistry-->(self._trackedCount);
+                    return;
+                }
+            
+    }
   ],
        _bglText_size [buf;
     if (buf == 0) {

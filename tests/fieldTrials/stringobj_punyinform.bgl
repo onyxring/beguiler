@@ -20,7 +20,7 @@ const object INITIAL_LOCATION_VALUE = roomA;
 
 #includeI6 "globals"
 #include <bindings/punyInform>
-#include <stringObj>
+#include <string>
 #includeI6 "puny"
 
 #using bgl.printRules;

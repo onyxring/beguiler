@@ -46,7 +46,7 @@ object LibraryMessages {
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum metal { scrap, molten, cast, quenched }

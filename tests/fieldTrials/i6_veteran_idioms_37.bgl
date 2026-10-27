@@ -39,7 +39,7 @@ const int FLOOR = 0;
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // ---------------------------------------------------------------- names the members meet

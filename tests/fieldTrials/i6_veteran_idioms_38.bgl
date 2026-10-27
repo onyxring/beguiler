@@ -48,7 +48,7 @@ object LibraryMessages {
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 array<string> endName = {"", "bottom", "top"};

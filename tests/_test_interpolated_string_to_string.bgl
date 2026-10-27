@@ -1,0 +1,4 @@
+// Negative test: a string can't hold an interpolated string, which becomes a routine that prints it.
+// EXPECT_ERROR: can't hold an interpolated string
+#beguilerSettings { target = z5; informName = "none"; }
+void main(){ string s = $"x"; }

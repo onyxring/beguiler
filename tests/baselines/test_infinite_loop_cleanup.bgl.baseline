@@ -1,0 +1,203 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 5;
+#Ifdef beguiler;#Endif;
+   Array _bglFramePool --> 64;
+   Constant _bglFramePoolWords = 64;
+   Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
+   [ _bglFrameAlloc size r;
+      if (_bglFrameTop + size > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      r = _bglFrameTop;
+      _bglFrameTop = _bglFrameTop + size;
+      return _bglFramePool + (r * WORDSIZE);
+   ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglFrameFree size;
+      _bglFrameTop = _bglFrameTop - size;
+   ];
+   ! The marker and the length, then an I6 table of `size` elements; the array is the table.
+   [ _bglArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size + 3);
+      r-->0 = $9084;
+      r-->1 = 0;
+      r = r + 2 * WORDSIZE;
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   Global _bglFrameTaken = 0;
+   Global _bglFrameSrc = 0;
+   ! A local array with room for src's n elements: `cur` when it has room, else a new block. When src
+   ! is a returned local lying in freed frame space at or above the top, its elements are moved down
+   ! into the new block (forward, so none is overwritten before it is read) and _bglFrameSrc names
+   ! the block to copy from instead.
+   [ _bglArrayLocalCopyAlloc n src cur top i;
+      _bglFrameTaken = 0;
+      _bglFrameSrc = src;
+      if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
+      top = _bglFramePool + _bglFrameTop * WORDSIZE;
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 64 * WORDSIZE) >= 0) {
+         _bglFrameTaken = n + 3;
+         return _bglArrayLocalAlloc(n);
+      }
+      if (_bglFrameTop + n + 3 > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      _bglFrameTop = _bglFrameTop + n + 3;
+      top-->0 = $9084;
+      top-->1 = n;
+      top = top + 2 * WORDSIZE;
+      for (i = 1: i <= n: i++) top-->i = src-->i;
+      top-->0 = n;
+      _bglFrameTaken = n + 3;
+      _bglFrameSrc = top;
+      return top;
+   ];
+   [ _bglArrayLocalAllocPlain size r i;
+      r = _bglFrameAlloc(size + 1);
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglRawArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglByteArrayLocalAlloc nbytes words r i;
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      r = _bglFrameAlloc(words);
+      for (i = 0: i < words: i++) r-->i = 0;
+      r-->0 = nbytes;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
+   ];
+   [ _bglByteArrayLocalFree nbytes;
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+   ];
+   [ _bglByteArrayLocalCopy dst src i;
+      for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
+   ];
+constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 1536;
+#Ifdef _bglHeapWords;#Endif;
+global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
+global _bglPromptHook = 0;
+global _bglInitDone = 0;
+#Ifdef TARGET_GLULX;
+[ _bglLowAddressGuard;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    return _bglLowAddressGuard;
+];
+Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it
+#Endif;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
+];
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
+object _zcode
+;
+object bgl
+;
+[firstOver limit _bglret scratch i;
+    scratch = _bglByteArrayLocalAlloc(8);
+    i = 0;
+    while (true) {
+        _bglByteAt(scratch, 0, 1)->0 = 'x';
+        if (i > limit) {
+            _bglret = i;
+            _bglByteArrayLocalFree(8);
+            return _bglret;
+        }
+        i++;
+    }
+];
+[main;
+    print firstover(3);
+];
+[_bglByteAt arr i w n;
+    n = 0;
+    
+        n = arr-->(-1);
+        if(i >= 0 && i < n) return arr + WORDSIZE + i;
+        return _bglOutOfRange(i, n, w);
+    
+];
+[_bglOutOfRange i n w;
+    
+        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
+        if(n ~= 1) print "s";
+        print " it ";
+        if(w) print "can hold"; else print "holds";
+        print "; the ";
+        if(w) print "write"; else print "read";
+        print " is skipped]^";
+        _bglSink-->0 = 0;
+        return _bglSink;
+    
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+];
+array _bglsink --> 1;

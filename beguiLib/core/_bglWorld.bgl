@@ -8,15 +8,18 @@
 #once
 
 //-- Implementation ------------------------------------------------------------
+// Each buffer's capacity: word 0 holds the length when `<array>` isn't included, so it can't say.
+#if #beguilerSettings.worldBufSize < 1
+    #error "beguilerSettings property 'worldBufSize' must be at least 1"
+#endif
+const int _bglWorldBufSize = #beguilerSettings.worldBufSize;
 // The buffers query results are returned in, used in rotation so queries can nest.
-superposed array<object> _bglWorldBuf0[#beguilerSettings.worldBufSize];
-superposed array<object> _bglWorldBuf1[#beguilerSettings.worldBufSize];
-superposed array<object> _bglWorldBuf2[#beguilerSettings.worldBufSize];
-superposed array<object> _bglWorldBuf3[#beguilerSettings.worldBufSize];
+superposed array<object> _bglWorldBuf0[_bglWorldBufSize];
+superposed array<object> _bglWorldBuf1[_bglWorldBufSize];
+superposed array<object> _bglWorldBuf2[_bglWorldBufSize];
+superposed array<object> _bglWorldBuf3[_bglWorldBufSize];
 // Not superposed: I6 must see this global before the routine that uses it.
 int _bglWorldBufIdx = -1;
-// Each buffer's capacity: word 0 holds the length when `<array>` isn't included, so it can't say.
-const int _bglWorldBufSize = #beguilerSettings.worldBufSize;
 
 // Advance the rotation and hand back the next buffer in the pool.
 superposed array<object> _bglWorldNextBuf(){

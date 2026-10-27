@@ -12,7 +12,7 @@
 #include <bindings/i6StandardLibrary>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
     ref object n_to;
     ref object s_to;
     ref object e_to;

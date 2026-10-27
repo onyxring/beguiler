@@ -15,7 +15,7 @@
   - [21.5.7 `parentProp` and `childrenProp`](#2157-parentprop-and-childrenprop)
   - [21.5.8 `_bglObject` and `_bglPrimitive`](#2158-bglobject-and-bglprimitive)
   - [21.5.9 `eType` and `typeof()`](#2159-etype-and-typeof)
-  - [21.5.10 `stringOrRoutine`](#21510-stringorroutine)
+  - [21.5.10 `iString`, `iStringOrObject` and `iStringOrRoutine`](#21510-istring-istringorobject-and-istringorroutine)
 - [21.6 Numeric Utilities](#216-numeric-utilities)
   - [21.6.1 `uint`](#2161-uint)
   - [21.6.2 `bgl.util.math`](#2162-bglutilmath)
@@ -131,7 +131,7 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
 
-`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
+`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(iString)` and `print(iStringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
 `print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
@@ -425,35 +425,55 @@ void Main() {
 
 **See also** §2.8.
 
-### 21.5.10 `stringOrRoutine`
+### 21.5.10 `iString`, `iStringOrObject` and `iStringOrRoutine`
 
 **Syntax**
 
 ```syntax
-stringOrRoutine ⟨name⟩ ;
+iString ⟨name⟩ ;
+iStringOrObject ⟨name⟩ ;
+iStringOrRoutine ⟨name⟩ ;
+⟨value⟩.isInterpolated()
+⟨value⟩.isObject()
 ⟨value⟩.isRoutine()
 print( ⟨value⟩ ) ;
 ```
 
 **Description**
 
-`stringOrRoutine` is the named union `string | func<void>`: a value that is either printable text or a routine to run, the classic Inform "string-or-routine" property (`description`, `cant_go`, …). It is provided by the IF library bindings, not by the core: it is in scope whenever a binding is included (§23.3.7). `isRoutine()` reports which the value currently holds. `print(x)` prints the string or runs the routine; the overload carries no library dependency.
+`iString` is the named union `string | interpolatedString`: a string, plain or interpolated. An interpolated string assigned to one becomes a routine that prints it, its expressions evaluated each time it prints (§2.4.3). It suits a property the library prints, such as `description`. `isInterpolated()` reports which form the value holds, and `print(x)` prints either.
+
+`iStringOrObject` is the named union `string | interpolatedString | object`: an `iString` or an object, the Inform pattern of a direction property (`n_to`, `door_to`, …) that holds a room, or a message printed instead of moving. `isObject()` reports which the value holds.
+
+`iStringOrRoutine` is the named union `string | interpolatedString | func<void>`: an `iString` or a routine that prints, for a value that is a lambda, a routine passed as an argument, or a routine assigned while the game runs (`lamp.description = describeLit;`). `isRoutine()` reports whether the value is a routine, an interpolated string included, and `print(x)` prints the string or runs the routine.
+
+All three are provided by the IF library bindings (§23.3.7). An object may give such a property a method instead of a value, `object e_to() { … }`; the method declares its own type, as any member method does (§8), and the library runs it.
 
 **Example**
 
 ```bgl
-#include <bindings/i6StandardLibrary>
-void describeLamp() { print("It flickers."); }
-object lamp { stringOrRoutine description; }
+#include <bindings/punyInform>
+extend class object { iString description; iStringOrObject n_to; iStringOrObject s_to; iStringOrObject e_to; }
+int storms = 3;
+object bar { }
+object cloakroom { }
 
-void Main() {
-    lamp.description = "a brass lamp";   // prints the text
-    lamp.description = describeLamp;     // runs the routine
-    print(lamp.description);
+object foyer {
+    description = "A spacious hall.";                    // a plain string
+    s_to = bar;                                          // the room the exit leads to
+    n_to = $"The {storms} storms block the way.^";       // printed instead of moving, read each time
+    object e_to() {                                      // decided each time
+        if (cloakroom.has(light)) return cloakroom;
+        rtrue("The cloakroom door is stuck.");
+    }
 }
 ```
 
-**See also** §2.8.2, §23.3.7.
+> **The routine form.** The method follows the library's convention for a direction routine: return the
+> object to move to, `null` for the library's refusal, or `true` once it has printed its own. An
+> interpolated string returns `true` once printed, so it acts as a refusal.
+
+**See also** §2.4.3, §2.8.2, §23.3.7.
 
 ## 21.6 Numeric Utilities
 

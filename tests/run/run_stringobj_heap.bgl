@@ -3,7 +3,7 @@
 // other strings stay live.
 // EXPECT_OUTPUT: grow 600 replace 780 ABCDEFde capture [n=42 second] nest (4(3(2(1)))) churn 230 keep 55 second firstxx
 #beguilerSettings { target = z5; informName = "none"; }
-#include <stringObj>
+#include <string>
 stringObj keep1 = "first";
 stringObj keep2 = "second";
 void churn(int k){

@@ -107,7 +107,7 @@ void showFlags(string who, int f) {
 }
 
 // the union describe from the spec
-void showIt(stringOrRoutine v) {
+void showIt(iStringOrRoutine v) {
     if (typeof(v) == eType.routine) {
         func<void> f = (func<void>)v;
         f();
@@ -345,8 +345,8 @@ verb Display {
     void handler() {
         showIt("plain text");
         showIt(hello);
-        array<stringOrRoutine> things = { "first", hello, "last" };
-        for (stringOrRoutine t in things) {
+        array<iStringOrRoutine> things = { "first", hello, "last" };
+        for (iStringOrRoutine t in things) {
             switch (typeof(t)) {
                 case eType.string:  print("a string^");
                 case eType.routine: print("a routine^");

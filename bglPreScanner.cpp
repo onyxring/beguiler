@@ -16,7 +16,7 @@ using namespace std;
 // Defined in bglParser.cpp
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
 filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName);
-string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths);
+string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths, bool outsideLibrary = false);
 string rewritePathSeps(const string& path);
 
 // Record a 1-based inclusive [startLine1, endLine1] range as inactive in the currently-open file.
@@ -326,7 +326,7 @@ void bglParser::preScanDirective(token tok){
                 includeName = includeName.substr(1, includeName.size()-2);
             auto [stream, curFile, line, col] = file.getCurrentFileDetail();
             filesystem::path curDir = filesystem::path(curFile).parent_path();
-            string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths);
+            string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths, true);
             if(!resolved.empty()) preScanFile(resolved);
         } else if(next.is("<")){
             string includeName2;

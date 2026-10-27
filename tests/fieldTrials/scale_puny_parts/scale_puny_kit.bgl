@@ -76,9 +76,9 @@ object stats {
     }
 
     auto label = {
-        stringOrRoutine _l = "unset";
-        stringOrRoutine operator () { return _l; }
-        void operator = (stringOrRoutine v) {
+        iStringOrRoutine _l = "unset";
+        iStringOrRoutine operator () { return _l; }
+        void operator = (iStringOrRoutine v) {
             outer.writes++;
             _l = v;
         }

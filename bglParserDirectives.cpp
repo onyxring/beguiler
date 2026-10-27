@@ -34,7 +34,7 @@ using namespace std;
 
 // Forward declarations for free helpers defined in bglParser.cpp.
 // Matches the pattern used in bglPreScanner.cpp.
-string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths);
+string resolveIncludePath(const string& name, const string& ext, const filesystem::path& baseDir, const vector<string>& includePaths, bool outsideLibrary = false);
 string rewritePathSeps(const string& path);
 filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& target);
 filesystem::path findLibIncludeRecursive(const filesystem::path& root, const string& includeName);
@@ -593,9 +593,12 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
             return processDirectiveUnrecognized(directive);
         }
         filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
-        string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths);
+        string resolved = resolveIncludePath(includeName, ".bgl", curDir, beguilerSettings.includePaths, true);
         if(!resolved.empty())
             parseFile(resolved);
+        else if(!isOptional && !findLibIncludeRecursive(settings.libPath, includeName).empty())
+            parsingError(format("#include: '{0}' is in the Beguile library, which is included with angle brackets: "
+                                "#include <{0}>", includeName));
         else if(!isOptional)
             parsingError(format("#include: file '{0}' not found", includeName));
     } else if(next.is("<")){
@@ -1373,8 +1376,9 @@ bool bglParser::processBeguilerSettings(){
             // An int setting an extension declares (`extend class beguilerSettingsType`) may come from an
             // include below this block: it is checked once the whole program is read.
             if(!m && file.peekToken().is(eTokenType::integer)){
-                auto d = file.getCurrentFileDetail();
-                cfg.settingsToCheck.push_back({key, format("{0}:{1}:{2}: ", get<1>(d), get<2>(d), get<3>(d))});
+                cfg.settingsToCheck.push_back({propName.originalValue.empty() ? key : propName.originalValue,
+                                               format("{0}:{1}:{2}: ", propName.src.file, propName.src.line,
+                                                      max(1, propName.src.col - (int)(propName.originalValue.empty() ? key : propName.originalValue).size()))});
                 memberType = "int";
             }
             else if(!m)
@@ -1429,7 +1433,17 @@ bool bglParser::processBeguilerSettings(){
                 parsingError(format("beguilerSettings property 'errorformat' must be E1 or E2, got '{0}'", strVal));
             if(cfg.errorFormat.empty()) cfg.errorFormat = upper.substr(1); // store just the digit
         }
-        else if(key == "beguilibpath"){ if(cfg.beguiLibPath.empty())    cfg.beguiLibPath = rewritePathSeps(strVal); }
+        else if(key == "beguilibpath"){
+            // The library is read before any source but the entry file's settings, so a later block can't move it.
+            filesystem::path lib = filesystem::path(rewritePathSeps(strVal));
+            if(lib.is_relative()) lib = filesystem::path(file.currentLocation().file).parent_path() / lib;
+            std::error_code e1, e2;
+            if(!settings.libPathFromCommandLine
+               && filesystem::weakly_canonical(lib, e1) != filesystem::weakly_canonical(settings.libPath, e2))
+                parsingError(format("beguiLibPath can only be set in the entry file's #beguilerSettings, which is read "
+                                    "before the library is; '{0}' is not the library in use.", strVal));
+            if(cfg.beguiLibPath.empty()) cfg.beguiLibPath = rewritePathSeps(strVal);
+        }
         else if(key == "informpath"){   if(cfg.informBinaryPath.empty()) cfg.informBinaryPath = rewritePathSeps(strVal); }
         else if(key == "informname"){   if(cfg.informName.empty())       cfg.informName = rewritePathSeps(strVal); }
         else if(key == "outputpath"){   if(cfg.outputPath.empty())       cfg.outputPath = rewritePathSeps(strVal); }
@@ -1494,16 +1508,6 @@ bool bglParser::processBeguilerSettings(){
             if(sz < 1) parsingError("beguilerSettings property 'framePoolSize' must be at least 1");
             if(cfg.framePoolSize == -1){ cfg.framePoolSize = sz; cfg.framePoolSizeSet = true; }  // -1 = unset sentinel
         }
-        else if(key == "worldbufsize"){
-            int sz = stoi(strVal);
-            if(sz < 1) parsingError("beguilerSettings property 'worldBufSize' must be at least 1");
-            if(cfg.worldBufSize == -1) cfg.worldBufSize = sz;  // -1 = unset sentinel
-        }
-        else if(key == "heapsize"){
-            int sz = stoi(strVal);
-            if(sz != 0 && sz < 64) parsingError("beguilerSettings property 'heapSize' must be 0 (sized by target) or at least 64");
-            if(cfg.heapSize == -1) cfg.heapSize = sz;
-        }
         else if(key == "target"){
             if(languageService.getEnumType(strVal) != "etarget")
                 parsingError(format("Invalid target '{0}'. Must be a value of eTarget (Glulx, Z5, or Z8).", strVal));
@@ -1543,7 +1547,6 @@ bool bglParser::processBeguilerSettings(){
 
     // Apply path overrides immediately so subsequent includes use them
     // (informBinaryPath is intentionally excluded here — resolved after all parsing in beguiler.cpp)
-    if(!cfg.beguiLibPath.empty()) settings.libPath = cfg.beguiLibPath;
     if(!cfg.outputPath.empty() && settings.outputPath.empty()) settings.outputPath = cfg.outputPath;
 
     // Define the gating symbol for the BLR main wrapper NOW (during parse, before the
@@ -1557,15 +1560,26 @@ bool bglParser::processBeguilerSettings(){
 
 // Apply default values declared on beguilerSettingsType members to any settings fields
 // that were never set by a #beguilerSettings block.  Called once after all parsing is done.
+// An int setting the block names before anything declares it (an extension's, from an include below the
+// block) is checked once the whole program is read. Under the language server each is its own diagnostic.
+void bglParser::checkDeferredSettings(){
+    classDef* schema = languageService.findClass("beguilerSettingstype");
+    if(schema == nullptr) return;
+    for(auto& [key, at] : beguilerSettings.settingsToCheck){
+        auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(schema, [&](typeMember* tm){ return tm->name == lowerText(key); }));
+        try {
+            if(vd == nullptr) parsingError(at + format("Unknown beguilerSettings property '{0}'", key));
+            else if(vd->type.name != "int") parsingError(at + format("beguilerSettings property '{0}' expects a {1} value", key, typeDisplayName(vd->type.name)));
+        } catch(lspRecoverySignal&) {}
+    }
+    beguilerSettings.settingsToCheck.clear();
+}
+
 void bglParser::applySchemaDefaults(){
     beguilerSettingsDef& cfg = beguilerSettings;
     classDef* schema = languageService.findClass("beguilerSettingstype");
     if(!schema) return;
-    for(auto& [key, at] : cfg.settingsToCheck){
-        auto* vd = dynamic_cast<variableDeclaration*>(findMemberInHierarchy(schema, [&](typeMember* tm){ return tm->name == key; }));
-        if(vd == nullptr) parsingError(at + format("Unknown beguilerSettings property '{0}'", key));
-        else if(vd->type.name != "int") parsingError(at + format("beguilerSettings property '{0}' expects a {1} value", key, typeDisplayName(vd->type.name)));
-    }
+    checkDeferredSettings();
 
     for(typeMember* m : schema->members){
         variableDeclaration* vd = dynamic_cast<variableDeclaration*>(m);
@@ -1579,8 +1593,6 @@ void bglParser::applySchemaDefaults(){
 
         if(key == "target"        && cfg.target.empty())       cfg.target = defVal;
         else if(key == "framepoolsize" && cfg.framePoolSize == -1) cfg.framePoolSize = stoi(defVal);
-        else if(key == "worldbufsize" && cfg.worldBufSize == -1) cfg.worldBufSize = stoi(defVal);
-        else if(key == "heapsize" && cfg.heapSize == -1) cfg.heapSize = stoi(defVal);
         else if(key == "errorformat"  && cfg.errorFormat.empty()){
             string upper = defVal;
             transform(upper.begin(), upper.end(), upper.begin(), ::toupper);

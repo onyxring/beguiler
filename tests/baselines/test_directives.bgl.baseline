@@ -9,6 +9,9 @@ Release 42;
     Constant BGL_TEST_EARLY = 100;
 
 constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 1536;
+#Ifdef _bglHeapWords;#Endif;
 constant story = "Directive Test";
 constant author = "Tester";
 constant gameRelease = 42;
@@ -62,7 +65,7 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
     ! startup block test
 
 ];
- Constant NO_ATTRIBUTE 0; 
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 object _zcode
 ;
 object bgl

@@ -42,7 +42,7 @@ object LibraryMessages {
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum post { loose, franked, filed }

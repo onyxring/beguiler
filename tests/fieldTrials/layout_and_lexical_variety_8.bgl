@@ -11,7 +11,7 @@
 // `var` overloads as the fallback; `dictionaryWord` locals compared with `==.word` and `!=..words`
 // glued; `attributeList` with `!` entries split over lines, `give`/`ungive`/`has`/`hasnt` and `is()`;
 // `bgl.printRules` articles and styles qualified, in mixed case and through `#using`; a
-// `stringOrRoutine` member holding text, a named routine and a lambda; `bgl.world` queries with
+// `iStringOrRoutine` member holding text, a named routine and a lambda; `bgl.world` queries with
 // predicates spread over lines; `children +=` and `parent =`; seeded `bgl.util.random`; `typeof` on
 // `var`; and `do`/`until` driving a float loop.
 
@@ -75,7 +75,7 @@ object panel
     "panel";
     parent = roomA;
     name = { .panel };
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 bool Initialise() { location = roomA; rfalse; }

@@ -45,7 +45,7 @@ object LibraryMessages {
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum crop { bean, pea, marrow }

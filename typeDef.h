@@ -718,8 +718,6 @@ class beguilerSettingsDef : public typeDef {
         // runtime options (affect generated I6, not ICL)
         int framePoolSize = -1;        // Z-machine frame pool slot count (-1 = unset; default 64 from schema)
         bool framePoolSizeSet = false; // the program gave framePoolSize; otherwise the pool is sized from the program
-        int worldBufSize    = -1;      // bglWorld scratch buffer capacity (-1 = unset; default 128 from schema)
-        int heapSize        = -1;      // words in the array heap (-1 = unset; 0 = sized by target)
         map<string, int> intSettings;  // every int setting the block gives, by lowercase key; read as #beguilerSettings.key
         vector<pair<string, string>> settingsToCheck;   // keys not yet in the schema, with their `file:line:col`
         optional<bool> rewritePaths;   // path sep rewriting (unset = true; false only if explicitly disabled)

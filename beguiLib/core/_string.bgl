@@ -11,7 +11,7 @@
 /// The type of a `"…"` literal. `==` compares addresses, so two identical literals are not equal; `#include <string>` compares content.
 primitive class stringLiteral {
     emitter string operator();                                   /// Convert to a `string`.
-    replace emitter void print(){ print (string)$val; }          /// Print the text.
+    emitter void print(){ print (string)$val; }          /// Print the text.
 
     emitter eBool operator == (stringLiteral v) { $val == $v }   /// True when both are the same string.
     emitter eBool operator == (string v)        { $val == $v }   /// True when both are the same string.
@@ -24,6 +24,10 @@ primitive class stringLiteral {
 
 /// The type of a `$"…{expr}…"` literal, which prints its text with each expression's value inserted.
 primitive class interpolatedStringLiteral{}
+/// A routine that prints `$"…"` text: an interpolated string assigned to one becomes it, and its `{ }` expressions are evaluated each time it prints.
+primitive class interpolatedString {
+    emitter eBool operator ?() { $val ~= 0 }   /// True unless it is null.
+}
 
 //-- Strings -------------------------------------------------------------------
 /// A string value that refers to text in the story file. Assigning copies the reference, not the text; `#include <string>` adds `stringObj` for text built at run time.
@@ -33,7 +37,7 @@ primitive class string {
         $target=$v
     }
     emitter eBool operator ?() { $val ~= 0 }                     /// True unless the string is null.
-    replace emitter void print(){ print (string)$val; }          /// Print the text.
+    emitter void print(){ print (string)$val; }          /// Print the text.
 
     emitter eBool operator == (string v)        { $val == $v }   /// True when both are the same string.
     emitter eBool operator == (stringLiteral v) { $val == $v }   /// True when both are the same string.
@@ -48,6 +52,8 @@ primitive class string {
 extend _bglOutput {
     emitter void print(string str){ print (string)$str; }                    /// Print `str`.
     emitter void print(interpolatedStringLiteral v){ $v; }                   /// Print an interpolated string.
+    emitter void print(interpolatedString v){ if($v) $v(); }                  /// Print an interpolated string's text, its expressions evaluated now.
+    emitter void printLine(interpolatedString v){ if($v) $v(); print "^"; }   /// Print an interpolated string's text, then a newline.
     emitter void print(stringLiteral str){ print (string)$str; }             /// Print a string literal.
 
     /// Print an interpolated string in debug builds only.

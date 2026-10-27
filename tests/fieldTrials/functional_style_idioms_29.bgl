@@ -23,7 +23,7 @@
 #include <string>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 const int MAXRAIL = 6;

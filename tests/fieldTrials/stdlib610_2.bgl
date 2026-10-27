@@ -28,7 +28,7 @@ const int AMUSING_PROVIDED = 0;   // 6/10 reads 0 as "Amusing provided"
 #include <linq>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum eMood { calm, curious, annoyed }

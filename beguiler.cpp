@@ -165,14 +165,12 @@ void beguiler::extractBlorbSettings(const string& filename) {
         };
 
         extractBool("generateblorb",   beguilerSettings.blorbEnabled);
+        extractStr( "beguilibpath",   beguilerSettings.beguiLibPath);   // the library the whole program is read with
+        preReadLibPath(block, filename);
         extractStr( "blorbassetpath", beguilerSettings.blorbAssetPath);
 
-        // worldBufSize sizes the BLR's bgl.world scratch buffers, and the BLR is parsed BEFORE the
-        // entry file's settings block is reached — so, unlike the other sizes (which are consumed
-        // at emit time), this one has to be read here or the declaration sees only the default.
-        extractInt("worldbufsize", beguilerSettings.worldBufSize);
-        extractInt("heapsize", beguilerSettings.heapSize);           // sizes the BLR's heap, as worldBufSize does
-        // Every `key = <integer>`, for the int settings extensions declare and read while they are parsed.
+        // Every `key = <integer>`, for the int settings the library and extensions declare and read: the
+        // core library is parsed before the entry file's settings block is reached.
         {
             static const std::regex intEntry(R"(([A-Za-z_]\w*)\s*=\s*(\d+)\s*;)");
             for(std::sregex_iterator it(blockLower.begin(), blockLower.end(), intEntry), end; it != end; ++it)
@@ -353,8 +351,6 @@ void beguiler::runPostParseChecks() {
     // Safety fallbacks if schema was not loaded
     if(beguilerSettings.target.empty())      beguilerSettings.target = "glulx";
     if(beguilerSettings.framePoolSize == -1) beguilerSettings.framePoolSize = 64;
-    if(beguilerSettings.worldBufSize    == -1) beguilerSettings.worldBufSize    = 128;
-    if(beguilerSettings.heapSize        == -1) beguilerSettings.heapSize        = 0;
 }
 
 // When blorb packaging is on and no IFID was supplied, derives one deterministically from the
@@ -632,14 +628,6 @@ bool beguiler::runInform6() {
         }
         return found;
     };
-    // True if a back-mapped source path lives inside the runtime library (BLR).
-    auto isBlrSource = [&](const string& f) -> bool {
-        if(f.empty() || settings.libPath.empty()) return false;
-        std::error_code ec;
-        string src = fs::weakly_canonical(f, ec).string();
-        string lib = fs::weakly_canonical(settings.libPath, ec).string();
-        return !lib.empty() && src.rfind(lib, 0) == 0;
-    };
     // Format: `<file>(<line>): <Severity>: ...` (note: I6 may emit double spaces after `:`).
     regex i6DiagRe(R"(^(.+\.inf)\((\d+)\):\s+(Error|Warning|Fatal error):\s+(.*)$)");
     // errorFormat E2: `File "<file>"; Line <line>  # <Severity>: ...` — the same four parts.
@@ -748,16 +736,12 @@ bool beguiler::runInform6() {
             bool isError = (severity == "Error" || severity == "Fatal error");
             string bglFile; int bglLine = 0;
             bool mapped = resolveBglSource(infLine, bglFile, bglLine);
-            // Suppress WARNINGS that map into the runtime library (BLR): they concern
-            // the compiler's own infrastructure (unused housekeeping globals, unreachable
-            // library-routine fallthroughs, and the like), which the user cannot act on.
-            // Also catch warnings that name a `_bgl` symbol even when unmapped (they are
-            // emitted before any source-map entry, e.g. a housekeeping constant at the top
-            // of the file). Errors are always shown, wherever they map.
+            // Suppress WARNINGS that name a `_bgl` symbol: a name the compiler generates (a housekeeping
+            // constant, a lifted routine), which no source can act on. Errors are always shown.
             string lowerMsg = message;
             transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
             bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos;
-            if(!isError && ((mapped && isBlrSource(bglFile)) || blrSymbol)){ i6WarnHidden++; continue; }
+            if(!isError && blrSymbol){ i6WarnHidden++; continue; }
             // ERROR uppercase / warning lowercase — the visual contrast surfaces
             // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
             string sevTag = isError ? "ERROR" : "warning";
@@ -990,6 +974,7 @@ void beguiler::resolveLibPath(int argc, char* argv[]) {
                 val = val.substr(1, val.size()-2);
             }
             settings.libPath = fs::path(val).is_absolute() ? val : getPath(argv[0]) + val;
+            settings.libPathFromCommandLine = true;
             return;
         }
     }

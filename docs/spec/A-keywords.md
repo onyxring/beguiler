@@ -50,6 +50,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `inject` | control (soft: inside `extend` of an array) | §12.11 |
 | `inline` | qualifier | §8.3.5, §11.3.1 |
 | `int` | type | §2.2 |
+| `interpolatedString` | type | §2.4.3 |
 | `interpolatedStringLiteral` | type | §2.4 |
 | `intLiteral` | type | §2.4 |
 | `move` | control (soft: inside `extend` of an array) | §12.11 |

@@ -96,13 +96,8 @@ eSettingKind readBeguilerSetting(const string& key, string& sv, int& iv, bool& b
     }
     else if(key == "release")      { iv = beguilerSettings.release;      return eSettingKind::integer; }
     else if(key == "seriesnumber") { iv = beguilerSettings.seriesNumber; return eSettingKind::integer; }
-    else if(key == "heapsize"){
-        // 0 (or unset) sizes the heap by target.
-        iv = beguilerSettings.heapSize > 0 ? beguilerSettings.heapSize : (beguilerSettings.target.rfind("z", 0) == 0 || beguilerSettings.target.rfind("Z", 0) == 0 ? 1536 : 16384);
-        return eSettingKind::integer;
-    }
-    else if(key == "framepoolsize" || key == "worldbufsize"){
-        iv = (key == "framepoolsize") ? beguilerSettings.framePoolSize : beguilerSettings.worldBufSize;
+    else if(key == "framepoolsize"){
+        iv = beguilerSettings.framePoolSize;
         // applySchemaDefaults() runs after parsing, so mid-parse the value may still be the -1
         // "unset" sentinel. Fall back to the schema-declared default so a read during the parse
         // resolves to what the final ICL emission will use.

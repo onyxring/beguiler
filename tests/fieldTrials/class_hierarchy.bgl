@@ -14,7 +14,7 @@
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // An amount of money in cents; every variable and member holds its own copy.

@@ -790,7 +790,7 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
     {
         string prop = i6alias.empty() ? (string)name : i6alias;
         string t = (string)returnType;
-        bool text = t == "string" || t == "stringorroutine" || t == "auto" || t.empty();
+        bool text = holdsString(t) || t == "auto" || t.empty();
         if(!isEmitter && !newClass.isEmitterClass && !isMemberStatic && !text && file.peekToken().isNot(token::bracketOpen)
            && t.find('<') == string::npos
            && languageService.isAdditiveProperty(prop))
@@ -962,7 +962,12 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
         } else {
             inMemberInitializer = true;   // fixed at compile time: a bare name is a global, never a member
             expression* expr = nullptr;
-            try { expr = parseExpression(first, {token::endStatement}, nullptr, nullptr); } catch(...) { inMemberInitializer = false; throw; }
+            // A routine-typed member takes an interpolated string as the routine that prints it.
+            string savedExpected = currentExpectedType;
+            if(takesInterpolatedRoutine((string)returnType)) currentExpectedType = (string)returnType;
+            try { expr = parseExpression(first, {token::endStatement}, nullptr, nullptr); }
+            catch(...) { inMemberInitializer = false; currentExpectedType = savedExpected; throw; }
+            currentExpectedType = savedExpected;
             inMemberInitializer = false;
             foldIntLiteralToFloat(expr, (string)returnType);
             if(!isMemberStatic) rejectRunTimeMemberRead(expr, varDef.dName());
@@ -1659,9 +1664,11 @@ void bglParser::rejectValueClassInitializer(expression* e, const string& typeNam
         memberName, typeDisplayName(typeName), typeDisplayName(literalBaseType(e->resolvedType))));
 }
 
-// A member named like a #define takes the name over in its class's or object's methods.
+// A member named like a #define takes the name over in its class's or object's methods. An extern class has
+// no methods of Beguile's, so nothing there reads the name.
 void bglParser::warnMemberHidesDefine(const string& name, const string& shown){
     rejectValueWordName(name);   // `int self;` can't be a member either
+    if(currentClass != nullptr && currentClass->isExternal) return;
     if(definedSymbols.count(name))
         parsingWarning(format("Member '{0}' has the name of a #define symbol; in its methods the name means the member.", shown));
 }
@@ -2776,18 +2783,24 @@ void bglParser::addInlineOrder(classDef& cls, const string& name){
 vector<variableDeclaration*> bglParser::positionalMembers(classDef* cls){
     vector<variableDeclaration*> out;
     set<string> placed;
-    set<variableDeclaration*> fromRoot;
+    set<variableDeclaration*> fromRoot, fromExtern;
     function<void(classDef*)> walk = [&](classDef* c){
         if(c == nullptr) return;
         for(const string& n : c->inlineOrder){
             if(placed.count(n)) continue;
             auto* vd = dynamic_cast<variableDeclaration*>(c->findMember([&](typeMember* m){
                 return dynamic_cast<variableDeclaration*>(m) != nullptr && m->name == n; }));
-            if(vd != nullptr){ placed.insert(n); out.push_back(vd); if(c->baseClasses.empty()) fromRoot.insert(vd); }
+            if(vd == nullptr) continue;
+            placed.insert(n); out.push_back(vd);
+            if(c->baseClasses.empty()) fromRoot.insert(vd);
+            else if(c->isExternal) fromExtern.insert(vd);
         }
         for(classDef* base : c->baseClasses) walk(base);
     };
     walk(cls);
+    // The slots an Inform 6 class lists (a library's `object` header: the name, then the parent) follow
+    // the program's own, as the root's name does, whichever parent brought them in.
+    stable_partition(out.begin(), out.end(), [&](variableDeclaration* vd){ return !fromExtern.count(vd); });
     // The root's name slot is always last, however many parents put their slots ahead of it; a class
     // that places the name itself keeps it where it put it.
     stable_partition(out.begin(), out.end(), [&](variableDeclaration* vd){
@@ -3278,6 +3291,16 @@ std::string bglParser::unionExpansionOf(const std::string& typeName){
     auto* cls = languageService.findClass(typeName);
     if(cls && cls->isUnion()) return cls->unionExpansion();
     return "";
+}
+
+// True for `string`, or a union (named or not) with `string` among its members.
+bool bglParser::holdsString(const std::string& typeName){
+    if(typeName == "string") return true;
+    string expanded = unionExpansionOf(typeName);
+    if(expanded.empty() && !isUnionType(typeName)) return false;
+    for(const string& m : splitUnionType(expanded.empty() ? typeName : expanded))
+        if(m == "string") return true;
+    return false;
 }
 
 // Parse one member of an `extern object` body — a single iteration of that body's member loop.

@@ -21,7 +21,7 @@
 #includeI6 "verblib"
 #include <bindings/i6StandardLibrary>
 #include <array>
-#include <stringObj>
+#include <string>
 
 extend class object {
     string description;

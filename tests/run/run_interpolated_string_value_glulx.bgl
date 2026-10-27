@@ -1,0 +1,35 @@
+// run_interpolated_string_value_glulx — the Glulx form: an interpolated string assigned to an interpolatedString (or a func<void>)
+// becomes a routine that prints it, its expressions evaluated each time it prints; assigned to a stringObj
+// it is the text at that moment. Members (object and class default) read their own object.
+// EXPECT_OUTPUT: 60W 100W [100W] level 3 level 9 40W 75W <w=100> n=4 plain
+// EXPECT_OUTPUT: now 200
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+int watts = 60;
+interpolatedString gLive = $"[{watts}W]";
+object lamp {
+    int level = 3;
+    interpolatedString label = $"level {level}";
+}
+class Fixture { int watts = 0; interpolatedString label = $"{watts}W"; }
+Fixture a { watts = 40; }
+Fixture b { watts = 75; }
+void show(interpolatedString s) { print("<"); print(s); print(">"); }
+void run(func<void> f) { f(); }
+void main(){
+    bglInit(); glulxConsole();
+    stringObj snap = $"{watts}W";
+    interpolatedString live = $"{watts}W";
+    watts = 100;
+    print(snap); print(" "); print(live); print(" "); print(gLive); print(" ");
+    print(lamp.label); lamp.level = 9; print(" "); print(lamp.label); print(" ");
+    print(a.label); print(" "); print(b.label); print(" ");
+    show($"w={watts}"); print(" ");
+    int n = 4;
+    run($"n={n} ");
+    run($"plain");
+    printLine();
+    live = $"now {watts * 2}";
+    printLine(live);
+}

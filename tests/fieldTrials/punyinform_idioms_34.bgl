@@ -24,6 +24,7 @@
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/puny/lib";
+    stringHeapSize = 12288;   // `nest 12` holds twelve captures open at once
 }
 
 #emitfirst { Constant bglStringDefaultSize 300; }

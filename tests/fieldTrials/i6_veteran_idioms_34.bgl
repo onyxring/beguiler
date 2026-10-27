@@ -38,7 +38,7 @@ const int NPURSE = 4;
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // ---------------------------------------------------------------- the scales, used bare below

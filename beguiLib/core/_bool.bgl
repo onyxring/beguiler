@@ -15,7 +15,7 @@ extern enum eBool{
 /// A true or false value.
 primitive class bool {
     /// Print `true` or `false`.
-    replace emitter void print(){
+    emitter void print(){
         if($val == true)
             print "true";
         else

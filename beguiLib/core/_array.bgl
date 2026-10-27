@@ -129,7 +129,7 @@ superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
 // dst's instances are swapped into the source's order, so none is overwritten before it is read, and an element
 // from elsewhere is copied into an instance of dst's that no later element needs.
 superposed void _bglArrCopyShared(int dst, int src, var assign){
-    int cap = 0;
+    int room = 0;
     int n = 0;
     int i = 0;
     int j = 0;
@@ -137,20 +137,20 @@ superposed void _bglArrCopyShared(int dst, int src, var assign){
     int e = 0;
     int w = 0;
     #i6 {
-        cap = dst-->0;
+        room = dst-->0;
         n = _bglArrLength(src);
-        if(n > cap) n = cap;
+        if(n > room) n = room;
         for(i = 1 : i <= n : i++){
             e = src-->i;
-            for(j = i : j <= cap : j++) if(dst-->j == e) break;
-            if(j > cap){
-                for(j = i : j <= cap : j++){
+            for(j = i : j <= room : j++) if(dst-->j == e) break;
+            if(j > room){
+                for(j = i : j <= room : j++){
                     w = dst-->j;
                     if(w == 0) break;
                     for(k = i + 1 : k <= n : k++) if(src-->k == w) break;
                     if(k > n) break;
                 }
-                if(j > cap) j = i;
+                if(j > room) j = i;
             }
             w = dst-->i; dst-->i = dst-->j; dst-->j = w;
             if(dst-->i ~= e) dst-->i = assign(dst-->i, e);
@@ -217,16 +217,16 @@ superposed int _bglArrRowStore(int arr, int i, int src, var assign){
 superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
     int i = 0;
     int n = 0;
-    int cap = 0;
+    int room = 0;
     #i6 {
-        cap = obj.#prop / WORDSIZE - 1;
+        room = obj.#prop / WORDSIZE - 1;
         n = _bglArrLength(src);
-        if(n > cap) n = cap;
+        if(n > room) n = room;
         for(i = 0 : i < n : i++){
             if(assign) obj.&prop-->i = assign(obj.&prop-->i, src-->(i + 1));
             else obj.&prop-->i = src-->(i + 1);
         }
-        obj.&prop-->cap = n;
+        obj.&prop-->room = n;
         return 0;
     }
 }
@@ -234,16 +234,16 @@ superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
 superposed int _bglMemberArrCopyMember(var obj, var prop, var sobj, var sprop, var assign = 0){
     int i = 0;
     int n = 0;
-    int cap = 0;
+    int room = 0;
     #i6 {
-        cap = obj.#prop / WORDSIZE - 1;
+        room = obj.#prop / WORDSIZE - 1;
         n = sobj.&sprop-->(sobj.#sprop / WORDSIZE - 1);
-        if(n > cap) n = cap;
+        if(n > room) n = room;
         for(i = 0 : i < n : i++){
             if(assign) obj.&prop-->i = assign(obj.&prop-->i, sobj.&sprop-->i);
             else obj.&prop-->i = sobj.&sprop-->i;
         }
-        obj.&prop-->cap = n;
+        obj.&prop-->room = n;
         return 0;
     }
 }

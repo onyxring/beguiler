@@ -34,7 +34,7 @@
 #include <linq>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

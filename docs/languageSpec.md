@@ -62,6 +62,7 @@ of contents.
   - [2.4 Literal Pseudo-Types](#24-literal-pseudo-types)
     - [2.4.1 `negativeIntLiteral`](#241-negativeintliteral)
     - [2.4.2 `interpolatedStringLiteral`](#242-interpolatedstringliteral)
+    - [2.4.3 `interpolatedString`](#243-interpolatedstring)
   - [2.5 `null`](#25-null)
   - [2.6 The `var` Type](#26-the-var-type)
   - [2.7 Enumerations](#27-enumerations)
@@ -382,7 +383,7 @@ of contents.
     - [21.5.7 `parentProp` and `childrenProp`](#2157-parentprop-and-childrenprop)
     - [21.5.8 `_bglObject` and `_bglPrimitive`](#2158-bglobject-and-bglprimitive)
     - [21.5.9 `eType` and `typeof()`](#2159-etype-and-typeof)
-    - [21.5.10 `stringOrRoutine`](#21510-stringorroutine)
+    - [21.5.10 `iString`, `iStringOrObject` and `iStringOrRoutine`](#21510-istring-istringorobject-and-istringorroutine)
   - [21.6 Numeric Utilities](#216-numeric-utilities)
     - [21.6.1 `uint`](#2161-uint)
     - [21.6.2 `bgl.util.math`](#2162-bglutilmath)
@@ -420,7 +421,7 @@ of contents.
     - [22.7.11 Window Output](#22711-window-output)
     - [22.7.12 Capabilities](#22712-capabilities)
   - [22.8 `<glulxImage>`](#228-glulximage)
-  - [22.9 `<stringObj>`](#229-stringobj)
+  - [22.9 `<archive/string>`](#229-archivestring)
 - [23 IF Library Bindings](#23-if-library-bindings)
   - [23.1 What a Binding Is](#231-what-a-binding-is)
   - [23.2 Available Bindings](#232-available-bindings)
@@ -955,13 +956,14 @@ A span holds any expression, including one with braces of its own, such as a lam
 A string literal inside a span is written with plain quotes; escapes belong to the characters of a
 string, so `\"` inside a span is a compile-time error.
 
-An interpolated string has the pseudo-type `interpolatedStringLiteral` (§2.4.2), which may be passed
-only to an emitter declaring a parameter of that type; passing it to a non-emitter function is a
-compile-time error. `print()` and `bgl.output.log()` accept it in the core runtime (§21.4). The emitter expands
+Passed to an emitter that declares an `interpolatedStringLiteral` parameter (§2.4.2), an interpolated
+string is expanded in place. `print()` and `bgl.output.log()` accept it in the core runtime (§21.4). The emitter expands
 it to a sequence of statements, so the call must be a statement of its own; a call inside an
 expression is a compile-time error. An expression-bodied lambda whose body is such a call,
 `=> print($"…")`, is that statement (§4.14). A `stringObj` also takes one by assignment and by `+=`,
-capturing its output (§22.3).
+capturing its output (§22.3). Anywhere else it is used as a value, it becomes a routine that prints it each time it runs: a
+`var`, an `interpolatedString`, a `func<void>`, or a type that holds one (such as the library's `iString`)
+takes it that way (§2.4.3).
 
 The parts print left to right as they are reached, so a call in a span that prints output of its own
 prints it at that point: in `print($"ran {f()}.")`, "ran " appears before anything `f` prints.
@@ -1215,7 +1217,52 @@ An interpolated string (§1.6.5) contains several segments that cannot be reduce
 it has no corresponding runtime type. It may be passed only to an emitter that declares an
 `interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
 non-emitter function is a compile-time error. The core `print()` and `bgl.output.log()` accept it (§21.4); with the
-`<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3).
+`<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3). Where a routine is
+expected, it becomes one: see `interpolatedString` (§2.4.3).
+
+### 2.4.3 `interpolatedString`
+
+**Description**
+
+An `interpolatedString` is a routine that prints an interpolated string: assigning `$"…"` to one makes the
+routine. Its spans are evaluated each time it prints, not when it is assigned. The routine returns true and
+prints no line break; nothing in Beguile reads the return, which is for Inform 6 callers such as a
+library's `short_name`.
+
+An interpolated string used as a value becomes a routine that prints it, unless what receives it says otherwise:
+
+| Receives it | It becomes | Its spans are evaluated |
+|---|---|---|
+| `stringObj` (`=`, `+=`) | the text, captured into the string (§22.3) | once, at the assignment |
+| `interpolatedString`, `func<void>`, a union holding one and no `stringObj` (`iString`, `iStringOrRoutine`), `var`, `auto`, or an element of an initializer list | a routine that prints it | each time it prints |
+| an emitter's `interpolatedStringLiteral` parameter (`print($"…")`) | statements, in place | there |
+| `string`, or another type that holds neither | a compile-time error | — |
+
+An `interpolatedString` converts to `func<void>`, so it goes wherever a `func<void>` does. `print()` and
+`printLine()` print one.
+
+As a member of an object or a class, the routine is the object's own: its spans read the object's members
+(`{watts}` is `self.watts`), and a class's default serves every instance. It reads them when printed through
+the member, `print(lamp.label)`; a copy of the value held elsewhere is a plain routine, which has no
+object. In a routine's body it is a lambda (§4.14): it captures the locals it reads, with their values when
+it is made, so one kept past its routine can't read them (a compile-time error).
+
+**Example**
+
+```bgl
+#include <string>
+int watts = 60;
+stringObj snap          = $"{watts}W";   // the text now: "60W"
+interpolatedString live = $"{watts}W";   // a routine that prints it
+watts = 100;
+print(snap);   // 60W
+print(live);   // 100W
+
+object lamp {
+    int watts = 60;
+    short_name = $"{watts}W lamp";        // a library property that takes a string or a routine
+}
+```
 
 ## 2.5 `null`
 
@@ -1516,7 +1563,7 @@ A named union gives a union a name and a place for members. It must have at leas
 types and takes no qualifiers. The bodyless form may be given members later with `extend`.
 
 Compatibility is hybrid: for assignment and passing, a named union is transparent (a
-`stringOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for
+`textOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for
 member lookup it is nominal (only a value statically typed as the named union sees its members).
 
 Members are emitters (§7.2), inlined by static type, or `static` methods. Printing a named union is
@@ -1526,9 +1573,9 @@ argument's static type (§21.4).
 **Example**
 
 ```bgl
-union stringOrRoutine = string | func<void> ;
+union textOrRoutine = string | func<void> ;
 
-void show(stringOrRoutine v) {              // also accepts a string | func<void>
+void show(textOrRoutine v) {              // also accepts a string | func<void>
     if(typeof(v) == eType.routine) { func<void> f = (func<void>)v; f(); }
     else print((string)v);
 }
@@ -1536,9 +1583,9 @@ void show(stringOrRoutine v) {              // also accepts a string | func<void
 
 **Notes**
 
-> **In the library.** The library bindings ship `stringOrRoutine`, with its `print` overload and an
-> `isRoutine` member, for the I6 "string-or-routine" properties such as `description` (§21.5.10,
-> §23.3.7).
+> **In the library.** The library bindings ship `iString` and `iStringOrObject`, with a `print`
+> overload and members reporting which type a value holds, for the properties the library prints, such
+> as `description` (§21.5.10, §23.3.7).
 
 ## 2.9 Function Types
 
@@ -2217,8 +2264,9 @@ may shadow a global; inside its scope the bare name is the local and `::name` (�
 - Shadowing a global variable, function (a library routine's too), object or type name; the warning names what is
   shadowed. Globals of the symbolic-constant kinds `attribute`, `property`, `verb`
   and `grammarToken` are exempt: they name compile-time constants, not runtime storage.
-- Shadowing a direct member of the enclosing class or object, or a member inherited from a base
-  class; `self.name` reaches the member.
+- A local or loop variable shadowing a direct member of the enclosing class or object, or a member
+  inherited from a base class; `self.name` reaches the member. A parameter may share a member's name
+  without a warning, as in C# and C++: `void resize(int width) { self.width = width; }`.
 - A lambda-local variable shadowing a capturable outer local or parameter (§4.14).
 - A member overriding a base-class member; `replace` or `default` suppresses the warning (§8.7.3).
 
@@ -4116,15 +4164,15 @@ member named like the class. The prefix keeps every Beguile class name free. An 
 Inform 6 name it binds, and a name that already begins with `_bgl` is reserved and is emitted
 unchanged. I6 code that names a Beguile class reaches it through `$i6Name` (§7.3.3).
 
-Members share that namespace too. A data member or method whose name is also a global (one the
-program declares, a routine, variable or object, or one the library binding declares, such as
-`score`, `action`, a library routine or object) is emitted under another name, and every Beguile use
-follows it. A member named like a library *property* (`before`, `describe`) keeps its name, which is
-how the library calls it. The members of the library's own classes keep their names too: a program
-routine named like one of their methods (`<linq>`'s `first`) is the one emitted under another name.
-A routine the library itself defines, such as `print`, is one the compiler calls by name, so a
-program overload of it does not rename methods of that name. I6 code reaches a renamed member or
-routine through `$i6Name`.
+Members share that namespace too, and one rule decides which name moves, whoever declares the two
+(the program, an extension or the library). A routine, global variable, array or object named like a
+member property is emitted as `_g_⟨name⟩`, and the member keeps its name. A member moves instead
+(`_m_⟨name⟩`) only when the other name is fixed: an `extern` declaration, a routine that replaces an
+`extern` one, a name chosen with `asI6` (§3.11), an Inform 6 operator word, a system function, a class
+or `main`. A method named like an Inform 6 statement keyword (`print`) keeps its name, because a
+routine of that name is always emitted under another. Every Beguile use follows the moved name. I6 code,
+in an emitter body or an `#i6` block, names a moved global or member through `$i6Name` (§7.3.3);
+naming a moved global by its bare name there is a compile-time error.
 
 **Example**
 
@@ -4705,7 +4753,10 @@ positional in this class, is a compile-time error.
 A class's positional order is its own list — its `inline` members and the members it re-lists, in
 declaration order — followed by each base's order, **subclass first**. A member appears once, where it
 is first listed, so a subclass that re-lists an inherited member decides its position; one that
-doesn't places its own `inline` members ahead of the inherited ones. The positional and named forms,
+doesn't places its own `inline` members ahead of the inherited ones. Slots that an `extern` class lists come
+after the program's own, as the root's name does, unless a class of the program re-lists them itself. The library
+bindings make `object`'s name and parent positional this way (§23), so an object can open as an Inform 6 object
+header does: `object hook { "small brass hook", cloakroom; }`. The positional and named forms,
 their separators and the error cases are specified in §11.3.1. A positional value is type-checked
 against the member it fills, as a named one is.
 
@@ -6718,6 +6769,10 @@ The body form also declares the types of the object's members, so calls and memb
 type-check. The object is a referenceable file-scope name like any global object, but no object is
 defined for it in the story file.
 
+`extern ⟨Class⟩ ⟨name⟩;` declares an I6 *variable* of that class's type, which a member initializer can't
+read. An I6 object typed by its class is declared `extern const ⟨Class⟩ ⟨name⟩;`, which an
+initializer can name (`parent = trayA;`).
+
 Rules for the body:
 
 - Methods are bodyless signatures; the implementation is in I6. A brace body on a non-emitter method
@@ -6988,7 +7043,8 @@ global declared to Beguile with an array type (`extern array<int> held;`) is typ
 The heap's size is the `heapSize` setting (§17.4). When it runs out, the collector runs at once (keeping the
 results still on their way somewhere) and the allocation is tried again; running out after that is a run-time
 error that names the setting. A debug build of a program with a library binding also has a `heap` verb that
-prints the heap's size, the words in use and the most ever in use, for setting `heapSize`.
+prints the heap's size, the words in use and the most ever in use, for setting `heapSize` (and the same for
+`<string>`'s string heap, §22.3).
 
 `bgl.gc` (§21.15) frees one array at once (`bgl.gc.free(a)`), runs a collection (`bgl.gc.collect()`),
 and reports the heap's figures. A program that never reaches a prompt, or a library with a turn loop of
@@ -8092,7 +8148,8 @@ extension is supplied by the compiler and must not be written.
 The search is deterministic: the root folder's files are checked first, then each subfolder in
 alphabetical order, depth first, and the first match wins. Matching is case-insensitive
 (`<String>` and `<string>` are the same include) regardless of the file system. A file that is not
-found is a compile-time error.
+found is a compile-time error. Only the library is searched: the source folder and `includePaths` are
+the quoted form's (§14.1.2).
 
 A folder prefix is optional: `#include <⟨name⟩>` is equivalent to the
 canonical `#include <⟨folder⟩/…/⟨name⟩>` naming the folder in which the search finds `name.bgl`,
@@ -8128,6 +8185,11 @@ file, then each `includePaths` directory (§17.3), trying *path*`.bgl` first and
 written. Subdirectory paths are permitted and resolve relative to each directory searched. Either `/`
 or `\` may be used as a separator. Matching is case-insensitive. A file that is not found is a
 compile-time error.
+
+The two forms search separate spaces. A quoted include never finds a file in the Beguile library, even
+when a directory it searches lies inside the library: the library and its shipped extensions are
+included only with angle brackets (§14.1.1), and a quoted include of one is a compile-time error that
+names the angle-bracket form.
 
 A file may be included more than once; a file that must be processed only once guards itself with
 `#once` (§14.1.6).
@@ -9401,7 +9463,7 @@ given, the rule is per property:
 | `informName` / `informPath` | Command line (`-inform=`) wins over both; between the two block properties, `informPath` wins over `informName` (§16.5). |
 | `includePaths` | Additive. Command-line entries are added first, then block entries in the order they are parsed. |
 | `filterVerbSplitWarnings` | Command line wins. |
-| `beguiLibPath` | The command line (`-lib=`, or the default) locates the library for the core files loaded before the program's own source is read; a block value replaces it for every `#include` processed after the block. |
+| `beguiLibPath` | Command line wins. Otherwise the entry file's block names the library for the whole program, read before any of it (§17.1). |
 
 `--debug`, `--lsp` and pass-through switches have no settings equivalent; `generateBlorb`,
 `blorbAssetPath`, `economy`, `omitUnusedRoutines`, `autoInitialize`, `release`, `serial`, the runtime
@@ -9507,19 +9569,21 @@ command line counts as written before any block (§16.4). Two exceptions:
   dropped).
 - `release` and `seriesNumber` treat `0` as "not set", so a block that assigns `0` does not fix them.
 
-**Entry-file properties.** Six properties are read from the entry source file before parsing begins,
+**Entry-file properties.** These properties are read from the entry source file before parsing begins,
 by a textual scan of its `#beguilerSettings` blocks:
 
 - `target`
 - `includePaths`
+- `beguiLibPath`
 - `generateBlorb`
 - `blorbAssetPath`
 - `autoInitialize`
-- `worldBufSize`
-- `heapSize`
+- every `int` property set to an integer literal, including those the library and extensions declare
+  (`heapSize`, `worldBufSize`, `<string>`'s `stringHeapSize`)
 
-The asset scan, the compile-time target symbols used by `#if` during the pre-scan, and the include
-search path used to resolve forward references all come from this early read. These properties must
+The asset scan, the compile-time target symbols used by `#if` during the pre-scan, the library the
+program is read with, the include search path used to resolve forward references, and the sizes the core
+library reads as it is parsed all come from this early read. These properties must
 therefore be written in the entry file, as literal values, not in an included file.
 
 **Example**
@@ -9545,7 +9609,7 @@ These properties locate external tools. They are never written to the generated 
 | --- | --- | --- | --- |
 | `informPath` | string | none | Full path to the Inform 6 compiler binary. Wins over `informName`. |
 | `informName` | string | `"inform"` | File name of the Inform 6 binary, looked up next to the `beguiler` binary. `"none"` skips the Inform 6 hand-off. |
-| `beguiLibPath` | string | `"beguiLib"` | Directory of the Beguile system library, replacing the binary-adjacent default for includes processed after the block. |
+| `beguiLibPath` | string | `"beguiLib"` | Directory of the Beguile system library, replacing the binary-adjacent default for the whole program; `-lib=` wins. A relative path is relative to the entry file's folder. Set in the entry file: a block in another file naming a different library is a compile-time error. |
 | `includePaths` | string | none | One or more directories, comma-separated, added to the search path for both `#include "…"` and `#includeI6` (§18.4). Additive across blocks and with `-includepaths=`. |
 
 A regular `"…"` `includePaths` entry is normalized: separators are rewritten (§18.5), a relative path
@@ -9570,8 +9634,10 @@ own `Include` directives against the same set.
 
 ## 17.4 Runtime Settings
 
-These properties size runtime structures in the generated code. `framePoolSize` and `worldBufSize`
-must be at least 1, and `heapSize` 0 (the target's default) or at least 64.
+These properties size runtime structures in the generated code. `framePoolSize` must be at least 1, and
+`heapSize` 0 (the target's default) or at least 64; `worldBufSize` takes its default when unset or 0.
+`heapSize` and `worldBufSize` are declared by the core library itself (`core/_gc`, `core/_bglWorld`),
+with `extend class beguilerSettingsType`, as an extension declares its own (§17.7).
 
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -9712,6 +9778,21 @@ that is not a declared property is a compile-time error.
 | bool | `generateBlorb`, `autoInitialize`, `economy`, `filterVerbSplitWarnings`, `omitUnusedRoutines`, `rewritePaths` |
 
 `includePaths` is a list, which has no literal form, so it reads back as the `;`-joined search path.
+
+An extension may declare int settings of its own by extending the settings type, and reads them the same
+way; unset, one reads as `0`. A setting's entry may come before the include that declares it, since the
+block is checked once the whole program is read:
+
+```bgl
+extend class beguilerSettingsType {
+    int stringHeapSize;   /// Bytes in the string heap (unset: 5120).
+}
+#if #beguilerSettings.stringHeapSize > 0
+    const int bglStringHeapSize = #beguilerSettings.stringHeapSize;
+#else
+    const int bglStringHeapSize = 5120;
+#endif
+```
 
 The value is whatever has been fixed when the reference is parsed. A string property not yet set
 reads as `""` and an integer property as `0`, except the four runtime sizes, which read as their
@@ -10102,12 +10183,13 @@ or object, when a named member does not exist, or when the member is not of an i
 #using 'myLib.x': member not found; directive ignored
 ```
 
-**Shadowing.** A local variable, parameter or loop variable that hides a global, a member of the
-enclosing class or object, or a capturable name from an enclosing function:
+**Shadowing.** A local variable, parameter or loop variable that hides a global or a capturable name
+from an enclosing function, or a local or loop variable that hides a member of the enclosing class or
+object (a parameter may share a member's name):
 
 ```text
 Local variable 'score' shadows the global variable 'score'; '::score' reaches it.
-Parameter 'name' shadows a member of class 'Thing'.
+Local variable 'name' shadows a member of class 'Thing'.
 ```
 
 **Object-member ambiguity.** Inside an object body, a bare identifier that resolves at file scope but
@@ -10161,6 +10243,8 @@ message and halts the story with `quit`, except where stated.
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
+| The string heap is full (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
+| Text printed into a string buffer runs past its room (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
 | `bgl.gc.free` given an array already freed (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
 | `bgl.gc.free` given a file-scope or member array (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
 | Copying into a `ref array` bound to nothing (§12.5) — the program continues | `[Beguile run-time error: copying into an array that is null; bind it with := first]` | Bind it with `:=`. |
@@ -10360,7 +10444,7 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 
 The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
 
-`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(stringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
+`print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(iString)` and `print(iStringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
 `print(obj)` on a value whose type derives from `_bglObject` (§21.5.8) calls the value's own `print()` method when it defines one; otherwise it prints the object's name with I6's `(name)` rule. A class therefore customizes how its instances print by defining `void print()`.
 
@@ -10654,35 +10738,55 @@ void Main() {
 
 **See also** §2.8.
 
-### 21.5.10 `stringOrRoutine`
+### 21.5.10 `iString`, `iStringOrObject` and `iStringOrRoutine`
 
 **Syntax**
 
 ```syntax
-stringOrRoutine ⟨name⟩ ;
+iString ⟨name⟩ ;
+iStringOrObject ⟨name⟩ ;
+iStringOrRoutine ⟨name⟩ ;
+⟨value⟩.isInterpolated()
+⟨value⟩.isObject()
 ⟨value⟩.isRoutine()
 print( ⟨value⟩ ) ;
 ```
 
 **Description**
 
-`stringOrRoutine` is the named union `string | func<void>`: a value that is either printable text or a routine to run, the classic Inform "string-or-routine" property (`description`, `cant_go`, …). It is provided by the IF library bindings, not by the core: it is in scope whenever a binding is included (§23.3.7). `isRoutine()` reports which the value currently holds. `print(x)` prints the string or runs the routine; the overload carries no library dependency.
+`iString` is the named union `string | interpolatedString`: a string, plain or interpolated. An interpolated string assigned to one becomes a routine that prints it, its expressions evaluated each time it prints (§2.4.3). It suits a property the library prints, such as `description`. `isInterpolated()` reports which form the value holds, and `print(x)` prints either.
+
+`iStringOrObject` is the named union `string | interpolatedString | object`: an `iString` or an object, the Inform pattern of a direction property (`n_to`, `door_to`, …) that holds a room, or a message printed instead of moving. `isObject()` reports which the value holds.
+
+`iStringOrRoutine` is the named union `string | interpolatedString | func<void>`: an `iString` or a routine that prints, for a value that is a lambda, a routine passed as an argument, or a routine assigned while the game runs (`lamp.description = describeLit;`). `isRoutine()` reports whether the value is a routine, an interpolated string included, and `print(x)` prints the string or runs the routine.
+
+All three are provided by the IF library bindings (§23.3.7). An object may give such a property a method instead of a value, `object e_to() { … }`; the method declares its own type, as any member method does (§8), and the library runs it.
 
 **Example**
 
 ```bgl
-#include <bindings/i6StandardLibrary>
-void describeLamp() { print("It flickers."); }
-object lamp { stringOrRoutine description; }
+#include <bindings/punyInform>
+extend class object { iString description; iStringOrObject n_to; iStringOrObject s_to; iStringOrObject e_to; }
+int storms = 3;
+object bar { }
+object cloakroom { }
 
-void Main() {
-    lamp.description = "a brass lamp";   // prints the text
-    lamp.description = describeLamp;     // runs the routine
-    print(lamp.description);
+object foyer {
+    description = "A spacious hall.";                    // a plain string
+    s_to = bar;                                          // the room the exit leads to
+    n_to = $"The {storms} storms block the way.^";       // printed instead of moving, read each time
+    object e_to() {                                      // decided each time
+        if (cloakroom.has(light)) return cloakroom;
+        rtrue("The cloakroom door is stuck.");
+    }
 }
 ```
 
-**See also** §2.8.2, §23.3.7.
+> **The routine form.** The method follows the library's convention for a direction routine: return the
+> object to move to, `null` for the library's refusal, or `true` once it has printed its own. An
+> interpolated string returns `true` once printed, so it acts as a refusal.
+
+**See also** §2.4.3, §2.8.2, §23.3.7.
 
 ## 21.6 Numeric Utilities
 
@@ -11467,7 +11571,7 @@ Two types, for two different things:
 | Type | The slot holds | Mutable | Lifecycle |
 |---|---|---|---|
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
-| `stringObj` | a buffer of its own, taken from the string pool | yes | allocated on declaration, released at scope exit |
+| `stringObj` | a buffer of its own, a block in the string heap | yes | allocated on declaration, released at scope exit |
 
 A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own, and so is passing a `stringObj` where a `string` parameter is expected: the parameter takes `stringObj`, or `string | stringObj` for either. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
 
@@ -11539,18 +11643,35 @@ void Main() {
 }
 ```
 
+**Storage**
+
+Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
+
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
+
+Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
+
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
 **Settings**
 
-The pool holds `bglStringPoolReserve` string objects (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). Each buffer is `bglStringDefaultSize` bytes (default `500`, §22.2), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default); text that would go past that is dropped. Both are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+Both sizes are settings that `<string>` declares (§17.4); unset or `0`, they take the defaults above:
+
+```bgl
+#beguilerSettings { stringHeapSize = 8192; stringCaptureSize = 1024; }
+#include <string>
+```
+
+In a debug build of a program with a library binding, the `heap` verb also reports the string heap: its size, the bytes in use, and the most the run has needed. That figure allows for compaction and growth, so a `stringHeapSize` set to it holds the same run; set it from a debug playthrough to shrink the heap for release.
+
+The string objects themselves come from a pool of `bglStringPoolReserve` (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). It is an I6 constant, set before the include:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }
 #include <string>
 ```
-
-> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
-> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
-> large.
 
 `bglStringPoolReserve` is unrelated to `framePoolSize` (§17.4), which sizes the Z-machine local-variable overflow pool.
 
@@ -11558,7 +11679,7 @@ The pool holds `bglStringPoolReserve` string objects (default `10`); every live 
 
 Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by a printer that accepts a literal, a `stringObj`, a buffer or a routine (which it runs). For use of `stringObj` as an array element type — the slot allocates on first write and is released when the element is dropped — see §12.10.
 
-**See also** §2.2, §12.10, §21.2, §22.2.
+**See also** §2.2, §12.10, §21.2, §22.2, §22.9.
 
 ## 22.4 `<array>`
 
@@ -12113,32 +12234,30 @@ Does not require `bglInit()`. Does not require `generateBlorb`, but without pack
 
 **See also** §17.6, §21.12, §22.7.
 
-## 22.9 `<stringObj>`
+## 22.9 `<archive/string>`
 
-**Purpose.** An alternative to `<string>` (§22.3) whose `stringObj` buffers grow as text is written into them.
+**Purpose.** The earlier `<string>`, kept for comparison: the same types, operators and methods as `<string>` (§22.3), but each `stringObj` has a buffer of fixed size.
 
 **Include**
 
 ```bgl
-#include <stringObj>     // in place of <string>; includes <buf>
+#include <archive/string>   // in place of <string>; includes <buf>
 ```
 
 **Description**
 
-`<stringObj>` provides the same types, operators and methods as `<string>`, with the same lifecycle: `bglStringPoolReserve` string objects (default `10`), taken on declaration and released at scope exit. Only the storage behind them differs. Each string's characters live in a block of the string heap, a single array of `bglStringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block. There is no per-string limit: a string can hold as much text as the heap has room for.
-
-Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `bglStringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. Captured text longer than that is cut off at that length, and so is a literal copied into a `stringObj`. Text built with `+=` and the other operators has no such limit.
-
-When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. If there is still no room, the program stops with a run-time error. Each capture under way keeps `bglStringCaptureSize` characters in use, so deeply nested captures need a larger heap.
-
-Both sizes are Inform 6 constants, set before the include:
+Each `stringObj` takes a buffer of `bglStringDefaultSize` bytes (default `500`, §22.2) from a pool of `bglStringPoolReserve` (default `10`), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
 
 ```bgl
-#i6 { Constant bglStringHeapSize 8192; Constant bglStringCaptureSize 1024; }
-#include <stringObj>
+#i6 { Constant bglStringPoolReserve 32; }
+#include <archive/string>
 ```
 
-`<stringObj>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
+> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
+> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
+> large.
+
+`<archive/string>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
 
 **See also** §22.2, §22.3.
 
@@ -12251,7 +12370,7 @@ A binding declares, as `extern`:
 
 Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's; and a program's own `extern` declaration of a library routine replaces the binding's.
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4).
+Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4). Both bindings also make the object's name and its `parent` positional, in that order (§8.3.5), so an object can open as an Inform 6 object header does: `object hook { "small brass hook", cloakroom; }`.
 
 A declaration on an `extern` class, the binding's or a program's `extend class object { … }` (§8.7.1),
 only gives a library property its type; it gives no object the property. An object holds a property
@@ -12278,7 +12397,7 @@ It also declares the `grammarToken` enum (§21.5.5) with the parser's token name
 
 ### 23.3.7 Shared Types
 
-Each binding declares `stringOrRoutine` (§21.5.10) with its `print()` overload. Its behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
+Each binding declares `iString`, `iStringOrObject` and `iStringOrRoutine` (§21.5.10), with `print()` overloads for `iString` and `iStringOrRoutine`. Their behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
 
 ### 23.3.8 Status Bar and Main Window
 
@@ -12334,7 +12453,7 @@ returns what the library expects of it, which the table gives as the method's re
 | `initial` | describe the object in a room before it is first moved | `string initial` or `void initial()` |
 | `when_open`, `when_closed`, `when_on`, `when_off` | describe an openable or switchable object in a room | `string` or a `void` method |
 | `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
-| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, or `bool short_name()`: true when it printed the whole name |
+| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, an interpolated string (§2.4.3), or `bool short_name()`: true when it printed the whole name |
 | `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
 | `plural` | name several identical objects | `string plural` or a `void` method |
 | `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |
@@ -12517,6 +12636,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `inject` | control (soft: inside `extend` of an array) | §12.11 |
 | `inline` | qualifier | §8.3.5, §11.3.1 |
 | `int` | type | §2.2 |
+| `interpolatedString` | type | §2.4.3 |
 | `interpolatedStringLiteral` | type | §2.4 |
 | `intLiteral` | type | §2.4 |
 | `move` | control (soft: inside `extend` of an array) | §12.11 |
@@ -12873,7 +12993,7 @@ that `#beguilerSettings.prop` may read (§17.7).
 | `seriesNumber` | int | `0` | first (0 = unset) | — | yes | §17.5 |
 | `target` | `eTarget` | `Glulx` | first | `-G`, `-z5`, `-z8` | yes | §17.3 |
 | `title` | string | `""` | first | — | yes | §17.5 |
-| `worldBufSize` | int | `128` | first | — | yes | §17.4 |
+| `worldBufSize` | int | `128` (also for 0) | first | — | yes | §17.4 |
 
 **Enum values.** `eTarget`: `Glulx`, `Z5`, `Z8`. `eErrorFormat`: `E1`, `E2`.
 
@@ -13234,11 +13354,17 @@ need `#include <array>`.
 | `insert(pos, src)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `int` | type | core | §2.2 |
 | `intLiteral`, `negativeIntLiteral`, `stringLiteral`, `charLiteral`, `dictionaryWordLiteral`, `interpolatedStringLiteral` | type (literal pseudo-type) | core | §2.4 |
+| `interpolatedString` | type (a routine that prints an interpolated string) | core | §2.4.3 |
+| `iString` | type (named union: `string \| interpolatedString`) | binding | §2.8.2, §21.5.10, §23.3.7 |
+| `iStringOrObject` | type (named union: `iString`'s members and `object`) | binding | §21.5.10, §23.3.7 |
+| `iStringOrRoutine` | type (named union: `iString`'s members and `func<void>`) | binding | §21.5.10, §23.3.7 |
 | `nullLiteral` | type (literal pseudo-type: the type of `null`) | core | §2.5 |
 | `is(Class)` | method on `object` | core | §21.5.6 |
 | `isEmpty()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `isLower()`, `isUpper()`, `isAlpha()`, `isNumeric()`, `isAlphaNumeric()`, `isVowel()`, `isConsonant()` | method on `char` | core | §21.7 |
-| `isRoutine()` | method on `stringOrRoutine` | binding | §21.5.10 |
+| `isInterpolated()` | method on `iString` | binding | §21.5.10 |
+| `isObject()` | method on `iStringOrObject` | binding | §21.5.10 |
+| `isRoutine()` | method on `iStringOrRoutine` | binding | §21.5.10 |
 | `isTracked()` | method on `array<T>` | `<array>` | §22.4 |
 | `itobj`, `himobj`, `herobj` | variable (pronoun objects) | binding | §23.4 |
 | `length` | property on `array<T>` (assignable with `<array>`) | core; `<array>` | §12.3, §22.4 |
@@ -13304,7 +13430,6 @@ need `#include <array>`.
 | `story`, `headline` | constant (I6) and `extern string` | binding | §23.3.2 |
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
-| `stringOrRoutine` | type (named union) | binding | §2.8.2, §21.5.10, §23.3.7 |
 | `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the struct below) | core | §7.7 |
 | `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
 | `styleSheet` | type (struct; one `style` per style type) | `<glulxWindow>` | §22.7.7 |

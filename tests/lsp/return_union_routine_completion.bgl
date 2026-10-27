@@ -1,0 +1,8 @@
+enum eMood { calm, wary, angry }
+void react(){ }
+eMood | func<void> moodOrAction(int n){
+    func<void> act = react;
+    bool b = false;
+    return 
+}
+void main(){ moodOrAction(1); }

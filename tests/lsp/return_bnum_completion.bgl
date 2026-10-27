@@ -1,0 +1,10 @@
+bnum winFlags { }
+bnum winPlace : winFlags { left = 0, right = 1 }
+bnum winScale : winFlags { fixed = 16, proportional = 32 }
+bnum itemFlag { portable, fragile }
+winFlags method(int n){
+    winScale s = fixed;
+    bool b = false;
+    return left | 
+}
+void main(){ method(1); }

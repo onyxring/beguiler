@@ -188,8 +188,8 @@ superposed object _bglArray {
     // own operator= (byte-form) so char arrays never route through this.
     superposed void copy(var dobj, var dprop, var sobj, var sprop, var assign = 0) asI6 _bglArr_copy {
         int n = length(sobj, sprop);
-        int cap = size(dobj, dprop);
-        if(n > cap) n = cap;
+        int room = size(dobj, dprop);
+        if(n > room) n = room;
         // An element type that owns storage copies into dest's own slots. Slots past the new length
         // keep what they own, as after remove(); clear() and scope exit release them.
         for(int i = 0; i < n; i++)
@@ -223,8 +223,8 @@ superposed object _bglArray {
             print("^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^");
             #i6 { quit; }   // I6 control; no Beguile equivalent yet
         }
-        int cap = size(obj, prop);
-        if(n > cap) n = cap;   // never past capacity: later reads would walk off the end
+        int room = size(obj, prop);
+        if(n > room) n = room;   // never past capacity: later reads would walk off the end
         #i6 { if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } }
         _bglArrSetLength(obj, n);   // an array Inform 6 declares: no length word, nothing to set
     }

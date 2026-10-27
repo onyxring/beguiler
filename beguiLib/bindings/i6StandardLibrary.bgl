@@ -238,7 +238,7 @@ extern bool ADirection();                                                   /// 
 extern void L__M(verb action, int n, var x1 = 0);                          /// print the library's message n for action
 extern var  ValueOrRun(object obj, property prop);                          /// obj.prop's value, or what it returns when it is a routine
 extern int  PrintOrRun(object obj, property prop);                          /// if obj.prop is a routine, run it; if a string, print it
-extern int  PrintOrRunVar(stringOrRoutine v);                               /// if v is a routine, run it; if a string, print it
+extern int  PrintOrRunVar(iStringOrRoutine v);                               /// if v is a routine, run it; if a string, print it
 extern dictionaryWord NextWord();                                          /// the word at `wn`, then advance; null for a word not in the dictionary
 extern int  NextWordStopped();                                             /// as NextWord, but -1 once the words run out
 extern void SetPronoun(dictionaryWord dword, object value);                 /// bind a pronoun word ('it'/'him'/…) to an object
@@ -557,15 +557,26 @@ extern verb NotUnderstood { }   /// Runs when a command to a character is not un
 
 //-- General bits of I6-to-Beguile setup ----------------------------------------
 
-// stringOrRoutine is a convenience union type, since the stdlib uses this pattern regularly.
-union stringOrRoutine = string | func<void> {
-    emitter bool isRoutine() { metaclass($val) == Routine }
+/// A string, plain or interpolated; an interpolated one is evaluated each time it prints.
+union iString = string | interpolatedString {
+    emitter bool isInterpolated() { metaclass($val) == Routine }   /// True when the value is an interpolated string.
 }
 extend _bglOutput {
-    emitter void print(stringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
+    emitter void print(iString v){ _bglPrintOrRun($v) }   /// Print the text.
+}
+/// An iString the library prints or an object it uses, such as an exit.
+union iStringOrObject = string | interpolatedString | object {
+    emitter bool isObject() { metaclass($val) == Object }   /// True when the value is an object.
+}
+/// An iString or a routine that prints, such as a lambda or a routine assigned while the game runs.
+union iStringOrRoutine = string | interpolatedString | func<void> {
+    emitter bool isRoutine() { metaclass($val) == Routine }   /// True when the value is a routine, an interpolated string included.
+}
+extend _bglOutput {
+    emitter void print(iStringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
 }
 // A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
-superposed void _bglPrintOrRun(stringOrRoutine v){
+superposed void _bglPrintOrRun(iStringOrRoutine v){
     #i6 {
         if(metaclass(v) == Routine) v();
         else print (string)v;
@@ -573,7 +584,10 @@ superposed void _bglPrintOrRun(stringOrRoutine v){
 }
 // The stdLib allows all objects to override their instanceName via the short_name property.
 extend class object {
-    stringOrRoutine short_name;
+    // Positional, as in an Inform 6 object header: the name, then the parent (`object hook { "brass hook", cloakroom; }`).
+    inline instanceName;
+    inline parent;
+    iString short_name;
     property door_dir;   /// On a direction object, the exit property it reads (`n_to`, …); on a door, the way it leads.
 }
 
@@ -587,7 +601,7 @@ extend class object {
 #if(TARGET_GLULX)
     // Pause and resume the library's line input around a link handler clicked at the prompt.
     #emitlast { Array _bglLineEvent --> 4; }
-    replace int _bglSuspendLineInput(var buffer){
+    replace int _bglSuspendLineInput(var inputBuf){
         int typed = 0;
         #i6 {
             glk_cancel_line_event(gg_mainwin, _bglLineEvent);
@@ -595,11 +609,11 @@ extend class object {
         }
         return typed;
     }
-    replace void _bglResumeLineInput(var buffer, int typed){
+    replace void _bglResumeLineInput(var inputBuf, int typed){
         #i6 {
             DrawStatusLine();
             L__M(##Prompt);
-            glk_request_line_event(gg_mainwin, buffer + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
+            glk_request_line_event(gg_mainwin, inputBuf + WORDSIZE, INPUT_BUFFER_LEN - WORDSIZE, typed);
         }
     }
     superposed array<int> _bglArrangeBuf[1];

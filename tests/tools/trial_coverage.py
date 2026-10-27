@@ -125,7 +125,7 @@ LANGUAGE = [
     ('21.4', 'article helpers', r'\b(a|cA|the|cThe)\s*\(|\{\s*(a|cA|the|cThe)\s*:'),
     ('21.5.1', 'attribute values (has / give)', r'\bhas\b|\.give\s*\(|\battributes\b'),
     ('21.5.3', 'dictionaryWord', r'\bdictionaryWord\b'),
-    ('21.5.10', 'stringOrRoutine', r'\bstringOrRoutine\b'),
+    ('21.5.10', 'iString', r'\biString(OrObject|OrRoutine)?\b'),
     ('21.6.1', 'uint', r'\buint\b'),
     ('21.6.2', 'bgl.util.math', r'\bmath\.' + ID),
     ('21.6.3', 'bgl.util.random', r'\brandom\.' + ID + r'|\brandom\s*\('),

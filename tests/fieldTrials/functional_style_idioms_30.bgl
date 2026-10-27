@@ -26,7 +26,7 @@
 #include <string>
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 const int NTEAMS = 6;

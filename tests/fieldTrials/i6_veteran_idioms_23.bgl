@@ -35,7 +35,7 @@ const int RING = 4;
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
     ref object n_to;
     ref object s_to;
 }

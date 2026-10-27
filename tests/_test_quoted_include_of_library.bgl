@@ -1,0 +1,5 @@
+// Negative test: the Beguile library is reached only with angle brackets; a quoted include doesn't find it.
+// EXPECT_ERROR: is in the Beguile library, which is included with angle brackets
+#beguilerSettings { target = z5; informName = "none"; }
+#include "array"
+void main(){ print("x"); }

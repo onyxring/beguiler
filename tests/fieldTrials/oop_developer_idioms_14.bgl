@@ -25,7 +25,7 @@
 #define STRICT_MASS
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA {

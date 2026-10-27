@@ -59,11 +59,11 @@ extern default int HandleGlkEvent(var event, var context, var buffer);
 
 // Pause and resume line input around a link handler clicked at the prompt. The library's binding
 // replaces these with its own; without one there is no line input to pause.
-int  _bglSuspendLineInput(var buffer){ return 0; }
-void _bglResumeLineInput(var buffer, int typed){ }
+int  _bglSuspendLineInput(var inputBuf){ return 0; }
+void _bglResumeLineInput(var inputBuf, int typed){ }
 
 // The BLR's share of HandleGlkEvent: true when it handled the event.
-bool _bglGlkEvent(var event, int context, var buffer){
+bool _bglGlkEvent(var event, int context, var inputBuf){
     if(bgl.asm.aload(event, 0) != (int)eGlulxEventType.hyperlink) return false;
     var target = bgl.asm.aload(event, 2);
     bgl.asm.requestHyperlinkEvent(bgl.asm.aload(event, 1));   // a request lasts for one click
@@ -73,9 +73,9 @@ bool _bglGlkEvent(var event, int context, var buffer){
     if(!known) return false;
 
     int typed = 0;
-    if(context == 0) typed = _bglSuspendLineInput(buffer);
+    if(context == 0) typed = _bglSuspendLineInput(inputBuf);
     #i6 { target(); }
-    if(context == 0) _bglResumeLineInput(buffer, typed);
+    if(context == 0) _bglResumeLineInput(inputBuf, typed);
     return true;
 }
 

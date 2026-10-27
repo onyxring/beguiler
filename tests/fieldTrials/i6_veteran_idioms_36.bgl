@@ -39,7 +39,7 @@ const int NRACK = 6;
 #using bgl.printRules;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 // ---------------------------------------------------------------- the bench, used bare below

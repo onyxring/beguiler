@@ -1,0 +1,5 @@
+bool isEven(int n){
+    bool b = false;
+    return 
+}
+void main(){ isEven(2); }

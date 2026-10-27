@@ -4,7 +4,7 @@
 // Exercises: a tenth PunyInform program, on what the first nine did not lean on: OPTIONAL_MANUAL_SCOPE
 // with the author setting `scope_modified` after moving an object in a verb; `#include ?<…>` and
 // `#include ?"…"` of files that do not exist; `attributes` negated with `!` by an object of a class, the
-// one-element `attributes = x;` form and `extend` of an object adding attributes; `stringOrRoutine` as
+// one-element `attributes = x;` form and `extend` of an object adding attributes; `iStringOrRoutine` as
 // a class member (set to a string, a named function and a lambda, tested with isRoutine()), as a
 // parameter and as a local; a `literal func<void>` member set per object to a lambda and a function;
 // `bglClass` as a parameter, in an array iterated by for-in, with `is()` and `typeof` reporting
@@ -87,7 +87,7 @@ class Fixture : object {
 }
 
 class Panel : Fixture {
-    stringOrRoutine reading;
+    iStringOrRoutine reading;
     int presses = 0;
     literal func<void> onPress;
 
@@ -238,7 +238,7 @@ void walk(object root, int depth, func<void, object, int> visit) {
     }
 }
 
-void show(stringOrRoutine s) {
+void show(iStringOrRoutine s) {
     print("[");
     print(s);
     print("]");
@@ -418,7 +418,7 @@ verb ShowStrings {
     meta = true;
     grammar = {.strings};
     void handler() {
-        stringOrRoutine s = "text";
+        iStringOrRoutine s = "text";
         show(s);
         s = readRed;
         show(s);

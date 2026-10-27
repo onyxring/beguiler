@@ -39,7 +39,7 @@ Global gaugeChecks = 0;
 extern int gaugeChecks;
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 object roomA { "Room A"; description = "Room A."; attributes = {light}; }

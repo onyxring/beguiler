@@ -24,7 +24,19 @@
 //     -->2 words in blocks in use                            -->3 words allocated since the last collection
 //     -->4 the array a routine is returning              -->5 the heap's size in words
 //     -->6 the most words ever in blocks in use
-superposed rawArray<int> _bglHeapStore[#beguilerSettings.heapSize];
+#if #beguilerSettings.heapSize > 0
+    #if #beguilerSettings.heapSize < 64
+        #error "beguilerSettings property 'heapSize' must be 0 (sized by target) or at least 64"
+    #endif
+    const int _bglHeapWords = #beguilerSettings.heapSize;
+#else
+    #if TARGET_ZCODE
+        const int _bglHeapWords = 1536;
+    #else
+        const int _bglHeapWords = 16384;
+    #endif
+#endif
+superposed rawArray<int> _bglHeapStore[_bglHeapWords];
 // The heap: 0 until it is laid out.
 int _bglHeap = 0;
 // How much the collector reports in a debug build; 2 also looks for references the roots missed.
@@ -63,7 +75,7 @@ superposed void _bglHeapSetStart(int b, bool on){
 
 // Lay out the heap: the bookkeeping, the bitmap, then one free block holding the rest.
 superposed void _bglHeapInit(){
-    int words = #beguilerSettings.heapSize;
+    int words = _bglHeapWords;
     int bm = 0;
     int i = 0;
     _bglHeapStore[0] = 0;   // named in Beguile, so the storage is emitted with the routine that lays it out
@@ -164,16 +176,16 @@ superposed void _bglHeapRelease(int b){
 superposed void _bglHeapShrink(var a){
     int b = 0;
     int nb = 0;
-    int cap = 0;
+    int room = 0;
     int need = 0;
     #i6 {
         b = _bglHeapBlockOf(a);
         if(b == 0) return;
-        cap = a-->(-1);
-        if(cap < 1) cap = 1;
-        if(cap >= a-->0) return;
-        a-->0 = cap;
-        need = cap + 6;
+        room = a-->(-1);
+        if(room < 1) room = 1;
+        if(room >= a-->0) return;
+        a-->0 = room;
+        need = room + 6;
         if(b-->0 - need < 6) return;
         nb = b + need * WORDSIZE;
         nb-->0 = b-->0 - need;

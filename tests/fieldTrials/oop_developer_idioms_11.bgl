@@ -29,7 +29,7 @@
 #define MAX_SPEND 90
 
 extend class object {
-    stringOrRoutine description;
+    iStringOrRoutine description;
 }
 
 enum Mode { Off, Low, High }
