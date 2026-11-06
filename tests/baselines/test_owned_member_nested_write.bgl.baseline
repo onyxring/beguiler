@@ -77,4 +77,5 @@ object player
     print player.stats.strength;
     player.stats.agility = 12;
     print player.stats.agility;
+    rtrue;
 ];

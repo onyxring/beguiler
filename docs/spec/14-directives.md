@@ -7,7 +7,8 @@
   - [14.1.3 `#include @"path"`](#1413-include-path)
   - [14.1.4 `#include ?"path"` and `#include ?<name>`](#1414-include-path-and-include-name)
   - [14.1.5 `#includeI6`](#1415-includei6)
-  - [14.1.6 `#once`](#1416-once)
+  - [14.1.6 `#mergeI6`](#1416-mergei6)
+  - [14.1.7 `#once`](#1417-once)
 - [14.2 Symbols and Conditional Compilation](#142-symbols-and-conditional-compilation)
   - [14.2.1 `#define`, `#defineI6`](#1421-define-definei6)
   - [14.2.2 `#redef` and `#undef`](#1422-redef-and-undef)
@@ -115,7 +116,7 @@ included only with angle brackets (§14.1.1), and a quoted include of one is a c
 names the angle-bracket form.
 
 A file may be included more than once; a file that must be processed only once guards itself with
-`#once` (§14.1.6).
+`#once` (§14.1.7).
 
 **Example**
 
@@ -203,6 +204,9 @@ verbatim: no search, no existence check and no separator rewriting are performed
 Every `includePaths` directory is also made available to the I6 compiler, so an included I6 file can
 resolve its own internal includes.
 
+A `.patch` or `.diff` file is a compile-time error here; patches are applied with `#mergeI6`
+(§14.1.6).
+
 **Example**
 
 ```bgl
@@ -220,7 +224,83 @@ exception is a class that uses an `extern attribute`, which must follow that att
 
 **See also** §15.5, §18.5.
 
-### 14.1.6 `#once`
+### 14.1.6 `#mergeI6`
+
+**Syntax**
+
+```syntax
+#mergeI6 "⟨name⟩"
+#mergeI6 ?"⟨name⟩"
+```
+
+**Description**
+
+Applies a patch to the Inform 6 files of the build. The patch is a unified diff, as `diff -u` or
+`git diff` writes it. It is found like `#includeI6` (§14.1.5), trying *name* as written, then
+*name*`.patch`, then *name*`.diff`. A patch that is not found is a compile-time error; `?"name"`
+silently skips it.
+
+Each file the patch changes is found through the same search, by its `+++` path without a leading
+`a/` or `b/`, then by its file name alone. Its **merge chunks**, the sections that each start with
+`@@`, are applied in order. A merge chunk must match its lines exactly, ignoring trailing whitespace,
+at the line it states or the nearest place they match. A merge chunk that matches nowhere, a file that is not found, or a malformed patch is a compile-time error at the
+directive. A patch cannot create or delete a file.
+
+A merge applies to the whole build, not at its position: a patch may come before or after the
+`#includeI6` of the file it changes. Patches apply in source order, each to the file as the earlier
+ones left it, so several patches can change one file, or one routine, without replacing it. Two
+patches that change the same lines conflict: the later one no longer matches. A patch merged more than
+once applies once.
+
+The patched files are written to the `i6patched` folder of the output directory, which the I6
+compiler searches before every other include directory. Every include of an original reads the patched
+copy, including one made inside another I6 file.
+
+**Example**
+
+A patch that makes the library's `LookSub` call a Beguile function first:
+
+```diff
+--- a/verblib.h
++++ b/verblib.h
+@@ -2446,4 +2446,5 @@
+ [ LookSub allow_abbrev  visibility_levels i j k nl_flag;
++    LookHook();
+     if (parent(player) == 0) return RunTimeError(10);
+ 
+   .MovedByInitial;
+```
+
+An extension merges it and defines the function, so a program only includes the extension:
+
+<!-- doctest: skip -->
+```bgl
+#once
+#mergeI6 "lookHook"
+void LookHook() { printLine("You look around."); }
+```
+
+**Notes**
+
+Patches cannot be used in precompiler mode (§16.8).
+
+> **Making a patch.** In VS Code, **Beguile: Create I6 Patch** opens a copy of the I6 file to edit, and
+> each save writes the patch; **Edit patch** above a `#mergeI6` line changes it later, and **Add file to
+> patch** adds another I6 file to it. Without the editor, edit a copy of the file and write the differences
+> with `diff -u original.h edited.h > name.patch`, `git diff`, or `beguiler --make-patch` (§16.10). Any
+> unified diff will do, including one pasted into a `.patch` file.
+>
+> **Comments in a patch.** Lines before the first `---` line are not part of any change, so a patch can
+> start with comments (by convention, lines starting with `#`) that never reach the patched file. The
+> editor and `beguiler --make-patch` keep them when they rewrite the patch.
+
+> **Patches and `replace`.** Replacing a library routine (§15.6) takes the whole routine, and only one
+> replacement can win. A patch changes only the lines it names, so extensions that each change a
+> routine can be used together. The standard library hooks (§23.6) are made this way.
+
+**See also** §15.6, §20.1.
+
+### 14.1.7 `#once`
 
 **Syntax**
 

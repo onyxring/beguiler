@@ -12,6 +12,7 @@
 #include "helpers.h"
 #include "bglLanguageService.h"
 #include "bglParserHelpers.h"
+string rewritePathSeps(const string& path);
 
 // A routine's cleanups run last-in first-out: the frame pool is a stack.
 template<class C> struct reverseView { C& c; auto begin(){ return c.rbegin(); } auto end(){ return c.rend(); } };
@@ -85,6 +86,87 @@ static string fixPrintedParenValues(const string& in){
             out += "0+";
             i = p;
         }
+    }
+    return out;
+}
+
+// The one pass over the finished text, a peephole: adjacent `print "…";` statements become one, and
+// `new_line;` joins them as `^` (each print instruction costs bytes of its own), and a run that ends
+// in a newline followed by `rtrue;` becomes `"…";` (print_ret). The first print must start a
+// statement (after `;`, `{`, `}` or a case label's `:`), so the body of an unbraced `if`/`else` is
+// never extended. Lines are kept: the statements a run absorbs leave their line breaks behind, so
+// the source map still lines up.
+static string mergeLiteralPrints(const string& in){
+    string out; out.reserve(in.size());
+    auto isWordChar = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    size_t n = in.size();
+    auto skipBlank = [&](size_t p){ while(p < n && isspace((unsigned char)in[p])) p++; return p; };
+    auto keyword = [&](size_t p, const char* kw){
+        size_t k = strlen(kw);
+        return p + k <= n && strncasecmp(in.c_str() + p, kw, k) == 0 && (p + k >= n || !isWordChar(in[p + k]));
+    };
+    // `print "text";` at p: its text and the position after the `;`.
+    auto literalPrint = [&](size_t p, string& text, size_t& end){
+        if(!keyword(p, "print")) return false;
+        size_t q = skipBlank(p + 5);
+        if(q >= n || in[q] != '"') return false;
+        size_t close = in.find('"', q + 1);
+        if(close == string::npos) return false;
+        size_t semi = skipBlank(close + 1);
+        if(semi >= n || in[semi] != ';') return false;
+        text = in.substr(q + 1, close - q - 1); end = semi + 1;
+        return true;
+    };
+    auto newLine = [&](size_t p, size_t& end){
+        if(!keyword(p, "new_line")) return false;
+        size_t semi = skipBlank(p + 8);
+        if(semi >= n || in[semi] != ';') return false;
+        end = semi + 1; return true;
+    };
+    // `@@64` followed by a digit would read as a different character.
+    auto joinable = [](const string& left, const string& right){
+        if(right.empty() || !isdigit((unsigned char)right[0])) return true;
+        size_t k = left.size();
+        while(k > 0 && isdigit((unsigned char)left[k - 1])) k--;
+        return !(k >= 2 && k < left.size() && left[k - 1] == '@' && left[k - 2] == '@');
+    };
+    char lastSig = ';';
+    size_t i = 0;
+    while(i < n){
+        char c = in[i];
+        if(c == '"' || c == '\''){                      // a string, or a dictionary word / character
+            size_t j = in.find(c, i + 1);
+            if(c == '\'' && (j == string::npos || in.find('\n', i) < j)) j = i;   // a lone apostrophe
+            j = (j == string::npos) ? n : j + 1;
+            out.append(in, i, j - i); i = j; lastSig = c; continue;
+        }
+        if(c == '!'){
+            size_t j = in.find('\n', i);
+            j = (j == string::npos) ? n : j;
+            out.append(in, i, j - i); i = j; continue;
+        }
+        bool wordStart = i == 0 || !isWordChar(in[i - 1]);
+        string text; size_t end = 0;
+        bool startsStatement = lastSig == ';' || lastSig == '{' || lastSig == '}' || lastSig == ':';
+        if(wordStart && startsStatement && literalPrint(i, text, end)){
+            int pieces = 1; size_t runEnd = end; bool printRet = false;
+            for(;;){
+                size_t p = skipBlank(runEnd); string more; size_t e = 0;
+                if(literalPrint(p, more, e) && joinable(text, more)){ text += more; runEnd = e; pieces++; continue; }
+                if(newLine(p, e)){ text += "^"; runEnd = e; pieces++; continue; }
+                if(text.size() > 1 && text.back() == '^' && keyword(p, "rtrue")){
+                    size_t semi = skipBlank(p + 5);
+                    if(semi < n && in[semi] == ';'){ text.pop_back(); runEnd = semi + 1; pieces++; printRet = true; }
+                }
+                break;
+            }
+            if(pieces == 1){ out.append(in, i, end - i); i = end; lastSig = ';'; continue; }
+            out += printRet ? "\"" + text + "\";" : "print \"" + text + "\";";
+            out.append((size_t)count(in.begin() + i, in.begin() + runEnd, '\n') - (size_t)count(text.begin(), text.end(), '\n'), '\n');
+            i = runEnd; lastSig = ';'; continue;
+        }
+        if(!isspace((unsigned char)c)) lastSig = c;
+        out += c; i++;
     }
     return out;
 }
@@ -246,7 +328,7 @@ string i6Emitter::resolvedOutput(){
         buf += "\n#Ifndef debug_flag;\nGlobal debug_flag;\n#Endif;\n"
                "#Ifndef workflag;\nAttribute workflag;\n#Endif;\n"
                "#Ifndef DebugAttribute;\n[ DebugAttribute a; print \"(attribute \", a, \")\"; ];\n#Endif;\n";
-    buf = fixPrintedParenValues(buf);
+    buf = mergeLiteralPrints(fixPrintedParenValues(buf));
     return buf;
 }
 
@@ -546,6 +628,24 @@ static string groupFrameSlots(string text){
 
 string i6Emitter::replaceOperand(string str, const string& from, const string& to){
     if(to.rfind("##", 0) == 0) return replaceWord(str, from, to);   // an action name is one operand
+    // `print (string) $s` with a literal for $s prints it inline, as `print "…"` does, rather than as a
+    // separate string printed through its address. Only for a literal: any other value is an address.
+    if(to.size() >= 2 && to.front() == '"' && to.back() == '"' && to.find('"', 1) == to.size() - 1){
+        for(size_t pos = 0; (pos = findWordCI(str, from, pos)) != string::npos; pos += from.size()){
+            size_t after = pos + from.size();
+            if(after < str.size() && (isalnum((unsigned char)str[after]) || str[after] == '_')) continue;
+            size_t ruleEnd = pos;
+            while(ruleEnd > 0 && (str[ruleEnd - 1] == ' ' || str[ruleEnd - 1] == '\t')) ruleEnd--;
+            if(ruleEnd == 0 || str[ruleEnd - 1] != ')') continue;
+            size_t open = str.rfind('(', ruleEnd - 1);
+            if(open == string::npos) continue;
+            string inside = str.substr(open + 1, ruleEnd - 1 - open - 1);
+            size_t a = inside.find_first_not_of(" \t"), b = inside.find_last_not_of(" \t");
+            if(a == string::npos || strcasecmp(inside.substr(a, b - a + 1).c_str(), "string") != 0) continue;
+            str.erase(open, pos - open);
+            pos = open;
+        }
+    }
     string valOp; bool uniform = false, prefix = false;
     int valPrec = i6LoosestOperator(to, valOp, uniform, prefix);
     if(valPrec <= 0 || valPrec == INT_MAX) return replaceWord(str, from, to);
@@ -1183,6 +1283,15 @@ static void extractPropertyNamesFromExpr(expression* expr, set<string>& out){
         for(expression* e : il->elements) extractPropertyNamesFromExpr(e, out);
 }
 
+static void extractPropertyNamesFromSegments(const vector<interpolatedSegment>& segs, set<string>& out){
+    for(auto& seg : segs){
+        extractPropertyNamesFromExpr(seg.expr, out);
+        extractPropertyNamesFromExpr(seg.choice, out);
+        extractPropertyNamesFromSegments(seg.whenTrue, out);
+        extractPropertyNamesFromSegments(seg.whenFalse, out);
+    }
+}
+
 // Recursively walk a statementBlock collecting every identifier used as a property
 // accessor (`obj.NAME`) in any expression or raw-text fragment. Used to detect locals
 // that would shadow I6 property names.
@@ -1191,15 +1300,14 @@ static void collectDottedAccessNames(statementBlock* body, set<string>& out){
     for(statement* s : body->statements){
         if(auto* asg = dynamic_cast<assignmentStatement*>(s)){
             extractPropertyNamesFromExpr(asg->assignedExpression, out);
-            for(auto& seg : asg->interpSegments) extractPropertyNamesFromExpr(seg.expr, out);
+            extractPropertyNamesFromSegments(asg->interpSegments, out);
         } else if(auto* vd = dynamic_cast<variableDeclaration*>(s)){
             extractPropertyNamesFromExpr(vd->declaredExpressionValue, out);
-            for(auto& seg : vd->interpSegments) extractPropertyNamesFromExpr(seg.expr, out);
+            extractPropertyNamesFromSegments(vd->interpSegments, out);
         } else if(auto* fcs = dynamic_cast<functionCallStatement*>(s)){
             for(expression* e : fcs->args) extractPropertyNamesFromExpr(e, out);
             extractPropertyNamesFromText(fcs->emitterBody, out);
-            for(auto& segs : fcs->interpSegmentsPerArg)
-                for(auto& seg : segs) extractPropertyNamesFromExpr(seg.expr, out);
+            for(auto& segs : fcs->interpSegmentsPerArg) extractPropertyNamesFromSegments(segs, out);
         } else if(auto* rs = dynamic_cast<returnStatement*>(s)){
             extractPropertyNamesFromText(rs->returnExpression, out);
         } else if(auto* ifs = dynamic_cast<ifStatement*>(s)){
@@ -2447,6 +2555,9 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     // that one consolidated line can blow past — so we keep one line per path.)
     for(auto it = cfg->includePaths.rbegin(); it != cfg->includePaths.rend(); ++it)
         out << "!% ++include_path=" << *it << "\n";
+    // Patched Inform 6 copies come last, so they are searched first and hide their originals.
+    if(!languageService.i6Patches.patchedDir.empty())
+        out << "!% ++include_path=" << rewritePathSeps(languageService.i6Patches.patchedDir) << "\n";
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     // Beguiler-presence marker for raw-I6 libraries (e.g. orLibrary) to detect a Beguile
@@ -2989,6 +3100,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     appendLeaveSweep(funcNode);
     currentCleanups = funcNode->cleanups.empty() ? nullptr : &funcNode->cleanups;
     armCleanups(body);
+    pushTailReturns(funcNode, body);
     if(body != nullptr)
         for(statement* stmt : body->statements)
             emitStatement(stmt, "    ");
@@ -3003,6 +3115,84 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     currentSweep.clear();
     clearSpillMap();
     out << "];\n";
+}
+// A routine that ends by returning a constant (or, being a standalone routine, true by running off its
+// end) returns it at the end of each branch of a trailing switch or if as well. Inform 6 then leaves out
+// the jump past the other branches, and a branch that ends by printing a line becomes print_ret
+// (mergeLiteralPrints). Each copy is an ordinary return, so it does whatever this routine's returns do;
+// it is copied only when that is the one instruction, so nothing longer than the jump it saves is repeated.
+void i6Emitter::pushTailReturns(functionDef* fd, statementBlock* body){
+    static set<functionDef*> done;
+    if(body == nullptr || body->statements.empty() || !done.insert(fd).second) return;
+    auto trimmed = [](const string& s){ size_t a = s.find_first_not_of(" \t\n"); return a == string::npos ? string() : s.substr(a); };
+    // Ends without running on: a return, a jump or a break (in a raw statement), or a throw.
+    auto leaves = [&](statement* s){
+        if(dynamic_cast<returnStatement*>(s) || dynamic_cast<throwStatement*>(s)) return true;
+        if(auto* raw = dynamic_cast<i6RawNode*>(s)){
+            string t = trimmed(raw->text);
+            for(const char* kw : {"jump", "break", "return", "rtrue", "rfalse", "quit", "continue", "@throw"})
+                if(t.rfind(kw, 0) == 0) return true;
+            return raw->isI6Island || !raw->parts.empty();   // opaque: leave it alone
+        }
+        return false;
+    };
+    // Chain temporaries are declared at the end of a body: they aren't statements that run.
+    auto lastRun = [](statementBlock* b){
+        size_t k = b->statements.size();
+        while(k > 0)
+            if(auto* vd = dynamic_cast<variableDeclaration*>(b->statements[k - 1]); vd && vd->isSynthetic) k--; else break;
+        return k;
+    };
+    string value;
+    size_t runCount = lastRun(body);
+    if(runCount == 0) return;
+    statement* last = body->statements[runCount - 1];
+    size_t tailIndex = runCount - 1;
+    if(auto* rs = dynamic_cast<returnStatement*>(last)){
+        const string& rx = rs->returnExpression;
+        if(rx == "rtrue" || rx == "true" || rx == "1") value = "rtrue";
+        else if(rx == "rfalse" || rx == "false" || rx == "0") value = "rfalse";
+        else return;
+        if(tailIndex == 0) return;
+        tailIndex--;
+    } else if(leaves(last)) return;
+    else value = "rtrue";   // a standalone routine that runs off its end returns true
+    {
+        returnStatement probe;
+        probe.returnExpression = value;
+        stringstream scratch;
+        auto undeclared = undeclaredTopLocals;   // a return after their declarations frees them too
+        undeclaredTopLocals.clear();
+        std::swap(out, scratch);
+        emitReturn(&probe, "");
+        std::swap(out, scratch);
+        undeclaredTopLocals = undeclared;
+        string text = scratch.str();
+        if(count(text.begin(), text.end(), '\n') != 1) return;
+    }
+    std::function<void(statementBlock*)> tail;
+    std::function<void(statement*)> branches = [&](statement* s){
+        if(auto* sw = dynamic_cast<switchStatement*>(s)){
+            if(sw->needsIfChain) return;
+            for(switchCase* c : sw->cases) tail(c->body);
+        } else if(auto* is = dynamic_cast<ifStatement*>(s)){
+            tail(is->thenBlock);
+            tail(is->elseBlock);
+        }
+    };
+    tail = [&](statementBlock* b){
+        if(b == nullptr) return;
+        size_t k = lastRun(b);
+        if(k == 0) return;
+        statement* s = b->statements[k - 1];
+        if(leaves(s) || dynamic_cast<variableDeclaration*>(s)) return;
+        if(dynamic_cast<switchStatement*>(s) || dynamic_cast<ifStatement*>(s)){ branches(s); return; }
+        auto* r = new returnStatement();
+        r->returnExpression = value;
+        b->statements.insert(b->statements.begin() + k, r);
+    };
+    if(tailIndex == runCount - 1 && !dynamic_cast<returnStatement*>(last)) tail(body);
+    else branches(body->statements[tailIndex]);
 }
 void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDeclaration*>& locals,
                                      statementBlock* body, const string& indent){
@@ -3935,6 +4125,14 @@ void i6Emitter::emitInterpolatedSegments(const vector<interpolatedSegment>& segm
         } else {
             for(statement* inj : seg.injections)
                 emitStatement(inj, indent);
+            if(seg.choice != nullptr){
+                out << indent << "if (" << exprText(seg.choice) << ") {\n";
+                emitInterpolatedSegments(seg.whenTrue, indent + "    ");
+                out << indent << "}\n" << indent << "else {\n";
+                emitInterpolatedSegments(seg.whenFalse, indent + "    ");
+                out << indent << "}\n";
+                continue;
+            }
 
             string rt = seg.expr->resolvedType;
             string exprStr = exprText(seg.expr);
@@ -4271,7 +4469,7 @@ if(arr->arraySize > 0 && list == nullptr) {
         return;
     }
     // Sized, uninitialized: N zeroed elements, length 0.
-    out << arrayHeader(arrName, 0) << format("array {0} table {1};\n", arrName, arr->arraySize);
+    out << arrayHeader(0) << format("array {0} table {1};\n", arrName, arr->arraySize);
     return;
 }
 
@@ -4293,7 +4491,7 @@ if(list != nullptr){
         entries.push_back(!t.empty() && t.front() == '-' ? "(" + t + ")" : t);
     }
     for(int pad = len; pad < cap; pad++) entries.push_back("0");   // unused capacity
-    if(tracked) out << arrayHeader(arrName, len);
+    if(tracked) out << arrayHeader(len);
     // An empty list has no elements, and I6 has no empty table: one word holding the capacity, 0.
     if(tracked && entries.empty()){ out << format("array {0} --> [ 0 ];\n", arrName); return; }
     out << format("array {0} {1}", arrName, arr->isRaw ? "-->" : "table");
@@ -4540,7 +4738,7 @@ auto overriddenWithInit = [&](const string& mname) -> bool {
                 bool copies = c != nullptr && (isValueClass(c) || c->copiesOnAssign);
                 // (An inline `Type{ … }` is already an instance of its own.)
                 string init = vd->declaredExpressionValue->text();
-                if(copies && !vd->isRefLocal && init.rfind("_bglanon", 0) != 0 && languageService.findObjectType(init) != nullptr) return false;
+                if(copies && !vd->isRefLocal && !isAnonName(init) && languageService.findObjectType(init) != nullptr) return false;
                 return true;
             }
     return false;
@@ -5034,7 +5232,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
         if(vd->type.name.empty()) return nullptr;
         // An inline-object initializer is the starting value of the member's own instance; any other
         // initializer points the member at something that lives elsewhere.
-        if(vd->declaredExpressionValue && vd->declaredExpressionValue->text().rfind("_bglanon", 0) != 0) return nullptr;
+        if(vd->declaredExpressionValue && !isAnonName(vd->declaredExpressionValue->text())) return nullptr;
         auto* cls = languageService.findClass(vd->type.name);
         if(!cls || cls->isEmitterClass || cls->isAlias || cls->isExternal) return nullptr;   // nothing to instantiate
         if(!isValueClass(cls)) return nullptr;             // a reference: refers to an instance owned elsewhere
@@ -5273,7 +5471,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                         for(typeMember* im : init->members)
                             if(auto* iv = dynamic_cast<variableDeclaration*>(im); iv && iv->name == fvd->name && iv->declaredExpressionValue)
                                 def = staticText(iv->declaredExpressionValue);
-                    if(def.empty() || def.rfind("_bglanon", 0) == 0) def = "0";
+                    if(def.empty() || isAnonName(def)) def = "0";
                     createInject += format("{0}.{1} = {2};\n", path, fi6, def);
                 }
             };
@@ -5326,7 +5524,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                 return t;
             };
             i6RawNode* tabs = new i6RawNode();
-            tabs->text = arrayHeader(base + "_proto", (int)init.size()) + format("Array {0}_proto table{1};\n", base, tableOf(init));
+            tabs->text = arrayHeader((int)init.size()) + format("Array {0}_proto table{1};\n", base, tableOf(init));
             string elems;
             for(int k = 0; k < N; k++){
                 vector<string> mine = init;
@@ -5336,7 +5534,7 @@ void i6Emitter::synthesizePooledOwnedMembers(){
                     insertBefore(row);
                     mine[i] = row->name;
                 }
-                tabs->text += arrayHeader(format("{0}_{1}", base, k), (int)init.size()) + format("Array {0}_{1} table{2};\n", base, k, tableOf(mine));
+                tabs->text += arrayHeader((int)init.size()) + format("Array {0}_{1} table{2};\n", base, k, tableOf(mine));
                 elems += format(" {0}_{1}", base, k);
             }
             tabs->text += format("Array {0}_free -->{1}{3};\nGlobal {0}_top = {2};\n", base, elems, N, N == 1 ? " 0" : "");
@@ -6023,6 +6221,15 @@ void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
     // shared verb-grammar helper so per-rule priority sorts correctly relative to that
     // verb's anchor.
     if(gtd->grammarLines.empty()) return;
+    // A line on an evicted word follows the `Extend only 'w' replace` that evicts it, which goes
+    // with the library-extending grammar at the end; written here, the replace would discard it.
+    bool onEvictedWord = false;
+    for(const grammarLine& gl : gtd->grammarLines){
+        if(languageService.evictedExternWords.count(gl.verbWord)) onEvictedWord = true;
+        for(const string& w : gl.additionalVerbWords) if(languageService.evictedExternWords.count(w)) onEvictedWord = true;
+    }
+    stringstream captured;
+    if(onEvictedWord) std::swap(out, captured);
     map<string, vector<grammarLine>> byVerb;
     vector<string> verbOrder;
     for(const grammarLine& gl : gtd->grammarLines){
@@ -6039,6 +6246,10 @@ void i6Emitter::emitGrammarRuleListDecl(grammarRuleListDecl* gtd){
         for(verbObjectDef* v : languageService.verbs)
             if(v->name == lower){ anchor = v->priority; isMeta = v->isMeta; break; }
         emitVerbGrammar(targetVerb, anchor, isMeta, byVerb[targetVerb]);
+    }
+    if(onEvictedWord){
+        std::swap(out, captured);
+        deferredLibraryGrammar += captured.str();
     }
 }
 
@@ -6261,8 +6472,10 @@ int i6Emitter::i6StringChars(const string& lit){
 // and the buffer's own first word is its length.
 // The two words before a word array's table: the marker, then its length. I6 lays arrays out in source
 // order, so this one sits immediately before the array it heads.
-string i6Emitter::arrayHeader(const string& name, int length){
-    return format("Array _bglhdr_{0} --> $9084 {1};\n", name, length);
+string i6Emitter::arrayHeader(int length){
+    string name;
+    do name = generatedName('h', arrayHeaderCounter++); while(languageService.findGlobal(name) != nullptr);
+    return format("Array {0} --> $9084 {1};\n", name, length);
 }
 
 string i6Emitter::byteCapacityPrefix(const string& name, int capacity){

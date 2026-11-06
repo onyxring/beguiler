@@ -199,6 +199,7 @@ appendices are for lookup.
     - [11.3.4 Constant and Run-time Members](11-objects.md#1134-constant-and-run-time-members)
     - [11.3.5 Nested Aggregates](11-objects.md#1135-nested-aggregates)
     - [11.3.6 Standalone Declarations](11-objects.md#1136-standalone-declarations)
+    - [11.3.7 Members Declared with a Body](11-objects.md#1137-members-declared-with-a-body)
   - [11.4 Members and Type Inference](11-objects.md#114-members-and-type-inference)
   - [11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`](11-objects.md#115-special-members-parent-children-attributes-instancename)
     - [11.5.1 `parent`](11-objects.md#1151-parent)
@@ -258,7 +259,8 @@ appendices are for lookup.
     - [14.1.3 `#include @"path"`](14-directives.md#1413-include-path)
     - [14.1.4 `#include ?"path"` and `#include ?<name>`](14-directives.md#1414-include-path-and-include-name)
     - [14.1.5 `#includeI6`](14-directives.md#1415-includei6)
-    - [14.1.6 `#once`](14-directives.md#1416-once)
+    - [14.1.6 `#mergeI6`](14-directives.md#1416-mergei6)
+    - [14.1.7 `#once`](14-directives.md#1417-once)
   - [14.2 Symbols and Conditional Compilation](14-directives.md#142-symbols-and-conditional-compilation)
     - [14.2.1 `#define`, `#defineI6`](14-directives.md#1421-define-definei6)
     - [14.2.2 `#redef` and `#undef`](14-directives.md#1422-redef-and-undef)
@@ -318,6 +320,7 @@ appendices are for lookup.
   - [16.7 Exit Status and Console Output](16-invoking.md#167-exit-status-and-console-output)
   - [16.8 Entry Mode](16-invoking.md#168-entry-mode)
   - [16.9 Examples](16-invoking.md#169-examples)
+  - [16.10 Patch Tools](16-invoking.md#1610-patch-tools)
 - [17 Settings (`#beguilerSettings`)](17-settings.md)
   - [17.1 The Settings Block](17-settings.md#171-the-settings-block)
   - [17.2 Toolchain Paths](17-settings.md#172-toolchain-paths)
@@ -428,6 +431,7 @@ appendices are for lookup.
     - [23.3.12 Collection at the Prompt](23-bindings.md#23312-collection-at-the-prompt)
   - [23.4 Differences Between the Bindings](23-bindings.md#234-differences-between-the-bindings)
   - [23.5 Writing a Binding](23-bindings.md#235-writing-a-binding)
+  - [23.6 Standard Library Hooks](23-bindings.md#236-standard-library-hooks)
 
 **Appendices**
 - [Appendix A Reserved Words](A-keywords.md)

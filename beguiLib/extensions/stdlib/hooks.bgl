@@ -1,0 +1,23 @@
+//===================================================================================================
+// hooks.bgl — every hook in the standard library's routines, for library extensions.
+//---------------------------------------------------------------------------------------------------
+// Each hooks/ file brings one group of hooks; include only the groups an extension answers, since
+// every call merged into the library takes space. Including them changes nothing until something
+// answers a hook. A library extension is an object in `LibraryExtensions` that defines the method:
+//     object myHooks {
+//         parent = LibraryExtensions;
+//         bool ext_lookSub() { print("It's too dark to make anything out.^"); rtrue; }
+//     }
+// Extensions are asked in the order they are declared. A hook that returns a value is asked of each
+// extension until one answers: false (or 0) lets the library carry on as usual. The `Notify` hooks
+// and `ext_preDescription`/`ext_postDescription` are only told. A keyboard hook can also return -1
+// to start reading the command again. Ported from orLibrary's hooks.
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/informLibrary>
+#include <extensions/stdlib/hooks/keyboard>
+#include <extensions/stdlib/hooks/parser>
+#include <extensions/stdlib/hooks/standardLibrary>
+#include <extensions/stdlib/hooks/verbs>
+#include <extensions/stdlib/hooks/writeAfterEntry>
+#include <extensions/stdlib/hooks/writeList>

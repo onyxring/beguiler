@@ -1,0 +1,126 @@
+# keyboard.patch: calls to the hooks of <extensions/stdlib/hooks/keyboard> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# parser.h: KeyboardPrimitive and Keyboard.
+
+--- a/parser.h
++++ b/parser.h
+@@ -1113,7 +1113,10 @@
+     return a_buffer->(2+i+n);
+ ];
+ 
+-[ KeyboardPrimitive  a_buffer a_table;
++[ KeyboardPrimitive  a_buffer a_table rv;
++    LibraryExtensions.RunAll(ext_keyboardPrimitiveNotify, a_buffer, a_table);
++    rv = LibraryExtensions.RunWhile(ext_keyboardPrimitive, false, a_buffer, a_table);
++    if (rv) return rv;
+     read a_buffer a_table;
+ 
+     #Iftrue (#version_number == 6);
+@@ -1263,7 +1266,10 @@
+     return key;
+ ];
+ 
+-[ KeyboardPrimitive  a_buffer a_table done ix;
++[ KeyboardPrimitive  a_buffer a_table done ix rv;
++    LibraryExtensions.RunAll(ext_keyboardPrimitiveNotify, a_buffer, a_table);
++    rv = LibraryExtensions.RunWhile(ext_keyboardPrimitive, false, a_buffer, a_table);
++    if (rv) return rv;
+     if (gg_commandstr ~= 0 && gg_command_reading ~= false) {
+         ! get_line_stream
+         done = glk_get_line_stream(gg_commandstr, a_buffer+WORDSIZE, (INPUT_BUFFER_LEN-WORDSIZE)-1);
+@@ -1319,7 +1325,7 @@
+ 
+ #Endif; ! TARGET_
+ 
+-[ Keyboard  a_buffer a_table  nw i w w2 x1 x2;
++[ Keyboard  a_buffer a_table  nw i w w2 x1 x2 retval;
+     DisplayStatus();
+ 
+   .FreshInput;
+@@ -1327,6 +1333,9 @@
+     ! Save the start of the buffer, in case "oops" needs to restore it
+     ! to the previous time's buffer
+ 
++    retval = LibraryExtensions.RunWhile(ext_keyboardGetInput, false, a_buffer, a_table);
++    if (retval == -1) jump FreshInput;
++    if (retval == false) {
+     for (i=0 : i<OOPS_WORKSPACE_LEN : i++) oops_workspace->i = a_buffer->i;
+ 
+     ! In case of an array entry corruption that shouldn't happen, but would be
+@@ -1339,6 +1348,7 @@
+ 
+     ! Print the prompt, and read in the words and dictionary addresses
+ 
++    if (LibraryExtensions.RunWhile(ext_beforePrompt, false) == false)
+     L__M(##Prompt);
+     if (AfterPrompt() == 0) LibraryExtensions.RunAll(ext_afterprompt);
+     #IfV5;
+@@ -1345,14 +1355,19 @@
+     DrawStatusLine();
+     #Endif; ! V5
+ 
+-    KeyboardPrimitive(a_buffer, a_table);
++    if (KeyboardPrimitive(a_buffer, a_table) == -1) jump FreshInput;
+     nw = NumberWords(a_table);
++    }
+ 
+     ! If the line was blank, get a fresh line
++    retval = LibraryExtensions.RunWhile(ext_keyboardPrepInput, false, a_buffer, a_table);
++    if (retval == -1) jump FreshInput;
++    if (retval == false) {
+     if (nw == 0) {
+         L__M(##Miscellany, 10);
+         jump FreshInput;
+     }
++    }
+ 
+     ! Unless the opening word was "oops", return
+     ! Conveniently, a_table-->1 is the first word in both ZCODE and GLULX.
+@@ -1360,6 +1375,9 @@
+     w = a_table-->1;
+     if (w == OOPS1__WD or OOPS2__WD or OOPS3__WD) jump DoOops;
+ 
++    retval = LibraryExtensions.RunWhile(ext_keyboardHandleComment, false, a_buffer, a_table);
++    if (retval == -1) jump FreshInput;
++    if (retval == false) {
+     if (a_buffer->WORDSIZE == COMMENT_CHARACTER) {
+         #Ifdef TARGET_ZCODE;
+         if ((HDR_GAMEFLAGS-->0) & $0001 || xcommsdir)
+@@ -1372,7 +1390,11 @@
+ 
+         jump FreshInput;
+     }
++    }
+ 
++    retval = LibraryExtensions.RunWhile(ext_keyboardHandleUndo, false, a_buffer, a_table);
++    if (retval == -1) jump FreshInput;
++    if (retval == false) {
+     #IfV5;
+     ! Undo handling
+ 
+@@ -1412,10 +1434,14 @@
+         jump FreshInput;
+     }
+     #Endif; ! V5
++    }
+ 
+     return nw;
+ 
+   .DoOops;
++    retval = LibraryExtensions.RunWhile(ext_keyboardHandleOops, false, a_buffer, a_table);
++    if (retval == -1) jump FreshInput;
++    if (retval == false) {
+     if (oops_from == 0) {
+         L__M(##Miscellany, 14);
+         jump FreshInput;
+@@ -1494,6 +1520,7 @@
+ 
+ !    saved_ml = 0;
+     return nw;
++    }
+ ]; ! end of Keyboard
+ 
+ [ PerformUndo i;

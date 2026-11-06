@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -112,6 +113,7 @@ object bgl
     print r2;
     print r3;
     print r4;
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     

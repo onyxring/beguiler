@@ -29,6 +29,7 @@ For an entry file `game.bgl` targeting Glulx, a full build with blorb packaging 
 | `_blorbAssets.bgl` | beside `game.bgl` | with `generateBlorb`, before parsing (§17.6) |
 | `game.bgl.bgldbg` | output directory | with `--debug` (§20.3) |
 | `game.bgl.transpiled.inf.dbg` | output directory | with `--debug`: Inform 6's debug file (§20.4) |
+| `i6patched/` | output directory | with `#mergeI6`: the patched I6 files (§14.1.6) |
 
 The transpiled file is always `<source file name>.transpiled.inf`, including the source extension, so
 a precompiler-mode `story.inf` yields `story.inf.transpiled.inf`. It is the file Inform 6 compiles

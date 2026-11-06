@@ -12,6 +12,9 @@ Constant beguiler = 5;
 
 Replace banner;
 
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
@@ -87,6 +90,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -137,12 +141,13 @@ object bgl
         #Ifdef INFIX; print "X";
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     
-    print (string)"^";
+    print "^";
+     _bglBannerExtras(); 
 ];
 object _bglVerb_whiff
   with priority 10,
        handler [;
-    print (string)"You take a whiff.";
+    print "You take a whiff.";
   ]
 ;
 [whiffsub;
@@ -153,7 +158,7 @@ verb 'whiff'
 object _bglVerb_nudge
   with priority 10,
        handler [;
-    print (string)"You nudge it.";
+    print "You nudge it.";
   ]
 ;
 [nudgesub;
@@ -212,6 +217,19 @@ verb 'study'
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
  Array _bglLineEvent --> 4; 
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
+
 
         [main;
             bglInit();

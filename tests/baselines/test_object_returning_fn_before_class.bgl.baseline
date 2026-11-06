@@ -71,5 +71,6 @@ _bglClass_Widget g
 ;
 [main x;
     x = getw();
-    print (string)"x";
+    print "x";
+    rtrue;
 ];

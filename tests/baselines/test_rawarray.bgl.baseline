@@ -64,6 +64,7 @@ object bgl
 ];
 [setSecond results v;
     results-->1 = v;
+    rtrue;
 ];
 [isPutOrInsert results;
     return  results-->0  == ##puton|| results-->0  == ##insert;

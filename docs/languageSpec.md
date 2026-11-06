@@ -211,6 +211,7 @@ of contents.
     - [11.3.4 Constant and Run-time Members](#1134-constant-and-run-time-members)
     - [11.3.5 Nested Aggregates](#1135-nested-aggregates)
     - [11.3.6 Standalone Declarations](#1136-standalone-declarations)
+    - [11.3.7 Members Declared with a Body](#1137-members-declared-with-a-body)
   - [11.4 Members and Type Inference](#114-members-and-type-inference)
   - [11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`](#115-special-members-parent-children-attributes-instancename)
     - [11.5.1 `parent`](#1151-parent)
@@ -270,7 +271,8 @@ of contents.
     - [14.1.3 `#include @"path"`](#1413-include-path)
     - [14.1.4 `#include ?"path"` and `#include ?<name>`](#1414-include-path-and-include-name)
     - [14.1.5 `#includeI6`](#1415-includei6)
-    - [14.1.6 `#once`](#1416-once)
+    - [14.1.6 `#mergeI6`](#1416-mergei6)
+    - [14.1.7 `#once`](#1417-once)
   - [14.2 Symbols and Conditional Compilation](#142-symbols-and-conditional-compilation)
     - [14.2.1 `#define`, `#defineI6`](#1421-define-definei6)
     - [14.2.2 `#redef` and `#undef`](#1422-redef-and-undef)
@@ -330,6 +332,7 @@ of contents.
   - [16.7 Exit Status and Console Output](#167-exit-status-and-console-output)
   - [16.8 Entry Mode](#168-entry-mode)
   - [16.9 Examples](#169-examples)
+  - [16.10 Patch Tools](#1610-patch-tools)
 - [17 Settings (`#beguilerSettings`)](#17-settings-beguilersettings)
   - [17.1 The Settings Block](#171-the-settings-block)
   - [17.2 Toolchain Paths](#172-toolchain-paths)
@@ -440,6 +443,7 @@ of contents.
     - [23.3.12 Collection at the Prompt](#23312-collection-at-the-prompt)
   - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
   - [23.5 Writing a Binding](#235-writing-a-binding)
+  - [23.6 Standard Library Hooks](#236-standard-library-hooks)
 
 **Appendices**
 - [Appendix A Reserved Words](#appendix-a-reserved-words)
@@ -7341,7 +7345,8 @@ is a compile-time error; copy it into an array with a capacity of its own first.
   gives its slot a copy of its initial value.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
-- `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance, which stays the array's.
+- `pop()`, `popEnd()` and `dequeue()` release the slot's instance, as `remove` does, and return it. It stays readable
+  until the instance is handed out again, so copy what you need before adding to an array of that struct.
 - Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
   `ref` to an element follows that element to its new place.
 - A view is valid only while its source is unchanged: once the source removes or clears an element, the view may
@@ -8048,6 +8053,7 @@ In I6 terms, eviction is emitted as `Extend only 'w' replace`: the one directive
 library verb's opaque grammar, since it names no patterns. It detaches `w` from the library verb and
 discards the library's grammar for it; the lines a native verb declares for `w` are folded into that
 directive and become the word's complete grammar, and with no such lines the word matches nothing.
+Lines that another extern verb adds for `w` with `grammar +=` follow the directive, so they are kept.
 Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
 
 ```bgl
@@ -8192,7 +8198,7 @@ included only with angle brackets (§14.1.1), and a quoted include of one is a c
 names the angle-bracket form.
 
 A file may be included more than once; a file that must be processed only once guards itself with
-`#once` (§14.1.6).
+`#once` (§14.1.7).
 
 **Example**
 
@@ -8280,6 +8286,9 @@ verbatim: no search, no existence check and no separator rewriting are performed
 Every `includePaths` directory is also made available to the I6 compiler, so an included I6 file can
 resolve its own internal includes.
 
+A `.patch` or `.diff` file is a compile-time error here; patches are applied with `#mergeI6`
+(§14.1.6).
+
 **Example**
 
 ```bgl
@@ -8297,7 +8306,83 @@ exception is a class that uses an `extern attribute`, which must follow that att
 
 **See also** §15.5, §18.5.
 
-### 14.1.6 `#once`
+### 14.1.6 `#mergeI6`
+
+**Syntax**
+
+```syntax
+#mergeI6 "⟨name⟩"
+#mergeI6 ?"⟨name⟩"
+```
+
+**Description**
+
+Applies a patch to the Inform 6 files of the build. The patch is a unified diff, as `diff -u` or
+`git diff` writes it. It is found like `#includeI6` (§14.1.5), trying *name* as written, then
+*name*`.patch`, then *name*`.diff`. A patch that is not found is a compile-time error; `?"name"`
+silently skips it.
+
+Each file the patch changes is found through the same search, by its `+++` path without a leading
+`a/` or `b/`, then by its file name alone. Its **merge chunks**, the sections that each start with
+`@@`, are applied in order. A merge chunk must match its lines exactly, ignoring trailing whitespace,
+at the line it states or the nearest place they match. A merge chunk that matches nowhere, a file that is not found, or a malformed patch is a compile-time error at the
+directive. A patch cannot create or delete a file.
+
+A merge applies to the whole build, not at its position: a patch may come before or after the
+`#includeI6` of the file it changes. Patches apply in source order, each to the file as the earlier
+ones left it, so several patches can change one file, or one routine, without replacing it. Two
+patches that change the same lines conflict: the later one no longer matches. A patch merged more than
+once applies once.
+
+The patched files are written to the `i6patched` folder of the output directory, which the I6
+compiler searches before every other include directory. Every include of an original reads the patched
+copy, including one made inside another I6 file.
+
+**Example**
+
+A patch that makes the library's `LookSub` call a Beguile function first:
+
+```diff
+--- a/verblib.h
++++ b/verblib.h
+@@ -2446,4 +2446,5 @@
+ [ LookSub allow_abbrev  visibility_levels i j k nl_flag;
++    LookHook();
+     if (parent(player) == 0) return RunTimeError(10);
+ 
+   .MovedByInitial;
+```
+
+An extension merges it and defines the function, so a program only includes the extension:
+
+<!-- doctest: skip -->
+```bgl
+#once
+#mergeI6 "lookHook"
+void LookHook() { printLine("You look around."); }
+```
+
+**Notes**
+
+Patches cannot be used in precompiler mode (§16.8).
+
+> **Making a patch.** In VS Code, **Beguile: Create I6 Patch** opens a copy of the I6 file to edit, and
+> each save writes the patch; **Edit patch** above a `#mergeI6` line changes it later, and **Add file to
+> patch** adds another I6 file to it. Without the editor, edit a copy of the file and write the differences
+> with `diff -u original.h edited.h > name.patch`, `git diff`, or `beguiler --make-patch` (§16.10). Any
+> unified diff will do, including one pasted into a `.patch` file.
+>
+> **Comments in a patch.** Lines before the first `---` line are not part of any change, so a patch can
+> start with comments (by convention, lines starting with `#`) that never reach the patched file. The
+> editor and `beguiler --make-patch` keep them when they rewrite the patch.
+
+> **Patches and `replace`.** Replacing a library routine (§15.6) takes the whole routine, and only one
+> replacement can win. A patch changes only the lines it names, so extensions that each change a
+> routine can be used together. The standard library hooks (§23.6) are made this way.
+
+**See also** §15.6, §20.1.
+
+### 14.1.7 `#once`
 
 **Syntax**
 
@@ -9299,8 +9384,8 @@ name over with I6's `Replace` directive, placed ahead of every include so that i
 library that defines the routine; the original remains callable through `replaced()`.
 
 I6 permits only one `Replace` per routine. If another library already replaces the routine, the I6
-stage reports an error; disable the other replacement or override through that library's own hook
-mechanism.
+stage reports an error; disable the other replacement, override through that library's own hook
+mechanism, or change only the lines needed with a patch (§14.1.6), which other patches can share.
 
 **Example**
 
@@ -9399,13 +9484,15 @@ See §12.8.2.
 ```text
 beguiler [options] <source> [<output>]
 beguiler --lsp [-lib=<dir>] [-includepaths=<dir>[,<dir>…]]
+beguiler --make-patch <original> <edited> [<original> <edited> …] -o <patch>
+beguiler --apply-patch <patch> <original> -o <copy>
 ```
 
 `beguiler` is a single executable that transpiles a Beguile program to Inform 6, hands the result to
 the Inform 6 compiler, and (optionally) packages the story file into a blorb. Run with no arguments it
 prints a usage summary and exits with status 1.
 
-The first line of console output is always a banner naming the compiler version and build date; the
+The first line of console output from a compile is always a banner naming the compiler version and build date; the
 compiler's version is also visible to the program as the pre-defined symbol `beguiler` (Appendix F).
 
 ## 16.2 Positional Arguments
@@ -9530,6 +9617,29 @@ beguiler -G --debug -includepaths=../lib,../shared game.bgl
 beguiler -inform=none game.bgl            # transpile only; leaves build/game.bgl.transpiled.inf
 beguiler -lib=/opt/beguile/beguiLib -inform=/opt/inform6/inform6 game.bgl
 ```
+
+## 16.10 Patch Tools
+
+The patch tools make and read the patches `#mergeI6` applies (§14.1.6). The VS Code extension uses
+them so that a patch is made by editing a copy of the Inform 6 file rather than by writing a diff. Each
+must be the first argument; nothing is compiled, and no banner is printed.
+
+**`--make-patch`** writes one patch of the changes from each *original* to its *edited* copy, as a
+unified diff with three lines of context, naming each file by the original's file name, after any
+comment lines at the top of the patch it replaces. Lines that
+differ only in trailing whitespace are unchanged. When nothing changed it prints `no changes` and
+writes no file.
+
+**`--apply-patch`** writes *original* with the patch's merge chunks for that file name applied. A
+merge chunk that matches nowhere is skipped rather than being an error; the tool prints a JSON object
+giving the number applied and the text of each skipped merge chunk:
+
+```text
+{"applied": 3, "failed": ["@@ -2458 @@ (patch line 19)\n …"]}
+```
+
+Both exit with status 0 on success and 1 when a file can't be read or written or the patch is
+malformed.
 
 ---
 
@@ -9901,7 +10011,8 @@ order; the first file whose path ends with the requested name is taken.
 **Relative includes, `#include "path"` and `#includeI6 "name"`.** The directory of the including file
 is searched first, then each `includePaths` entry in order (command-line entries before block
 entries). A `#includeI6` that resolves is emitted with its full absolute path, so Inform 6 never
-searches for it; the raw form `#includeI6 @"…"` bypasses resolution and is emitted verbatim.
+searches for it; the raw form `#includeI6 @"…"` bypasses resolution and is emitted verbatim. A file
+that a patch changes is read from its patched copy (§14.1.6).
 
 **Case-insensitive matching.** Every component of an include path, directory or file, matches
 case-insensitively; an exact-case match is preferred, and if two entries in one directory differ only
@@ -10285,6 +10396,7 @@ For an entry file `game.bgl` targeting Glulx, a full build with blorb packaging 
 | `_blorbAssets.bgl` | beside `game.bgl` | with `generateBlorb`, before parsing (§17.6) |
 | `game.bgl.bgldbg` | output directory | with `--debug` (§20.3) |
 | `game.bgl.transpiled.inf.dbg` | output directory | with `--debug`: Inform 6's debug file (§20.4) |
+| `i6patched/` | output directory | with `#mergeI6`: the patched I6 files (§14.1.6) |
 
 The transpiled file is always `<source file name>.transpiled.inf`, including the source extension, so
 a precompiler-mode `story.inf` yields `story.inf.transpiled.inf`. It is the file Inform 6 compiles
@@ -12566,7 +12678,7 @@ is where heap arrays are collected (§12.6):
 
 A binding for another library follows these rules:
 
-1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
+1. **Guard the file with `#once`** (§14.1.7), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
 4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them. A program's own verb can't take a fake action's name.
@@ -12579,6 +12691,81 @@ A binding for another library follows these rules:
 11. **Run `_bglPromptHook` when the turn's prompt is shown** (§23.3.12), when it is not 0, at a point where no Beguile routine is running.
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.
+
+## 23.6 Standard Library Hooks
+
+**Purpose**
+
+Lets an extension change what the standard library does inside its own routines (reading the command,
+parsing, LOOK, GO, listing objects, and so on) without replacing those routines. Each hook is a call that
+a patch (§14.1.6) merges into the library. An object that defines the hook's method answers it.
+
+**Include**
+
+```syntax
+#include <extensions/stdlib/hooks>               // every group
+#include <extensions/stdlib/hooks/⟨group⟩>       // one group
+```
+
+**Description**
+
+The hooks come in seven groups, one per area of the library. Each group is its own extension, with its
+own patch, so a program carries only the calls of the groups it includes. `<extensions/stdlib/hooks>`
+includes all seven. Each group includes `<bindings/i6StandardLibrary>`, and the groups can be included
+in any combination and order.
+
+| Group | Routines it hooks | Hooks |
+|---|---|---|
+| `informLibrary` | `InformLibrary.play` (the play loop) | `ext_afterGamePrologueNotify`, `ext_playLoopRewriteParsedCommands`, `ext_playLoopAssignObjectVariables`, `ext_playLoopPerformSingleObjectAction`, `ext_playLoopPerformMultiObjectAction` |
+| `keyboard` | `KeyboardPrimitive`, `Keyboard` | `ext_keyboardPrimitiveNotify`, `ext_keyboardPrimitive`, `ext_keyboardGetInput`, `ext_beforePrompt`, `ext_keyboardPrepInput`, `ext_keyboardHandleComment`, `ext_keyboardHandleUndo`, `ext_keyboardHandleOops` |
+| `parser` | `Parser__parse`, `Adjudicate`, `R_Process` | `ext_forceLookAhead`, `ext_suppressParsingImplicitTake`, `ext_adjudicate`, `ext_redirectActionNotify` |
+| `standardLibrary` | `Identical`, `NounWord`, `NextWord`, `AfterRoutines`, `DisplayStatus`, `ActionPrimitive` | `ext_identical`, `ext_nounWord`, `ext_nextWord`, `ext_beforeAction`, `ext_afterAction`, `ext_afterRoutines`, `ext_displayStatus` |
+| `verbs` | `PlayerTo`, `GoSub`, `LookSub`, `ExamineSub` | `ext_lookSub`, `ext_examineSub`, `ext_preDescription`, `ext_postDescription`, `ext_goSub`, `ext_goSubNoDir`, `ext_playerToNotify` |
+| `writeAfterEntry` | `WriteAfterEntry` | `ext_sdPartInvBit`, `ext_sdFullInvBit`, `ext_sdConcealBit`, `ext_sdAlwaysBit`, `ext_sdRecurseBit`, `ext_sdIsOrAre`, `ext_sdNewLineBit`, `ext_sdDoList` |
+| `writeList` | `WriteListR` | `ext_forceSingular`, `ext_wlrPluralMany` |
+
+Each hook is an `extern property`, documented where its group declares it. The `verbs` group also
+declares `orSuppressNewlineAfterDescription`. The `writeAfterEntry` group also declares
+`_WAE_recurse_flag`, `_WAE_parenth_flag`, `_WAE_child_count` and `_WAE_eldest_child`, which describe
+the entry being written.
+
+A **library extension** is an object whose parent is the library's `LibraryExtensions` object. It
+answers a hook by defining a method with the hook's name. Extensions are asked in the order they are
+declared:
+
+- A hook that returns a value is asked of each extension in turn until one answers. False (or 0) lets
+  the library carry on as it would without the hook. `ext_identical` is the exception: true leaves it to
+  the library, and false says the two objects differ.
+- A hook whose name ends in `Notify`, and `ext_afterAction`, `ext_preDescription` and
+  `ext_postDescription`, are only told. Every extension is told, and what it returns is ignored.
+- A `keyboard` hook can also return -1, which starts reading the command again.
+
+Until an extension answers a hook, the library behaves exactly as it does without the group.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+#include <extensions/stdlib/hooks/verbs>
+
+object darkHooks {
+    parent = LibraryExtensions;
+    bool ext_lookSub(){ print("It's too dark to make anything out.^"); rtrue; }
+}
+```
+
+**Notes**
+
+The hooks exist only for the standard library, and the patches are made against version 6.12.8 (§23.2).
+A patch that no longer matches the library is a compile-time error (§14.1.6).
+
+A group that is included costs space even when nothing answers it. On the Z-machine each group adds
+between 88 and 344 bytes; all seven add about 1.7 KB. Include only the groups an extension answers.
+
+A group defines a hook's property only when Inform 6 code has not already defined it, and an Inform 6
+object in `LibraryExtensions` answers a hook like a Beguile one.
+
+**See also** §14.1.6, §15.4, §15.6.
 
 ---
 
@@ -12722,7 +12909,8 @@ of islands and `extern`-related behavior are in §15.
 | `#include ?"path"`, `#include ?<name>` | Include, silently skipping a missing file | §14.1.4 |
 | `#includeI6` | Include an I6 source file (`?` optional, `@` raw variants) | §14.1.5 |
 | `#message` | Print a message during compilation | §14.3.1 |
-| `#once` | Process this file at most once | §14.1.6 |
+| `#mergeI6` | Apply a patch to the build's Inform 6 files | §14.1.6 |
+| `#once` | Process this file at most once | §14.1.7 |
 | `#redef` | Redefine a symbol without error | §14.2.2 |
 | `#startup` | Raw I6 run at program startup, inside `bglInit()` | §14.4.1 |
 | `#storedEmitFirst` | Named raw-I6 block, emitted at the top only when triggered | §14.4.4 |
@@ -13487,7 +13675,7 @@ is specified in the section named in the last column; this table does not add li
 | Member types in a named union | at least 2 | both | §2.8.2 |
 | Integer literal in an `array<char>` initializer or element write | 0..255 | both | §12.4 |
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
-| Include nesting depth | 255 | both | §14.1.6, §18.4 |
+| Include nesting depth | 255 | both | §14.1.7, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
 | Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default (also for 0); otherwise at least 64 | both | §12.6, §17.4 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |

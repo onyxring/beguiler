@@ -63,21 +63,21 @@ class _bglClass_Shape
   class object
   with
     describe[;
-        print (string)"a shape";
+        print "a shape";
     ]
 ;
 class _bglClass_Circle
   class _bglClass_Shape
   with
     describe[;
-        print (string)"a circle";
+        print "a circle";
     ]
 ;
 class _bglClass_LittleCircle
   class _bglClass_Circle
   with
     describe[;
-        print (string)"a little circle";
+        print "a little circle";
     ]
 ;
 _bglClass_LittleCircle lc
@@ -87,4 +87,5 @@ _bglClass_Circle c
 [main;
     lc.describe();
     c.describe();
+    rtrue;
 ];

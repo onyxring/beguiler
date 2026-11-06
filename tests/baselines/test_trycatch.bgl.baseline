@@ -196,6 +196,7 @@ object bgl
 ];
 [middle;
     deep();
+    rtrue;
 ];
 class _bglClass_Risk
   class object

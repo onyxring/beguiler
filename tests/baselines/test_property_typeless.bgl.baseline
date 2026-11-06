@@ -76,4 +76,5 @@ _bglClass_Other otherInst
 ;
 [main;
     bglinit();
+    rtrue;
 ];

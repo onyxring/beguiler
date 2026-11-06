@@ -71,6 +71,7 @@ object bgl
     print xor_;
     print shl;
     print shr;
+    rtrue;
 ];
 [_bglShiftLeft i numBits;
     return i * _bglpow(2,numbits);

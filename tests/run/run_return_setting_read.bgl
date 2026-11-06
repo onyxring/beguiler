@@ -1,0 +1,17 @@
+/*  run_return_setting_read — `return #beguilerSettings.<prop>;` reads the setting.
+
+    The lexer's dictionary-word check still saw "return" as the previous token after a directive, so
+    the `.prop` that followed `return #beguilerSettings` lexed as a dictionary word.  */
+// EXPECT_OUTPUT: 7 3 10 5
+#beguilerSettings { target = z5; informName = "none"; release = 7; myMode = 3; }
+
+extend class beguilerSettingsType { int myMode; }
+
+int builtin()    { return #beguilerSettings.release; }
+int custom()     { return #beguilerSettings.myMode; }
+int withTail()   { return #beguilerSettings.release + #beguilerSettings.myMode; }
+int minusOne()   { return #beguilerSettings.release - 2; }
+
+void main() {
+    print($"{builtin()} {custom()} {withTail()} {minusOne()}");
+}

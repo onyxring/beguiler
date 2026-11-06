@@ -86,6 +86,7 @@ _bglClass_Score s
     print s.doubled();
     twiceVal = _bglLambda_0;
     print twiceVal(6);
+    rtrue;
 ];
 [_bglLambda_0 _l_value;
     return _l_value + _l_value;

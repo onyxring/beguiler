@@ -1,0 +1,304 @@
+//===================================================================================================
+// menu.bgl — a tree of menus for help, hints and about screens.
+//---------------------------------------------------------------------------------------------------
+//     menu helpMenu { "Help"; }
+//     menu aboutItem { "About this game", helpMenu; string description = "Text the player can read."; }
+//     menu hintsMenu { "Hints", helpMenu; }
+//     menu hintOne { "Hint 1", hintsMenu; void rawDescription() { bgl.output.center("Look up."); } }
+//
+//     object chosen = helpMenu.show();
+//
+// A menu's children are its choices, and a menu with hidden children only is hidden too. `show()` runs
+// full screen: choosing a childless menu with a `description` insets that text and its `rawDescription`
+// method prints freely, and the menu carries on. `show(menuStyle.topOnly)` leaves the transcript alone
+// and draws in the status bar. A childless choice with no text, or any one in that style, ends the
+// menu and `show()` returns it; leaving returns null.
+//
+// `rawArray<var> childMenuItems` lists a menu's choices in place of its children; each may be an object or text.
+// `menuDisplay` is a choice's text in its parent's menu, in place of its name. `itemWindowId` gives
+// the items a [Glulx] window of their own. `initForDisplay()` can replace numbering a menu's choices.
+// A library extension's `ext_handleMenuResult` is told a result, and returning true keeps the menu open.
+//
+// Include it after the library's verblib. Ported from orLibrary's orMenu.
+//===================================================================================================
+#once
+#include <ui>
+#include <extensions/general/center>
+#include <bindings/i6StandardLibrary>
+
+/// How a menu is drawn.
+enum menuStyle { fullScreen, topOnly }
+
+property rawDescription;   /// A menu's own routine for printing its text, in place of `description`.
+property childMenuItems;   /// A menu's choices, listed, in place of its children.
+property menuDisplay;      /// A choice's text in its parent's menu, in place of its name.
+property initForDisplay;   /// A menu's own routine to get ready, returning how many choices it has.
+#i6 { Property individual ext_handleMenuResult; }
+
+const int _menuHeaderHeight = 2;
+
+/// A menu, or a choice in the menu that is its parent.
+class menu : object {
+    int _position = 0;
+    int itemWindowId = 0;   /// [Glulx] A window to draw the items in, in place of the status bar.
+
+    /// Run this menu, returning the choice that ended it, or null if the player left.
+    object show(menuStyle style = menuStyle.fullScreen) {
+        _menuSession.root = self;
+        _menuSession.style = style;
+        _menuSession.result = null;
+        _menuSession.startingHeight = bgl.ui.statusBar.height;
+        _menuRender(self);
+        bgl.ui.statusBar.height = _menuSession.startingHeight;
+        if(style == menuStyle.fullScreen) {
+            _menuErase(-1);
+            print("^");
+            DrawStatusLine();
+            LookSub();
+        }
+        return _menuSession.result;
+    }
+
+    /// Whether this menu is offered: not concealed, and not a parent whose children are all hidden.
+    bool canDisplay() {
+        if(self.has(concealed)) rfalse;
+        if(_menuVisibleChildren(self) > 0) rtrue;
+        return self.child == null;
+    }
+}
+
+object _menuSession {
+    object root = null;
+    menuStyle style = menuStyle.fullScreen;
+    object result = null;
+    int startingHeight = 0;
+    int highlight = 0;
+}
+
+superposed void _menuWindow(int win) {
+    #if TARGET_GLULX
+        bgl.asm.setWindow(win == 0 ? bgl.ui.mainWin.id : bgl.ui.statusBar.id);
+    #else
+        bgl.asm.setWindow(win);
+    #endif
+}
+
+// Clear the main window (0), the status bar (1), or on the Z-machine the screen (-1).
+superposed void _menuErase(int win) {
+    #if TARGET_GLULX
+        if(win >= 0) bgl.asm.windowClear(win == 0 ? bgl.ui.mainWin.id : bgl.ui.statusBar.id);
+    #else
+        bgl.asm.eraseWindow(win);
+    #endif
+}
+
+superposed int _menuListLength(object current) {
+    #i6 { if(current provides childMenuItems) return current.#childMenuItems / WORDSIZE; }
+    return 0;
+}
+
+superposed var _menuListItem(object current, int position) {
+    #i6 { return current.&childMenuItems-->position; }
+}
+
+superposed bool _menuIsList(object current) { return _menuListLength(current) > 0; }
+
+superposed int _menuVisibleChildren(object parent) {
+    if(_menuIsList(parent)) return _menuListLength(parent);
+    int count = 0;
+    for(object o in parent.children)
+        if(o.is(menu) && ((menu)o).canDisplay()) count++;
+    return count;
+}
+
+// Number the choices a menu offers, returning how many there are.
+superposed int _menuPrepare(object current) {
+    #i6 { if(current provides initForDisplay) return current.initForDisplay(); }
+    if(_menuIsList(current)) return _menuListLength(current);
+    int count = 0;
+    for(object o in current.children) {
+        if(!o.is(menu)) continue;
+        if(((menu)o).canDisplay()) ((menu)o)._position = count++;
+        else ((menu)o)._position = -1;
+    }
+    return count;
+}
+
+superposed var _menuItem(object current, int position) {
+    if(_menuIsList(current)) return _menuListItem(current, position);
+    for(object o in current.children)
+        if(o.is(menu) && ((menu)o)._position == position) return o;
+    return 0;
+}
+
+superposed void _menuResize(object current) {
+    if(((menu)_menuSession.root).itemWindowId != 0) return;   // the items have their own window, so the status bar keeps its size
+    int base = _menuSession.style == menuStyle.fullScreen ? _menuHeaderHeight : _menuSession.startingHeight;
+    bgl.ui.statusBar.height = base + _menuVisibleChildren(current);
+}
+
+superposed void _menuHeader(object current) {
+    _menuResize(current);
+    _menuWindow(1);
+    bgl.printRules.reverse;
+    _menuErase(1);
+    bgl.output.center(current, 0, centerHighlight.all);
+    bgl.ui.statusBar.moveCursor(0, 1);
+    bgl.printRules.reverse;
+    print(current.child != null ? " X : " : "Any: ");
+    print(current == _menuSession.root ? "Exit " : "Prev");
+    if(current.child != null) {
+        bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - 14, 1);
+        print("Enter : Select");
+    }
+    bgl.printRules.roman;
+}
+
+superposed int _menuFrame(int part) {
+    if(part == 1) print("> ");
+    if(part == 2) print(" <");
+    return 4;
+}
+
+superposed int _menuItemWindow() { return ((menu)_menuSession.root).itemWindowId; }
+
+superposed void _menuMoveItemCursor(int line) {
+    #if TARGET_GLULX
+        if(_menuItemWindow() != 0) { bgl.asm.windowMoveCursor(_menuItemWindow(), 0, line); return; }
+    #endif
+    bgl.ui.statusBar.moveCursor(0, line);
+}
+
+var _menuDrawing = 0;
+
+// Prints the item being drawn, for bgl.output.center.
+superposed bool _menuItemText() {
+    #i6 {
+        if(metaclass(_menuDrawing) == String) print (string) _menuDrawing;
+        else if(_menuDrawing provides menuDisplay) PrintOrRun(_menuDrawing, menuDisplay, true);
+        else print (name) _menuDrawing;
+    }
+    rfalse;
+}
+
+superposed void _menuDrawItem(var item, int position, bool selected) {
+    if(item == 0) return;
+    int line = position;
+    if(_menuItemWindow() != 0) {
+        #if TARGET_GLULX
+            bgl.asm.setWindow(_menuItemWindow());
+        #else
+            bgl.asm.setWindow(_menuItemWindow());
+        #endif
+    }
+    else line += _menuSession.style == menuStyle.fullScreen ? _menuHeaderHeight : _menuSession.startingHeight;
+    _menuMoveItemCursor(line);
+    bgl.output.spaces(bgl.ui.statusBar.width);
+    _menuMoveItemCursor(line);
+    _menuDrawing = item;
+    if(selected) bgl.output.center(_menuItemText, 0, centerHighlight.none, false, _menuFrame);
+    else bgl.output.center(_menuItemText);
+}
+
+superposed void _menuHighlight(object current, int position) {
+    _menuDrawItem(_menuItem(current, _menuSession.highlight), _menuSession.highlight, false);
+    _menuSession.highlight = position;
+    _menuDrawItem(_menuItem(current, position), position, true);
+}
+
+superposed void _menuDrawItems(object current) {
+    if(_menuItemWindow() != 0) {
+        _menuResize(current);
+        bgl.asm.setWindow(_menuItemWindow());
+        #if TARGET_GLULX
+            bgl.asm.windowClear(_menuItemWindow());
+        #else
+            bgl.asm.eraseWindow(_menuItemWindow());
+        #endif
+    }
+    else {
+        _menuWindow(1);
+        _menuResize(current);
+    }
+    if(_menuIsList(current)) {
+        for(int t = 0; t < _menuListLength(current); t++) {
+            var item = _menuListItem(current, t);
+            #i6 { if(metaclass(item) ~= Object || item hasnt concealed) _menuDrawItem(item, t, false); }
+        }
+    }
+    else {
+        for(object o in current.children)
+            if(o.is(menu) && ((menu)o).canDisplay()) _menuDrawItem(o, ((menu)o)._position, false);
+    }
+    if(_menuSession.highlight >= _menuVisibleChildren(current)) _menuSession.highlight = 0;
+    _menuHighlight(current, _menuSession.highlight);
+}
+
+// Act on a key, returning true when this level of the menu is finished.
+superposed bool _menuHandleKey(int key, object current) {
+    int count = _menuVisibleChildren(current);
+    if(count == 0) rtrue;
+    switch(key) {
+        case 'p', 'P', 129, -4:
+            if(_menuSession.highlight > 0) _menuHighlight(current, _menuSession.highlight - 1);
+        case 'n', 'N', 130, -5:
+            if(_menuSession.highlight + 1 < count) _menuHighlight(current, _menuSession.highlight + 1);
+        case ' ', 10, 13, -6:
+            var item = _menuItem(current, _menuSession.highlight);
+            _menuRender(item);
+            if(_menuSession.result != null) {
+                bool keepOpen;
+                #i6 { keepOpen = LibraryExtensions.RunWhile(ext_handleMenuResult, false, _menuSession.result); }
+                if(!keepOpen) rtrue;
+            }
+            #i6 { if(metaclass(item) == Object && item ofclass _bglClass_menu) _menuSession.highlight = item._position; }
+            _menuHeader(current);
+            _menuDrawItems(current);
+        case '`', '~', 'q', 'Q', 133, 'x', 'X', 27, -8:
+            _menuSession.result = null;
+            rtrue;
+    }
+    rfalse;
+}
+
+// Show a menu or its text, returning when the player has finished with it.
+superposed void _menuRender(object current) {
+    _menuSession.highlight = 0;
+    bool full = _menuSession.style == menuStyle.fullScreen;
+    if(_menuPrepare(current) == 0) {
+        bool raw = current.provides((property)rawDescription);
+        if(full && (raw || current.provides(description))) {
+            bgl.ui.statusBar.height = _menuHeaderHeight;
+            _menuErase(-1);
+            _menuHeader(current);
+            _menuWindow(0);
+            if(raw) PrintOrRun(current, (property)rawDescription);
+            else {
+                var text;
+                #i6 { text = current.description; }
+                bgl.output.inset(text);
+            }
+            bgl.ui.waitForKey();
+            _menuErase(0);
+        }
+        else _menuSession.result = current;
+        return;
+    }
+    if(full) {
+        _menuHeader(current);
+        _menuErase(0);
+    }
+    else DrawStatusLine();
+    _menuDrawItems(current);
+    while(_menuVisibleChildren(current) > 0 && !_menuHandleKey((int)bgl.ui.waitForKey(), current)) { }
+    bgl.ui.statusBar.height = _menuSession.startingHeight;
+    if(_menuItemWindow() != 0) {
+        #if TARGET_GLULX
+            bgl.asm.windowClear(_menuItemWindow());
+        #else
+            bgl.asm.eraseWindow(_menuItemWindow());
+        #endif
+    }
+    _menuErase(1);
+    _menuWindow(0);
+}

@@ -75,4 +75,5 @@ _bglClass_Foo f
 ;
 [main;
     print f.probe();
+    rtrue;
 ];

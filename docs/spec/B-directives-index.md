@@ -28,7 +28,8 @@ of islands and `extern`-related behavior are in §15.
 | `#include ?"path"`, `#include ?<name>` | Include, silently skipping a missing file | §14.1.4 |
 | `#includeI6` | Include an I6 source file (`?` optional, `@` raw variants) | §14.1.5 |
 | `#message` | Print a message during compilation | §14.3.1 |
-| `#once` | Process this file at most once | §14.1.6 |
+| `#mergeI6` | Apply a patch to the build's Inform 6 files | §14.1.6 |
+| `#once` | Process this file at most once | §14.1.7 |
 | `#redef` | Redefine a symbol without error | §14.2.2 |
 | `#startup` | Raw I6 run at program startup, inside `bglInit()` | §14.4.1 |
 | `#storedEmitFirst` | Named raw-I6 block, emitted at the top only when triggered | §14.4.4 |

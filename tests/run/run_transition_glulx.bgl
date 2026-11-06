@@ -1,0 +1,21 @@
+// run_transition_glulx — <extensions/general/transition>: text and prompt show centered, a key continues, and
+// `skipErase` leaves the window alone; a bare call clears it. Glulx, because the Z-machine runner has no key input.
+// EXPECT_OUTPUT: Chapter Two
+// EXPECT_OUTPUT: Press any key to continue
+// EXPECT_OUTPUT: Go on
+// EXPECT_OUTPUT: after: done
+// INPUT: a
+// INPUT: b
+// INPUT: c
+// INPUT: d
+#beguilerSettings { target = GLULX; }
+#include "glulxConsole.bgl"
+#include <ui>
+#include <extensions/general/transition>
+void main() {
+    bglInit(); glulxConsole();
+    bgl.output.transition("Chapter Two", null, true);
+    bgl.output.transition(null, "Go on", true);
+    bgl.output.transition();
+    print("after: done^");
+}

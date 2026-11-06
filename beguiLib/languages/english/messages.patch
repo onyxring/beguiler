@@ -1,0 +1,24 @@
+# messages.patch: leaves English.h's LanguageLM out when <languages/english/messages> provides it
+# (6.12.8). Skipped this way rather than replaced, Inform 6 doesn't see the routines LanguageLM calls
+# as used, so the ones nothing else calls are dropped.
+#
+# english.h: LanguageLM.
+
+--- a/english.h
++++ b/english.h
+@@ -794,6 +794,7 @@
+ 
+ 
+ 
++#Ifndef BGL_ENGLISH_MESSAGES;
+ [ LanguageLM n x1 x2;
+   Answer,Ask:
+             print "There ";
+@@ -1574,6 +1575,7 @@
+     }
+ ! Yes:  see No.
+ ];
++#Endif;
+ 
+ ! ==============================================================================
+ 

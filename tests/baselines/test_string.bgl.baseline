@@ -68,9 +68,9 @@ object _zcode
 ;
 object bgl
 ;
-Array _bglhdr__bglbufstreamstack --> $9084 0;
+Array bglhae --> $9084 0;
 array _bglbufstreamstack table 16;
-Array _bglhdr__bglbufglulxstreams --> $9084 0;
+Array bglhaf --> $9084 0;
 array _bglbufglulxstreams table 16;
 
     Default bglStringPoolReserve 10;
@@ -1331,6 +1331,7 @@ class _bglString(bglstringpoolreserve)
     s1 = "hello";
     s2 = s1;
     s3 = "interp {s1} world";
+    rtrue;
 ];
 [exerciseEquality s eq_lit o eq_str code;
     s = _bglStr._bglText_new();
@@ -1400,7 +1401,7 @@ class _bglString(bglstringpoolreserve)
     _l_has=_bglStr._bglText_contains(s, ",");
     emp=_bglStr._bglText_isEmpty(s);
     s._bglText_capture();
-    print (string)"captured-content";
+    print "captured-content";
     s._bglText_release();
     if (t) t._bglText_free();
     if (s) s._bglText_free();
@@ -1413,6 +1414,7 @@ class _bglString(bglstringpoolreserve)
         c = _bglStr._bglText_getChar(_bglfia1, _bglfi2);
         print (char)c;
     }
+    rtrue;
 ];
 [main;
     bglinit();
@@ -1422,6 +1424,7 @@ class _bglString(bglstringpoolreserve)
     exercisenullable();
     exercisemethods();
     exerciseforin();
+    rtrue;
 ];
 [_bgl_string__opeqeq a b;
     return _bglstr._bglText_areEqual(a, b, false);

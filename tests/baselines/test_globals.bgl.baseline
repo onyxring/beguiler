@@ -67,13 +67,13 @@ object bgl
 ;
 global g_isActive = true;
 global g_scratch;
-Array _bglhdr_g_roomexits --> $9084 0;
+Array bglhae --> $9084 0;
 array g_roomexits table 6;
-Array _bglhdr_g_itemids --> $9084 0;
+Array bglhaf --> $9084 0;
 array g_itemids table 10;
-Array _bglhdr_g_primes --> $9084 5;
+Array bglhag --> $9084 5;
 array g_primes table 2 3 5 7 11;
-Array _bglhdr_g_fibonacci --> $9084 6;
+Array bglhah --> $9084 6;
 array g_fibonacci table 1 1 2 3 5 8;
 [main first total;
     bglinit();

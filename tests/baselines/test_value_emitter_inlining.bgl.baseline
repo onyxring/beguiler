@@ -70,4 +70,5 @@ object hostObj
     print a;
     print b;
     print c;
+    rtrue;
 ];

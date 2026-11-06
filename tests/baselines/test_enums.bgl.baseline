@@ -63,6 +63,7 @@ object bgl
 ;
 [setFacing dir;
     g_facing = dir;
+    rtrue;
 ];
 [getFacing;
     return g_facing;
@@ -76,15 +77,20 @@ object bgl
 [describeDirection dir;
     switch (dir) {
         1:
-            print (string)"north";
+            print "north";
+            rtrue;
         2:
-            print (string)"south";
+            print "south";
+            rtrue;
         3:
-            print (string)"east";
+            print "east";
+            rtrue;
         4:
-            print (string)"west";
+            print "west";
+            rtrue;
         default:
-            print (string)"other";
+            print "other";
+            rtrue;
     }
 ];
 [main f;
@@ -92,4 +98,5 @@ object bgl
     g_state = 1;
     f=isfacing(1);
     describedirection(g_facing);
+    rtrue;
 ];

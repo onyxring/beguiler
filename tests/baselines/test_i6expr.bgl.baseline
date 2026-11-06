@@ -84,6 +84,7 @@ _bglClass_Counter globalC
     print robot.score();
     print (globalc.value + globalc.value);
     print (localc.value + 7);
+    rtrue;
 ];
 [_bgl_bglOpCodes_readChar dev c;
      @read_char dev -> c; 

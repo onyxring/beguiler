@@ -1,0 +1,36 @@
+# writeList.patch: calls to the hooks of <extensions/stdlib/hooks/writeList> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# verblib.h: WriteListR.
+
+--- a/verblib.h
++++ b/verblib.h
+@@ -333,7 +333,7 @@
+     }
+ 
+     if (c_style & ISARE_BIT) {
+-        if (j == 1 && o hasnt pluralname) Tense(IS__TX, WAS__TX);
++        if ((j == 1 && o hasnt pluralname) || LibraryExtensions.RunWhile(ext_forceSingular, false, o, j)) Tense(IS__TX, WAS__TX);
+         else                              Tense(ARE__TX, WERE__TX);
+         if (c_style & NEWLINE_BIT)   print (string) COLON__TX, "^";
+         else                         print (char) ' ';
+@@ -399,7 +399,7 @@
+                 if (k2 == String) {
+                     q = 0;
+                     for (l=0 : l<listing_size : l++) q = q+sizes_p->(l+i);
+-                    EnglishNumber(q); print " ";
++                    if (LibraryExtensions.RunWhile(ext_wlrPluralMany, false, j, q) == false) EnglishNumber(q); print " ";
+                     print (string) j.list_together;
+                     if (c_style & ENGLISH_BIT) print " (";
+                     if (c_style & INDENT_BIT)  print (string) COLON__TX, "^";
+@@ -461,7 +461,7 @@
+         }
+         else {
+             if (c_style & DEFART_BIT) PrefaceByArticle(j, 1, sizes_p->i);
+-            print (number) sizes_p->i, " ";
++            if (LibraryExtensions.RunWhile(ext_wlrPluralMany, false, j, sizes_p->i) == false) print (number) sizes_p->i; print " ";
+             PrintOrRun(j, plural, 1);
+         }
+         if (sizes_p->i > 1 && j hasnt pluralname) {

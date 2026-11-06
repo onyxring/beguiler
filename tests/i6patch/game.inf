@@ -1,0 +1,25 @@
+! A game for i6patch.py check: it exercises lists, list_together groups, containers and supporters,
+! TAKE/DROP ALL, disambiguation, UNDO, OOPS and comments, with no extension hooked into the library.
+Constant Story "EQ"; Constant Headline "^";
+#Ifdef PATCHED; Include "decls"; #Endif;
+Include "parser";
+Object Hall "Hall" with description "A hall. A study is north.", n_to Study, has light;
+Object Study "Study" with description "A study.", s_to Hall, has light;
+Class Coin with list_together [;
+        if (inventory_stage == 1) { print "a pile of coins: "; c_style = c_style | ENGLISH_BIT; rfalse; }
+        if (inventory_stage == 2) print " (shiny)"; ],
+    name 'coin' 'coins//p', plural "coins";
+Coin "gold coin" Hall with name 'gold';
+Coin "silver coin" Hall with name 'silver';
+Coin "copper coin" Hall with name 'copper';
+Object box "wooden box" Hall with name 'wooden' 'box', has container openable open;
+Object -> -> "red marble" with name 'red' 'marble' 'marbles//p', list_together "marbles";
+Object -> -> "blue marble" with name 'blue' 'marble' 'marbles//p', list_together "marbles";
+Object table "oak table" Hall with name 'oak' 'table', has supporter static;
+Object -> -> "brass lamp" with name 'brass' 'lamp';
+Object -> -> "iron lamp" with name 'iron' 'lamp';
+Object "statue" Hall with name 'statue', has scenery;
+Object "stack of plates" Hall with name 'stack' 'plates', has pluralname;
+[ Initialise; location = Hall; ];
+Include "verblib";
+Include "grammar";

@@ -1,0 +1,73 @@
+// run_backdrop — <extensions/stdlib/backdrop>: rows of words, description and reply on a room and on a
+// floating backdrop object; plain, interpolated and routine texts; bdDefault, bdDescr and bdRedirected;
+// several words of one row, and words of two rows; a real object beats a backdrop, with no parser note.
+// EXPECT_OUTPUT: High above, the canopy.
+// EXPECT_OUTPUT: Out of reach.
+// EXPECT_OUTPUT: Worn tracks.
+// EXPECT_OUTPUT: That's not something you need to refer to
+// EXPECT_OUTPUT: Trees 2.
+// EXPECT_OUTPUT: Lambda take.
+// EXPECT_OUTPUT: No mouth here.
+// EXPECT_OUTPUT: The real rock.
+// EXPECT_OUTPUT: A vine.
+// EXPECT_OUTPUT: You can't reach the vine.
+// EXPECT_OUTPUT: You can't see any such thing.
+// EXPECT_OUTPUT: Study
+// EXPECT_OUTPUT: word=canopy
+// INPUT: x canopy
+// INPUT: take roof
+// INPUT: x high roof
+// INPUT: x dirt
+// INPUT: take dirt
+// INPUT: x tree
+// INPUT: take tree
+// INPUT: push tree
+// INPUT: x mouth
+// INPUT: take mouth
+// INPUT: x rock
+// INPUT: x vine
+// INPUT: take vine
+// INPUT: x canopy dirt
+// INPUT: smell roof
+// INPUT: push path
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/backdrop>
+object hall {
+    short_name = "Hall"; string description = "A hall.";
+    attributes = {light};
+    object e_to = study;
+    array<array<var>> backdrops = {
+        {.canopy, .roof, .high, "High above, the canopy.", "Out of reach."},
+        {.dirt, .tracks, "Worn tracks.", bdDefault},
+        {.tree, $"Trees {1 + 1}.", () => { if(action == Take) rtrue("Lambda take."); return false; }},
+        {.mouth, "No mouth here.", bdDescr},
+        {.path, "A path.", () => { if(action == Push) { Go.perform(e_obj); return bdRedirected; } rtrue("Just a path."); }},
+        {.rock, "Backdrop rock.", "Backdrop rock reply."}
+    };
+    bool before() {
+        if(action == Smell && backdropEngine.getKeyword() != null) {
+            print("word="); print((dictionaryWord)backdropEngine.getKeyword()); print("^");
+            rtrue;
+        }
+        rfalse;
+    }
+}
+object study {
+    short_name = "Study"; string description = "A study.";
+    attributes = {light};
+}
+object realRock { parent = hall; short_name = "rock"; name = {.rock}; attributes = {scenery}; string description = "The real rock."; }
+backdrop farVine {
+    rawArray<object> found_in = {hall};
+    array<array<var>> backdrops = { {.vine, "A vine.", "You can't reach the vine."} };
+}
+void Initialise(){
+    location = hall;
+    backdropEngine.registerDescriptionVerb(Search);
+}
+#includeI6 "grammar"

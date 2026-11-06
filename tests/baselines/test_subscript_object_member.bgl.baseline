@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -114,20 +115,21 @@ class _bglClass_rule
         return 2;
     ]
 ;
-Array _bglhdr_book --> $9084 2;
-array book table _bglanon6 _bglanon7;
+Array bglhaf --> $9084 2;
+array book table bglrag bglrah;
 [main v _bgl_tempL0;
     print ( _bglAt(book, 1, 0)-->0 ).pri;
     _bgl_tempL0 = ( _bglAt(book, 0, 0)-->0 ).matcher;
     if(_bgl_tempL0 provides print) _bgl_tempL0.print(); else print (name)_bgl_tempL0;
     v = ( _bglAt(book, 0, 0)-->0 ).run();
     print v;
+    rtrue;
 ];
-_bglClass_rule _bglanon6
+_bglClass_rule bglrag
   with matcher shirt,
        pri 5
 ;
-_bglClass_rule _bglanon7
+_bglClass_rule bglrah
   with matcher shirt,
        pri 7
 ;

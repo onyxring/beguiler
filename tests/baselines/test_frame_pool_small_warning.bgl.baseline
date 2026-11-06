@@ -159,6 +159,7 @@ object bgl
 ];
 [main;
     print depth(2);
+    rtrue;
 ];
 [_bglByteAt arr i w n;
     n = 0;

@@ -1,0 +1,5 @@
+// Two patches that change the same lines: the second no longer matches.
+// EXPECT_ERROR: doesn't match the file 'verblib.h' (already patched by lookHook.patch)
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; }
+#mergeI6 "run/patches/lookHook"
+#mergeI6 "run/patches/lookHookConflict"

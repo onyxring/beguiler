@@ -1,0 +1,35 @@
+// run_stdlib_adjective — <extensions/stdlib/adjective>: an object named by a noun wins over objects
+// only described by the same word; adjectives alone still find an object; two objects with the same
+// noun are told apart by their adjectives; an object with requireNoun can't be named by adjectives alone.
+// EXPECT_OUTPUT: [the drinking glass]
+// EXPECT_OUTPUT: [the glass marble]
+// EXPECT_OUTPUT: Which do you mean, the glass table or the marble table?
+// EXPECT_OUTPUT: [the glass table]
+// EXPECT_OUTPUT: [the wooden crate]
+// EXPECT_OUTPUT: You can't see any such thing.
+// INPUT: x glass
+// INPUT: x marble
+// INPUT: x table
+// INPUT: glass
+// INPUT: x crate
+// INPUT: x drinking
+// INPUT: x wooden
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/adjective>
+extend class object { array<dictionaryWord> adjective; bool requireNoun; }
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+class thing : object {
+    bool description() { print($"[{bgl.printRules.the(self)}]^"); rtrue; }
+}
+thing drinkingGlass { short_name = "drinking glass"; rawArray<dictionaryWord> name = {.glass}; adjective = {.drinking}; parent = roomA; }
+thing marble       { short_name = "glass marble";   rawArray<dictionaryWord> name = {.marble}; adjective = {.glass}; parent = roomA; }
+thing glassTable   { short_name = "glass table";    rawArray<dictionaryWord> name = {.table}; adjective = {.glass}; parent = roomA; }
+thing marbleTable  { short_name = "marble table";   rawArray<dictionaryWord> name = {.table}; adjective = {.marble}; parent = roomA; }
+thing crate        { short_name = "wooden crate";   rawArray<dictionaryWord> name = {.crate}; adjective = {.wooden}; requireNoun = true; parent = roomA; }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

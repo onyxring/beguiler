@@ -34,6 +34,7 @@ class beguiler {
         // Resolves the output directory, the transpiled .inf path and the story file path.
         void resolveOutputPaths(CompileJob& job);
         // Writes the .inf, checks no raw property-class access survived, writes the .bgldbg bundle.
+        bool writePatchedI6Files(const std::filesystem::path& outDir);
         bool emitOutput(CompileJob& job);
         // Opt-in `economy`: computes optimal I6 abbreviations, injects them and adds -e.
         void applyEconomyAbbreviations();

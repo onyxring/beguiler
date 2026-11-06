@@ -85,6 +85,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];

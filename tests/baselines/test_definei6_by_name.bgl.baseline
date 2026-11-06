@@ -64,4 +64,5 @@ object bgl
 [main;
     oil = LAMP_FULL;
     print oil;
+    rtrue;
 ];

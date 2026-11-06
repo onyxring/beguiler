@@ -82,6 +82,7 @@ object bgl
     ur = _bglUnsignedShiftRight(ur, 1);
     print ul;
     print ur;
+    rtrue;
 ];
 [_bglClamp v lo hi;
     if (v < lo) {

@@ -9,6 +9,9 @@ Constant beguiler = 5;
 
 Replace banner;
 
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
@@ -101,12 +104,13 @@ object bgl
         #Ifdef INFIX; print "X";
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     
-    print (string)"^";
+    print "^";
+     _bglBannerExtras(); 
 ];
 object _bglVerb_typenum
   with priority 10,
        handler [;
-    print (string)"type num";
+    print "type num";
   ]
 ;
 [typenumsub;
@@ -121,7 +125,7 @@ verb 'putz'
 object _bglVerb_toggle
   with priority 10,
        handler [;
-    print (string)"toggle";
+    print "toggle";
   ]
 ;
 [togglesub;
@@ -136,7 +140,7 @@ verb 'flop'
 object _bglVerb_beep
   with priority 10,
        handler [;
-    print (string)"beep";
+    print "beep";
   ]
 ;
 [beepsub;
@@ -148,7 +152,7 @@ verb 'beep'
 object _bglVerb_chirp
   with priority 10,
        handler [;
-    print (string)"chirp";
+    print "chirp";
   ]
 ;
 [chirpsub;
@@ -161,7 +165,7 @@ verb 'tweet'
 object _bglVerb_squelch
   with priority 10,
        handler [;
-    print (string)"squelch";
+    print "squelch";
   ]
 ;
 [squelchsub;
@@ -180,6 +184,19 @@ verb 'grind'
     * noun 'firmly' -> squelch;
 [main;
 ];
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
+
 
         [main;
             bglInit();

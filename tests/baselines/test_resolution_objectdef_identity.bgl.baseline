@@ -73,4 +73,5 @@ object widget
     w = widget;
     y=w.bump();
     takesanyobject(widget);
+    rtrue;
 ];

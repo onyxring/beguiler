@@ -64,4 +64,5 @@ object bgl
 [main n;
     n = 1;
     f(1, 2);
+    rtrue;
 ];

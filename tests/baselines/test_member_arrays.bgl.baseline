@@ -192,7 +192,7 @@ class _bglClass_gadget
 ;
 _bglClass_gadget g1
 ;
-Array _bglhdr_g_nums --> $9084 3;
+Array bglhae --> $9084 3;
 array g_nums table 7 8 9;
 [main ra loc rb;
     loc = _bglHeapLocal(2);

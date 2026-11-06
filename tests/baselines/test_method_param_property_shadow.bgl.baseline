@@ -91,6 +91,7 @@ object drawer
 ;
 [main;
     drawer.img(0, 0);
+    rtrue;
 ];
 _bglClass_sizeRec _bglLocal__getinfo_s;
 _bglClass_sizeRec _bglLocal_drawer__sz;

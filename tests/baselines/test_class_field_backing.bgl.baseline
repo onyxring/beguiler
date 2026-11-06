@@ -77,5 +77,6 @@ _bglClass_shape s
 _bglClass_shape t
 ;
 [main;
-    print (string)"ok";
+    print "ok";
+    rtrue;
 ];

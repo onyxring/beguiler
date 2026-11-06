@@ -243,6 +243,13 @@ filesystem::path findCaseInsensitive(const filesystem::path& dir, const string& 
     return dir / target; // not found; return as-is so the error surfaces normally
 }
 
+string bglParser::nextAnonName(){
+    string name;
+    do name = generatedName('r', anonObjectCounter++); while(languageService.findGlobal(name) != nullptr);
+    anonNames().insert(name);
+    return name;
+}
+
 void bglParser::unknownTypeError(const token& typeTok){
     string shown = typeTok.originalValue.empty() ? typeTok.value : typeTok.originalValue;
     string lower = typeTok.value;
@@ -825,9 +832,9 @@ void bglParser::resolveArrayInitialGlobals(){
             if(t == "attribute" || t == "property" || t == "verb" || t == "grammartoken") continue;
             classDef* vc = getDispatchClass(t);
             if(vc != nullptr && isValueClass(vc) && !vc->isEmitterClass && gv->declaredExpressionValue != nullptr
-               && gv->declaredExpressionValue->tokens.size() == 1 && gv->declaredExpressionValue->tokens[0].rfind("_bglanon", 0) == 0)
+               && gv->declaredExpressionValue->tokens.size() == 1 && isAnonName(gv->declaredExpressionValue->tokens[0]))
                 if(auto* made = languageService.findGlobalAs<objectDef>(gv->declaredExpressionValue->tokens[0])){
-                    string copyName = format("_bglanon{0}", anonObjectCounter++);
+                    string copyName = nextAnonName();
                     objectDef& copy = languageService.registerObject(copyName, false, "");
                     copy.objectClass = made->objectClass;
                     copy.members = made->members;
@@ -2356,7 +2363,7 @@ bool bglParser::processInlineObjectStatement(vector<token>& t, Qualifiers&, abst
             parsingError(format("'{0}{{ … }}': '{0}' is not a class type", t[0].value));
         functionDef* func = dynamic_cast<functionDef*>(&ctx);
         statementBlock* body = func != nullptr ? dynamic_cast<statementBlock*>(func->body) : nullptr;
-        string anonName = format("_bglanon{0}", anonObjectCounter++);
+        string anonName = nextAnonName();
         bakeInlineObjectAggregate(cls, t[0].value, anonName, func, body);   // '{' already consumed by the matcher
         file.getToken(token::endStatement);                                 // consume trailing ';'
         return false;
@@ -3363,29 +3370,33 @@ vector<interpolatedSegment> bglParser::parseInterpolatedSegments(functionDef* fu
                 throw;
             }
             allowVoidReturnExpr = savedAllowVoid;
-            // A property accessor prints its value, as `print(x)` does — unless its class prints itself.
-            // An object prints as itself: its class's conversion operator isn't a property getter.
-            if(functionDef* getter = nativeGetterOf(exprNode->resolvedType);
-               getter != nullptr && !isObjectBackedClass(getDispatchClass(exprNode->resolvedType))){
-                classDef* cls = getDispatchClass(exprNode->resolvedType);
-                bool printsItself = false;
-                if(cls != nullptr)
-                    for(typeMember* m : cls->members)
-                        if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == "print" && fd->params.empty())
-                            printsItself = true;
-                if(!printsItself){
-                    string text = exprNode->text();
-                    exprNode->tokens.assign(1, text + "." + getter->i6name + "()");
-                    exprNode->resolvedType = getter->returnType.name;
+            auto prepare = [&](expression* e){
+                // A property accessor prints its value, as `print(x)` does — unless its class prints itself.
+                // An object prints as itself: its class's conversion operator isn't a property getter.
+                if(functionDef* getter = nativeGetterOf(e->resolvedType);
+                   getter != nullptr && !isObjectBackedClass(getDispatchClass(e->resolvedType))){
+                    classDef* cls = getDispatchClass(e->resolvedType);
+                    bool printsItself = false;
+                    if(cls != nullptr)
+                        for(typeMember* m : cls->members)
+                            if(auto* fd = dynamic_cast<functionDef*>(m); fd && fd->name == "print" && fd->params.empty())
+                                printsItself = true;
+                    if(!printsItself){
+                        string text = e->text();
+                        e->tokens.assign(1, text + "." + getter->i6name + "()");
+                        e->resolvedType = getter->returnType.name;
+                    }
                 }
-            }
-            convertStoragelessForPrint(exprNode);
-            holdObjectCallForPrint(exprNode);
+                convertStoragelessForPrint(e);
+                holdObjectCallForPrint(e);
+            };
+            prepare(exprNode);
             interpolatedSegment seg;
             seg.isExpr = true;
             seg.expr = exprNode;
             seg.injections.assign(pendingInjections.begin() + setUpAt, pendingInjections.end());
             pendingInjections.resize(setUpAt);
+            makeChoiceSegment(seg, prepare);
             segments.push_back(seg);
         } else if((unsigned char)c >= 0x80) {
             // Directly-typed non-ASCII (smart quotes, accented characters): decode and translate
@@ -3698,4 +3709,43 @@ void bglParser::declareParamOwners(){
         }
     }
     paramOwnerFuncs.clear();
+}
+
+// `{c ? a : b}` in an interpolated string prints a or b where it stands: the segment becomes a choice
+// between a segment for each branch (nested ?: likewise), each prepared as any segment is. What prints,
+// and when each value is read, is unchanged; no temporary is stored, and a literal prints inline.
+bool bglParser::makeChoiceSegment(interpolatedSegment& seg, const std::function<void(expression*)>& prepare){
+    if(seg.injections.empty() || seg.expr == nullptr || seg.expr->tokens.size() != 1) return false;
+    auto* raw = dynamic_cast<i6RawNode*>(seg.injections.back());
+    auto it = raw ? ternaryLowerings.find(raw) : ternaryLowerings.end();
+    if(it == ternaryLowerings.end() || raw->text != it->second.text
+       || strcasecmp(seg.expr->tokens[0].c_str(), it->second.temp.c_str()) != 0
+       || !distributableTernary(it->second, false)) return false;
+    std::function<void(const ternaryLowering&, interpolatedSegment&)> fill = [&](const ternaryLowering& L, interpolatedSegment& out){
+        out.isExpr = true;
+        out.choice = new expression();
+        out.choice->tokens = {L.cond};
+        out.choice->resolvedType = "bool";
+        for(int side = 0; side < 2; side++){
+            interpolatedSegment branch;
+            if(i6RawNode* inner = side ? L.falseInner : L.trueInner) fill(ternaryLowerings[inner], branch);
+            else {
+                branch.isExpr = true;
+                branch.expr = new expression();
+                branch.expr->tokens = {side ? L.falseValue : L.trueValue};
+                branch.expr->resolvedType = side ? L.falseType : L.trueType;
+                size_t mark = pendingInjections.size();
+                prepare(branch.expr);
+                branch.injections.assign(pendingInjections.begin() + mark, pendingInjections.end());
+                pendingInjections.resize(mark);
+            }
+            (side ? out.whenFalse : out.whenTrue).push_back(branch);
+        }
+    };
+    vector<statement*> before(seg.injections.begin(), seg.injections.end() - 1);
+    interpolatedSegment choice;
+    fill(it->second, choice);
+    choice.injections = before;
+    seg = choice;
+    return true;
 }

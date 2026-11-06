@@ -381,6 +381,9 @@ void bglParser::preScanDirective(token tok){
         preScanSkipBody(/*isI6Content=*/true);
     } else if(tok.value == "#beguilersettings"){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
+    } else if(tok.value == "#mergei6"){
+        if(file.peekToken().is("?")) file.getToken();
+        file.getToken();    // the patch name; the main pass applies it
     } else if(tok.value == "#includei6"){
         // Skip optional '?' marker
         if(file.peekToken().is("?")) file.getToken();

@@ -60,8 +60,9 @@ object _zcode
 object bgl
 ;
 [Main;
-    print (string)"v-defined^";
-    print (string)"v-eq-true^";
-    print (string)"zero-defined^";
-    print (string)"not-undef^";
+    "v-defined^v-eq-true^zero-defined^not-undef";
+
+
+
+
 ];

@@ -161,6 +161,7 @@ object bgl
 ];
 [main;
     print firstover(3);
+    rtrue;
 ];
 [_bglByteAt arr i w n;
     n = 0;

@@ -4239,7 +4239,7 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
                        && dynamic_cast<initializerList*>(ad->declaredExpressionValue) == nullptr && ad->stringInitializer.empty())
                         refSlot = true;
                 }
-            if(known && !refSlot && lhsOriginal.rfind("_bgl", 0) != 0)   // the compiler's own temporaries bind freely
+            if(known && !refSlot && !isGeneratedName(lhsOriginal))   // the compiler's own temporaries bind freely
                 parsingError(format("':=' binds a 'ref', and '{0}' isn't one: use '=', or declare it `ref {1}`.",
                                     lhsOriginal, lhsCls->dName()));
         }
@@ -5580,12 +5580,96 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
         }
     }
 
+    statement* made = postInjections.empty() ? distributeTernaryCall(&callStmt) : &callStmt;
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
-    if(body != nullptr) body->statements.push_back(&callStmt);
+    if(body != nullptr) body->statements.push_back(made);
     for(statement* inj : postInjections) if(body != nullptr) body->statements.push_back(inj);
     postInjections.clear();
     return false;
+}
+
+// `f(x, c ? a : b);` is lowered as `if (c) t = a; else t = b;` and then `f(x, t);`. When the call's
+// last set-up is that ?: and t is one whole argument, the call takes each branch's value itself:
+// `if (c) f(x, a); else f(x, b);`, and a nested ?: in a branch the same way. Each value is then what
+// it is in the source, so a literal is a literal (printed inline), and no temporary is stored.
+// Only where nothing can tell the difference: the other arguments and the branch values read
+// without side effects (so the order they are evaluated in doesn't matter), and the call is one
+// statement (a routine call, or an emitter whose body is one statement), so copying it is cheap.
+// No call, assignment or increment outside string literals: reading it changes nothing.
+bool bglParser::readsOnly(const string& t){
+    for(size_t i = 0; i < t.size(); i++){
+        char c = t[i];
+        if(c == '"'){ size_t j = t.find('"', i + 1); if(j == string::npos) return false; i = j; continue; }
+        if(c == '(' && i > 0 && (isalnum((unsigned char)t[i - 1]) || t[i - 1] == '_' || t[i - 1] == ')')) return false;
+        if((c == '+' || c == '-') && i + 1 < t.size() && t[i + 1] == c) return false;
+        if(c == '=' && !(i > 0 && strchr("=<>~!", t[i - 1])) && !(i + 1 < t.size() && t[i + 1] == '=')) return false;
+    }
+    return true;
+}
+
+// Each branch of the ?: is its value alone, or a nested ?: (kept in parts) whose temporary is the value.
+bool bglParser::distributableTernary(const ternaryLowering& L, bool valuesReadOnly){
+    for(int side = 0; side < 2; side++){
+        const string& value = side ? L.falseValue : L.trueValue;
+        const string& setUp = side ? L.falseSetUp : L.trueSetUp;
+        i6RawNode* inner = side ? L.falseInner : L.trueInner;
+        if(inner != nullptr){
+            auto in = ternaryLowerings.find(inner);
+            if(in == ternaryLowerings.end() || strcasecmp(value.c_str(), in->second.temp.c_str()) != 0
+               || inner->text != in->second.text || !distributableTernary(in->second, valuesReadOnly)) return false;
+        } else if(setUp.find_first_not_of(" ") != string::npos || (valuesReadOnly && !readsOnly(value))) return false;
+    }
+    return true;
+}
+
+statement* bglParser::distributeTernaryCall(functionCallStatement* call){
+    if(pendingInjections.empty() || !call->heldPrefix.empty() || !call->heldSuffix.empty()) return call;
+    for(auto& segs : call->interpSegmentsPerArg) if(!segs.empty()) return call;
+    auto* raw = dynamic_cast<i6RawNode*>(pendingInjections.back());
+    auto it = raw ? ternaryLowerings.find(raw) : ternaryLowerings.end();
+    if(it == ternaryLowerings.end() || raw->text != it->second.text) return call;   // changed since (a held string)
+    if(call->functionName.find('(') != string::npos) return call;
+    {
+        const string& b = call->emitterBody;
+        size_t z = b.find_last_not_of(" \t\r\n;");
+        if(z != string::npos && b.substr(0, z + 1).find(';') != string::npos) return call;
+    }
+    const string temp = it->second.temp;
+    int at = -1;
+    for(size_t i = 0; i < call->args.size(); i++){
+        const auto& tk = call->args[i]->tokens;
+        if(tk.size() == 1 && strcasecmp(tk[0].c_str(), temp.c_str()) == 0){ if(at >= 0) return call; at = (int)i; continue; }
+        string text = call->args[i]->text();
+        if(!readsOnly(text) || i6Emitter::replaceWord(text, temp, "") != text) return call;
+    }
+    if(at < 0) return call;
+    if(!distributableTernary(it->second, true)) return call;
+    std::function<statement*(const ternaryLowering&)> build = [&](const ternaryLowering& L) -> statement* {
+        auto* ifs = new ifStatement();
+        ifs->src = call->src;
+        ifs->condition = new expression();
+        ifs->condition->tokens = {L.cond};
+        ifs->condition->resolvedType = "bool";
+        for(int side = 0; side < 2; side++){
+            auto* blk = new statementBlock();
+            i6RawNode* inner = side ? L.falseInner : L.trueInner;
+            if(inner != nullptr) blk->statements.push_back(build(ternaryLowerings[inner]));
+            else {
+                auto* copy = new functionCallStatement(*call);
+                auto* v = new expression();
+                v->tokens = {side ? L.falseValue : L.trueValue};
+                v->resolvedType = side ? L.falseType : L.trueType;
+                copy->args[at] = v;
+                blk->statements.push_back(copy);
+            }
+            (side ? ifs->elseBlock : ifs->thenBlock) = blk;
+        }
+        return ifs;
+    };
+    statement* made = build(it->second);
+    pendingInjections.pop_back();
+    return made;
 }
 
 // ===============================================================================

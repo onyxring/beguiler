@@ -76,14 +76,17 @@ _bglClass__info info
     height2=a;
     width2=info.width + _l_width + height2;
     _l_height=info.height;
+    rtrue;
 ];
 [localShadow _l_width sum;
     _l_width = 5;
     sum=info.width + _l_width;
     print sum;
+    rtrue;
 ];
 [main;
     scaleandcheck(0, 0, 5);
     scaleandcheck(50, 100, 9);
     localshadow();
+    rtrue;
 ];

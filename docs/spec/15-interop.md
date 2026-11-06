@@ -451,8 +451,8 @@ name over with I6's `Replace` directive, placed ahead of every include so that i
 library that defines the routine; the original remains callable through `replaced()`.
 
 I6 permits only one `Replace` per routine. If another library already replaces the routine, the I6
-stage reports an error; disable the other replacement or override through that library's own hook
-mechanism.
+stage reports an error; disable the other replacement, override through that library's own hook
+mechanism, or change only the lines needed with a patch (§14.1.6), which other patches can share.
 
 **Example**
 

@@ -18,6 +18,7 @@
   - [23.3.12 Collection at the Prompt](#23312-collection-at-the-prompt)
 - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
 - [23.5 Writing a Binding](#235-writing-a-binding)
+- [23.6 Standard Library Hooks](#236-standard-library-hooks)
 <!-- /toc -->
 
 ## 23.1 What a Binding Is
@@ -321,7 +322,7 @@ is where heap arrays are collected (§12.6):
 
 A binding for another library follows these rules:
 
-1. **Guard the file with `#once`** (§14.1.6), and declare the shared types (§23.3.7).
+1. **Guard the file with `#once`** (§14.1.7), and declare the shared types (§23.3.7).
 2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
 3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
 4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them. A program's own verb can't take a fake action's name.
@@ -334,3 +335,78 @@ A binding for another library follows these rules:
 11. **Run `_bglPromptHook` when the turn's prompt is shown** (§23.3.12), when it is not 0, at a point where no Beguile routine is running.
 
 **See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.
+
+## 23.6 Standard Library Hooks
+
+**Purpose**
+
+Lets an extension change what the standard library does inside its own routines (reading the command,
+parsing, LOOK, GO, listing objects, and so on) without replacing those routines. Each hook is a call that
+a patch (§14.1.6) merges into the library. An object that defines the hook's method answers it.
+
+**Include**
+
+```syntax
+#include <extensions/stdlib/hooks>               // every group
+#include <extensions/stdlib/hooks/⟨group⟩>       // one group
+```
+
+**Description**
+
+The hooks come in seven groups, one per area of the library. Each group is its own extension, with its
+own patch, so a program carries only the calls of the groups it includes. `<extensions/stdlib/hooks>`
+includes all seven. Each group includes `<bindings/i6StandardLibrary>`, and the groups can be included
+in any combination and order.
+
+| Group | Routines it hooks | Hooks |
+|---|---|---|
+| `informLibrary` | `InformLibrary.play` (the play loop) | `ext_afterGamePrologueNotify`, `ext_playLoopRewriteParsedCommands`, `ext_playLoopAssignObjectVariables`, `ext_playLoopPerformSingleObjectAction`, `ext_playLoopPerformMultiObjectAction` |
+| `keyboard` | `KeyboardPrimitive`, `Keyboard` | `ext_keyboardPrimitiveNotify`, `ext_keyboardPrimitive`, `ext_keyboardGetInput`, `ext_beforePrompt`, `ext_keyboardPrepInput`, `ext_keyboardHandleComment`, `ext_keyboardHandleUndo`, `ext_keyboardHandleOops` |
+| `parser` | `Parser__parse`, `Adjudicate`, `R_Process` | `ext_forceLookAhead`, `ext_suppressParsingImplicitTake`, `ext_adjudicate`, `ext_redirectActionNotify` |
+| `standardLibrary` | `Identical`, `NounWord`, `NextWord`, `AfterRoutines`, `DisplayStatus`, `ActionPrimitive` | `ext_identical`, `ext_nounWord`, `ext_nextWord`, `ext_beforeAction`, `ext_afterAction`, `ext_afterRoutines`, `ext_displayStatus` |
+| `verbs` | `PlayerTo`, `GoSub`, `LookSub`, `ExamineSub` | `ext_lookSub`, `ext_examineSub`, `ext_preDescription`, `ext_postDescription`, `ext_goSub`, `ext_goSubNoDir`, `ext_playerToNotify` |
+| `writeAfterEntry` | `WriteAfterEntry` | `ext_sdPartInvBit`, `ext_sdFullInvBit`, `ext_sdConcealBit`, `ext_sdAlwaysBit`, `ext_sdRecurseBit`, `ext_sdIsOrAre`, `ext_sdNewLineBit`, `ext_sdDoList` |
+| `writeList` | `WriteListR` | `ext_forceSingular`, `ext_wlrPluralMany` |
+
+Each hook is an `extern property`, documented where its group declares it. The `verbs` group also
+declares `orSuppressNewlineAfterDescription`. The `writeAfterEntry` group also declares
+`_WAE_recurse_flag`, `_WAE_parenth_flag`, `_WAE_child_count` and `_WAE_eldest_child`, which describe
+the entry being written.
+
+A **library extension** is an object whose parent is the library's `LibraryExtensions` object. It
+answers a hook by defining a method with the hook's name. Extensions are asked in the order they are
+declared:
+
+- A hook that returns a value is asked of each extension in turn until one answers. False (or 0) lets
+  the library carry on as it would without the hook. `ext_identical` is the exception: true leaves it to
+  the library, and false says the two objects differ.
+- A hook whose name ends in `Notify`, and `ext_afterAction`, `ext_preDescription` and
+  `ext_postDescription`, are only told. Every extension is told, and what it returns is ignored.
+- A `keyboard` hook can also return -1, which starts reading the command again.
+
+Until an extension answers a hook, the library behaves exactly as it does without the group.
+
+**Example**
+
+<!-- doctest: compile -->
+```bgl
+#include <extensions/stdlib/hooks/verbs>
+
+object darkHooks {
+    parent = LibraryExtensions;
+    bool ext_lookSub(){ print("It's too dark to make anything out.^"); rtrue; }
+}
+```
+
+**Notes**
+
+The hooks exist only for the standard library, and the patches are made against version 6.12.8 (§23.2).
+A patch that no longer matches the library is a compile-time error (§14.1.6).
+
+A group that is included costs space even when nothing answers it. On the Z-machine each group adds
+between 88 and 344 bytes; all seven add about 1.7 KB. Include only the groups an extension answers.
+
+A group defines a hook's property only when Inform 6 code has not already defined it, and an Inform 6
+object in `LibraryExtensions` answers a hook like a Beguile one.
+
+**See also** §14.1.6, §15.4, §15.6.

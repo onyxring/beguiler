@@ -104,6 +104,9 @@ private:
     // otherwise it leaves `handled` false and its return value is ignored by the caller.
     // Completion case: `#include "..."` project-file paths.
     json completeQuotedInclude(const std::string& uri, int line, int col, const std::string& lineText, bool& handled);
+    std::vector<std::pair<std::string, std::string>> reachableI6Files(const std::string& uri, bool patches);
+    json handleI6Files(const json& params);         // beguile/i6Files: for Create I6 patch
+    json handleI6PatchInfo(const json& params);     // beguile/i6PatchInfo: for Edit I6 patch
     // Completion case: `#includeI6 "..."` Inform 6 library files.
     json completeI6Include(const std::string& uri, int line, int col, const std::string& lineText, bool& handled);
     // Completion case: `includePaths = "..."` directory segments inside #beguilerSettings.

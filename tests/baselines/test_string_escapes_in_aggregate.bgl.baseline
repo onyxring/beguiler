@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -100,7 +101,7 @@ object _glulx
 ];
 object bgl
 ;
-Array _bglhdr_lines --> $9084 3;
+Array bglhaf --> $9084 3;
 array lines table "~I don't trust you,~ he mutters." "~...for you, friend,~ the guard says, ~the gate's always open.~" "plain line, no quotes";
 class _bglClass_Response
   class object
@@ -108,17 +109,18 @@ class _bglClass_Response
     weight,
     text
 ;
-Array _bglhdr_table --> $9084 2;
-array table table _bglanon6 _bglanon7;
+Array bglhag --> $9084 2;
+array table table bglrag bglrah;
 [main;
     print (string) _bglAt(lines, 0, 0)-->0 ;
     print (string)( _bglAt(table, 0, 0)-->0 ).text;
+    rtrue;
 ];
-_bglClass_Response _bglanon6
+_bglClass_Response bglrag
   with weight 1,
        text "~Don't move,~ she warns."
 ;
-_bglClass_Response _bglanon7
+_bglClass_Response bglrah
   with weight 2,
        text "He won't say."
 ;

@@ -70,13 +70,13 @@ _bglClass_Room hall
 ;
 _bglClass_Room studio
 ;
-Array _bglhdr_nums --> $9084 3;
+Array bglhae --> $9084 3;
 array nums table 1 2 3;
-Array _bglhdr_flags --> $9084 3;
+Array bglhaf --> $9084 3;
 array flags table true false true;
-Array _bglhdr_names --> $9084 2;
+Array bglhag --> $9084 2;
 array names table "alpha" "beta";
-Array _bglhdr_rooms --> $9084 3;
+Array bglhah --> $9084 3;
 array rooms table kitchen hall studio;
 [main i b s r n1 n2;
     i= _bglAt(nums, 0, 0)-->0;

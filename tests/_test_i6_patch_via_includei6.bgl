@@ -1,0 +1,4 @@
+// A patch given to #includeI6 instead of #mergeI6.
+// EXPECT_ERROR: 'run/patches/lookHook.patch' is a patch; merge it with #mergeI6
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; }
+#includeI6 "run/patches/lookHook.patch"

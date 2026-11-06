@@ -164,10 +164,10 @@ _bglClass_Room cloakroom
     _bgl_tempL0 = x; if (_bgl_tempL0 ~= nothing) { _bgl_tempL0 = (_bgl_tempL0 has light); } else _bgl_tempL0 = 0;
     lit=_bgl_tempL0;
     if (x ~= nothing) {
-        print (string)"present";
+        print "present";
     }
     if ((~~(x ~= nothing))) {
-        print (string)"absent";
+        print "absent";
     }
     if (x ~= nothing) {
     remove x;

@@ -1,0 +1,23 @@
+//===================================================================================================
+// hooks/parser.bgl — hooks in parsing (Parser__parse, Adjudicate, R_Process).
+//---------------------------------------------------------------------------------------------------
+// parser.patch merges calls to these hooks into the standard library. Including it changes nothing
+// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+#mergeI6 "parser"
+
+// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+#emitfirst {
+    #Ifndef ext_forceLookAhead;              Property individual ext_forceLookAhead;              #Endif;
+    #Ifndef ext_suppressParsingImplicitTake; Property individual ext_suppressParsingImplicitTake; #Endif;
+    #Ifndef ext_adjudicate;                  Property individual ext_adjudicate;                  #Endif;
+    #Ifndef ext_redirectActionNotify;        Property individual ext_redirectActionNotify;        #Endif;
+}
+
+extern property ext_forceLookAhead;              /// True makes the parser look ahead for a second noun on every grammar line.
+extern property ext_suppressParsingImplicitTake; /// Given (action, noun, second): true skips the implicit take; -1 reads a new command.
+extern property ext_adjudicate;                  /// Given the token's context: not false is Adjudicate's answer, in place of the library's choosing.
+extern property ext_redirectActionNotify;        /// Told (action, noun, second) when code starts an action with R_Process.

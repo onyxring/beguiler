@@ -643,6 +643,7 @@ In I6 terms, eviction is emitted as `Extend only 'w' replace`: the one directive
 library verb's opaque grammar, since it names no patterns. It detaches `w` from the library verb and
 discards the library's grammar for it; the lines a native verb declares for `w` are folded into that
 directive and become the word's complete grammar, and with no such lines the word matches nothing.
+Lines that another extern verb adds for `w` with `grammar +=` follow the directive, so they are kept.
 Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
 
 ```bgl

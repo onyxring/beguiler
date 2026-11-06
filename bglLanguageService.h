@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include "typeDef.h"
+#include "i6Patch.h"
 
 using namespace std;
 
@@ -55,6 +56,8 @@ class bglLanguageService{
     // signal the emitter to skip its own ICL generation (the user's `!%` block goes at
     // the very top of the output) and to splice the trailer (from the first `end;`
     // directive onward, including any text after) at the very bottom.
+    i6PatchSet i6Patches;   // Inform 6 files changed by `#includeI6 "x.patch"`
+
     string infHeader;   // user's `!%` lines from the top of the .inf file (with newlines preserved)
     string infTrailer;  // first `end;` directive through EOF (with newlines preserved)
 

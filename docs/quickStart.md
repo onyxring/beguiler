@@ -64,7 +64,7 @@ You should see `Compilation successful` and a transpiled `.inf` in the output di
 
 This step requires **Visual Studio Code** (see Prerequisites). If you do not already have it, install it from [code.visualstudio.com](https://code.visualstudio.com) first.
 
-Download the latest `.vsix` from the Beguilex [Releases](https://github.com/onyxring/beguilex/releases) page, then install it either way:
+The extension comes with Beguiler: the archive you unpacked in Step 1 has a `beguilex` folder holding the `.vsix` that matches your compiler, with the extension's README and CHANGELOG. (It is also attached to each Beguiler [Release](https://github.com/onyxring/beguiler/releases) on its own.) Install it either way:
 
 - **From VS Code:** open the **Extensions** view, use the `...` menu, choose **Install from VSIX...**, and select the downloaded file.
 - **From a terminal:** `code --install-extension beguile-language-<version>.vsix`. This needs the `code` command on your `PATH`; on macOS, run **Shell Command: Install 'code' command in PATH** from the VS Code command palette (Cmd+Shift+P) once, then reopen the terminal.

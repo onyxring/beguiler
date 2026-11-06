@@ -1,0 +1,42 @@
+//===================================================================================================
+// parserUtil.bgl — helpers for extensions that change how the parser chooses between objects.
+//---------------------------------------------------------------------------------------------------
+// Names for the codes the parser passes a ChooseObjects hook and the answers it takes, and two
+// routines that change the list of objects the parser is choosing between.
+//
+// Include it after the library's verblib.
+//
+// Ported from orLibrary's orUtilParser.
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+// What the parser is asking a ChooseObjects hook.
+const int PLANNING_EXCLUDE = 0;   /// Planning a list for "all": may the object be left out?
+const int PLANNING_INCLUDE = 1;   /// Planning a list for "all": may the object be put in?
+const int ASKING_FOR_HINT  = 2;   /// Choosing between matches: how good a match is the object?
+
+// A ChooseObjects hook's answer while the parser plans a list.
+const int DEFER_CHOICE  = 0;      /// Leave it to the other hooks, then the parser.
+const int FORCE_INCLUDE = 1;      /// Put the object in the list.
+const int FORCE_EXCLUDE = 2;      /// Leave the object out of the list.
+
+/// Take an object out of the choice, leaving its place in the match list empty.
+superposed int excludeObjFromDisambiguation(object obj) {
+    for(int i = 0; i < number_matched; i++) {
+        if(match_list[i] == (int)obj) {
+            match_list[i] = -1;
+            match_scores[i] = 0;
+        }
+    }
+    return 0;
+}
+
+/// Remove the match at `pos`, closing up the match list.
+superposed void removeMatchPos(int pos) {
+    for(int t = pos; t < number_matched; t++) {
+        match_list[t] = match_list[t + 1];
+        match_scores[t] = match_scores[t + 1];
+    }
+    number_matched--;
+}

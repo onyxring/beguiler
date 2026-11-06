@@ -83,4 +83,5 @@ _bglClass_Widget w
     w._widgetRefresh();
     plain._plainPing();
     print w.internalCount;
+    rtrue;
 ];

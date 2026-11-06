@@ -1,0 +1,132 @@
+# writeAfterEntry.patch: calls to the hooks of <extensions/stdlib/hooks/writeAfterEntry> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# verblib.h: WriteAfterEntry, whose working variables become the _WAE_ globals the hooks
+#   read.
+
+--- a/verblib.h
++++ b/verblib.h
+@@ -600,8 +600,10 @@
+ [ WriteAfterEntry o depth stack_p
+     p recurse_flag parenth_flag eldest_child child_count combo i j;
+ 
++    eldest_child = _WAE_eldest_child; recurse_flag = _WAE_recurse_flag; parenth_flag = _WAE_parenth_flag; child_count = _WAE_child_count;
++    _WAE_eldest_child = 0; _WAE_recurse_flag = 0; _WAE_parenth_flag = 0; _WAE_child_count = 0;
+     inventory_stage = 2;
+-    if (c_style & PARTINV_BIT) {
++    if (LibraryExtensions.RunWhile(ext_sdPartInvBit, false, o) == false && c_style & PARTINV_BIT) {
+         if (o.invent && RunRoutines(o, invent))
+             if (c_style & NEWLINE_BIT) ""; else rtrue;
+ 
+@@ -619,19 +621,19 @@
+         if (combo) L__M(##ListMiscellany, combo, o);
+     }   ! end of PARTINV_BIT processing
+ 
+-    if (c_style & FULLINV_BIT) {
++    if (LibraryExtensions.RunWhile(ext_sdFullInvBit, false, o) == false && c_style & FULLINV_BIT) {
+         if (o.invent && RunRoutines(o, invent))
+             if (c_style & NEWLINE_BIT) ""; else rtrue;
+ 
+-        if (o has light && o has worn) { L__M(##ListMiscellany, 8, o);  parenth_flag = true; }
++        if (o has light && o has worn) { L__M(##ListMiscellany, 8, o);  _WAE_parenth_flag = true; }
+         else {
+-            if (o has light)           { L__M(##ListMiscellany, 9, o);  parenth_flag = true; }
+-            if (o has worn)            { L__M(##ListMiscellany, 10, o); parenth_flag = true; }
++            if (o has light)           { L__M(##ListMiscellany, 9, o);  _WAE_parenth_flag = true; }
++            if (o has worn)            { L__M(##ListMiscellany, 10, o); _WAE_parenth_flag = true; }
+         }
+ 
+         if (o has container)
+             if (o has openable) {
+-                if (parenth_flag) print (string) AND__TX;
++                if (_WAE_parenth_flag) print (string) AND__TX;
+                 else              L__M(##ListMiscellany, 11, o);
+                 if (o has open)
+                     if (child(o)) L__M(##ListMiscellany, 12, o);
+@@ -639,29 +641,33 @@
+                 else
+                     if (o has lockable && o has locked) L__M(##ListMiscellany, 15, o);
+                     else                                L__M(##ListMiscellany, 14, o);
+-                parenth_flag = true;
++                _WAE_parenth_flag = true;
+             }
+             else
+                 if (child(o)==0 && o has transparent)
+-                    if (parenth_flag) L__M(##ListMiscellany, 16, o);
++                    if (_WAE_parenth_flag) L__M(##ListMiscellany, 16, o);
+                     else              L__M(##ListMiscellany, 17, o);
+ 
+-        if (parenth_flag) print ")";
++        if (_WAE_parenth_flag) print ")";
+     }   ! end of FULLINV_BIT processing
+ 
++    if (LibraryExtensions.RunWhile(ext_sdConcealBit, false, o) == false) {
+     if (c_style & CONCEAL_BIT) {
+-        child_count = 0;
++        _WAE_child_count = 0;
+         objectloop (p in o)
+-            if (p hasnt concealed && p hasnt scenery) { child_count++; eldest_child = p; }
++            if (p hasnt concealed && p hasnt scenery) { _WAE_child_count++; _WAE_eldest_child = p; }
+     }
+-    else { child_count = children(o); eldest_child = child(o); }
++    else { _WAE_child_count = children(o); _WAE_eldest_child = child(o); }
++    }
+ 
+-    if (child_count && (c_style & ALWAYS_BIT)) {
++    if (LibraryExtensions.RunWhile(ext_sdAlwaysBit, false, o) == false)
++    if (_WAE_child_count && (c_style & ALWAYS_BIT)) {
+         if (c_style & ENGLISH_BIT) L__M(##ListMiscellany, 18, o);
+-        recurse_flag = true;
++        _WAE_recurse_flag = true;
+     }
+ 
+-    if (child_count && (c_style & RECURSE_BIT)) {
++    if (LibraryExtensions.RunWhile(ext_sdRecurseBit, false, o) == false)
++    if (_WAE_child_count && (c_style & RECURSE_BIT)) {
+         if (o has supporter) {
+             if (c_style & ENGLISH_BIT) {
+                 if (c_style & TERSE_BIT) L__M(##ListMiscellany, 19, o);
+@@ -669,7 +675,7 @@
+                 if (o has animate)       print (string) WHOM__TX;
+                 else                     print (string) WHICH__TX;
+             }
+-            recurse_flag = true;
++            _WAE_recurse_flag = true;
+         }
+         if (o has container && (o has open || o has transparent)) {
+             if (c_style & ENGLISH_BIT) {
+@@ -678,17 +684,20 @@
+                 if (o has animate)       print (string) WHOM__TX;
+                 else                     print (string) WHICH__TX;
+                 }
+-            recurse_flag = true;
++            _WAE_recurse_flag = true;
+         }
+     }
+ 
+-    if (recurse_flag && (c_style & ENGLISH_BIT))
+-        if (child_count > 1 || eldest_child has pluralname) Tense(ARE2__TX, WERE2__TX);
++    if (LibraryExtensions.RunWhile(ext_sdIsOrAre, false, o, _WAE_child_count) == false)
++    if (_WAE_recurse_flag && (c_style & ENGLISH_BIT))
++        if (_WAE_child_count > 1 || _WAE_eldest_child has pluralname) Tense(ARE2__TX, WERE2__TX);
+         else                                                Tense(IS2__TX, WAS2__TX);
+ 
++    if (LibraryExtensions.RunWhile(ext_sdNewLineBit, false, o) == false)
+     if (c_style & NEWLINE_BIT) new_line;
+ 
+-    if (recurse_flag) {
++    if (LibraryExtensions.RunWhile(ext_sdDoList, false, o) == false)
++    if (_WAE_recurse_flag) {
+         o = child(o);
+         #Ifdef TARGET_ZCODE;
+         @push lt_value; @push listing_together; @push listing_size;
+@@ -704,6 +713,7 @@
+         #Endif;
+         if (c_style & TERSE_BIT) print ")";
+     }
++    _WAE_eldest_child = eldest_child; _WAE_recurse_flag = recurse_flag; _WAE_parenth_flag = parenth_flag; _WAE_child_count = child_count;
+ ];
+ 
+ ! ----------------------------------------------------------------------------

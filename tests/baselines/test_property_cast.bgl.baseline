@@ -70,9 +70,10 @@ object bar
 ;
 [main;
     if (bar.isnorthbound()) {
-        print (string)"north^";
+        print "north^";
     }
     if (bar.ishiddencheck()) {
-        print (string)"hidden^";
+        "hidden";
+
     }
 ];

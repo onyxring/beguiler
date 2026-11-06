@@ -37,6 +37,9 @@
 #                                                    Z and Glulx with its output checked.
 #   • LSP checks:        tools/lsp_check.py           — completion and diagnostics from `beguiler --lsp`
 #                                                    for the documents in lsp/.
+#   • Patch checks:      tools/i6patch.py             — the standard-library hooks patch compared with
+#                                                    the stock library (Z-machine and Glulx), on
+#                                                    i6patch/game.inf.
 #
 # The execution tier needs these external tools, discovered in this order:
 #   Inform 6:     $INFORM6, then `inform6` on PATH, then ../../inform6/inform6
@@ -364,6 +367,24 @@ else
         echo ""
         echo "Running LSP checks..."
         if ! python3 "$SCRIPT_DIR/tools/lsp_check.py"; then CHECK_FAIL=1; fi
+    fi
+    # Patch checks — the standard-library hook patches against the stock library, each alone and all
+    # together.
+    if [ -f "$SCRIPT_DIR/tools/i6patch.py" ] && command -v python3 >/dev/null 2>&1 && [ -x "$INFORM6" ]; then
+        HOOKS="$SCRIPT_DIR/../beguiLib/extensions/stdlib/hooks"
+        HOOK_GROUPS="informLibrary keyboard parser standardLibrary verbs writeAfterEntry writeList"
+        echo ""
+        echo "Running patch checks..."
+        ALL_DECLS=(); ALL_PATCHES=()
+        for g in $HOOK_GROUPS; do
+            ALL_DECLS+=(--decls-from "$HOOKS/$g.bgl"); ALL_PATCHES+=("$HOOKS/$g.patch")
+            if ! python3 "$SCRIPT_DIR/tools/i6patch.py" check --library "$SCRIPT_DIR/../../inform6/stdlib" \
+                    --game "$SCRIPT_DIR/i6patch/game.inf" --commands "$SCRIPT_DIR/i6patch/commands.txt" \
+                    --decls-from "$HOOKS/$g.bgl" "$HOOKS/$g.patch"; then CHECK_FAIL=1; fi
+        done
+        if ! python3 "$SCRIPT_DIR/tools/i6patch.py" check --library "$SCRIPT_DIR/../../inform6/stdlib" \
+                --game "$SCRIPT_DIR/i6patch/game.inf" --commands "$SCRIPT_DIR/i6patch/commands.txt" \
+                "${ALL_DECLS[@]}" "${ALL_PATCHES[@]}"; then CHECK_FAIL=1; fi
     fi
     echo ""
     echo "Results: $PASS passed, $FAIL failed, $ERRORS errors"

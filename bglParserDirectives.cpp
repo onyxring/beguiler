@@ -836,6 +836,10 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
                 parsingError(format("#includeI6: file '{0}' not found", innerPath));
             return false;
         }
+        if(isI6PatchFile(resolved)){
+            parsingError(format("#includeI6: '{0}' is a patch; merge it with #mergeI6", innerPath));
+            return false;
+        }
         // Emit with the resolved absolute path
         emitPath = "\"" + rewritePathSeps(resolved) + "\"";
     }
@@ -869,6 +873,41 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
         node.text = nodeText;
         languageService.globals.push_back(&node);
     }
+    return false;
+}
+
+// #mergei6 — apply a unified diff to the Inform 6 files it names, for the whole build. Nothing is
+// emitted here: the patched copies are written with the output and searched before the originals.
+bool bglParser::directiveMergeI6(token directive, abstractObject& contextObj){
+    bool optional = false;
+    if(file.peekToken().is("?")){
+        file.getToken();
+        optional = true;
+    }
+    token filename = file.getToken(eTokenType::quote);
+    string name = filename.literalText();
+    if(name.size() >= 2 && name.front()=='"' && name.back()=='"')
+        name = name.substr(1, name.size()-2);
+    if(includeNameSpansLines(name)){
+        parsingError("#mergeI6: missing closing '\"' — the patch filename must be on one line.");
+        return false;
+    }
+    filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
+    string resolved;
+    for(const char* ext : {"", ".patch", ".diff"}){
+        resolved = resolveIncludePath(name, ext, curDir, beguilerSettings.includePaths);
+        if(!resolved.empty()) break;
+    }
+    if(resolved.empty()){
+        languageService.i6Patches.merges.push_back({file.currentLocation().file, directive.src.line, "", {}});
+        if(!optional) parsingError(format("#mergeI6: patch '{0}' not found", name));
+        return false;
+    }
+    i6PatchSet::merge& rec = languageService.i6Patches.merges.emplace_back();
+    rec.sourceFile = file.currentLocation().file;
+    rec.line = directive.src.line;
+    string err = languageService.i6Patches.applyPatchFile(resolved, curDir.string(), beguilerSettings.includePaths, &rec);
+    if(!err.empty()) parsingError("#mergeI6: " + err);
     return false;
 }
 
@@ -1256,6 +1295,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#storedemitfirst"): return directiveStoredEmitFirst(directive, contextObj);
         case chk("#storedemitlast"): return directiveStoredEmitLast(directive, contextObj);
         case chk("#includei6"): return directiveIncludeI6(directive, contextObj);
+        case chk("#mergei6"): return directiveMergeI6(directive, contextObj);
         case chk("#i6"): return directiveI6(directive, contextObj);
         case chk("#define"):
         case chk("#definei6"):

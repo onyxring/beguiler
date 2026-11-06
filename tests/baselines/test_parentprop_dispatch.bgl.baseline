@@ -153,6 +153,7 @@ _bglClass_Widget gadget room1
         p = room1;
     }
     sink(gadget.grandparent());
+    rtrue;
 ];
 [_bglMoveTo o p;
      if (p) move o to p; else remove o; 

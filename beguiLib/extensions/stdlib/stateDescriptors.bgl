@@ -1,0 +1,162 @@
+//===================================================================================================
+// stateDescriptors.bgl — the notes on an object's state in lists, such as "(providing light)".
+//---------------------------------------------------------------------------------------------------
+// In room descriptions and inventories the library follows an object's name with notes on its state:
+// "(closed, empty and providing light)". Here each note comes from a handler, so a game can add its
+// own, take one away or replace one. A handler is told the object and whether to print:
+//     bool onBack(object obj, bool suppress) {
+//         if (!suppress && obj.parent == player) print("on your back");
+//         return obj.parent == player;
+//     }
+//     stateDescriptors.addInventoryHandler(onBack);
+// It returns whether the object has the state, and prints the note only when `suppress` is false.
+//
+// Room descriptions start with sdClosedContainer, sdEmptyContainer and sdLight; inventories with
+// sdWorn, sdClosedContainer, sdOpenContainer, sdLockedContainer, sdEmptyContainer and sdLight.
+// The library's list messages 1 to 6 print the note texts ("closed", "empty", "providing light",
+// "being worn", "locked", "open"). An object no handler describes gets the library's own notes.
+//
+// Include it after the library's verblib.
+//
+// Ported from orLibrary's orStateDescriptors.
+//===================================================================================================
+#once
+#include <array>
+#include <extensions/stdlib/hooks/writeAfterEntry>
+
+object stateDescriptors {
+    parent = LibraryExtensions;
+
+    array<func<bool, object, bool>> roomDescriptionHandlers[15] = { sdClosedContainer, sdEmptyContainer, sdLight };
+    array<func<bool, object, bool>> inventoryHandlers[15] = { sdWorn, sdClosedContainer, sdOpenContainer, sdLockedContainer, sdEmptyContainer, sdLight };
+    bool suppressSingleItemWhich = false;   /// True leaves out "which is" before a single note.
+
+    int _total = 0;
+    int _remaining = 0;
+
+    /// Add a note to room descriptions.
+    void addRoomDescriptionHandler(func<bool, object, bool> handler)    { roomDescriptionHandlers.append(handler); }
+    /// Add a note to inventories.
+    void addInventoryHandler(func<bool, object, bool> handler)          { inventoryHandlers.append(handler); }
+    /// Take a note out of room descriptions.
+    void removeRoomDescriptionHandler(func<bool, object, bool> handler) { roomDescriptionHandlers.removeValue(handler); }
+    /// Take a note out of inventories.
+    void removeInventoryHandler(func<bool, object, bool> handler)       { inventoryHandlers.removeValue(handler); }
+
+    bool ext_messages() {
+        if(action != ListMiscellany) rfalse;
+        switch(lm_n) {
+            case 1: print("closed");          rtrue;
+            case 2: print("empty");           rtrue;
+            case 3: print("providing light"); rtrue;
+            case 4: print("being worn");      rtrue;
+            case 5: print("locked");          rtrue;
+            case 6: print("open");            rtrue;
+        }
+        rfalse;
+    }
+
+    bool ext_sdPartInvBit(object o) {
+        bool partInv = false;
+        #i6 { if(c_style & PARTINV_BIT ~= 0) partInv = true; }
+        if(!partInv) rfalse;
+        int count = 0;
+        for(func<bool, object, bool> h in roomDescriptionHandlers) if(h(o, true)) count++;
+        if(count == 0) rfalse;
+        _printNotes(o, count, true);
+        rtrue;
+    }
+
+    bool ext_sdFullInvBit(object o) {
+        bool fullInv = false;
+        #i6 { if(c_style & FULLINV_BIT ~= 0) fullInv = true; }
+        if(!fullInv) rfalse;
+        property invented = (property)invent;
+        if(o.invented != 0) {
+            inventory_stage = 2;
+            if(RunRoutines(o, invented) != 0) {
+                #i6 { if(c_style & NEWLINE_BIT ~= 0) new_line; }
+                rtrue;
+            }
+        }
+        int count = 0;
+        for(func<bool, object, bool> h in inventoryHandlers) if(h(o, true)) count++;
+        if(count == 0) rfalse;
+        _printNotes(o, count, false);
+        rtrue;
+    }
+
+    // " (which is closed, empty and providing light)": the notes, joined as a list.
+    void _printNotes(object o, int count, bool roomDescription) {
+        _total = count;
+        _remaining = count;
+        print(" (");
+        if(!suppressSingleItemWhich && count == 1) {
+            #i6 { print (string) WHICH__TX, (IsOrAre) o, " "; }
+        }
+        if(roomDescription) { for(func<bool, object, bool> h in roomDescriptionHandlers) _between(h(o, false)); }
+        else                { for(func<bool, object, bool> h in inventoryHandlers) _between(h(o, false)); }
+        print(")");
+    }
+
+    // After a note: a comma, or the "and" before the last.
+    void _between(bool hasState) {
+        if(!hasState) return;
+        _remaining--;
+        int total = _total;
+        if(_remaining > 1) {
+            #i6 { print (string) COMMA__TX; }
+        }
+        if(_remaining == 1) {
+            #i6 { print (SerialComma) total, (string) AND__TX; }
+        }
+    }
+}
+
+/// "being worn", for an object worn.
+bool sdWorn(object obj, bool suppress) {
+    bool state = obj.has(worn);
+    if(!suppress && state) L__M(ListMiscellany, 4);
+    return state;
+}
+
+/// "providing light", for a light where it is dark.
+bool sdLight(object obj, bool suppress) {
+    bool state = obj.has(light) && location.hasnt(light) && actor.parent.hasnt(light);
+    if(!suppress && state) L__M(ListMiscellany, 3);
+    return state;
+}
+
+/// "closed", for a closed container.
+bool sdClosedContainer(object obj, bool suppress) {
+    bool state = obj.has(container) && obj.hasnt(open);
+    if(!suppress && state) L__M(ListMiscellany, 1);
+    return state;
+}
+
+/// "open", for an open container that opens and closes.
+bool sdOpenContainer(object obj, bool suppress) {
+    bool state = obj.has(container) && obj.has(openable) && obj.has(open);
+    if(!suppress && state) L__M(ListMiscellany, 6);
+    return state;
+}
+
+/// "locked", for a locked object.
+bool sdLockedContainer(object obj, bool suppress) {
+    bool state = obj.has(openable) && obj.hasnt(open) && obj.has(lockable) && obj.has(locked);
+    if(!suppress && state) L__M(ListMiscellany, 5);
+    return state;
+}
+
+/// "empty", for an open or transparent container with nothing to see in it.
+bool sdEmptyContainer(object obj, bool suppress) {
+    bool state = false;
+    if(obj.has(container) && (obj.has(open) || obj.has(transparent))) {
+        state = true;
+        for(object c in bgl.world.inParent(obj)) {
+            if(c.hasnt(concealed) && c.hasnt(scenery)) { state = false; break; }
+        }
+    }
+    if(!suppress && state) L__M(ListMiscellany, 2);
+    return state;
+}

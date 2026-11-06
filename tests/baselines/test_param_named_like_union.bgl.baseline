@@ -67,6 +67,7 @@ object bgl
 ];
 [main;
     print count("t");
+    rtrue;
 ];
 [typeof v;
     if (v==nothing) {

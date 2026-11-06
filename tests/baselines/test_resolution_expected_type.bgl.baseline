@@ -65,12 +65,13 @@ object bgl
     c = 1;
     f = 4;
     if (c==1) {
-        print (string)"c is red";
+        print "c is red";
     }
     if (f==4) {
-        print (string)"f is also red";
+        print "f is also red";
     }
     c = 1;
     f = 4;
     demo(4);
+    rtrue;
 ];

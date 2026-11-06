@@ -1,0 +1,51 @@
+// run_stdlib_review_impressions — <extensions/stdlib/firstImpressions>, <extensions/stdlib/review> and
+// <extensions/stdlib/distinctRead>: an impression shows the first time only, and again under REVIEW;
+// REVIEW takes no turn; READ prints readDescription, sends `description` on to EXAMINE, and refuses
+// an object without one.
+// EXPECT_OUTPUT: An old stone.
+// EXPECT_OUTPUT: [first look at the stone]
+// EXPECT_OUTPUT: You have not already examined the scroll.
+// EXPECT_OUTPUT: [reviewed: 2 turns]
+// EXPECT_OUTPUT: It says: KEEP OUT.
+// EXPECT_OUTPUT: A rolled scroll.
+// EXPECT_OUTPUT: The stone cannot be read.
+// INPUT: x stone
+// INPUT: x stone
+// INPUT: review scroll
+// INPUT: review stone
+// INPUT: count
+// INPUT: read sign
+// INPUT: read scroll
+// INPUT: read stone
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/distinctRead>
+#include <extensions/stdlib/firstImpressions>
+#include <extensions/stdlib/review>
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object stone {
+    "stone"; rawArray<dictionaryWord> name = {.stone}; parent = roomA;
+    string description = "An old stone.";
+    string postImpression = "^[first look at the stone]";
+}
+object scroll {
+    "scroll"; rawArray<dictionaryWord> name = {.scroll}; parent = roomA;
+    string description = "A rolled scroll.";
+    property readDescription = description;
+}
+object sign {
+    "sign"; rawArray<dictionaryWord> name = {.sign}; parent = roomA;
+    string description = "A sign.";
+    string readDescription = "It says: KEEP OUT.";
+}
+verb CountTurns {
+    meta = true;
+    grammar = { {.count} };
+    void handler() { print($"[reviewed: {turns} turns]^"); }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

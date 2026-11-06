@@ -67,7 +67,7 @@ Object pad "pad";
 Object basket "basket";
 [ Main;
 if (parent(basket) == pad&&child(basket) == nothing) {
-    print (string)"on the pad";
+    print "on the pad";
 }
 
 ];

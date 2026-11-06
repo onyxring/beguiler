@@ -75,23 +75,27 @@ _bglClass_Score g_pts
     bonus = 8;
     print "Score: ";
     print pts;
-    print "^";
-    print "Use {braces} for interpolation.^";
-    print "Debug pts=";
+    print "^Use {braces} for interpolation.^Debug pts=";
+
+
     print pts;
-    print "^";
-    print "Total: ";
+    print "^Total: ";
+
     print pts + bonus;
-    print "^";
-    print "Product: ";
+    print "^Product: ";
+
     print pts * 2;
-    print "^";
-    print "Final: ";
+    print "^Final: ";
+
     print g_pts.get();
-    print "^";
-    print "Grade: ";
-    if (pts > 50) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
+    print "^Grade: ";
+
+    if (pts > 50) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
     print "^";
     print pts;
     print " plus ";
@@ -99,6 +103,7 @@ _bglClass_Score g_pts
     print " is ";
     print pts + bonus;
     print "^";
+    rtrue;
 ];
 
 #Ifndef debug_flag;

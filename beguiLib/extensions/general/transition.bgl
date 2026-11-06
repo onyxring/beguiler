@@ -1,0 +1,32 @@
+//===================================================================================================
+// transition.bgl — divide story parts: optional centered text, a centered prompt, a key press, then a
+// cleared window.
+//---------------------------------------------------------------------------------------------------
+//     bgl.output.transition("Chapter Two");
+//===================================================================================================
+#once
+#include <ui>
+#include <extensions/general/center>
+
+extend _bglOutput {
+    /// Print `text` centered, then `prompt` ("Press any key to continue" when null), wait for a key, and
+    /// clear the main window unless `skipErase` is true.
+    emitter void transition(string text = null, string prompt = null, bool skipErase = false) { _transition($text, $prompt, $skipErase) }
+}
+
+superposed void _transition(string text, string prompt, bool skipErase) {
+    print("^^");
+    if(text != null) {
+        bgl.output.center(text);
+        print("^^");
+    }
+    if(prompt == null) prompt = "Press any key to continue";
+    bgl.output.center(prompt);
+    bgl.ui.waitForKey();
+    if(skipErase) return;
+    #if TARGET_GLULX
+        bgl.asm.windowClear(bgl.ui.mainWin.id);
+    #else
+        bgl.asm.eraseWindow(0);
+    #endif
+}

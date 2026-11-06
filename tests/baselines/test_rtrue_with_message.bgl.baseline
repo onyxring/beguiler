@@ -63,11 +63,11 @@ object actor
   with short_name "the troll"
 ;
 [blockMove;
-    print (string)"Blundering around in the dark isn't a good idea!";
+    print "Blundering around in the dark isn't a good idea!";
     rtrue;
 ];
 [seeNothing;
-    print (string)"nothing happens";
+    print "nothing happens";
     rfalse;
 ];
 [greet;
@@ -76,7 +76,7 @@ object actor
     rtrue;
 ];
 [oldStyle;
-    print (string)"legacy";
+    print "legacy";
     rtrue;
 ];
 [oldStyleFalse;
@@ -84,18 +84,19 @@ object actor
 ];
 [main;
     if (blockmove()) {
-        print (string)" -> blockMove rtrue^";
+        print " -> blockMove rtrue^";
     }
     if ((~~seenothing())) {
-        print (string)" -> seeNothing rfalse^";
+        print " -> seeNothing rfalse^";
     }
     if (greet()) {
-        print (string)" -> greet rtrue^";
+        print " -> greet rtrue^";
     }
     if (oldstyle()) {
-        print (string)" -> oldStyle rtrue^";
+        print " -> oldStyle rtrue^";
     }
     if ((~~oldstylefalse())) {
-        print (string)" -> oldStyleFalse rfalse^";
+        " -> oldStyleFalse rfalse";
+
     }
 ];

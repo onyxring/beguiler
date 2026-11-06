@@ -1,0 +1,25 @@
+// run_stdlib_hooks_one_group — one group of hooks, <extensions/stdlib/hooks/verbs>, is included on its
+// own: its hooks answer, and the library is otherwise as usual.
+// EXPECT_OUTPUT: You jump on the spot, fruitlessly.
+// EXPECT_OUTPUT: [LOOK hooked]
+// EXPECT_OUTPUT: [going]
+// EXPECT_OUTPUT: Room B.
+// INPUT: jump
+// INPUT: look
+// INPUT: north
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/hooks/verbs>
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; object n_to = roomB; }
+object roomB { short_name = "Room B"; string description = "Room B."; attributes = {light}; }
+object myHooks {
+    parent = LibraryExtensions;
+    bool ext_lookSub() { print("[LOOK hooked]^"); rfalse; }
+    bool ext_goSub() { print("[going]^"); rfalse; }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

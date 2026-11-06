@@ -72,4 +72,5 @@ object bgl
     print (string)c;
     print (string)label;
     print (string)first;
+    rtrue;
 ];

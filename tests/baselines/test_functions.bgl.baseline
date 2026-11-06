@@ -60,10 +60,12 @@ object _zcode
 object bgl
 ;
 [sayHello;
-    print (string)"hello";
+    print "hello";
+    rtrue;
 ];
 [sayCount n;
     print n;
+    rtrue;
 ];
 [add a b r;
     r=a + b;
@@ -99,13 +101,16 @@ object bgl
 ];
 [printAny v;
     print v;
+    rtrue;
 ];
 [printFlag flag;
     if (flag) {
-        print (string)"y";
+        print "y";
+        rtrue;
     }
     else {
-        print (string)"n";
+        print "n";
+        rtrue;
     }
 ];
 [main result clamped sum pos total;
@@ -118,4 +123,5 @@ object bgl
     total=sumto(5);
     printany(result);
     printflag(pos);
+    rtrue;
 ];

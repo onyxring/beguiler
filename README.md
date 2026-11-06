@@ -35,7 +35,7 @@ If you are looking into Beguile, you should also use the associated VS Code exte
 
 ### Download the binaries...
 
-Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguiler/releases).
+Pre-built binaries for macOS (Intel + Apple Silicon), Linux, and Windows are attached to each [Release](https://github.com/onyxring/beguiler/releases). Each archive also carries the matching Beguilex extension, in its `beguilex` folder, along with the extension's documentation.
 
 ### Or build it from source...
 

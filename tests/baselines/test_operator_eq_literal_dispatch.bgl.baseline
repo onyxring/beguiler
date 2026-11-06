@@ -84,4 +84,5 @@ _bglClass_widget w
     w.value._opeq_int(250);
     v = 999;
     w.value._opeq_int(v);
+    rtrue;
 ];

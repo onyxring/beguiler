@@ -1,0 +1,52 @@
+// run_english_pronouns — <languages/english>: subjects with agreeing verbs, each pronoun case, for the
+// player, a woman, a plural and a thing, in present tense and then past.
+// EXPECT_OUTPUT: You give the ball to her. She gives the ball to you. The boxes fall. It falls.
+// EXPECT_OUTPUT: The box is closed. You're tired. The boxes are heavy. She isn't here. They have none.
+// EXPECT_OUTPUT: You can't wear that. Those are hers. It is its own. She hurts herself.
+// EXPECT_OUTPUT: You see the box, then yourself. 3 rocks, 1 rock.
+// EXPECT_OUTPUT: You gave the ball to her. The boxes fell. The box was closed. You were tired. She couldn't.
+// EXPECT_OUTPUT: The box is not something you can close.
+// EXPECT_OUTPUT: The girl observes that the box is not something she can close.
+// EXPECT_OUTPUT: The girl observes that she can't reach it.
+// INPUT: go
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <languages/english>
+#using bgl.printRules;
+#using bgl.english;
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object ball  { "ball";  rawArray<dictionaryWord> name = {.ball};  parent = roomA; }
+object box   { "box";   rawArray<dictionaryWord> name = {.box};   parent = roomA; }
+object boxes { "boxes"; rawArray<dictionaryWord> name = {.boxes}; parent = roomA; attributes = {pluralname}; }
+object girl  { "girl";  rawArray<dictionaryWord> name = {.girl};  parent = roomA; attributes = {animate, female}; }
+verb Go2 {
+    grammar = { {.go} };
+    void handler() {
+        print($"{cThe(player, "give", "gives", "gave")} {the(ball)} to {them(girl)}. ");
+        print($"{cThey(girl, "give", "gives", "gave")} {the(ball)} to {them(player)}. ");
+        print($"{cThe(boxes, "fall", "falls", "fell")}. {cThey(box, "fall", "falls", "fell")}.^");
+        print($"{cThe(box, are)} closed. {cThe(player, are)} tired. {cThe(boxes, are)} heavy. ");
+        print($"{cThey(girl, isnt)} here. {cThey(boxes, have)} none.^");
+        print($"{cThe(player, cant)} wear {that(box)}. {cThat(boxes)} are {theirs(girl)}. ");
+        print($"{cThey(box, are)} {their(box)} own. {cThey(girl, "hurt", "hurts", "hurt")} {themselves(girl)}.^");
+        actor = player;
+        print($"{cThey(player, "see", "sees", "saw")} {theSelf(box)}, then {theSelf(player)}. ");
+        int three = 3; int one = 1;
+        print($"{three} rock{s(three)}, {one} rock{s(one)}.^");
+        #i6 { player.narrative_tense = PAST_TENSE; }
+        print($"{cThe(player, "give", "gives", "gave")} {the(ball)} to {them(girl)}. {cThe(boxes, "fall", "falls", "fell")}. ");
+        print($"{cThe(box, are)} closed. {cThe(player, are)} tired. {cThey(girl, cant)}.^");
+        #i6 { player.narrative_tense = PRESENT_TENSE; }
+        print($"{cTheReport(box, are)} not something {they(actor)} can close.^");
+        actor = girl;
+        print($"{cTheReport(box, are)} not something {they(actor)} can close.^");
+        print($"{cTheReport(actor, cant)} reach {them(box)}.^");
+        actor = player;
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

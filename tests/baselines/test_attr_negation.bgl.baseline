@@ -76,15 +76,16 @@ _bglClass_room courtyard
 ;
 [main;
     if ((~~(cellar has light))) {
-        print (string)"cellar dark^";
+        print "cellar dark^";
     }
     if ((~~(darkvault has light))) {
-        print (string)"darkVault dark^";
+        print "darkVault dark^";
     }
     if ((lampshelf has light) && (~~(lampshelf has scenery))&&(lampshelf has container)) {
-        print (string)"lampShelf composed correctly^";
+        print "lampShelf composed correctly^";
     }
     if ((courtyard has light)) {
-        print (string)"courtyard inherits light^";
+        "courtyard inherits light";
+
     }
 ];

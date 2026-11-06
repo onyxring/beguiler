@@ -1,0 +1,14 @@
+// run_i6_patch_two_files — one patch, made with --make-patch, changes two Inform 6 files.
+// EXPECT_OUTPUT: [verblib patched]
+// EXPECT_OUTPUT: [parser patched]
+// INPUT: look
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#mergeI6 "patches/twoFiles"
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

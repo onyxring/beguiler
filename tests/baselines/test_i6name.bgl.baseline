@@ -86,6 +86,7 @@ class _bglClass_Widget
     print _bgl_Money_scale_1_int(5);
     print _bgl_Money_scale_2_int_int(3, 4);
     print _bgl_bglOpCodes_readChar(1);
+    rtrue;
 ];
 [_bgl_Money_scale_2_int_int a b;
     return a * b;

@@ -9,6 +9,9 @@ Constant beguiler = 5;
 
 Replace banner;
 
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
@@ -101,7 +104,8 @@ object bgl
         #Ifdef INFIX; print "X";
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     
-    print (string)"^";
+    print "^";
+     _bglBannerExtras(); 
 ];
 class _bglClass_infoVerb
   class object
@@ -109,7 +113,7 @@ class _bglClass_infoVerb
 _bglClass_infoVerb _bglVerb_survey
   with priority 5,
        handler [;
-    print (string)"x";
+    print "x";
   ]
 ;
 [surveysub;
@@ -119,6 +123,19 @@ verb meta 'survey'
     * -> survey;
 [main;
 ];
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
+
 
         [main;
             bglInit();

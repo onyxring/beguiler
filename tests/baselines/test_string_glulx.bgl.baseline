@@ -94,6 +94,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -111,9 +112,9 @@ object _glulx
 object bgl
 ;
 array _bglstreamcounts --> 2;
-Array _bglhdr__bglbufstreamstack --> $9084 0;
+Array bglhaf --> $9084 0;
 array _bglbufstreamstack table 16;
-Array _bglhdr__bglbufglulxstreams --> $9084 0;
+Array bglhag --> $9084 0;
 array _bglbufglulxstreams table 16;
 
     Default bglStringPoolReserve 10;
@@ -1374,6 +1375,7 @@ class _bglString(bglstringpoolreserve)
     s1 = "hello";
     s2 = s1;
     s3 = "interp {s1} world";
+    rtrue;
 ];
 [exerciseEquality s eq_lit o eq_str code;
     s = _bglStr._bglText_new();
@@ -1443,7 +1445,7 @@ class _bglString(bglstringpoolreserve)
     _l_has=_bglStr._bglText_contains(s, ",");
     emp=_bglStr._bglText_isEmpty(s);
     s._bglText_capture();
-    print (string)"captured-content";
+    print "captured-content";
     s._bglText_release();
     if (t) t._bglText_free();
     if (s) s._bglText_free();
@@ -1455,6 +1457,7 @@ class _bglString(bglstringpoolreserve)
     exerciseconcat();
     exercisenullable();
     exercisemethods();
+    rtrue;
 ];
 [_bgl_string__opeqeq a b;
     return _bglstr._bglText_areEqual(a, b, false);

@@ -1,0 +1,26 @@
+// run_english_fixed_tense — <languages/english> with narrativeTense and narrativeVoice set: past tense
+// and the first person, whatever the player's own properties say.
+// EXPECT_OUTPUT: I gave the ball to her. The boxes were heavy. I couldn't. I was tired.
+// INPUT: go
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; narrativeTense = 2; narrativeVoice = 1; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <languages/english>
+#using bgl.printRules;
+#using bgl.english;
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object ball  { "ball";  rawArray<dictionaryWord> name = {.ball};  parent = roomA; }
+object boxes { "boxes"; rawArray<dictionaryWord> name = {.boxes}; parent = roomA; attributes = {pluralname}; }
+object girl  { "girl";  rawArray<dictionaryWord> name = {.girl};  parent = roomA; attributes = {animate, female}; }
+verb Go2 {
+    grammar = { {.go} };
+    void handler() {
+        print($"{cThe(player, "give", "gives", "gave")} {the(ball)} to {them(girl)}. {cThe(boxes, are)} heavy. ");
+        print($"{cThey(player, cant)}. {cThey(player, are)} tired.^");
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

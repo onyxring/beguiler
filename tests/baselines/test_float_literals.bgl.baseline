@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -116,6 +117,7 @@ object bgl
     _bglFloatPrintDecimal(z);
     _bglFloatPrintDecimal(d);
     _bglFloatPrintDecimal(e);
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     
@@ -174,20 +176,21 @@ object bgl
         fdigits = 9999;
     }
     if (isneg && (ipart ~= 0 || fdigits ~= 0)) {
-        print (string)"-";
+        print "-";
     }
     print ipart;
-    print (string)".";
+    print ".";
     if (fdigits < 1000) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 100) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 10) {
-        print (string)"0";
+        print "0";
     }
     print fdigits;
+    rtrue;
 ];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 

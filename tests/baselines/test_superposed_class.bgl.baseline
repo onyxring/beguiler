@@ -69,14 +69,16 @@ object rock
 ;
 [main;
     gizmo.weight = 9;
-    print (string)"W=";
+    print "W=";
     print gizmo.weight;
-    print (string)"^";
+    print "^";
     if ((rock ofclass _bglClass_Hammer)) {
-        print (string)"hammer^";
+        "hammer";
+
     }
     else {
-        print (string)"notHammer^";
+        "notHammer";
+
     }
 ];
 class _bglClass_Tool

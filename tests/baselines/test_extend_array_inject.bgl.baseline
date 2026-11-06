@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -120,9 +121,9 @@ _bglClass_thing r4
 _bglClass_thing r5
   with v 5
 ;
-Array _bglhdr_reflist --> $9084 4;
+Array bglhaf --> $9084 4;
 array reflist table r5 r4 r3 r1;
-Array _bglhdr_nums --> $9084 4;
+Array bglhag --> $9084 4;
 array nums table 10 40 30 50;
 [main;
 ];

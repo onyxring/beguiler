@@ -1,0 +1,13 @@
+// run_generated_name_collision — a program's own name in the shape of a generated one: the compiler
+// passes over it, so the program's array keeps its contents and each generated array its own.
+// EXPECT_OUTPUT: mine 7 8
+// EXPECT_OUTPUT: rows 2 22
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+array<int> bglraa = {7};
+array<int> bglhaa = {8};
+array<array<int>> rows = { {11, 12}, {21, 22} };
+void main(){
+    print("mine "); print(bglraa[0]); print(" "); print(bglhaa[0]); print("^");
+    print("rows "); print(rows.length); print(" "); print(rows[1][1]); print("^");
+}

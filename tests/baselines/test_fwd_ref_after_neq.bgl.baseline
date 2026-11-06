@@ -81,4 +81,5 @@ object anotherForward
 [main;
     bar.before();
     bar.aftercheck();
+    rtrue;
 ];

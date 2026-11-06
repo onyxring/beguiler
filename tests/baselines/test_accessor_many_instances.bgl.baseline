@@ -97,4 +97,5 @@ _bglClass_Thing t3
     print t1.b._opconv_int();
     print t2.b._opconv_int();
     print t3.b._opconv_int();
+    rtrue;
 ];

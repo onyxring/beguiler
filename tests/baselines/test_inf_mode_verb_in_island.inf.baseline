@@ -8,6 +8,9 @@ Constant beguiler = 5;
 
 Replace banner;
 
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
@@ -111,12 +114,13 @@ object bgl
         #Ifdef INFIX; print "X";
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     
-    print (string)"^";
+    print "^";
+     _bglBannerExtras(); 
 ];
 object _bglVerb_helloverb
   with priority 10,
        handler [;
-    print (string)"hello";
+    print "hello";
   ]
 ;
 [helloverbsub;
@@ -125,6 +129,19 @@ object _bglVerb_helloverb
 verb 'greet'
     * noun -> helloverb;
 
+
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
 
 
         [main;

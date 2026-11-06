@@ -69,9 +69,9 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr_outer --> $9084 6;
+Array bglhae --> $9084 6;
 array outer table 1 2 3 4 5 6;
-Array _bglhdr_inner --> $9084 5;
+Array bglhaf --> $9084 5;
 array inner table 10 20 30 3 40;
 [isBig x;
     return x > 3;
@@ -99,29 +99,43 @@ array inner table 10 20 30 3 40;
     _bglHeapSweepFresh(true);
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_size [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
        _bglArr_setLength [obj prop n room;
     if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+        print "^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
     room=self._bglArr_size(obj,prop);
     if (n > room) {
         n=room;
     }
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
@@ -162,9 +176,9 @@ object _bglArray
     return r;
   ],
        _bglArr_emptyValueError [which;
-    print (string)"^[Beguile run-time error: ";
+    print "^[Beguile run-time error: ";
     print (string)which;
-    print (string)"() of an empty array of values; check count() first]^";
+    print "() of an empty array of values; check count() first]^";
      quit; 
   ],
        _bglArr_map [obj prop f _bglret _bglown_dst dst srcLen i;

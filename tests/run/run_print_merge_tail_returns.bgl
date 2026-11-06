@@ -1,0 +1,73 @@
+/*  run_print_merge_tail_returns — adjacent literal prints merge, and a routine's closing constant
+    return is repeated at the end of a trailing switch's or if's branches, without changing what prints
+    or what the routine returns. A printed ternary of literals prints each inline.  */
+// EXPECT_OUTPUT: A:ab|c|d
+// EXPECT_OUTPUT: B:You|you
+// EXPECT_OUTPUT: C:@1.
+// EXPECT_OUTPUT: D:one=0 two=0 other=0
+// EXPECT_OUTPUT: E:yes=0 no=0
+// EXPECT_OUTPUT: F:line1
+// EXPECT_OUTPUT: line2
+// EXPECT_OUTPUT:  r=1
+// EXPECT_OUTPUT: G:7 8 9
+// EXPECT_OUTPUT: H:Yes|no|YesYes|nono
+// EXPECT_OUTPUT: I:one two many|is on.|is off.
+#beguilerSettings { target = z5; informName = "none"; }
+
+// An unbraced `if` keeps its own print; the next one starts a statement.
+void a(bool c) { if (c) print("a"); print("b"); print("|"); if (!c) print("x"); else print("c"); print("|d"); }
+
+// A ternary of literals is a value, not a literal to print inline.
+void b(bool caps) { print(caps ? "You" : "you"); }
+
+// A trailing switch: each branch gets the closing return, which is still 0.
+int d(int n) {
+    switch (n) {
+        case 1: print("one");
+        case 2: print("two");
+    }
+    return 0;
+}
+
+// An if/else before a closing `return false`.
+bool e(bool c) { if (c) print("yes"); else print("no"); return false; }
+
+// A branch that ends a line becomes print_ret; the routine still returns true.
+bool f(int n) {
+    switch (n) {
+        case 1: printLine("line1");
+        case 2: printLine("line2");
+    }
+    return true;
+}
+
+// A value that isn't constant is left as it is.
+int g(int n) {
+    switch (n) {
+        case 1: n = n + 6;
+        case 2: n = n + 6;
+        default: n = n + 6;
+    }
+    return n;
+}
+
+// A printed ternary of literals prints each literal inline; one an emitter prints twice still prints twice.
+void h(bool c) { print(c ? "Yes" : "no"); }
+emitter void twice(stringLiteral s) { print (string)$s; print (string)$s; }
+void h2(bool c) { twice(c ? "Yes" : "no"); }
+
+// A nested ?: chooses at each level; one inside an interpolated string chooses where it stands.
+void i(int n) { print(n == 1 ? "one" : n == 2 ? "two" : "many"); }
+void i2(bool c) { print($"is {c ? "on" : "off"}."); }
+
+void main() {
+    print("A:"); a(true); print("^");
+    print("B:"); b(true); print("|"); b(false); print("^");
+    print("C:"); print("@"); print("1."); print("^");
+    print("D:"); int r1 = d(1); print("="); print(r1); print(" "); int r2 = d(2); print("="); print(r2); print(" other"); int r3 = d(3); print("="); print(r3); print("^");
+    print("E:"); bool y = e(true); print("="); print((int)y); print(" "); bool z = e(false); print("="); print((int)z); print("^");
+    print("F:"); f(1); bool rf = f(2); print(" r="); print((int)rf); print("^");
+    print("G:"); print(g(1)); print(" "); print(g(2)); print(" "); print(g(3)); print("^");
+    print("H:"); h(true); print("|"); h(false); print("|"); h2(true); print("|"); h2(false); print("^");
+    print("I:"); i(1); print(" "); i(2); print(" "); i(3); print("|"); i2(true); print("|"); i2(false);
+}

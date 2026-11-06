@@ -117,11 +117,13 @@ extern rawArray<int>  the_timers;              /// The running timers and daemon
 extern rawArray<int>  inputobjs;               /// The objects the parser matched for the action.
 extern rawArray<int>  multiple_object;         /// The objects of a multiple-object command.
 extern rawArray<int>  kept_results;            /// A command delayed while an implicit take runs.
+extern int           pcount;                  /// How far through the grammar line the parser is.
 extern rawArray<int>  pattern;                 /// The grammar line being matched.
 extern rawArray<int>  pattern2;                /// The best grammar line matched so far.
 extern rawArray<int>  line_ttype;              /// The token types of the grammar line being analyzed.
 extern rawArray<int>  line_tdata;              /// The token data of the grammar line being analyzed.
 extern rawArray<int>  line_token;              /// The tokens of the grammar line being analyzed.
+extern int           number_matched;          /// How many objects are in match_list.
 extern rawArray<int>  match_list;              /// The objects matched so far.
 extern rawArray<int>  match_classes;           /// The equivalence classes of the matched objects.
 extern rawArray<int>  match_scores;            /// The scores of the matched objects.
@@ -177,6 +179,10 @@ extern int          special_word;          /// dictionary address for "special" 
 extern int          special_number;        /// number typed for "special" token
 extern int          verb_word;             /// the verb word (e.g. 'take')
 extern int          verb_wordnum;          /// verb position in input
+extern bool         no_infer_message;      /// a ChooseObjects hook sets this to keep the parser from noting its choice
+extern int          just_undone;           /// True right after an UNDO.
+extern bool         no_implicit_actions;   /// Set to stop the library taking things for a command.
+extern object       not_holding;           /// What a command needed held but was not.
 extern int          wn;                    /// word number currently being parsed
 extern int          scope_stage;           /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on; place objects in scope on pass 2.
 extern int          inventory_stage;       /// 1 or 2: which pass of an inventory listing is calling `invent`
@@ -260,6 +266,8 @@ extern void ScoreSub();                                                     /// 
 extern void MultiAdd(object obj);                                           /// add obj to the parser's multiple-object list
 extern int  MultiSub(object obj);                                           /// remove obj from the parser's multiple-object list; 0 if it was there
 extern void DisplayStatus();                                                /// refresh the status line
+extern int  CheckImplicitAction(var act = 0, var n = 0);                     /// whether the library may act for a command; 2 stops it
+extern void Tokenise__(var inputBuffer, var wordTable);                      /// split the input buffer into words
 extern void StatusLineHeight(int height);                                   /// set the status window height to `height` lines
 extern void DrawStatusLine();                                               /// redraws the status line
 extern void AfterGameOver();                                                /// post-game-over menu loop: AMUSING/UNDO/etc.
@@ -682,6 +690,26 @@ replace void Banner(){
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     }
     print("^");
+    #i6 { _bglBannerExtras(); }
+}
+extern property ext_bannerText;   /// A library extension's routine printing its text after the banner, returning true when it did.
+#emitfirst {
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+}
+// Each library extension's ext_bannerText, then the game's orBannerText (a routine or a string), and a
+// line between them and the game. At the end, where LibraryExtensions is defined.
+#emitlast {
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
 }
 
 //-- Remaining library routines

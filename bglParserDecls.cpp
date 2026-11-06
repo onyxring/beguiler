@@ -263,7 +263,7 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
         }
         if(inferInlineArrays && t.is(token::braceOpen)){
             // Array-of-arrays element: bake `{...}` as an anonymous inner array and store its address.
-            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            string anonName = nextAnonName();
             bakeInlineArrayAggregate(nestedElem, anonName, func, body);
             expression* elem = new expression();
             elem->tokens.push_back(anonName);
@@ -277,7 +277,7 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
         if(inferInlineObjects && t.is(token::braceOpen)){
             // Inferred inline object: a bare `{...}` element of an object-backed array takes the
             // array's element type (§6.2.1). The '{' is already consumed (it is `t`).
-            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            string anonName = nextAnonName();
             bakeInlineObjectAggregate(elemCls, elementType, anonName, func, body);
             expression* elem = new expression();
             elem->tokens.push_back(anonName);
@@ -337,9 +337,9 @@ void bglParser::adoptInitialElements(const string& arrName, const string& elemen
             if(e != nullptr && e->tokens.size() == 1)
                 if(auto* gv = languageService.findGlobalAs<variableDeclaration>(e->tokens[0]);
                    gv != nullptr && gv->declaredExpressionValue != nullptr && gv->declaredExpressionValue->tokens.size() == 1
-                   && gv->declaredExpressionValue->tokens[0].rfind("_bglanon", 0) == 0)
+                   && isAnonName(gv->declaredExpressionValue->tokens[0]))
                     if(auto* made = languageService.findGlobalAs<objectDef>(gv->declaredExpressionValue->tokens[0])){
-                        string copyName = format("_bglanon{0}", anonObjectCounter++);
+                        string copyName = nextAnonName();
                         objectDef& copy = languageService.registerObject(copyName, false, "");
                         copy.objectClass = made->objectClass;
                         copy.members = made->members;
@@ -603,7 +603,7 @@ bool bglParser::processArrayDeclaration(token dataType, token name, string eleme
                     parsingError(format("'{0}' copies an array<char> of unknown capacity: give it one (`array<char> {0}[n] = …;`), "
                                         "or share it with `ref array<char> {0} := …;`.", arrDecl.dName()));
                 bool sharedBuffer = srcText.find("_bglWorld") != string::npos;
-                bool holdsHandle = arrDecl.name.rfind("_bgl", 0) == 0
+                bool holdsHandle = isGeneratedName(arrDecl.name)
                                 || arrDecl.isRaw || !sharedBuffer;
                 if(canReread && (arrDecl.arraySize > 0 || !holdsHandle)){
                     // The initializer is copied into the array's own storage, as `name = value;` would.
@@ -1047,7 +1047,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
         // Inline-aggregate folding: for a FILE-SCOPE object-backed class variable, `Type name = {...}`
         // and `Type name = Type{...}` are the same declaration as `Type name {...}` — bake the fields
         // straight into the object `name` (§6.2.1) instead of building an intermediate anonymous object
-        // and an invalid `Type name = _bglanon`. Value/collection classes are NOT object-backed (they
+        // and an invalid `Type name = <anonymous>`. Value/collection classes are NOT object-backed (they
         // take an init-list operator=), so they fall through to the initializer-list path below.
         if(func == nullptr){
             if(foldInlineObjectAggregateDeclaration(dataType, variableName, first, func, body))
@@ -1057,7 +1057,7 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
         if(first.is(token::braceOpen) && declCls != nullptr && (!isObjectBackedClass(declCls) || func != nullptr)
            && isInlineConstructible(declCls) && ((string)dataType).find('<') == string::npos){
             // A class with `inline` members: `Pair q = { 5, 6 };` is `Pair q = Pair{ 5, 6 };`.
-            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            string anonName = nextAnonName();
             bakeInlineObjectAggregate(declCls, (string)dataType, anonName, func, body);
             file.getToken(token::endStatement);
             expression* rhs = new expression();

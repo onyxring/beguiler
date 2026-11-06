@@ -71,6 +71,7 @@ object bgl
     isEven = _bglLambda_3;
     if(isEven(4) == true) print "true"; else print "false";
     if(isEven(7) == true) print "true"; else print "false";
+    rtrue;
 ];
 [_bglLambda_0 n;
     return n + 1;

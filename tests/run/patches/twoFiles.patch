@@ -1,0 +1,20 @@
+--- a/parser.h
++++ b/parser.h
+@@ -1320,6 +1320,7 @@
+ #Endif; ! TARGET_
+ 
+ [ Keyboard  a_buffer a_table  nw i w w2 x1 x2;
++    print "[parser patched]^";
+     DisplayStatus();
+ 
+   .FreshInput;
+--- a/verblib.h
++++ b/verblib.h
+@@ -2444,6 +2444,7 @@
+ ];
+ 
+ [ LookSub allow_abbrev  visibility_levels i j k nl_flag;
++    print "[verblib patched]^";
+     if (parent(player) == 0) return RunTimeError(10);
+ 
+   .MovedByInitial;

@@ -1,0 +1,45 @@
+// run_better_choice — <extensions/stdlib/betterChoice>: TAKE passes over what is carried or fixed in place,
+// DROP keeps to what is carried, EAT prefers the edible, and an object's chooseobject answers for it:
+// forcing itself out of "all" and off the matches for EXAMINE.
+// EXPECT_OUTPUT: You drop the carried coin.
+// EXPECT_OUTPUT: Eaten: bread
+// EXPECT_OUTPUT: The plain block.
+// EXPECT_OUTPUT: taken: lamp
+// INPUT: take coin
+// INPUT: drop coin
+// INPUT: eat loaf
+// INPUT: x block
+// INPUT: take all
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/betterChoice>
+object hall { short_name = "Hall"; string description = "A hall."; attributes = {light}; }
+object heldCoin {
+    parent = hall; short_name = "carried coin"; name = {.carried, .coin}; string description = "A coin.";
+    bool after() { switch(action) { case Drop: rtrue("You drop the carried coin.^"); case Take: rtrue("You pick up the carried coin.^"); } rfalse; }
+}
+object fixedCoin { parent = hall; short_name = "fixed coin"; name = {.fixed, .coin}; attributes = {static}; string description = "A fixed coin."; }
+object bread {
+    parent = hall; short_name = "bread"; name = {.bread, .loaf}; attributes = {edible}; string description = "Bread.";
+    bool after() { if(action == Eat) rtrue("Eaten: bread^"); rfalse; }
+}
+object stoneLoaf { parent = hall; short_name = "stone loaf"; name = {.stone, .loaf}; string description = "A stone loaf."; }
+object plainBlock { parent = hall; short_name = "plain block"; name = {.plain, .block}; attributes = {static}; string description = "The plain block."; }
+object shyBlock {
+    parent = hall; short_name = "shy block"; name = {.shy, .block}; attributes = {static}; string description = "The shy block.";
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code != chooseCode.askingForHint) return chooseAnswer.exclude;
+        if(action_to_be == Examine) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+}
+object lamp {
+    parent = hall; short_name = "lamp"; name = {.lamp}; string description = "A lamp.";
+    bool after() { if(action == Take) rtrue("taken: lamp^"); rfalse; }
+}
+void Initialise(){ location = hall; }
+#includeI6 "grammar"

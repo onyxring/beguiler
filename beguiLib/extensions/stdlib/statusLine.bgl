@@ -1,0 +1,85 @@
+//===================================================================================================
+// statusLine.bgl — a status line with left, middle and right sections a game can replace.
+//---------------------------------------------------------------------------------------------------
+//     replace void statusRight() { print($"Score: {score} in {turns} turns"); }
+//
+// By default it matches the library's status line: the room on the left, the score and turns or the
+// time on the right, and nothing in the middle.
+//
+// Include it after the library's verblib. Ported from orLibrary's
+// orStatusLine.
+//===================================================================================================
+#once
+#include <buf>
+#include <extensions/general/center>
+#include <bindings/i6StandardLibrary>
+
+/// The longest text the right of the status line takes, in characters.
+const int statusRightBufferSize = 160;
+array<char> _statusRightText[statusRightBufferSize];
+
+/// Print the left of the status line.
+void statusLeft() {
+    if(location == thedark) { print(location); return; }
+    FindVisibilityLevels();
+    if(visibility_ceiling == location) print(location);
+    else print($"{bgl.printRules.the(visibility_ceiling)}");
+}
+
+/// Print the middle of the status line.
+void statusMiddle() { }
+
+/// Print the right of the status line.
+void statusRight() {
+    int width = bgl.ui.statusBar.width;
+    #i6 {
+        if(sys_statusline_flag) {
+            if(width > 29) {
+                print (string) TIME__TX;
+                LanguageTimeOfDay(sline1, sline2);
+            }
+            return;
+        }
+        #Ifdef NO_SCORE;
+            print (string) MOVES__TX, sline2;
+        #Ifnot;
+            if(width > 66) print (string) SCORE__TX, sline1, " ", (string) MOVES__TX, sline2;
+            else print sline1, "/", sline2;
+        #Endif;
+    }
+}
+
+replace void DrawStatusLine() {
+    #if TARGET_GLULX
+        if(gg_statuswin == 0) return;
+    #endif
+    if(gg_statuswin_cursize == 0) gg_statuswin_cursize = 1;
+    if(location == null || player.parent == null) return;
+    bgl.util.buf.capture(_statusRightText, statusRightBufferSize);
+    statusRight();
+    bgl.util.buf.release();
+    #if TARGET_GLULX
+        bgl.asm.setWindow(gg_statuswin);
+    #else
+        bgl.asm.setWindow(1);
+    #endif
+    bgl.ui.statusBar.height = gg_statuswin_cursize;
+    bgl.printRules.reverse;
+    bgl.printRules.fixed;
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.output.spaces(bgl.ui.statusBar.width);
+    bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - _statusRightText.length, 0);
+    print(_statusRightText);
+    bgl.ui.statusBar.moveCursor(0, 0);
+    bgl.output.center(statusMiddle, 0, centerHighlight.all);
+    bgl.printRules.reverse;
+    bgl.printRules.fixed;
+    bgl.ui.statusBar.moveCursor(0, 0);
+    statusLeft();
+    #if TARGET_GLULX
+        bgl.asm.setWindow(gg_mainwin);
+    #else
+        bgl.asm.setWindow(0);
+    #endif
+    bgl.printRules.roman;
+}

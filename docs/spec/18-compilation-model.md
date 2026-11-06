@@ -86,7 +86,8 @@ order; the first file whose path ends with the requested name is taken.
 **Relative includes, `#include "path"` and `#includeI6 "name"`.** The directory of the including file
 is searched first, then each `includePaths` entry in order (command-line entries before block
 entries). A `#includeI6` that resolves is emitted with its full absolute path, so Inform 6 never
-searches for it; the raw form `#includeI6 @"…"` bypasses resolution and is emitted verbatim.
+searches for it; the raw form `#includeI6 @"…"` bypasses resolution and is emitted verbatim. A file
+that a patch changes is read from its patched copy (§14.1.6).
 
 **Case-insensitive matching.** Every component of an include path, directory or file, matches
 case-insensitively; an exact-case match is preferred, and if two entries in one directory differ only

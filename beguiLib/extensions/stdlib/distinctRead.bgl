@@ -1,0 +1,34 @@
+//===================================================================================================
+// distinctRead.bgl — READ as its own action, not a synonym for EXAMINE.
+//---------------------------------------------------------------------------------------------------
+// READ <object> prints the object's `readDescription`: a string, plain or interpolated, or a method
+// that prints. An object without one "cannot be read". `readDescription = description` sends READ
+// on to EXAMINE, as the library does. READ ABOUT <topic> IN <object> and READ <topic> IN <object>
+// still consult the object.
+//
+// Include it after the library's verblib.
+//
+// Ported from orLibrary's orDistinctRead.
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+property readDescription;   /// The text READ prints; `description` reads as EXAMINE.
+
+extend Examine { grammar -= { {.read} }; }
+
+verb Read {
+    grammar = { {.read, NOUN} };
+
+    void handler() {
+        property text = (property)readDescription;
+        if(!noun.provides(text)) {
+            print($"{bgl.printRules.cThe(noun)} cannot be read.^");
+            return;
+        }
+        if(noun.text == (property)description) { ExamineSub(); return; }
+        PrintOrRun(noun, text);
+    }
+}
+
+extend Consult { grammar += { {.read, .about, TOPIC, .in, NOUN}, {.read, TOPIC, .in, NOUN} }; }

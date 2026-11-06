@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -113,11 +114,11 @@ object plainObj1
 ;
 object plainObj2
 ;
-Array _bglhdr_g_nums --> $9084 5;
+Array bglhaf --> $9084 5;
 array g_nums table 10 20 30 40 50;
-Array _bglhdr_g_sized --> $9084 0;
+Array bglhag --> $9084 0;
 array g_sized table 8;
-Array _bglhdr_g_flags --> $9084 3;
+Array bglhah --> $9084 3;
 array g_flags table true false true;
 Array _bglcap_g_buf -> 0 0 0 32;
 Array g_buf buffer 32;

@@ -134,7 +134,7 @@ class _bglClass_Greeter
   class object
   with
     greet[;
-        print (string)"howdy";
+        print "howdy";
     ]
 ;
 _bglClass_Greeter g_greeter
@@ -170,4 +170,5 @@ _bglClass_FlyingFish g_ff
     t=_bgl_tally_total;
     print t;
     g_greeter.greet();
+    rtrue;
 ];

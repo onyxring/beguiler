@@ -59,7 +59,7 @@ object _zcode
 ;
 object bgl
 ;
-Array _bglhdr__buf --> $9084 0;
+Array bglhae --> $9084 0;
 array _buf table 2;
 [main viaAmp viaCast slot0 slot1 a b band land;
     bglinit();
@@ -78,5 +78,6 @@ array _buf table 2;
     print band;
     if (land) {
         print 1;
+        rtrue;
     }
 ];

@@ -162,9 +162,9 @@ object k
     return x;
   ]
 ;
-Array _bglhdr_wb0 --> $9084 0;
+Array bglhae --> $9084 0;
 array wb0 table 8;
-Array _bglhdr_wb1 --> $9084 0;
+Array bglhaf --> $9084 0;
 array wb1 table 8;
 [nextBuf;
     wi=(wi + 1) % 2;
@@ -218,7 +218,18 @@ array wb1 table 8;
     _bglByteArrayLocalFree(8);
 ];
 object _bglArray
-  with _bglArr_length [obj prop;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ]

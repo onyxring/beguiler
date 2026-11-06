@@ -128,6 +128,7 @@ class i6Emitter{
         bool inLiftedTry = false;                          // emitting a lifted try body
         int liftedLoopDepth = 0;                           // loops entered within the current lifted body
         bool funcHasZTry(functionDef* fd);
+        void pushTailReturns(functionDef* fd, statementBlock* body);
         // Glulx try/catch: @catch resumes in place, so the body stays inline. Its cookie, the saved
         // outer cookie and the saved _bglFrameTop are routine locals (recursion-safe). Every exit
         // from a try body restores the outer cookie; the stack holds each active try's save local
@@ -159,7 +160,8 @@ class i6Emitter{
         struct TrackedByteMember { string raw; string lvalue; int size; };
         vector<TrackedByteMember> trackedByteMembers;
         static int i6StringChars(const string& lit);
-        string arrayHeader(const string& name, int length);
+        int arrayHeaderCounter = 0;
+        string arrayHeader(int length);
         string byteCapacityPrefix(const string& name, int capacity);
         string byteArrayDecl(const string& name, class arrayDeclaration* arr, int size, bool startsEmpty = false);
         set<const variableDeclaration*> runtimeMemberValues;   // object member values bglInit assigns

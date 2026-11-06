@@ -74,9 +74,9 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr__bglbufstreamstack --> $9084 0;
+Array bglhae --> $9084 0;
 array _bglbufstreamstack table 16;
-Array _bglhdr__bglbufglulxstreams --> $9084 0;
+Array bglhaf --> $9084 0;
 array _bglbufglulxstreams table 16;
 
     Default bglStringPoolReserve 10;
@@ -1333,9 +1333,9 @@ class _bglString(bglstringpoolreserve)
         return retval;
     ]
 ;
-Array _bglhdr_slots --> $9084 0;
+Array bglhag --> $9084 0;
 array slots table 10;
-Array _bglhdr_counts --> $9084 3;
+Array bglhah --> $9084 3;
 array counts table 3 1 2;
 [main _bgl_tempL0;
     bglinit();
@@ -1343,8 +1343,12 @@ array counts table 3 1 2;
     _bglStr.print( _bglAt(slots, 9, 0)-->0 );
     _bglArray._bglArr_setOwned(slots, 0, 9, "replaced", _bgl_stringObj__opeq);
     _bglStr.print( _bglAt(slots, 9, 0)-->0 );
-    if ( _bglAt(slots, 0, 0)-->0 ) { _bgl_tempL0 = "allocated"; } else { _bgl_tempL0 = "empty"; }
-    print (string)_bgl_tempL0;
+    if ( _bglAt(slots, 0, 0)-->0 ) {
+        print "allocated";
+    }
+    else {
+        print "empty";
+    }
     _bglArray._bglArr_append(slots, 0, "appended", _bgl_stringObj__opeq);
     _bglArray._bglArr_prepend(slots, 0, "first", _bgl_stringObj__opeq);
     _bglArray._bglArr_insert(slots, 0, 1, "second", _bgl_stringObj__opeq);
@@ -1352,6 +1356,7 @@ array counts table 3 1 2;
     _bglArray._bglArr_clear(slots, 0, _bgl_stringObj_deinit);
     _bglAt(counts, 0, 1)-->0 = 9;
     print  _bglAt(counts, 0, 0)-->0 ;
+    rtrue;
 ];
 [_bgl_string__opeqeq a b;
     return _bglstr._bglText_areEqual(a, b, false);
@@ -1380,35 +1385,50 @@ array counts table 3 1 2;
     return _bglstr._bglText_new(v);
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_set [obj prop n v;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
   ],
        _bglArr_size [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
        _bglArr_setLength [obj prop n room;
     if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+        print "^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
     room=self._bglArr_size(obj,prop);
     if (n > room) {
         n=room;
     }
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
@@ -1433,7 +1453,7 @@ object _bglArray
   ],
        _bglArr_refusesStruct [v;
      if(metaclass(v) ~= Object) rfalse; 
-    print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
+    print "^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
     return true;
   ],
        _bglArr_clear [obj prop dtor sz t;

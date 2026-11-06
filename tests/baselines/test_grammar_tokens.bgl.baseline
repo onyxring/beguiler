@@ -12,6 +12,9 @@ Constant beguiler = 5;
 
 Replace banner;
 
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
         replace main _oldmain;
     
 constant _bglWorldBufSize = 128;
@@ -87,6 +90,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -137,7 +141,8 @@ object bgl
         #Ifdef INFIX; print "X";
         #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
     
-    print (string)"^";
+    print "^";
+     _bglBannerExtras(); 
 ];
 [alwaysAllowed;
     return true;
@@ -151,7 +156,7 @@ object bgl
 object _bglVerb_measure
   with priority 10,
        handler [;
-    print (string)"Measured.";
+    print "Measured.";
   ]
 ;
 [measuresub;
@@ -162,7 +167,7 @@ verb 'measure'
 object _bglVerb_replenish
   with priority 10,
        handler [;
-    print (string)"Replenished.";
+    print "Replenished.";
   ]
 ;
 [replenishsub;
@@ -175,7 +180,7 @@ verb 'chat'
 object _bglVerb_fiddle
   with priority 10,
        handler [;
-    print (string)"Fiddled.";
+    print "Fiddled.";
   ]
 ;
 [fiddlesub;
@@ -186,7 +191,7 @@ verb 'fiddle'
 object _bglVerb_grab
   with priority 10,
        handler [;
-    print (string)"Grabbed.";
+    print "Grabbed.";
   ]
 ;
 [grabsub;
@@ -197,7 +202,7 @@ verb 'grab'
 object _bglVerb_seek
   with priority 10,
        handler [;
-    print (string)"Sought.";
+    print "Sought.";
   ]
 ;
 [seeksub;
@@ -208,7 +213,7 @@ verb 'seek'
 object _bglVerb_pour
   with priority 10,
        handler [;
-    print (string)"Poured.";
+    print "Poured.";
   ]
 ;
 [poursub;
@@ -249,6 +254,19 @@ verb 'pour'
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
  Array _bglLineEvent --> 4; 
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
+
 
         [main;
             bglInit();

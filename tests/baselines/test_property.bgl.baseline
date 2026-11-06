@@ -78,15 +78,16 @@ _bglClass_Crate g_crate
 ;
 [main;
     if (g_box provides weight) {
-        print (string)"box has weight";
+        print "box has weight";
     }
     if (g_box provides volume) {
-        print (string)"box may have volume";
+        print "box may have volume";
     }
     if (g_box provides hidden_flag) {
-        print (string)"box has hidden_flag";
+        print "box has hidden_flag";
     }
     if (g_box provides libdefinedprop) {
-        print (string)"box has libDefinedProp";
+        print "box has libDefinedProp";
+        rtrue;
     }
 ];

@@ -24,7 +24,7 @@ is specified in the section named in the last column; this table does not add li
 | Member types in a named union | at least 2 | both | §2.8.2 |
 | Integer literal in an `array<char>` initializer or element write | 0..255 | both | §12.4 |
 | Assigned array `length` range | 0..32767 / 0..2^31−1 | Z-machine / Glulx | §12.3 |
-| Include nesting depth | 255 | both | §14.1.6, §18.4 |
+| Include nesting depth | 255 | both | §14.1.7, §18.4 |
 | Compile-time errors reported per build; the first ends the build | 1 | both | §19.1, §16.7 |
 | Words in the heap for local arrays and `<linq>` results (`heapSize`) | 1536 on the Z-machine, 16384 on Glulx by default (also for 0); otherwise at least 64 | both | §12.6, §17.4 |
 | Arguments to `stringObj.format()` after the pattern (`$1`, `$2`) | 2 | both | §22.3 |

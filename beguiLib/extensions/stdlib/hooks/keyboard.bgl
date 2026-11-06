@@ -1,0 +1,31 @@
+//===================================================================================================
+// hooks/keyboard.bgl — hooks in reading the command (KeyboardPrimitive, Keyboard).
+//---------------------------------------------------------------------------------------------------
+// keyboard.patch merges calls to these hooks into the standard library. Including it changes nothing
+// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+#mergeI6 "keyboard"
+
+// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+#emitfirst {
+    #Ifndef ext_keyboardPrimitiveNotify; Property individual ext_keyboardPrimitiveNotify; #Endif;
+    #Ifndef ext_keyboardPrimitive;       Property individual ext_keyboardPrimitive;       #Endif;
+    #Ifndef ext_keyboardGetInput;        Property individual ext_keyboardGetInput;        #Endif;
+    #Ifndef ext_beforePrompt;            Property individual ext_beforePrompt;            #Endif;
+    #Ifndef ext_keyboardPrepInput;       Property individual ext_keyboardPrepInput;       #Endif;
+    #Ifndef ext_keyboardHandleComment;   Property individual ext_keyboardHandleComment;   #Endif;
+    #Ifndef ext_keyboardHandleUndo;      Property individual ext_keyboardHandleUndo;      #Endif;
+    #Ifndef ext_keyboardHandleOops;      Property individual ext_keyboardHandleOops;      #Endif;
+}
+
+extern property ext_keyboardPrimitiveNotify; /// Told (buffer, table) before each line is read.
+extern property ext_keyboardPrimitive;       /// Given (buffer, table): true when it read the line itself.
+extern property ext_keyboardGetInput;        /// Given (buffer, table): true when it filled them itself, skipping the prompt and the read.
+extern property ext_beforePrompt;            /// True skips printing the prompt.
+extern property ext_keyboardPrepInput;       /// Given (buffer, table): true skips the library's check for a blank line and OOPS.
+extern property ext_keyboardHandleComment;   /// Given (buffer, table): true skips the library's handling of a comment.
+extern property ext_keyboardHandleUndo;      /// Given (buffer, table): true skips the library's handling of UNDO.
+extern property ext_keyboardHandleOops;      /// Given (buffer, table): true skips the library's handling of OOPS.

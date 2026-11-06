@@ -63,6 +63,7 @@ object bgl
 ;
 [applyOnce x fn;
     fn(x);
+    rtrue;
 ];
 [combine x y fn result;
     result=fn(x,y);
@@ -78,6 +79,7 @@ object bgl
 ];
 [_bglLambda_0 n;
     print n;
+    rtrue;
 ];
 [_bglLambda_1 a b r;
     r=a + b;
@@ -85,6 +87,7 @@ object bgl
 ];
 [_bglLambda_2 n;
     print n;
+    rtrue;
 ];
 [_bglLambda_3 a b x;
     x=a + b;

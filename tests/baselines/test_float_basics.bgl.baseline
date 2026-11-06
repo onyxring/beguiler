@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -107,57 +108,58 @@ object bgl
     diff = _bglFloatFsub(a, b);
     prod = _bglFloatFmul(a, b);
     quot = _bglFloatFdiv(a, b);
-    print (string)"a+b = ";
+    print "a+b = ";
     _bglFloatPrintDecimal(sum);
-    print (string)"^";
-    print (string)"a-b = ";
+    print "^a-b = ";
+
     _bglFloatPrintDecimal(diff);
-    print (string)"^";
-    print (string)"a*b = ";
+    print "^a*b = ";
+
     _bglFloatPrintDecimal(prod);
-    print (string)"^";
-    print (string)"a/b = ";
+    print "^a/b = ";
+
     _bglFloatPrintDecimal(quot);
-    print (string)"^";
+    print "^";
     c = _bglFloatNumtof(10);
     c = _bglFloatFadd(c, _bglFloatNumtof(1));
     c = _bglFloatFsub(c, _bglFloatNumtof(2));
     c = _bglFloatFmul(c, _bglFloatNumtof(3));
     c = _bglFloatFdiv(c, _bglFloatNumtof(2));
-    print (string)"c = ";
+    print "c = ";
     _bglFloatPrintDecimal(c);
-    print (string)"^";
+    print "^";
     if (_bglFloatGt(a, b)) {
-        print (string)"a > b ok^";
+        print "a > b ok^";
     }
     if (_bglFloatLt(b, a)) {
-        print (string)"b < a ok^";
+        print "b < a ok^";
     }
     if (_bglFloatGe(a, a)) {
-        print (string)"a >= a ok^";
+        print "a >= a ok^";
     }
     if (_bglFloatLe(b, a)) {
-        print (string)"b <= a ok^";
+        print "b <= a ok^";
     }
     if (_bglFloatEq(a, a)) {
-        print (string)"a == a ok^";
+        print "a == a ok^";
     }
     if ((~~_bglFloatEq(a, b))) {
-        print (string)"a != b ok^";
+        print "a != b ok^";
     }
     neg = _bglFloatNumtof(-3);
-    print (string)"neg = ";
+    print "neg = ";
     _bglFloatPrintDecimal(neg);
-    print (string)"^";
+    print "^";
     h = _bglFloatNumtof(42);
     back=_bglFloatFtonumz(h);
-    print (string)"back = ";
+    print "back = ";
     print back;
-    print (string)"^";
+    print "^";
     pi_ish = _bglFloatFdiv(_bglFloatNumtof(22), _bglFloatNumtof(7));
-    print (string)"22/7 = ";
+    print "22/7 = ";
     _bglFloatPrintDecimal(pi_ish);
-    print (string)"^";
+    print "^";
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     
@@ -237,20 +239,21 @@ object bgl
         fdigits = 9999;
     }
     if (isneg && (ipart ~= 0 || fdigits ~= 0)) {
-        print (string)"-";
+        print "-";
     }
     print ipart;
-    print (string)".";
+    print ".";
     if (fdigits < 1000) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 100) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 10) {
-        print (string)"0";
+        print "0";
     }
     print fdigits;
+    rtrue;
 ];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 

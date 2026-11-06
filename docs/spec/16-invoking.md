@@ -11,6 +11,7 @@
 - [16.7 Exit Status and Console Output](#167-exit-status-and-console-output)
 - [16.8 Entry Mode](#168-entry-mode)
 - [16.9 Examples](#169-examples)
+- [16.10 Patch Tools](#1610-patch-tools)
 <!-- /toc -->
 
 ## 16.1 Synopsis
@@ -18,13 +19,15 @@
 ```text
 beguiler [options] <source> [<output>]
 beguiler --lsp [-lib=<dir>] [-includepaths=<dir>[,<dir>…]]
+beguiler --make-patch <original> <edited> [<original> <edited> …] -o <patch>
+beguiler --apply-patch <patch> <original> -o <copy>
 ```
 
 `beguiler` is a single executable that transpiles a Beguile program to Inform 6, hands the result to
 the Inform 6 compiler, and (optionally) packages the story file into a blorb. Run with no arguments it
 prints a usage summary and exits with status 1.
 
-The first line of console output is always a banner naming the compiler version and build date; the
+The first line of console output from a compile is always a banner naming the compiler version and build date; the
 compiler's version is also visible to the program as the pre-defined symbol `beguiler` (Appendix F).
 
 ## 16.2 Positional Arguments
@@ -149,3 +152,26 @@ beguiler -G --debug -includepaths=../lib,../shared game.bgl
 beguiler -inform=none game.bgl            # transpile only; leaves build/game.bgl.transpiled.inf
 beguiler -lib=/opt/beguile/beguiLib -inform=/opt/inform6/inform6 game.bgl
 ```
+
+## 16.10 Patch Tools
+
+The patch tools make and read the patches `#mergeI6` applies (§14.1.6). The VS Code extension uses
+them so that a patch is made by editing a copy of the Inform 6 file rather than by writing a diff. Each
+must be the first argument; nothing is compiled, and no banner is printed.
+
+**`--make-patch`** writes one patch of the changes from each *original* to its *edited* copy, as a
+unified diff with three lines of context, naming each file by the original's file name, after any
+comment lines at the top of the patch it replaces. Lines that
+differ only in trailing whitespace are unchanged. When nothing changed it prints `no changes` and
+writes no file.
+
+**`--apply-patch`** writes *original* with the patch's merge chunks for that file name applied. A
+merge chunk that matches nowhere is skipped rather than being an error; the tool prints a JSON object
+giving the number applied and the text of each skipped merge chunk:
+
+```text
+{"applied": 3, "failed": ["@@ -2458 @@ (patch line 19)\n …"]}
+```
+
+Both exit with status 0 on success and 1 when a file can't be read or written or the patch is
+malformed.

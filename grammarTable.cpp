@@ -73,6 +73,7 @@ void bglParser::initGrammarTable() {
         {"#storedEmitFirst directive",{"#storedemitfirst"},                                         &Self::processDirectiveDispatch},
         {"#storedEmitLast directive", {"#storedemitlast"},                                          &Self::processDirectiveDispatch},
         {"#includei6 directive",     {"#includei6"},                                                &Self::processDirectiveDispatch},
+        {"#mergei6 directive",       {"#mergei6"},                                                  &Self::processDirectiveDispatch},
         {"#i6 directive",            {"#i6"},                                                       &Self::processDirectiveDispatch},
         {"#i6replace directive",     {"#i6replace"},                                                &Self::processDirectiveDispatch},   // not a directive: reported with guidance
         {"#define directive",        {"#define"},                                                   &Self::processDirectiveDispatch},

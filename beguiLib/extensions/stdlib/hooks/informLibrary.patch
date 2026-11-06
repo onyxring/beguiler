@@ -1,0 +1,65 @@
+# informLibrary.patch: calls to the hooks of <extensions/stdlib/hooks/informLibrary> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# parser.h: the play loop (InformLibrary.play).
+
+--- a/parser.h
++++ b/parser.h
+@@ -5084,6 +5084,7 @@
+             #Endif; ! TARGET_
+ 
+             GamePrologue();
++            LibraryExtensions.RunAll(ext_afterGamePrologueNotify);
+             while (~~deadflag) {    ! everything happens in this loop
+ 
+                 #Ifdef EnglishNaturalLanguage;
+@@ -5117,6 +5118,7 @@
+ 
+                 ! Reverse "give fred biscuit" into "give biscuit to fred"
+ 
++                if (LibraryExtensions.RunWhile(ext_playLoopRewriteParsedCommands, false) == false) {
+                 if (action == ##GiveR or ##ShowR) {
+                     i = inputobjs-->2; inputobjs-->2 = inputobjs-->3; inputobjs-->3 = i;
+                     if (action == ##GiveR) action = ##Give; else action = ##Show;
+@@ -5143,6 +5145,7 @@
+ 
+                 !  --------------------------------------------------------------
+ 
++                }
+                 multiflag = false; onotheld_mode = notheld_mode; notheld_mode = false;
+                 ! For implicit taking and multiple object detection
+ 
+@@ -5154,6 +5157,7 @@
+                 ! inp1 and inp2 hold: object numbers, or 0 for "multiple object",
+                 ! or 1 for "a number or dictionary address"
+ 
++                if (LibraryExtensions.RunWhile(ext_playLoopAssignObjectVariables, false) == false) {
+                 if (inp1 == 1) noun = special_number1; else noun = inp1;
+                 if (inp2 == 1) {
+                     if (inp1 == 1) second = special_number2;
+@@ -5160,6 +5164,7 @@
+                     else           second = special_number1;
+                 }
+                 else second = inp2;
++                }
+ 
+                 !  -------------------------------------------------------------
+ 
+@@ -5176,6 +5181,7 @@
+                 ! --------------------------------------------------------------
+                 ! Generate the action...
+ 
++                switch (LibraryExtensions.RunWhile(ext_playLoopPerformSingleObjectAction, 0)) { 1: jump begin__action; 2: jump turn__end; 3: jump late__error; }
+                 if ((i == 0) ||
+                     (i == 1 && inp1 ~= 0) ||
+                     (i == 2 && inp1 ~= 0 && inp2 ~= 0)) {
+@@ -5199,6 +5205,7 @@
+                 ! (c) generate a sequence of actions from the list
+                 !     (stopping in the event of death or movement away).
+ 
++                switch (LibraryExtensions.RunWhile(ext_playLoopPerformMultiObjectAction, 0)) { 1: jump begin__action; 2: jump turn__end; 3: jump late__error; }
+                 multiflag = true;
+                 j = multiple_object-->0;
+                 if (j == 0) {

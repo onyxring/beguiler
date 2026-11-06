@@ -63,10 +63,11 @@ object bgl
     n = 1;
     print "x ";
     print n;
-    print " y";
-    print "a";
+    print " ya";
+
     print n;
-    print "^";
-    print "a ";
+    print "^a ";
+
     print n;
+    rtrue;
 ];

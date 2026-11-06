@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -119,24 +120,25 @@ class _bglClass_wrapper
     print (string)_child.title;
     if(_child.words provides print) _child.words.print(); else print (name)_child.words;
     print (string)w.head.title;
+    rtrue;
 ];
 _bglClass_menu _child
   with linkto root,
        title "a child",
        words 'foo' 'bar' 'baz' 3 
 ;
-_bglClass_menu _bglanon6
+_bglClass_menu bglrag
   with linkto root,
        title "text to display",
        words 'type' 'kind' 2 
 ;
-_bglClass_menu _bglanon7
+_bglClass_menu bglrah
   with title "lonely"
 ;
 _bglClass_wrapper w
-  with head _bglanon8
+  with head bglrai
 ;
-_bglClass_menu _bglanon8
+_bglClass_menu bglrai
   with linkto root,
        title "nested",
        words 'x//' 1 

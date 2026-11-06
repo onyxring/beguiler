@@ -80,10 +80,10 @@ object bgl
     a++;
     b--;
     if (flag) {
-        print (string)"yes";
+        print "yes";
     }
     else {
-        print (string)"no";
+        print "no";
     }
     for (i = 0 : i < 10 : i++) {
         print i;
@@ -93,13 +93,13 @@ object bgl
     }
     switch (c) {
         0:
-            print (string)"zero";
+            print "zero";
         1, 2, 3:
-            print (string)"low";
+            print "low";
         4 to 10:
-            print (string)"mid";
+            print "mid";
         default:
-            print (string)"other";
+            print "other";
     }
     for (j = 1 : j<=5 : j++) {
         print j;
@@ -107,6 +107,7 @@ object bgl
     print (string)raw_msg;
     print (string)raw_with_quote;
     print (string)title;
+    rtrue;
 ];
 
 #Ifndef debug_flag;

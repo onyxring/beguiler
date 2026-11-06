@@ -64,6 +64,7 @@ object bgl
     myint++;
     print myint;
     if (action == ##donothing) {
-        print (string)"got doNothing";
+        print "got doNothing";
+        rtrue;
     }
 ];

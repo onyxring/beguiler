@@ -88,4 +88,5 @@ _bglClass_FlyingFish g_ff
 ;
 [main;
     g_ff.describe();
+    rtrue;
 ];

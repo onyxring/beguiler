@@ -78,4 +78,5 @@ object gadget
     gadget.level._opeq(4);
     a=gadget.level._opconv_int();
     print a;
+    rtrue;
 ];

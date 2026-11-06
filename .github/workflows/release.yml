@@ -6,8 +6,52 @@ on:
       - 'v*'
 
 jobs:
+  # The VS Code extension ships with the compiler: built from onyxring/beguilex at this same tag,
+  # so tag beguilex first. Every compiler bundle gets it in a beguilex/ folder with its docs.
+  extension:
+    name: Build Beguilex
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that beguilex has this tag
+        run: |
+          if ! git ls-remote --exit-code --tags https://github.com/onyxring/beguilex.git "refs/tags/${{ github.ref_name }}" >/dev/null; then
+            echo "::error::onyxring/beguilex has no tag ${{ github.ref_name }}. Push the beguilex tag, then re-run this workflow."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          repository: onyxring/beguilex
+          ref: ${{ github.ref_name }}
+          path: beguilex
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Package the extension
+        working-directory: beguilex
+        run: |
+          npm ci
+          npm run compile
+          npx --yes @vscode/vsce package
+
+      - name: Stage the beguilex folder
+        run: |
+          mkdir -p dist/beguilex
+          cp beguilex/*.vsix dist/beguilex/
+          for f in README.md CHANGELOG.md LICENSE; do cp "beguilex/$f" dist/beguilex/; done
+          if [ -d beguilex/docs ]; then cp -R beguilex/docs dist/beguilex/; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beguilex
+          path: dist/beguilex
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.target }}
+    needs: extension
     runs-on: ${{ matrix.os }}
     # One build command on every platform. The only per-target flag left is macOS
     # -arch, which selects a slice rather than working around a portability gap:
@@ -41,6 +85,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: beguilex
+          path: beguilex-dist
+
       - name: Build (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -61,6 +110,8 @@ jobs:
           tar cf - beguiLib | tar xf - -C "$BUNDLE"
           tar cf - docs     | tar xf - -C "$BUNDLE"
           tar cf - examples | tar xf - -C "$BUNDLE"
+          mkdir "$BUNDLE/beguilex"
+          cp -R beguilex-dist/. "$BUNDLE/beguilex/"
           cp LICENSE README.md CHANGELOG.md "$BUNDLE/"
           if [ "${{ matrix.archive }}" = "zip" ]; then
             7z a "${BUNDLE}.zip" "$BUNDLE" >/dev/null
@@ -87,12 +138,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          files: |
+            artifacts/*/beguile-*.tar.gz
+            artifacts/*/beguile-*.zip
+            artifacts/beguilex/*.vsix
           draft: true
           prerelease: true
           generate_release_notes: true

@@ -1,0 +1,10 @@
+--- a/verblib.h	2026-11-03 18:15:24
++++ b/verblib.h	2026-11-03 18:15:24
+@@ -2459,6 +2459,7 @@
+     ! Printing the top line: e.g.
+     ! Octagonal Room (on the table) (as Frodo)
+     new_line;
++    print "[top line]^";
+     #Ifdef TARGET_ZCODE;
+     style bold;
+     #Ifnot; ! TARGET_GLULX;

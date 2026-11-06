@@ -154,9 +154,9 @@ object _zcode
 ;
 object bgl
 ;
-Array _bglhdr__bglbufstreamstack --> $9084 0;
+Array bglhae --> $9084 0;
 array _bglbufstreamstack table 16;
-Array _bglhdr__bglbufglulxstreams --> $9084 0;
+Array bglhaf --> $9084 0;
 array _bglbufglulxstreams table 16;
 
     Default bglStringPoolReserve 10;
@@ -1578,6 +1578,7 @@ class _bglClass_Plain
     exercisearrayindexof();
     exercisebarerefs();
     exerciseuserfacing();
+    rtrue;
 ];
 _bglClass_Point _bglParam_Point__opeqeq_a;
 _bglClass_Point _bglParam_Point__opeqeq_b;
@@ -1683,19 +1684,32 @@ _bglClass_Plain _bglLocal_exercisebarerefs_p;
     return a.cents == b;
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_set [obj prop n _l_v;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object){ obj.&prop-->n = _l_v; return; }
             obj-->(n+1) = _l_v;
         
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],

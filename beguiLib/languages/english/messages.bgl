@@ -1,0 +1,679 @@
+//===================================================================================================
+// english/messages.bgl — the standard library's messages, in place of English.h's LanguageLM.
+//---------------------------------------------------------------------------------------------------
+// The same messages, written with <languages/english>, so they follow its narrativeTense and
+// narrativeVoice settings: with a fixed tense, the other tense's text is not compiled, and the
+// helper routines English.h's messages call are left out of the story file.
+//
+// English.h stays included for the vocabulary the parser reads. A game's LibraryMessages object
+// still answers first.
+//
+// Include it after the library's verblib: the messages name the library's actions.
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+#include <languages/english>
+#using bgl.printRules;
+#using bgl.english;
+
+#mergeI6 "messages"
+
+// Ahead of English.h, so its LanguageLM is left out.
+#emitfirst { Constant BGL_ENGLISH_MESSAGES; }
+
+extern int sw__var;   // the action whose message is asked for
+
+/// Print `onIt` for a supporter, `inIt` for anything else.
+emitter void onOrIn(object o, stringLiteral onIt, stringLiteral inIt) { if ($o has supporter) print (string)$onIt; else print (string)$inIt; }
+
+// "You decide that's not such a good idea."
+superposed void _englishDecideAgainst() {
+    printLine($"{cThe(actor, "decide", "decides", "decided")} that{byTense("'s not", " wasn't")} such a good idea.");
+}
+
+replace var LanguageLM(var n, var x1, var x2) {
+    object o1 = (object)x1;
+    object o2 = (object)x2;
+    switch ((verb)sw__var) {
+        case Answer, Ask: printLine($"There {byTense("is", "was")} no reply.");
+        case Attack:      printLine($"Violence {byTense("isn't", "wasn't")} the answer to this one.");
+        case Blow:        printLine($"{cTheReport(actor, cant)} usefully blow {that(o1)}.");
+        case Burn:
+            switch (n) {
+                case 1: printLine($"This dangerous act would {byTense("achieve", "have achieved")} little.");
+                case 2: _englishDecideAgainst();
+            }
+        case Buy:         printLine($"Nothing {byTense("is", "was")} on sale.");
+        case Climb:
+            switch (n) {
+                case 1: printLine($"Climbing {that(o1)} would {byTense("achieve", "have achieved")} little.");
+                case 2: _englishDecideAgainst();
+            }
+        case Close:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} not something {they(actor)}{byTense(" can close", " could have closed")}.");
+                case 2: printLine($"{cTheReport(o1, are)} already closed.");
+                case 3: printLine($"{cThe(actor, "close", "closes", "closed")} {the(o1)}.");
+                case 4: printLine($"(first closing {the(o1)})");
+            }
+        case CommandsOff:
+            switch (n) {
+                case 1: printLine("[Command recording off.]");
+                case 2: printLine("[Command recording already off.]");
+            }
+        case CommandsOn:
+            switch (n) {
+                case 1: printLine("[Command recording on.]");
+                case 2: printLine("[Commands are currently replaying.]");
+                case 3: printLine("[Command recording already on.]");
+                case 4: printLine("[Command recording failed.]");
+            }
+        case CommandsRead:
+            switch (n) {
+                case 1: printLine("[Replaying commands.]");
+                case 2: printLine("[Commands are already replaying.]");
+                case 3: printLine("[Command replay failed.  Command recording is on.]");
+                case 4: printLine("[Command replay failed.]");
+                case 5: printLine("[Command replay complete.]");
+            }
+        case Consult:
+            print($"{cTheReport(actor, "discover", "discovers", "discovered")} nothing of interest in ");
+            if (o1 == player) printLine($"{themselves(o1)}."); else printLine($"{the(o1)}.");
+        case Cut:
+            switch (n) {
+                case 1: printLine($"Cutting {that(o1)} up would {byTense("achieve", "have achieved")} little.");
+                case 2: _englishDecideAgainst();
+            }
+        case Dig:         printLine($"Digging would {byTense("achieve", "have achieved")} nothing here.");
+        case Disrobe:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, isnt)} wearing {that(o1)}.");
+                case 2: printLine($"{cThe(actor, "take off", "takes off", "took off")} {the(o1)}.");
+                case 3: printLine($"(first taking {the(o1)} off)");
+                case 4: printLine($"{cThe(actor, "will need to", "will need to", "had to")} remove {the(noun)} first.");
+            }
+        case Drink:       printLine($"There{byTense("'s", " was")} nothing suitable to drink here.");
+        case Drop:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} already here.");
+                case 2: printLine($"{cThe(actor, "haven't got", "hasn't got", "didn't have")} {the(o1)}.");
+                case 3: printLine("Dropped.");
+                case 4: printLine($"{cThe(actor, "need to take", "need to take", "had to take")} {the(o1)} {o2.has(container) ? "out" : "off"} of {the(o2)} before dropping {them(o1)}.");
+            }
+        case Eat:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} plainly inedible.");
+                case 2: print($"{cThe(actor, "eat", "eats", "ate")} {the(o1)}");
+                        if (actor == player) printLine(". Not bad."); else printLine(".");
+            }
+        case EmptyT:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, cant)} contain things.");
+                case 2: printLine($"{cTheReport(o1, are)} closed.");
+                case 3: printLine($"{cTheReport(o1, are)} empty already.");
+                case 4: printLine($"That wouldn't {byTense("empty", "have emptied")} anything.");
+            }
+        case Enter:
+            switch (n) {
+                case 1: printLine($"But {theReport(actor, are)} already {onOrIn(o1, "on ", "in ")}{the(o1)}.");
+                case 2:
+                    print($"{cTheReport(o1, are)} not something {they(actor)}{byTense(" can ", " could ")}");
+                    switch ((dictionaryWord)x2) {
+                        case .stand: printLine("stand on.");
+                        case .sit:   printLine("sit down on.");
+                        case .lie:   printLine("lie down on.");
+                        default:     printLine("enter.");
+                    }
+                case 3: printLine($"{cTheReport(actor, cant)} get into the closed {printName(o1)}.");
+                case 4: printLine($"{cTheReport(actor, can)} only get into something free-standing.");
+                case 5: printLine($"{cThe(actor, "get", "gets", "got")}{onOrIn(o1, " onto", " into")} {the(o1)}.");
+                case 6: printLine($"(getting {onOrIn(o1, "off", "out of")} {the(o1)})");
+                case 7:
+                    if (o1.has(supporter)) printLine($"(getting onto {the(o1)})");
+                    else if (o1.has(container)) printLine($"(getting into {the(o1)})");
+                    else printLine($"(entering {the(o1)})");
+            }
+        case Examine:
+            switch (n) {
+                case 1: printLine("Darkness, noun.  An absence of light to see by.");
+                case 2: printLine($"{cTheReport(actor, "see", "sees", "saw")} nothing special about {the(o1)}.");
+                case 3: printLine($"{cTheReport(o1, are)}{byTense(" currently", "")} switched {o1.has(on) ? "on" : "off"}.");
+            }
+        case Exit:
+            switch (n) {
+                case 1: printLine($"But {theReport(actor, isnt)} in anything at the moment.");
+                case 2: printLine($"{cThe(actor, cant)} get out of the closed {printName(o1)}.");
+                case 3: printLine($"{cThe(actor, "get", "gets", "got")} {onOrIn(o1, "off", "out of")} {the(o1)}.");
+                case 4: printLine($"{cTheReport(actor, isnt)} {onOrIn(o1, "on", "in")} {the(o1)}.");
+                case 5: printLine($"(first getting {onOrIn(o1, "off", "out of")} {the(o1)})");
+                case 6: printLine($"{cThe(actor, "stand", "stands", "stood")} up.");
+            }
+        case Fill:
+            switch (n) {
+                case 1: printLine($"There {byTense("isn't", "wasn't")} anything obvious with which to fill {the(o1)}.");
+                case 2: printLine($"Filling {the(o1)} from {the(o2)} wouldn't {byTense("make", "have made")} sense.");
+            }
+        case FullScore:
+            switch (n) {
+                case 1: if (deadflag != 0) print("The score was "); else print("The score is ");
+                        printLine("made up as follows:^");
+                case 2: printLine("finding sundry items");
+                case 3: printLine("visiting various places");
+                case 4: #i6 { print "total (out of ", MAX_SCORE; }
+                        printLine(")");
+            }
+        case GetOff:      printLine($"But {theReport(actor, isnt)} on {the(o1)} at the moment.");
+        case Give:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, isnt)} holding {the(o1)}.");
+                case 2: printLine($"{cThe(actor, "juggle", "juggles", "juggled")} {the(o1)} for a while, but {agree(actor, "don't", "doesn't", "didn't")} achieve much.");
+                case 3: printLine($"{cTheReport(o1, dont)} seem interested.");
+                case 4: printLine($"{cThe(actor, "hand over", "hands over", "handed over")} {the(o1)}.");
+            }
+        case Go:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, will)}{byTense(" have", " have had")} to get {onOrIn(o1, "off", "out of")} {the(o1)} first.");
+                case 2: printLine($"{cTheReport(actor, cant)} go that way.");
+                case 3: printLine($"{cTheReport(actor, are)} unable to climb {the(o1)}.");
+                case 4: printLine($"{cTheReport(actor, are)} unable to descend by {the(o1)}.");
+                case 5: printLine($"{cTheReport(actor, cant)}, since {the(o1)} {isAre(o1)} in the way.");
+                case 6: printLine($"{cTheReport(actor, cant)}, since {the(o1)} {agree(o1, "lead", "leads", "led")} nowhere.");
+                case 7: printLine($"{cThe(actor, "depart", "departs", "departed")}.");
+            }
+        case Insert:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "need", "needs", "needed")} to be holding {the(o1)} before {they(actor)}{byTense(" can", " could")} put {them(o1)} into something else.");
+                case 2: printLine($"{cTheReport(o1, cant)} contain things.");
+                case 3: printLine($"{cTheReport(o1, are)} closed.");
+                case 4: printLine($"{cTheReport(actor, will)}{byTense(" need", " have needed")} to take {them(o1)} off first.");
+                case 5: printLine($"{cTheReport(actor, cant)} put something inside itself.");
+                case 6: printLine($"(first taking {them(o1)} off)");
+                case 7: printLine($"There{byTense(" is", " was")} no more room in {the(o1)}.");
+                case 8: printLine("Done.");
+                case 9: printLine($"{cThe(actor, "put", "puts", "put")} {the(o1)} into {the(o2)}.");
+            }
+        case Inv:
+            switch (n) {
+                case 1: printLine($"{cThe(actor, are)} carrying nothing.");
+                case 2: print($"{cThe(actor, are)} carrying");
+                case 3: printLine(":");
+                case 4: printLine(".");
+            }
+        case Jump:        printLine($"{cThe(actor, "jump", "jumps", "jumped")} on the spot, fruitlessly.");
+        case JumpIn:
+            switch (n) {
+                case 1: printLine($"Jumping in {the(o1)} {byTense("would achieve", "would have achieved")} nothing here.");
+                case 2: _englishDecideAgainst();
+            }
+        case JumpOn:
+            switch (n) {
+                case 1: printLine($"Jumping upon {the(o1)} {byTense("would achieve", "would have achieved")} nothing here.");
+                case 2: _englishDecideAgainst();
+            }
+        case JumpOver:
+            switch (n) {
+                case 1: printLine($"Jumping over {the(o1)} {byTense("would achieve", "would have achieved")} nothing here.");
+                case 2: _englishDecideAgainst();
+            }
+        case Kiss:        printLine("Keep your mind on the game.");
+        case Listen:      printLine($"{cTheReport(actor, "hear", "hears", "heard")} nothing unexpected.");
+        case ListMiscellany:
+            switch (n) {
+                case 1:  print(" (providing light)");
+                case 2:  print($" (which {isAre(o1)} closed)");
+                case 3:  print(" (closed and providing light)");
+                case 4:  print($" (which {isAre(o1)} empty)");
+                case 5:  print(" (empty and providing light)");
+                case 6:  print($" (which {isAre(o1)} closed and empty)");
+                case 7:  print(" (closed, empty and providing light)");
+                case 8:  print(" (providing light and being worn");
+                case 9:  print(" (providing light");
+                case 10: print(" (being worn");
+                case 11: print($" (which {isAre(o1)} ");
+                case 12: print("open");
+                case 13: print("open but empty");
+                case 14: print("closed");
+                case 15: print("closed and locked");
+                case 16: print(" and empty");
+                case 17: print($" (which {isAre(o1)} empty)");
+                case 18: print(" containing ");
+                case 19: print(" (on ");
+                case 20: print(", on top of ");
+                case 21: print(" (in ");
+                case 22: print(", inside ");
+            }
+        case LMode1:
+            #i6 { print (string) Story, " is now in its "; if (initial_lookmode == 1) print "normal "; }
+            printLine("~brief~ printing mode, which gives long descriptions of places never before visited and short descriptions otherwise.");
+        case LMode2:
+            #i6 { print (string) Story, " is now in its "; if (initial_lookmode ~= 1 or 3) print "normal "; }
+            printLine("~verbose~ mode, which always gives long descriptions of locations (even if you've been there before).");
+        case LMode3:
+            #i6 { print (string) Story, " is now in its "; if (initial_lookmode == 3) print "normal "; }
+            printLine("~superbrief~ mode, which always gives short descriptions of locations (even if you haven't been there before).");
+        case Lock:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, dont)} seem to be something {they(actor)}{byTense(" can", " could")} lock.");
+                case 2: printLine($"{cTheReport(o1, are)} locked at the moment.");
+                case 3: printLine($"{cTheReport(actor, will)} first have to close {the(o1)}.");
+                case 4: printLine($"{cTheReport(o1, dont)} seem to fit the lock.");
+                case 5: printLine($"{cThe(actor, "lock", "locks", "locked")} {the(o1)}.");
+            }
+        case Look:
+            switch (n) {
+                case 1: print($" (on {the(o1)})");
+                case 2: print($" (in {the(o1)})");
+                case 3: #i6 { print " (as ", (object) x1, ")"; }
+                case 4:
+                    print($"^On {the(o1)}");
+                    #i6 { WriteListFrom(child(x1), ENGLISH_BIT+RECURSE_BIT+PARTINV_BIT+TERSE_BIT+CONCEAL_BIT+ISARE_BIT); }
+                    printLine(".");
+                case 5, 6:
+                    if (o1 != location) print($"^{onOrIn(o1, "On", "In")} {the(o1)} {they(actor)} {byTense("can", "could")}");
+                    else print($"^{cThe(actor, can)}");
+                    if (n == 5) print(" also");
+                    print(" see ");
+                    #i6 { WriteListFrom(child(x1), ENGLISH_BIT+RECURSE_BIT+PARTINV_BIT+TERSE_BIT+CONCEAL_BIT+WORKFLAG_BIT); }
+                    if (o1 != location) printLine("."); else printLine(" here.");
+                case 7: printLine($"{cTheReport(actor, "see", "sees", "saw")} nothing unexpected in that direction.");
+            }
+        case LookUnder:
+            switch (n) {
+                case 1: printLine($"But it{byTense("'s", " was")} dark.");
+                case 2: printLine($"{cTheReport(actor, "find", "finds", "found")} nothing of interest.");
+            }
+        case Mild:        printLine("Quite.");
+        case Miscellany:
+            switch (n) {
+                case 1:  printLine("(considering the first sixteen objects only)^");
+                case 2:  printLine("Nothing to do.");
+                case 3:  print($" {cThe(player, "have died", "has died", "have died")} ");
+                case 4:  print($" {cThe(player, "have won", "has won", "have won")} ");
+                case 5:
+                    #i6 {
+                        print "^Would you like to RESTART, RESTORE a saved game";
+                        #Ifdef DEATH_MENTION_UNDO;
+                        if (undo_flag ~= 0) print ", UNDO your last move";
+                        #Endif;
+                        if (TASKS_PROVIDED == 0) print ", give the FULL score for that game";
+                        if (deadflag == 2 && AMUSING_PROVIDED == 0) print ", see some suggestions for AMUSING things to do";
+                        SerialComma(3); print " or QUIT?";
+                    }
+                case 6:  printLine("[Your interpreter does not provide ~undo~.  Sorry!]");
+                case 7:
+#if TARGET_GLULX
+                    printLine("[You cannot ~undo~ any further.]");
+#else
+                    printLine("~Undo~ failed.  [Not all interpreters provide it.]");
+#endif
+                case 8:  printLine("Please give one of the answers above.");
+                case 9:  printLine($"^It {byTense("is now", "was")} pitch dark in {byTense("here", "there")}.");
+                case 10: printLine("I beg your pardon?");
+                case 11: printLine("[You can't ~undo~ what hasn't been done!]");
+                case 12: printLine("[Can't ~undo~ twice in succession. Sorry!]");
+                case 13: printLine("[Previous turn undone.]");
+                case 14: printLine("Sorry, that can't be corrected.");
+                case 15: printLine("Think nothing of it.");
+                case 16: printLine("~Oops~ can only correct a single word.");
+                case 17: printLine($"It {byTense("is", "was")} pitch dark, and {they(actor)}{byTense(" can't", " couldn't")} see a thing.");
+                case 18: print("yourself");
+                case 19: printLine("As good-looking as ever.");
+                case 20: printLine("To repeat a command like ~frog, jump~, just say ~again~, not ~frog, again~.");
+                case 21: printLine($"{cTheReport(actor, can)} hardly repeat that.");
+                case 22: printLine($"{cTheReport(actor, cant)} begin with a comma.");
+                case 23: printLine($"{cTheReport(actor, "seem", "seems", "seemed")} to want to talk to someone, but I {byTense("can't", "couldn't")} see whom.");
+                case 24: printLine($"{cTheReport(actor, cant)} talk to {the(o1)}.");
+                case 25: printLine("To talk to someone, try ~someone, hello~ or some such.");
+                case 26: printLine($"(first taking {the(o1)})");
+                case 27: printLine("I didn't understand that sentence.");
+                case 28: print("I only understood you as far as wanting to ");
+                case 29: printLine("I didn't understand that number.");
+                case 30: printLine($"{cTheReport(actor, cant)} see any such thing.");
+                case 31: printLine($"{cTheReport(actor, "seem", "seems", "seemed")} to have said too little.");
+                case 32: printLine($"{cThe(actor, isnt)} holding that.");
+                case 33: printLine("You can't use multiple objects with that verb.");
+                case 34: printLine("You can only use multiple objects once on a line.");
+                case 35: #i6 { print "I'm not sure what ~", (address) x1, "~ refers to.^"; }
+                case 36: printLine("You excepted something not included anyway.");
+                case 37: printLine($"{cTheReport(actor, can)} only do that to something animate.");
+                case 38:
+                    #i6 {
+                        #Ifdef DIALECT_US;
+                        print "That's not a verb I recognize.^";
+                        #Ifnot;
+                        print "That's not a verb I recognise.^";
+                        #Endif;
+                    }
+                case 39: printLine("That's not something you need to refer to in the course of this game.");
+                case 40:
+                    print($"{cTheReport(actor, cant)} see ~");
+                    #i6 { print (address) x1; }
+                    printLine($"~ ({the(o2)}) at the moment.");
+                case 41: printLine("I didn't understand the way that finished.");
+                case 42:
+                    #i6 { if (x1 == 0) print "None"; else print "Only ", (number) x1; }
+                    print(" of those ");
+                    if (x1 == 1) print("is"); else print("are");
+                    printLine(" available.");
+                case 43: printLine("Nothing to do.");
+                case 44:
+                    print($"There {byTense("is", "was")} nothing to ");
+                    #i6 { print (address) x1; }
+                    printLine(".");
+                case 45: print("Who do you mean, ");
+                case 46: print("Which do you mean, ");
+                case 47: printLine("Sorry, you can only have one item here. Which exactly?");
+                case 48, 49:
+                    if (n == 48) print("Whom "); else print("What ");
+                    print($"{agree(player, "do", "does", "did")} {the(player, "want", "want", "want")}");
+                    if (o1 != player && x1 != 0) print($" {the(o1)}");
+                    print(" to ");
+                    PrintCommand();
+                    printLine("?");
+                case 50:
+                    #i6 {
+                        print "The score has just gone ";
+                        if (x1 > 0) print "up"; else { x1 = -x1; print "down"; }
+                        print " by ", (number) x1, " point";
+                        if (x1 > 1) print "s";
+                    }
+                case 51: printLine("(Since something dramatic has happened, your list of commands has been cut short.)");
+                case 52: printLine($"^Type a number from 1 to {(int)x1}, 0 to redisplay or press ENTER.");
+                case 53: printLine("^[Please press SPACE.]");
+                case 54: printLine("[Comment recorded.]");
+                case 55: printLine("[Comment NOT recorded.]");
+                case 56: printLine(".");
+                case 57: printLine("?");
+                case 58: printLine($"(first taking {the(o1)} {onOrIn(o2, "off", "out of")} {the(o2)})");
+                case 59: printLine("You'll have to be more specific.");
+                case 60: print($"{cThe(o1)} observes that ");
+            }
+        case No, Yes:     printLine("That was a rhetorical question.");
+        case NotifyOff:   printLine("Score notification off.");
+        case NotifyOn:    printLine("Score notification on.");
+        case Objects:
+            switch (n) {
+                case 1:  print($"{cThe(actor, "have", "has", "had")} handled");
+                case 2:  printLine($"{cThe(actor, "have", "has", "had")} handled nothing.");
+                case 3:  print(" (worn)");
+                case 4:  print(" (held)");
+                case 5:  print(" (given away)");
+                case 6:  print($" (in {printName(o1)})");
+                case 7:  print($" (in {the(o1)})");
+                case 8:  print($" (inside {the(o1)})");
+                case 9:  print($" (on {the(o1)})");
+                case 10: print(" (lost)");
+            }
+        case Open:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} not something {they(actor)}{byTense(" can open", " could have opened")}.");
+                case 2: printLine($"{cTheReport(o1, "seem", "seems", "seemed")} to be locked.");
+                case 3: printLine($"{cTheReport(o1, are)} already open.");
+                case 4:
+                    print($"{cThe(actor, "open", "opens", "opened")} {the(o1)}{byTense(", revealing ", " and revealed ")}");
+                    #i6 { if (WriteListFrom(child(x1), ENGLISH_BIT+TERSE_BIT+CONCEAL_BIT) == 0) print "nothing"; }
+                    printLine(".");
+                case 5: printLine($"{cThe(actor, "open", "opens", "opened")} {the(o1)}.");
+                case 6: printLine($"(first opening {the(o1)})");
+            }
+        case Order:       printLine($"{cThe(o1, have)} better things to do.");
+        case Places:
+            switch (n) {
+                case 1: print($"{cThe(actor, "have", "has", "had")} visited");
+                case 2: printLine(".");
+                case 3: printLine($"{cThe(actor, "have", "has", "had")} visited nothing.");
+            }
+        case Pray:        printLine($"Nothing practical {byTense("results", "resulted")} from {their(actor)} prayer.");
+        case Prompt:      print("^>");
+        case Pronouns:
+            switch (n) {
+                case 1: print("At the moment, ");
+                case 2: print("means ");
+                case 3: print("is unset");
+                case 4: printLine("no pronouns are known to the game.");
+                case 5: printLine(".");
+            }
+        case Pull, Push, Turn:
+            switch (n) {
+                case 1:
+                    if (_englishVoice() == 3) printLine($"{cThe(player)} {byTense("isn't", "wasn't")} likely to help matters by punishing {themselves(player)} that way.");
+                    else printLine($"Punishing {themselves(player)} that way {byTense("isn't", "wasn't")} likely to help matters.");
+                case 2: printLine($"{cTheReport(o1, are)} fixed in place.");
+                case 3: printLine($"{cTheReport(actor, are)} unable to.");
+                case 4: printLine($"Nothing obvious {byTense("happens", "happened")}.");
+                case 5: printLine($"That would {byTense("be", "have been")} less than courteous.");
+                case 6: _englishDecideAgainst();
+            }
+        case PushDir:
+            switch (n) {
+                case 1: printLine($"That really wouldn't {byTense("serve", "have served")} any purpose.");
+                case 2: printLine($"That's {byTense("not", "wasn't")} a direction.");
+                case 3: printLine($"Not that way {they(actor)}{byTense(" can't", " couldn't")}.");
+            }
+        case PutOn:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "need", "needs", "needed")} to be holding {the(o1)} before {they(actor)}{byTense(" can", " could")} put {them(o1)} on top of something else.");
+                case 2: printLine($"{cTheReport(actor, cant)} put something on top of itself.");
+                case 3: printLine($"Putting things on {the(o1)} would{byTense(" achieve", "'ve achieved")} nothing.");
+                case 4: printLine($"{cTheReport(actor, "lack", "lacks", "lacked")} the dexterity.");
+                case 5: printLine($"(first taking {them(o1)} off)");
+                case 6: printLine($"There {byTense("is", "was")} no more room on {the(o1)}.");
+                case 7: printLine("Done.");
+                case 8: printLine($"{cThe(actor, "put", "puts", "put")} {the(o1)} on {the(o2)}.");
+            }
+        case Quit:
+            switch (n) {
+                case 1: print("Please answer yes or no.");
+                case 2: print("Are you sure you want to quit? ");
+            }
+        case Remove:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} unfortunately closed.");
+                case 2: printLine($"But {theReport(o1, isnt)} there now.");
+                case 3: printLine("Removed.");
+                case 4: printLine($"But {theReport(o1, isnt)} in or on anything.");
+            }
+        case Restart:
+            switch (n) {
+                case 1: print("Are you sure you want to restart? ");
+                case 2: printLine("Failed.");
+            }
+        case Restore:
+            switch (n) {
+                case 1: printLine("Restore failed.");
+                case 2: printLine("Ok.");
+            }
+        case Rub:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "achieve", "achieves", "achieved")} nothing by this.");
+                case 2: _englishDecideAgainst();
+            }
+        case RunTimeError:
+            #i6 {
+                print "** ";
+                switch (n) {
+                    1:  print "Preposition not found (this should not occur)";
+                    2:  print "Property value not routine or string: ~", (property) x2, "~ of ~", (name) x1, "~ (", x1, ")";
+                    3:  print "Entry in property list not routine or string: ~", (property) x2, "~ list of ~", (name) x1, "~ (", x1, ")";
+                    4:  print "Too many timers/daemons are active simultaneously. The limit is the library constant MAX_TIMERS (currently ", MAX_TIMERS, ") and should be increased";
+                    5:  print "Object ~", (name) x1, "~ has no ~", (property) x2, "~ property";
+                    7:  print "The object ~", (name) x1, "~ can only be used as a player object if it has the ~number~ property";
+                    8:  print "Attempt to take random entry from an empty table array";
+                    9:  print x1, " is not a valid direction property number";
+                    10: print "The player-object is outside the object tree";
+                    11: print "The room ~", (name) x1, "~ has no ~", (property) x2, "~ property";
+                    12: print "Tried to set a non-existent pronoun using SetPronoun";
+                    13: print "A 'topic' token can only be followed by a preposition";
+                    14: print "Overflowed buffer limit of ", x1, " using '@@64output_stream 3' ", (string) x2;
+                    15: print "LoopWithinObject broken because the object ", (name) x1, " was moved while the loop passed through it.";
+                    16: print "Attempt to use illegal narrative_voice of ", x1, ".";
+                    default: print "(unexplained)";
+                }
+                print " **";
+            }
+        case Save:
+            switch (n) {
+                case 1: printLine("Save failed.");
+                case 2: printLine("Ok.");
+            }
+        case Score:
+            switch (n) {
+                case 1:
+                    if (deadflag != 0) print("In that game you scored "); else print("You have so far scored ");
+                    #i6 { print score, " out of a possible ", MAX_SCORE, ", in ", turns, " turn"; if (turns ~= 1) print "s"; }
+                case 2: printLine("There is no score in this story.");
+            }
+        case ScriptOff:
+            switch (n) {
+                case 1: printLine("Transcripting is already off.");
+                case 2: printLine("^End of transcript.");
+                case 3: printLine("Attempt to end transcript failed.");
+            }
+        case ScriptOn:
+            switch (n) {
+                case 1: printLine("Transcripting is already on.");
+                case 2: print("Start of a transcript of"); VersionSub();
+                case 3: printLine("Attempt to begin transcript failed.");
+            }
+        case Search:
+            switch (n) {
+                case 1: printLine($"But it{byTense("'s", " was")} dark.");
+                case 2: printLine($"There {byTense("is", "was")} nothing on {the(o1)}.");
+                case 3:
+                    print($"On {the(o1)}");
+                    #i6 { WriteListFrom(child(x1), ENGLISH_BIT+TERSE_BIT+CONCEAL_BIT+ISARE_BIT); }
+                    printLine(".");
+                case 4: printLine($"{cTheReport(actor, "find", "finds", "found")} nothing of interest.");
+                case 5: printLine($"{cTheReport(actor, cant)} see inside, since {the(o1)} {isAre(o1)} closed.");
+                case 6: printLine($"{cThe(o1)} {isAre(o1)} empty.");
+                case 7:
+                    print($"In {the(o1)}");
+                    #i6 { WriteListFrom(child(x1), ENGLISH_BIT+TERSE_BIT+CONCEAL_BIT+ISARE_BIT); }
+                    printLine(".");
+            }
+        case Set:         printLine($"{cTheReport(actor, cant)} set {that(o1)}.");
+        case SetTo:       printLine($"{cTheReport(actor, cant)} set {that(o1)} to anything.");
+        case Show:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, isnt)} holding {the(o1)}.");
+                case 2: printLine($"{cTheReport(o1, are)} unimpressed.");
+            }
+        case Sing:        printLine($"{cTheir(actor)} singing {byTense("is", "was")} abominable.");
+        case Sleep:       printLine($"{cTheReport(actor, isnt)} feeling especially drowsy.");
+        case Smell:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "smell", "smells", "smelled")} nothing unexpected.");
+                case 2: _englishDecideAgainst();
+            }
+        case Sorry:
+            #i6 {
+                #Ifdef DIALECT_US;
+                print "Oh, don't apologize.^";
+                #Ifnot;
+                print "Oh, don't apologise.^";
+                #Endif;
+            }
+        case Squeeze:
+            switch (n) {
+                case 1: _englishDecideAgainst();
+                case 2: printLine($"{cTheReport(actor, "achieve", "achieves", "achieved")} nothing by this.");
+            }
+        case Strong:      printLine($"Real adventurers {byTense("do", "did")} not use such language.");
+        case Swim:        printLine($"There{byTense("'s not", " wasn't")} enough water to swim in.");
+        case Swing:       printLine($"There{byTense("'s", " was")} nothing sensible to swing here.");
+        case SwitchOff:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} not something {they(actor)} {byTense("can", "could")} switch.");
+                case 2: printLine($"{cTheReport(o1, are)} already off.");
+                case 3: printLine($"{cThe(actor, "switch", "switches", "switched")} {the(o1)} off.");
+            }
+        case SwitchOn:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, are)} not something {they(actor)} {byTense("can", "could")} switch.");
+                case 2: printLine($"{cTheReport(o1, are)} already on.");
+                case 3: printLine($"{cThe(actor, "switch", "switches", "switched")} {the(o1)} on.");
+            }
+        case Take:
+            switch (n) {
+                case 1:  printLine("Taken.");
+                case 2:  printLine($"{cThe(actor, are)} always self-possessed.");
+                case 3:  printLine($"I don't suppose {the(o1)} would {byTense("care", "have cared")} for that.");
+                case 4:  printLine($"{cTheReport(actor, will)} have {byTense("", "had ")}to get {onOrIn(o1, "off", "out of")} {the(o1)} first.");
+                case 5:  printLine($"{cTheReport(actor, "already have", "already has", "already had")} {the(o1)}.");
+                case 6:  printLine($"{cTheReport(o2, "seem", "seems", "seemed")} to belong to {the(o1)}.");
+                case 7:  printLine($"{cTheReport(o2, "seem", "seems", "seemed")} to be a part of {the(o1)}.");
+                case 8:  printLine($"{cTheReport(o1, are)} not available.");
+                case 9:  printLine($"{cTheReport(o1, are)} not open.");
+                case 10: printLine($"{cTheReport(o1, are)} hardly portable.");
+                case 11: printLine($"{cTheReport(o1, are)} fixed in place.");
+                case 12: printLine($"{cTheReport(actor, are)} carrying too many things already.");
+                case 13: printLine($"(putting {the(o1)} into {the(o2)} to make room)");
+            }
+        case Taste:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "taste", "tastes", "tasted")} nothing unexpected.");
+                case 2: _englishDecideAgainst();
+            }
+        case Tell:
+            switch (n) {
+                case 1: printLine($"{cThe(actor, "talk", "talks", "talked")} to {themselves(actor)} for a while.");
+                case 2: printLine($"This provoke{byTense("s", "d")} no reaction.");
+            }
+        case Think:       printLine("What a good idea.");
+        case ThrowAt:
+            switch (n) {
+                case 1: printLine("Futile.");
+                case 2: printLine($"{cTheReport(actor, "lack", "lacks", "lacked")} the nerve when it {byTense("comes", "came")} to the crucial moment.");
+            }
+        case Tie:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, "would", "would", "would")}{byTense(" achieve", " have achieved")} nothing by this.");
+                case 2: _englishDecideAgainst();
+            }
+        case Touch:
+            switch (n) {
+                case 1: _englishDecideAgainst();
+                case 2: printLine($"{cTheReport(actor, "feel", "feels", "felt")} nothing unexpected.");
+                case 3: printLine($"That really wouldn't {byTense("serve", "have served")} any purpose.");
+            }
+        case Transfer:    printLine($"{cThe(actor, are)} still holding {the(o1)}.");
+        case Unlock:
+            switch (n) {
+                case 1: printLine($"{cTheReport(o1, dont)} seem to be something {they(actor)}{byTense(" can unlock", " could have unlocked")}.");
+                case 2: printLine($"{cTheReport(o1, are)} unlocked at the moment.");
+                case 3: printLine($"{cTheReport(o1, dont)} seem to fit the lock.");
+                case 4: printLine($"{cThe(actor, "unlock", "unlocks", "unlocked")} {the(o1)}.");
+                case 5: printLine($"(first unlocking {the(o1)})");
+            }
+        case VagueGo:     printLine($"{cThe(actor, will)} have {byTense("", "had ")}to say which compass direction to go in.");
+        case Verify:
+            switch (n) {
+                case 1: printLine("The game file has verified as intact.");
+                case 2: printLine("The game file did not verify as intact, and may be corrupt.");
+            }
+        case Wait:        printLine($"Time passe{byTense("s", "d")}.");
+        case Wake:        printLine($"The dreadful truth is, this {byTense("is", "was")} not a dream.");
+        case WakeOther:   printLine($"That seem{byTense("s", "ed")} unnecessary.");
+        case Wave:
+            switch (n) {
+                case 1: printLine($"But {theReport(actor, isnt)} holding {that(o1)}.");
+                case 2:
+                    print($"{cThe(actor, "look", "looks", "looked")} ridiculous waving {the(o1)}");
+                    if (x2 != 0) printLine($" at {the(o2)}."); else printLine(".");
+                case 3: _englishDecideAgainst();
+            }
+        case WaveHands:
+            print($"{cThe(actor, "wave", "waves", "waved")}");
+            if (n == 2) print($" at {the(o1)}");
+            printLine(", feeling foolish.");
+        case Wear:
+            switch (n) {
+                case 1: printLine($"{cTheReport(actor, cant)} wear {that(o1)}.");
+                case 2: printLine($"{cTheReport(actor, are)} not holding {that(o1)}.");
+                case 3: printLine($"{cTheReport(actor, are)} already wearing {that(o1)}.");
+                case 4: printLine($"{cThe(actor, "put on", "puts on", "put on")} {the(o1)}.");
+                case 5: printLine($"{cThe(actor, "need to take", "need to take", "had to take")} {the(o1)} {o2.has(container) ? "out" : "off"} of {the(o2)} before wearing {them(o1)}.");
+            }
+    }
+    return true;
+}

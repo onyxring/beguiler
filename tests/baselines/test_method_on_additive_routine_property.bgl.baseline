@@ -61,7 +61,7 @@ object bgl
 ;
 thing lamp
   with describe [;
-    print (string)"A lamp.";
+    print "A lamp.";
     return true;
   ]
 ;

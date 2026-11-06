@@ -1,0 +1,67 @@
+//===================================================================================================
+// betterChoice.bgl — better decisions when the parser has to choose between objects.
+//---------------------------------------------------------------------------------------------------
+// Objects a command can't sensibly mean drop out of the choice: TAKE passes over what is already
+// carried, fixed in place or only in scope through something else; DROP and SHOW keep to what is
+// carried; EAT prefers what is edible.
+//
+// An object can answer for itself with `chooseAnswer chooseobject(chooseCode code)`. While the parser
+// plans a list for "all", the code is `planExclude` or `planInclude`, and the answer can force the
+// object in or out. While it picks between matches, the code is `askingForHint`, and the object can
+// `return excludeFromChoice(self)`.
+//
+// Include it after the library's verblib. Ported from orLibrary's orBetterChoice.
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+enum chooseCode { planExclude = 0, planInclude = 1, askingForHint = 2 } /// What the parser is asking `chooseobject`.
+enum chooseAnswer { parser = -1, defer = 0, include = 1, exclude = 2 }   /// An answer while the parser plans a list; `parser` skips this logic.
+
+extern property chooseobject;   /// An object's own answer to the parser's choice.
+// Inform 6 code may already have made this property by giving an object one.
+#i6 {
+    #Ifndef chooseobject;
+    Property individual chooseobject;
+    #Endif;
+}
+
+/// Take an object out of the matches the parser is choosing between.
+chooseAnswer excludeFromChoice(object obj) {
+    for(int i = 0; i < number_matched; i++) {
+        if(match_list[i] == (int)obj) {
+            match_list[i] = -1;
+            match_scores[i] = 0;
+        }
+    }
+    return chooseAnswer.defer;
+}
+
+object _betterChoiceHooks {
+    parent = LibraryExtensions;
+    int ext_chooseobjects(object obj, int code) {
+        if(obj.provides((property)chooseobject)) {
+            int answer = 0;
+            #i6 { answer = obj.chooseobject(code); }
+            if(code != (int)chooseCode.askingForHint) {
+                if(answer == (int)chooseAnswer.parser) return (int)chooseAnswer.defer;
+                if(answer != (int)chooseAnswer.defer) return answer;
+            }
+        }
+        if(code != (int)chooseCode.askingForHint) return (int)chooseAnswer.defer;
+        for(int i = 0; i < pcount; i++)
+            if(pattern[i] == (int)obj) return (int)excludeFromChoice(obj);
+        switch(action_to_be) {
+            case Take, Remove:
+                if(obj.has(static) || ObjectScopedBySomething(obj) != 0 || obj.parent == actor)
+                    return (int)excludeFromChoice(obj);
+            case Drop, Show:
+                if(obj.parent != actor) return (int)excludeFromChoice(obj);
+            case ThrowAt:
+                if(obj.parent != actor) return 0;
+            case Eat:
+                if(obj.has(edible)) return 5;
+        }
+        return 0;
+    }
+}

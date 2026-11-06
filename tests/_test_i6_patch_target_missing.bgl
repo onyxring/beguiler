@@ -1,0 +1,4 @@
+// A patch whose target isn't on the include path.
+// EXPECT_ERROR: file 'noSuchFile.h' not found
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; }
+#mergeI6 "run/patches/noSuchTarget"

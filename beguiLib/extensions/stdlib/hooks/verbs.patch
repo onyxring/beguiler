@@ -1,0 +1,84 @@
+# verbs.patch: calls to the hooks of <extensions/stdlib/hooks/verbs> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# verblib.h: PlayerTo, GoSub, LookSub and ExamineSub.
+
+--- a/verblib.h
++++ b/verblib.h
+@@ -1077,6 +1077,7 @@
+ ! ----------------------------------------------------------------------------
+ 
+ [ PlayerTo newplace flag;
++    LibraryExtensions.RunAll(ext_playerToNotify, newplace, flag);
+     NoteDeparture();
+     move player to newplace;
+     while (parent(newplace)) newplace = parent(newplace);
+@@ -2167,6 +2168,7 @@
+ [ GoSub i j k movewith thedir next_loc;
+ 
+     ! first, check if any PushDir object is touchable
++    if (LibraryExtensions.RunWhile(ext_goSub, false)) return;
+     if (second && second notin Compass && ObjectIsUntouchable(second)) return;
+ 
+     movewith = 0;
+@@ -2206,6 +2208,7 @@
+     }
+ 
+     if (k == nothing || next_loc == 0) {
++        if (LibraryExtensions.RunWhile(ext_goSubNoDir, false, thedir)) return;
+         if (i.cant_go ~= 0 or CANTGO__TX) PrintOrRun(i, cant_go);
+         else                              L__M(##Go, 2);
+         rfalse;
+@@ -2443,7 +2446,8 @@
+     return visibility_levels;
+ ];
+ 
+-[ LookSub allow_abbrev  visibility_levels i j k nl_flag;
++[ LookSub allow_abbrev  visibility_levels i j k nl_flag string_described;
++    if (LibraryExtensions.RunWhile(ext_lookSub, false)) return;
+     if (parent(player) == 0) return RunTimeError(10);
+ 
+   .MovedByInitial;
+@@ -2484,15 +2488,18 @@
+ 
+     ! The room description (if visible)
+ 
++    LibraryExtensions.RunAll(ext_preDescription);
+     if (lookmode < 3 && visibility_ceiling == location) {
+         if ((allow_abbrev ~= 1) || (lookmode == 2) || (location hasnt visited)) {
+             if (location.&describe) RunRoutines(location, describe);
+             else {
+                 if (location.description == 0) RunTimeError(11, location, description);
+-                else PrintOrRun(location, description);
++                else { PrintOrRun(location, description, true); string_described = location.#description <= WORDSIZE && metaclass(location.description) == String; }
+             }
+         }
+     }
++    LibraryExtensions.RunAll(ext_postDescription);
++    if (string_described) new_line;
+ 
+     if (visibility_ceiling == location) nl_flag = 1;
+ 
+@@ -2517,6 +2524,8 @@
+ ];
+ 
+ [ ExamineSub i;
++    orSuppressNewlineAfterDescription = false;
++    if (LibraryExtensions.RunWhile(ext_examineSub, false)) return;
+     if (location == thedark) return L__M(##Examine, 1, noun);
+     i = noun.description;
+     if (i == 0) {
+@@ -2526,7 +2535,10 @@
+         if (noun has switchable) { L__M(##Examine, 3, noun); rfalse; }
+         return L__M(##Examine, 2, noun);
+     }
+-    i = PrintOrRun(noun, description);
++    LibraryExtensions.RunAll(ext_preDescription);
++    i = PrintOrRun(noun, description, true);
++    LibraryExtensions.RunAll(ext_postDescription);
++    if (orSuppressNewlineAfterDescription == false && noun.#description <= WORDSIZE && metaclass(noun.description) == String) new_line;
+     if (i == 0 && noun has switchable) L__M(##Examine, 3, noun);
+     AfterRoutines();
+ ];

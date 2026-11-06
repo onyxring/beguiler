@@ -83,4 +83,5 @@ _bglClass_WithEmptyMethod wem
     if(emptyboolfn() == true) print "true"; else print "false";
     wem.noop();
     print wem.alwayszero();
+    rtrue;
 ];

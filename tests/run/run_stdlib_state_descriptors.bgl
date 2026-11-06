@@ -1,0 +1,48 @@
+// run_stdlib_state_descriptors — <extensions/stdlib/stateDescriptors>: the built-in notes in a room
+// description and an inventory, a game's own note added after them, a note taken away, and "which is"
+// left out.
+// EXPECT_OUTPUT: You can see a box (which is closed) and a jar (which is empty) here.
+// EXPECT_OUTPUT: a pack (open, empty and on your back)
+// EXPECT_OUTPUT: a chest (closed and locked)
+// EXPECT_OUTPUT: a cloak (which is being worn)
+// EXPECT_OUTPUT: a chest (closed)
+// EXPECT_OUTPUT: a cloak (being worn)
+// INPUT: look
+// INPUT: inventory
+// INPUT: drop lamp
+// INPUT: remove
+// INPUT: inventory
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/stateDescriptors>
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object box   { "box";   rawArray<dictionaryWord> name = {.box};   parent = roomA; attributes = {container, openable}; }
+object jar   { "jar";   rawArray<dictionaryWord> name = {.jar};   parent = roomA; attributes = {container, open}; }
+object cloak { "cloak"; rawArray<dictionaryWord> name = {.cloak}; attributes = {clothing, worn}; }
+object chest { "chest"; rawArray<dictionaryWord> name = {.chest}; attributes = {container, openable, lockable, locked}; }
+object pack  { "pack";  rawArray<dictionaryWord> name = {.pack};  attributes = {container, openable, open}; }
+object lamp  { "lamp";  rawArray<dictionaryWord> name = {.lamp};  attributes = {light}; }
+bool onBack(object obj, bool suppress) {
+    if(obj != pack) rfalse;
+    if(!suppress) print("on your back");
+    rtrue;
+}
+verb RemoveNote {
+    grammar = { {.remove} };
+    void handler() {
+        stateDescriptors.removeInventoryHandler(sdLockedContainer);
+        stateDescriptors.suppressSingleItemWhich = true;
+        print("Done.^");
+    }
+}
+bool Initialise() {
+    location = roomA;
+    cloak.parent = player; chest.parent = player; pack.parent = player; lamp.parent = player;
+    stateDescriptors.addInventoryHandler(onBack);
+    rfalse;
+}
+#includeI6 "grammar"

@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -104,9 +105,11 @@ object bgl
     style bold;
     n=2;
     print n;
+    rtrue;
 ];
 [main;
     useearly();
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     

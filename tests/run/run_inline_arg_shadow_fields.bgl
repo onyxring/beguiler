@@ -1,5 +1,5 @@
 /*  Regression: an inline value aggregate `{ … }` passed to a routine whose PARAMS shadow the
-    aggregate class's field names. The runtime-field hoist emits `_bglanon.width = width`; before the
+    aggregate class's field names. The runtime-field hoist emits `<anonymous>.width = width`; before the
     fix, that raw injection (a) poisoned the property-shadow rename guard and (b) went un-renamed, so
     the local `width`/`height` were used AS the property number (`obj.(0)` / `obj.(100)`) → I6 "no
     property" crash — which also broke the routine's own `scaled.width` reads. The hoist node is now

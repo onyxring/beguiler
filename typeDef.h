@@ -268,6 +268,9 @@ struct interpolatedSegment {
     string text;           // string segments: I6-ready literal text (no outer quotes)
     expression* expr = nullptr; // expression segments: fully parsed Beguile expression
     vector<statement*> injections; // ternary lowerings to emit before this expression segment
+    // A ?: printed in place: `choice` picks which segments print (bglParser::makeChoiceSegment).
+    expression* choice = nullptr;
+    vector<interpolatedSegment> whenTrue, whenFalse;
 };
 
 //a type of statement which assigns a value to a variable

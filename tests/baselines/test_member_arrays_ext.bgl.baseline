@@ -94,13 +94,14 @@ object widget
     return _bglArray._bglArr_length(_bglArray._bglArr_filter(self, nums, _bglLambda_0), 0);
   ]
 ;
-Array _bglhdr_g --> $9084 3;
+Array bglhae --> $9084 3;
 array g table 30 10 20;
 [gFind;
     return _bglArray._bglArr_indexOf(g, 0, 20, 0);
 ];
 [gSort;
     _bglArray._bglArr_sortDefault(g, 0, 0);
+    rtrue;
 ];
 [gChain;
     _bglHeapFreshEnter();
@@ -128,35 +129,50 @@ array g table 30 10 20;
     return x > 15;
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_set [obj prop n v;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
   ],
        _bglArr_size [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
        _bglArr_setLength [obj prop n room;
     if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+        print "^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
     room=self._bglArr_size(obj,prop);
     if (n > room) {
         n=room;
     }
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
@@ -194,7 +210,7 @@ object _bglArray
   ],
        _bglArr_refusesStruct [v;
      if(metaclass(v) ~= Object) rfalse; 
-    print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
+    print "^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
     return true;
   ],
        _bglArr_insert [obj prop pos val assign len i;

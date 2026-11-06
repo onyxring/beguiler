@@ -2,7 +2,9 @@
 """LSP checks: drive `beguiler --lsp` over a document and check its diagnostics or a completion.
 
 Each case opens one document, optionally asks for a completion at line:col (1-based line,
-0-based column), and checks the diagnostics published for it and the completion labels.
+0-based column), and checks the diagnostics published for it and the completion labels. A case with
+`request` sends that method with the document and line instead, and checks its JSON result holds
+each `result_has` string.
 Exits non-zero when any case fails.
 """
 import json, os, subprocess, sys, threading
@@ -12,6 +14,17 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 BIN = os.path.join(ROOT, 'beguiler')
 
 CASES = [
+    # A patch that no longer matches its file is reported at its #includeI6.
+    dict(name='I6 patch conflict', doc='tests/lsp/i6_patch_conflict.bgl', at=(1, 0), diagnostics=1),
+    # The editor's Edit I6 patch finds a #mergeI6's patch and the file it changes, even when it fails.
+    dict(name='I6 patch info', doc='tests/lsp/i6_patch_conflict.bgl', at=(3, 0), request='beguile/i6PatchInfo',
+         result_has=['lookHookConflict.patch', 'stdlib/verblib.h']),
+    # The editor's Create I6 patch lists the I6 files the document can reach.
+    dict(name='I6 files', doc='tests/lsp/i6_patch_conflict.bgl', at=(1, 0), request='beguile/i6Files',
+         result_has=['"name": "verblib"', '"name": "parser"']),
+    # #mergeI6 completion offers patches, named without their extension.
+    dict(name='I6 patch completion', doc='tests/lsp/i6_patch_completion.bgl', at=(2, 22),
+         has=['patches/lookHook', 'patches/lookTopLine'], lacks=['patches/wrapVerblib']),
     # A namespace object completes its own members, not the root's operators and plumbing.
     dict(name='namespace completion', doc='tests/lsp/namespace_completion.bgl', at=(4, 8),
          has=['asm', 'ui', 'util'], lacks=['==(_bglobject)', 'instancename', 'print()', 'operator()']),
@@ -85,12 +98,18 @@ def run_case(case):
         send({'jsonrpc': '2.0', 'method': 'textDocument/didOpen', 'params': {'textDocument': {
               'uri': uri, 'languageId': 'beguile', 'version': 1, 'text': open(path).read()}}})
         line, col = case['at']
-        send({'jsonrpc': '2.0', 'id': 2, 'method': 'textDocument/completion', 'params': {
-              'textDocument': {'uri': uri}, 'position': {'line': line - 1, 'character': col}}})
+        if 'request' in case:
+            send({'jsonrpc': '2.0', 'id': 2, 'method': case['request'], 'params': {'uri': uri, 'line': line - 1}})
+        else:
+            send({'jsonrpc': '2.0', 'id': 2, 'method': 'textDocument/completion', 'params': {
+                  'textDocument': {'uri': uri}, 'position': {'line': line - 1, 'character': col}}})
         res = recv(2)
     finally:
         timer.cancel(); p.kill()
     if res is None: return ['no response from the server']
+    if 'request' in case:
+        text = json.dumps(res.get('result'))
+        return [f'{case["request"]} result lacks {x!r}: {text[:200]}' for x in case.get('result_has', []) if x not in text]
     result = res.get('result') or []
     labels = [x['label'] for x in (result['items'] if isinstance(result, dict) else result)]
     problems = []

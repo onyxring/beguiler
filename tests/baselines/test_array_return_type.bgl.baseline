@@ -59,7 +59,7 @@ object _zcode
 ;
 object bgl
 ;
-Array _bglhdr_g_src --> $9084 3;
+Array bglhae --> $9084 3;
 array g_src table 1 2 3;
 [getList;
     return g_src;
@@ -85,6 +85,7 @@ array g_src table 1 2 3;
        }
     total=sumlist(g_src);
     print total;
+    rtrue;
 ];
 [_bglArrLength arr;
     

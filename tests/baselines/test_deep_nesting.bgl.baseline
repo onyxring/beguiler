@@ -97,6 +97,7 @@ _bglClass_Deep d
     print z;
     print d.compute(10);
     print d.compute(-1);
+    rtrue;
 ];
 [_bglLambda_1 b;
     return b * 2;

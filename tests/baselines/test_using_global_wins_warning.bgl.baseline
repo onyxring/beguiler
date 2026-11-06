@@ -67,4 +67,5 @@ global _g_ptrSize = 2;
 [main ws;
     ws=_g_ptrSize;
     print ws + mylib.other;
+    rtrue;
 ];

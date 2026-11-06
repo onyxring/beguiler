@@ -69,19 +69,19 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr_g_nums --> $9084 10;
+Array bglhae --> $9084 10;
 array g_nums table 1 2 3 4 5 6 7 8 9 10;
-Array _bglhdr_g_dupes --> $9084 10;
+Array bglhaf --> $9084 10;
 array g_dupes table 3 1 4 1 5 9 2 6 5 3;
-Array _bglhdr_g_same --> $9084 6;
+Array bglhag --> $9084 6;
 array g_same table 7 7 7 7 7 7;
-Array _bglhdr_g_sorted --> $9084 5;
+Array bglhah --> $9084 5;
 array g_sorted table 1 2 3 4 5;
-Array _bglhdr_g_neg --> $9084 5;
+Array bglhai --> $9084 5;
 array g_neg table (-3) (-1) (-4) (-1) (-5);
-Array _bglhdr_g_one --> $9084 1;
+Array bglhaj --> $9084 1;
 array g_one table [ 42 ];
-Array _bglhdr_g_empty --> $9084 0;
+Array bglhak --> $9084 0;
 array g_empty table 8;
 [main _bglown_result result;
     _bglHeapFreshEnter();
@@ -325,35 +325,50 @@ array g_empty table 8;
     return x < 6;
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_set [obj prop n v;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
   ],
        _bglArr_size [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
        _bglArr_setLength [obj prop n room;
     if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+        print "^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
     room=self._bglArr_size(obj,prop);
     if (n > room) {
         n=room;
     }
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
@@ -418,9 +433,9 @@ object _bglArray
     return r;
   ],
        _bglArr_emptyValueError [which;
-    print (string)"^[Beguile run-time error: ";
+    print "^[Beguile run-time error: ";
     print (string)which;
-    print (string)"() of an empty array of values; check count() first]^";
+    print "() of an empty array of values; check count() first]^";
      quit; 
   ],
        _bglArr_last [obj prop owned r len;

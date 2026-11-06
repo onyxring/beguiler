@@ -77,45 +77,45 @@ _bglClass_Room r2
 ;
 _bglClass_Room r3
 ;
-Array _bglhdr_g_nums --> $9084 5;
+Array bglhae --> $9084 5;
 array g_nums table 10 20 30 40 50;
-Array _bglhdr_g_sparse --> $9084 0;
+Array bglhaf --> $9084 0;
 array g_sparse table 8;
-Array _bglhdr_g_partial --> $9084 5;
+Array bglhag --> $9084 5;
 array g_partial table 7 8 0 9 0;
-Array _bglhdr_g_rooms --> $9084 3;
+Array bglhah --> $9084 3;
 array g_rooms table r1 r2 r3;
-Array _bglhdr_g_sw --> $9084 5;
+Array bglhai --> $9084 5;
 array g_sw table 1 2 3 4 5;
-Array _bglhdr_g_rev --> $9084 3;
+Array bglhaj --> $9084 3;
 array g_rev table 10 20 30;
-Array _bglhdr_g_cl --> $9084 3;
+Array bglhak --> $9084 3;
 array g_cl table 1 2 3;
-Array _bglhdr_g_sl --> $9084 0;
+Array bglhal --> $9084 0;
 array g_sl table 5;
-Array _bglhdr_g_w --> $9084 0;
+Array bglham --> $9084 0;
 array g_w table 5;
-Array _bglhdr_g_ap --> $9084 0;
+Array bglhan --> $9084 0;
 array g_ap table 5;
-Array _bglhdr_g_pp --> $9084 0;
+Array bglhao --> $9084 0;
 array g_pp table 5;
-Array _bglhdr_g_ins --> $9084 0;
+Array bglhap --> $9084 0;
 array g_ins table 5;
-Array _bglhdr_g_full --> $9084 0;
+Array bglhaq --> $9084 0;
 array g_full table 2;
-Array _bglhdr_g_rm --> $9084 5;
+Array bglhar --> $9084 5;
 array g_rm table 10 20 30 40 50;
-Array _bglhdr_g_rv --> $9084 6;
+Array bglhas --> $9084 6;
 array g_rv table 1 7 2 7 3 7;
-Array _bglhdr_g_stack --> $9084 0;
+Array bglhat --> $9084 0;
 array g_stack table 5;
-Array _bglhdr_g_queue --> $9084 0;
+Array bglhau --> $9084 0;
 array g_queue table 5;
-Array _bglhdr_g_back --> $9084 3;
+Array bglhav --> $9084 3;
 array g_back table 10 20 30;
-Array _bglhdr_g_unsorted --> $9084 5;
+Array bglhaw --> $9084 5;
 array g_unsorted table 30 10 50 20 40;
-Array _bglhdr_g_descending --> $9084 5;
+Array bglhax --> $9084 5;
 array g_descending table 1 2 3 4 5;
 [main _bgl_tempL0;
     bglinit();
@@ -154,8 +154,12 @@ array g_descending table 1 2 3 4 5;
         print 1;
     }
     print _bglArray._bglArr_indexOf(g_rooms, 0, r2, 0);
-    if ((_bglArray._bglArr_indexOf(g_rooms, 0, r3, 0) >= 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
+    if ((_bglArray._bglArr_indexOf(g_rooms, 0, r3, 0) >= 0)) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
     _bglArray._bglArr_swap(g_sw, 0, 0, 4);
     print  _bglAt(g_sw, 0, 0)-->0 ;
     print  _bglAt(g_sw, 4, 0)-->0 ;
@@ -178,12 +182,24 @@ array g_descending table 1 2 3 4 5;
     print _bglArray._bglArr_length(g_w, 0);
     print _bglArray._bglArr_size(g_w, 0);
     print _bglArray._bglArr_indexOf(g_w, 0, 43, 0);
-    if (_bglArray._bglArr_append(g_ap, 0, 10, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
-    if (_bglArray._bglArr_append(g_ap, 0, 20, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
-    if (_bglArray._bglArr_append(g_ap, 0, 30, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
+    if (_bglArray._bglArr_append(g_ap, 0, 10, 0)) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
+    if (_bglArray._bglArr_append(g_ap, 0, 20, 0)) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
+    if (_bglArray._bglArr_append(g_ap, 0, 30, 0)) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
     print _bglArray._bglArr_length(g_ap, 0);
     print  _bglAt(g_ap, 0, 0)-->0 ;
     print  _bglAt(g_ap, 2, 0)-->0 ;
@@ -203,8 +219,12 @@ array g_descending table 1 2 3 4 5;
     print  _bglAt(g_ins, 3, 0)-->0 ;
     _bglArray._bglArr_append(g_full, 0, 1, 0);
     _bglArray._bglArr_append(g_full, 0, 2, 0);
-    if (_bglArray._bglArr_append(g_full, 0, 3, 0)) { _bgl_tempL0 = 1; } else { _bgl_tempL0 = 0; }
-    print _bgl_tempL0;
+    if (_bglArray._bglArr_append(g_full, 0, 3, 0)) {
+        print 1;
+    }
+    else {
+        print 0;
+    }
     print _bglArray._bglArr_length(g_full, 0);
     _bglArray._bglArr_remove(g_rm, 0, 2, 0);
     print _bglArray._bglArr_length(g_rm, 0);
@@ -222,20 +242,20 @@ array g_descending table 1 2 3 4 5;
     _bglArray._bglArr_push(g_stack, 0, 30, 0);
     print _bglArray._bglArr_length(g_stack, 0);
     print _bglArray._bglArr_peek(g_stack, 0);
-    print _bglArray._bglArr_pop(g_stack, 0);
-    print _bglArray._bglArr_pop(g_stack, 0);
-    print _bglArray._bglArr_pop(g_stack, 0);
+    print _bglArray._bglArr_pop(g_stack, 0, 0);
+    print _bglArray._bglArr_pop(g_stack, 0, 0);
+    print _bglArray._bglArr_pop(g_stack, 0, 0);
     print _bglArray._bglArr_length(g_stack, 0);
-    print _bglArray._bglArr_pop(g_stack, 0);
+    print _bglArray._bglArr_pop(g_stack, 0, 0);
     _bglArray._bglArr_enqueue(g_queue, 0, 1, 0);
     _bglArray._bglArr_enqueue(g_queue, 0, 2, 0);
     _bglArray._bglArr_enqueue(g_queue, 0, 3, 0);
-    print _bglArray._bglArr_dequeue(g_queue, 0);
-    print _bglArray._bglArr_dequeue(g_queue, 0);
+    print _bglArray._bglArr_dequeue(g_queue, 0, 0);
+    print _bglArray._bglArr_dequeue(g_queue, 0, 0);
     print _bglArray._bglArr_length(g_queue, 0);
     print _bglArray._bglArr_peek(g_queue, 0);
     print _bglArray._bglArr_peekEnd(g_back, 0);
-    print _bglArray._bglArr_popEnd(g_back, 0);
+    print _bglArray._bglArr_popEnd(g_back, 0, 0);
     print _bglArray._bglArr_length(g_back, 0);
     print _bglArray._bglArr_peekEnd(g_back, 0);
     _bglArray._bglArr_sortDefault(g_unsorted, 0, 0);
@@ -247,6 +267,7 @@ array g_descending table 1 2 3 4 5;
     _bglArray._bglArr_sort(g_descending, 0, _bglLambda_0);
     print  _bglAt(g_descending, 0, 0)-->0 ;
     print  _bglAt(g_descending, 4, 0)-->0 ;
+    rtrue;
 ];
 [_bglLambda_0 a b;
     if (a > b) {
@@ -258,39 +279,55 @@ array g_descending table 1 2 3 4 5;
     return 0;
 ];
 object _bglArray
-  with _bglArr_get [obj prop n;
+  with _bglArr_storage [obj _l_prop;
+    
+                if(metaclass(obj)==object && obj.#_l_prop==WORDSIZE){
+                    _l_prop = obj._l_prop;
+                    if((_l_prop >= 64 && (0-->7 < 0 || _l_prop < 0-->7)) || (_l_prop < 0 && 0-->7 < 0 && _l_prop < 0-->7))
+                        if(_bglArrTracked(_l_prop)) return _l_prop;
+                }
+            
+    return obj;
+  ],
+       _bglArr_get [obj prop n;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         
   ],
        _bglArr_set [obj prop n v;
+    obj = self._bglArr_storage(obj,prop);
     
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
         
   ],
        _bglArr_isTracked [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) rfalse; 
     return _bglarrtracked(obj);
   ],
        _bglArr_size [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; 
     return _bglarrsize(obj);
   ],
        _bglArr_length [obj prop;
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); 
     return _bglarrlength(obj);
   ],
        _bglArr_setLength [obj prop n room;
     if (n < 0) {
-        print (string)"^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
+        print "^[Beguile runtime error: array length exceeds signed range (max 32767 on Z, 2^31-1 on Glulx)]^";
          quit; 
     }
     room=self._bglArr_size(obj,prop);
     if (n > room) {
         n=room;
     }
+    obj = self._bglArr_storage(obj,prop);
      if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } 
     _bglarrsetlength(obj, n);
   ],
@@ -328,7 +365,7 @@ object _bglArray
   ],
        _bglArr_refusesStruct [v;
      if(metaclass(v) ~= Object) rfalse; 
-    print (string)"^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
+    print "^[Beguile run-time error: adding a struct to an array that shares its elements; declare the array with a capacity of its own]^";
     return true;
   ],
        _bglArr_clear [obj prop dtor sz t;
@@ -443,16 +480,16 @@ object _bglArray
        _bglArr_push [obj prop val assign;
     self._bglArr_insert(obj, prop, 0, val, assign);
   ],
-       _bglArr_pop [obj prop v;
+       _bglArr_pop [obj prop dtor v;
     if (self._bglArr_length(obj,prop) == 0) {
         return 0;
     }
     v = self._bglArr_get(obj,prop,0);
-    self._bglArr_remove(obj, prop, 0, 0);
+    self._bglArr_remove(obj, prop, 0, dtor);
     return v;
   ],
-       _bglArr_dequeue [obj prop;
-    return self._bglArr_pop(obj,prop);
+       _bglArr_dequeue [obj prop dtor;
+    return self._bglArr_pop(obj,prop,dtor);
   ],
        _bglArr_enqueue [obj prop val assign;
     self._bglArr_append(obj, prop, val, assign);
@@ -470,13 +507,13 @@ object _bglArray
     }
     return self._bglArr_get(obj,prop,len - 1);
   ],
-       _bglArr_popEnd [obj prop len v;
+       _bglArr_popEnd [obj prop dtor len v;
     len=self._bglArr_length(obj,prop);
     if (len == 0) {
         return 0;
     }
     v = self._bglArr_get(obj,prop,len - 1);
-    self._bglArr_remove(obj, prop, len - 1, 0);
+    self._bglArr_remove(obj, prop, len - 1, dtor);
     return v;
   ],
        _bglArr_sortDefault [obj prop cmp;

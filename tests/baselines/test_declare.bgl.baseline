@@ -64,4 +64,5 @@ object bgl
     b = 7;
     print a;
     print b;
+    rtrue;
 ];

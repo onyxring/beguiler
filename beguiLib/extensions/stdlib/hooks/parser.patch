@@ -1,0 +1,86 @@
+# parser.patch: calls to the hooks of <extensions/stdlib/hooks/parser> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# parser.h: Parser__parse (look-ahead, implicit take, the parser error's results), Adjudicate
+#   and R_Process.
+
+--- a/parser.h
++++ b/parser.h
+@@ -1550,7 +1550,7 @@
+ ! ----------------------------------------------------------------------------
+ 
+ [ Parser__parse  results   syntax line num_lines line_address i j k
+-                           token l m line_etype vw;
++                           token l m line_etype vw forceLookahead;
+ 
+     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     !
+@@ -1999,9 +1999,10 @@
+ 
+             if (line_ttype-->pcount ~= PREPOSITION_TT) i++;
+ 
+-            if (line_ttype-->pcount == ELEMENTARY_TT) {
++            forceLookahead = LibraryExtensions.RunWhile(ext_forceLookAhead, false);
++            if (line_ttype-->pcount == ELEMENTARY_TT || forceLookahead == true) {
+                 if (line_tdata-->pcount == MULTI_TOKEN) m = true;
+-                if (line_tdata-->pcount == MULTIEXCEPT_TOKEN or MULTIINSIDE_TOKEN  && i == 1) {
++                if (forceLookahead == true || (line_tdata-->pcount == MULTIEXCEPT_TOKEN or MULTIINSIDE_TOKEN  && i == 1)) {
+                     ! First non-preposition is "multiexcept" or
+                     ! "multiinside", so look ahead.
+ 
+@@ -2061,7 +2062,7 @@
+                         ! put back the non-preposition we just read
+                         wn--;
+ 
+-                        if ((line_ttype-->pcount == ELEMENTARY_TT) && (line_tdata-->pcount == NOUN_TOKEN)) {
++                        if (forceLookahead == true || ((line_ttype-->pcount == ELEMENTARY_TT) && (line_tdata-->pcount == NOUN_TOKEN))) {
+                             l = Descriptors();  ! skip past THE etc
+                             if (l~=0) etype=l;  ! don't allow multiple objects
+                             l = NounDomain(actors_location, actor, NOUN_TOKEN);
+@@ -2271,6 +2272,10 @@
+                 ! and for now tell the player what's happening and return a "take" request
+                 ! instead...
+ 
++                i = false;
++                if (not_holding ~= 0) i = LibraryExtensions.RunWhile(ext_suppressParsingImplicitTake, false, action_to_be, results-->2, results-->3);
++                if (i == -1) jump ReType;
++                if (i == false) {
+                 if (not_holding ~= 0 && actor == player) {
+                     action = ##Take;
+                     i = RunRoutines(not_holding, before_implicit);
+@@ -2290,6 +2295,7 @@
+                         results-->2 = not_holding;
+                     }
+                 }
++                }
+ 
+                 ! (Notice that implicit takes are only generated for the player, and not
+                 ! for other actors.  This avoids entirely logical, but misleading, text
+@@ -2369,7 +2375,7 @@
+     ! must be jiggled (where oops_from is set to something).
+ 
+     if (ParserError(etype)) jump ReType;
+-    if (LibraryExtensions.RunWhile(ext_parsererror, false, etype)) jump ReType;
++    if (LibraryExtensions.RunWhile(ext_parsererror, false, etype, results)) jump ReType;
+     pronoun_word = pronoun__word; pronoun_obj = pronoun__obj;
+ 
+     if (etype == STUCK_PE) {    L__M(##Miscellany, 27); oops_from = 1; }
+@@ -3477,6 +3483,8 @@
+ Constant SCORE__DIVISOR     = 20;
+ 
+ [ Adjudicate context i j k good_flag good_ones last n flag offset sovert;
++    i = LibraryExtensions.RunWhile(ext_adjudicate, false, context);
++    if (i) return i;
+     #Ifdef DEBUG;
+     if (parser_trace >= 4) {
+         print "   [Adjudicating match list of size ", number_matched, " in context ", context, "]^";
+@@ -5576,6 +5584,7 @@
+ 
+ [ R_Process a n s p
+     s1 s2 s3;
++    LibraryExtensions.RunAll(ext_redirectActionNotify, a, n, s);
+     s1 = inp1; s2 = inp2; s3 = actor;
+     inp1 = n; inp2 = s; if (p) actor = p; else actor = player;
+     InformLibrary.begin_action(a, n, s, 1);

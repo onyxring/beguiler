@@ -68,4 +68,5 @@ class _bglClass_secondPathWidget
 ;
 [useSecondPathTypes wgt thing;
     wgt.count = 7;
+    rtrue;
 ];

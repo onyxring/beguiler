@@ -2,7 +2,74 @@
 
 ## [Unreleased]
 
+Releases:
+- Each release archive now carries the matching Beguilex extension in a
+  `beguilex` folder: the `.vsix`, built from the Beguilex repository at the same
+  tag, with its README, CHANGELOG and license. The `.vsix` is also attached to the
+  release on its own.
+
 Library (beguiLib):
+- A new official extension, `<extensions/stdlib/hooks>`: hooks inside the
+  standard library's routines (the play loop, reading and parsing the command,
+  LOOK, EXAMINE, GO, lists and more), merged into the library with `#mergeI6`
+  rather than replacing its routines. An object in `LibraryExtensions` answers
+  a hook by defining its `ext_` method. Each group of hooks is its own extension
+  (`hooks/informLibrary`, `keyboard`, `parser`, `standardLibrary`, `verbs`,
+  `writeAfterEntry`, `writeList`), so a program pays only for the groups it
+  includes. Ported from orLibrary's hooks, which now use them.
+- New official extensions `<extensions/stdlib/trackSeen>` (the `beenSeen`
+  attribute), `<extensions/stdlib/distinctRead>` (READ as its own action, with
+  `readDescription`), `<extensions/stdlib/review>` (REVIEW and REVIEW <object>,
+  taking no turn) and `<extensions/stdlib/firstImpressions>` (`preImpression`
+  and `postImpression`, shown the first time only). Ported from orLibrary's
+  _orTrackSeen, orDistinctRead, orReview and orFirstImpressions.
+- New official extensions `<extensions/stdlib/adjective>` (an object's
+  `adjective` words describe it without naming it, and the parser prefers an
+  object named by a noun) and `<extensions/stdlib/parserUtil>` (the
+  ChooseObjects codes and answers, and helpers that change the parser's match
+  list). Ported from orLibrary's orAdjective and orUtilParser.
+- A new official extension, `<extensions/stdlib/stateDescriptors>`: the notes
+  after an object's name in room descriptions and inventories ("(closed and
+  providing light)") come from handlers a game can add, remove or replace.
+  Ported from orLibrary's orStateDescriptors.
+- A new library module, `<languages/english>`: pronouns and verbs that agree
+  with an object, for interpolated text. `cThe(player, "give", "gives",
+  "gave")` prints "You give" or "Bob gave"; `they`, `them`, `their`, `theirs`
+  and `themselves` give each case for any person, number and gender;
+  `cThe(o, are)`, `cant`, `have` and the like cover the common verbs. The
+  `narrativeTense` and `narrativeVoice` settings fix the tense and voice, and a
+  fixed tense leaves the other tense's text out of the story file.
+- `<languages/english/messages>`: the standard library's messages, written with
+  `<languages/english>` in place of English.h's LanguageLM, which a merged patch
+  leaves out. A game that includes it prints the same text, following the
+  `narrativeTense` and `narrativeVoice` settings. The story file is smaller
+  than with English.h's messages: a minimal game by 1,480 bytes with both
+  settings fixed, 104 with neither; Mack by 1,160.
+- A new official extension, `<extensions/general/transition>`:
+  `bgl.output.transition()` divides story parts with centered text, a prompt, a
+  key press and a cleared window. Ported from orLibrary's orTransition.
+- A new official extension, `<extensions/stdlib/backdrop>`: scenery a room
+  mentions, answered without an object for every word. A `backdrops` member is
+  an array of rows, each holding the words, a description and a reply, and a
+  `backdrop` object can float the same rows between rooms. Ported from
+  orLibrary's orBackdrop.
+- `_bglArray` follows a promoted member array when given its owner and property,
+  so callers using that form can pass one over 31 elements.
+- A new official extension, `<extensions/stdlib/betterChoice>`: the parser passes
+  over objects a command can't sensibly mean, and an object can answer for itself
+  with `chooseobject`. Ported from orLibrary's orBetterChoice.
+- A new official extension, `<extensions/stdlib/menu>`: a tree of menus for help,
+  hints and about screens. Ported from orLibrary's orMenu.
+- A new official extension, `<extensions/stdlib/statusLine>`: a status line whose
+  left, middle and right sections a game can replace. Ported from orLibrary's
+  orStatusLine.
+- With `<buf>`, `print()` prints a character buffer.
+- `pop()`, `popEnd()` and `dequeue()` on an array of a struct or owning type now
+  release the slot, as `remove()` does. The returned value stays readable until
+  the slot is handed out again.
+- Generated names for anonymous arrays, inline objects and array headers are now
+  short (`bglrab`, `bglhab`). Inform 6 stores array names in the story, so games
+  with many anonymous arrays get smaller.
 - `<string>` is now the heap-based runtime that was `<stringObj>`: each
   `stringObj` buffer grows as text is written, with no 494-character limit. The
   pool-based runtime is kept as `<archive/string>`; a program includes one or
@@ -17,6 +84,14 @@ Library (beguiLib):
   Inform 6 object header: `object hook { "small brass hook", cloakroom; }`.
 
 Language:
+- `#mergeI6 "name"` applies a patch, a unified diff from `diff -u` or `git
+  diff`, to the Inform 6 files it names, wherever it appears in the program.
+  Patches stack, so several extensions can each change a library routine
+  without replacing it; a patch that no longer matches is a compile error. The
+  patched copies go in the output folder's `i6patched` folder, ahead of every
+  other include directory.
+- `beguiler --make-patch` and `--apply-patch` write and read those patches, for
+  the editor's Create I6 Patch and Edit I6 Patch commands.
 - An interpolated string used as a value becomes a routine that prints it,
   unless it is assigned to a `stringObj`: a `var`, an `auto`, a `var` argument
   and an element of an initializer list take one (`array<var> a = {$"…"};`).
@@ -39,6 +114,16 @@ Language:
   about (`void resize(int width) { self.width = width; }`).
 - `heapSize` and `worldBufSize` are read by the library like any other setting;
   `worldBufSize = 0` is now an error, as `heapSize` below 64 was.
+- Smaller story files, with what prints and what returns unchanged:
+  - A call or interpolated `{…}` whose argument is a `?:` takes each branch's
+    value itself (`if (c) print("A"); else print("b");`), nested `?:` too,
+    so no temporary is stored and a literal prints inline.
+  - An emitter's `print (string) $s` prints a literal argument inline.
+  - Adjacent literal prints compile as one, and one that ends a line before
+    `return true` compiles as Inform 6's print_ret.
+  - A routine that ends by returning a constant returns it at the end of each
+    branch of a trailing `switch` or `if` too, where that return is a single
+    instruction.
 
 Editor:
 - After `return` in a routine that returns an enum, `bnum`, `bool`, or a union
@@ -49,6 +134,14 @@ Editor:
   on it, also after `|`.
 - An argument or return value of a routine type (`func<…>`) offers the routines
   whose signature fits, by name.
+
+Fixes:
+- Lines an extern verb adds with `grammar +=` for a word evicted from another
+  library verb and reclaimed by a native verb were discarded by the eviction.
+- A method call on a cast of an array element (`((object)list[i]).has(a)`)
+  was emitted as an Inform 6 method call instead of through its emitter.
+- `return #beguilerSettings.x;` was rejected when the setting came straight
+  after `return`.
 
 ## [0.1.0-preview.5] - 2026-10-20
 

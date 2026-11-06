@@ -1,0 +1,39 @@
+//===================================================================================================
+// hooks/writeAfterEntry.bgl — hooks in the text after each entry of a list (WriteAfterEntry).
+//---------------------------------------------------------------------------------------------------
+// writeAfterEntry.patch merges calls to these hooks into the standard library. Including it changes nothing
+// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+#mergeI6 "writeAfterEntry"
+
+// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+#emitfirst {
+    #Ifndef ext_sdPartInvBit; Property individual ext_sdPartInvBit; #Endif;
+    #Ifndef ext_sdFullInvBit; Property individual ext_sdFullInvBit; #Endif;
+    #Ifndef ext_sdConcealBit; Property individual ext_sdConcealBit; #Endif;
+    #Ifndef ext_sdAlwaysBit;  Property individual ext_sdAlwaysBit;  #Endif;
+    #Ifndef ext_sdRecurseBit; Property individual ext_sdRecurseBit; #Endif;
+    #Ifndef ext_sdIsOrAre;    Property individual ext_sdIsOrAre;    #Endif;
+    #Ifndef ext_sdNewLineBit; Property individual ext_sdNewLineBit; #Endif;
+    #Ifndef ext_sdDoList;     Property individual ext_sdDoList;     #Endif;
+    #Ifndef _WAE_recurse_flag; Global _WAE_recurse_flag = 0; #Endif;
+    #Ifndef _WAE_parenth_flag; Global _WAE_parenth_flag = 0; #Endif;
+    #Ifndef _WAE_child_count;  Global _WAE_child_count = 0;  #Endif;
+    #Ifndef _WAE_eldest_child; Global _WAE_eldest_child = 0; #Endif;
+}
+
+extern property ext_sdPartInvBit; /// Given an entry's object: true skips the library's partial inventory text for it.
+extern property ext_sdFullInvBit; /// Given an entry's object: true skips the library's full inventory text for it.
+extern property ext_sdConcealBit; /// Given an entry's object: true skips the library's check for concealed contents.
+extern property ext_sdAlwaysBit;  /// Given an entry's object: true skips the library's "always list contents" step.
+extern property ext_sdRecurseBit; /// Given an entry's object: true skips the library's decision to list its contents.
+extern property ext_sdIsOrAre;    /// Given (obj, children): true skips the library's "is" or "are" before its contents.
+extern property ext_sdNewLineBit; /// Given an entry's object: true skips the library's line break after it.
+extern property ext_sdDoList;     /// Given an entry's object: true skips listing its contents.
+extern int _WAE_recurse_flag;    /// While an entry is written: whether its contents will be listed.
+extern int _WAE_parenth_flag;    /// While an entry is written: whether a parenthesis is open.
+extern int _WAE_child_count;     /// While an entry is written: how many of its contents are listed.
+extern object _WAE_eldest_child; /// While an entry is written: the first of its listed contents.

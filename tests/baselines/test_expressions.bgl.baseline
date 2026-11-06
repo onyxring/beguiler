@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -136,6 +137,7 @@ object bgl
     n = n * 3;
     n = n / 4;
     n = n % 7;
+    rtrue;
 ];
 [testIncDec i;
     i = 0;
@@ -143,6 +145,7 @@ object bgl
     i--;
     i++;
     i--;
+    rtrue;
 ];
 [testTernary x tval _bgl_tempL0;
     x = 7;
@@ -156,6 +159,7 @@ object bgl
 ];
 [printResult x;
     print x;
+    rtrue;
 ];
 [testMixed a b r1 apb r2 r3;
     a = 4;
@@ -166,6 +170,7 @@ object bgl
     r3=r2 - 1;
     printresult(r1);
     printresult(r3);
+    rtrue;
 ];
 [testBitwise a b and_ or_;
     a = 12;
@@ -174,6 +179,7 @@ object bgl
     or_=a | b;
     a = a & 7;
     b = b | 4;
+    rtrue;
 ];
 [testExpressions;
     testarithmetic();
@@ -185,6 +191,7 @@ object bgl
     testcast();
     testmixed();
     testbitwise();
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     

@@ -1,0 +1,5 @@
+--- a/noSuchFile.h
++++ b/noSuchFile.h
+@@ -1,1 +1,2 @@
+ x
++y

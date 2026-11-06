@@ -62,4 +62,5 @@ object bgl
 property additive myHooks;
 [main;
     bglinit();
+    rtrue;
 ];

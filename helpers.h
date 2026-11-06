@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <set>
 #include <type_traits>
 
 // Feature-test for std::format. <version> is where __cpp_lib_format is guaranteed to appear;
@@ -94,3 +95,23 @@ constexpr size_t chk(string_view str) {
     }
     return total;
 }
+
+// Compiler-generated array and object names. Inform 6 stores array names in the story and the Z-machine
+// spends two z-characters on a digit or `_`, so these are `bgl`, a kind letter, then a letter counter:
+// each fits two words until the counter outgrows two letters.
+inline std::string generatedName(char kind, int n){
+    std::string letters;
+    int width = 2, span = 26 * 26;
+    while(n >= span){ n -= span; span *= 26; width++; }
+    for(int i = 0; i < width; i++){ letters.insert(letters.begin(), char('a' + n % 26)); n /= 26; }
+    return std::string("bgl") + kind + letters;
+}
+inline std::set<std::string>& anonNames(){ static std::set<std::string> names; return names; }
+// True when `text` begins with a name made for an anonymous array or object.
+inline bool isAnonName(const std::string& text){
+    size_t end = 0;
+    while(end < text.size() && (isalnum((unsigned char)text[end]) || text[end] == '_')) end++;
+    return anonNames().count(text.substr(0, end)) != 0;
+}
+// True for a name the compiler or its runtime owns.
+inline bool isGeneratedName(const std::string& name){ return name.rfind("_bgl", 0) == 0 || isAnonName(name); }

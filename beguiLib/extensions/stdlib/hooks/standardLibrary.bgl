@@ -1,0 +1,29 @@
+//===================================================================================================
+// hooks/standardLibrary.bgl — hooks in routines across the parser (Identical, NounWord, NextWord, AfterRoutines, DisplayStatus, ActionPrimitive).
+//---------------------------------------------------------------------------------------------------
+// standardLibrary.patch merges calls to these hooks into the standard library. Including it changes nothing
+// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+#mergeI6 "standardLibrary"
+
+// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+#emitfirst {
+    #Ifndef ext_identical;     Property individual ext_identical;     #Endif;
+    #Ifndef ext_nounWord;      Property individual ext_nounWord;      #Endif;
+    #Ifndef ext_nextWord;      Property individual ext_nextWord;      #Endif;
+    #Ifndef ext_beforeAction;  Property individual ext_beforeAction;  #Endif;
+    #Ifndef ext_afterAction;   Property individual ext_afterAction;   #Endif;
+    #Ifndef ext_afterRoutines; Property individual ext_afterRoutines; #Endif;
+    #Ifndef ext_displayStatus; Property individual ext_displayStatus; #Endif;
+}
+
+extern property ext_identical;     /// Given (obj1, obj2): false says they differ; true leaves it to the library.
+extern property ext_nounWord;      /// Not 0 is what NounWord returns, in place of reading the next word.
+extern property ext_nextWord;      /// Not 0 is what NextWord returns, in place of reading the next word.
+extern property ext_beforeAction;  /// True stops the action before the library performs it.
+extern property ext_afterAction;   /// Told after the library performs an action.
+extern property ext_afterRoutines; /// Not 0 says the action's after rules have handled it.
+extern property ext_displayStatus; /// True skips the library's status line.

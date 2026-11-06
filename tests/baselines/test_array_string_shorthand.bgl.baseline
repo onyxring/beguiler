@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -107,9 +108,9 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr_greetings --> $9084 1;
+Array bglhaf --> $9084 1;
 array greetings table [ "hello" ];
-Array _bglhdr_payload --> $9084 1;
+Array bglhag --> $9084 1;
 array payload table [ "opaque" ];
 class _bglClass_Tagged
   with

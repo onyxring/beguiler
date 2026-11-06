@@ -66,7 +66,7 @@ object bgl
         return 0;
     
 ];
-Array _bglhdr_trk --> $9084 3;
+Array bglhae --> $9084 3;
 array trk table "a" "b" "c";
 array raw --> "a" "b" "c";
 array rs --> 4;
@@ -75,6 +75,7 @@ array rs --> 4;
     print (string) _bglAt(trk, 0, 0)-->0 ;
     rs-->0 = 7;
     rs-->1 = 8;
+    rtrue;
 ];
 [_bglAt arr i w n;
     n = 0;

@@ -1510,7 +1510,12 @@ token fileLexer::getToken(){
     transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
 
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
-    if(retval.is("#")) return lexDirectiveToken(retval);
+    if(retval.is("#")){
+        // The early return skips the bookkeeping below; a stale "return" would turn `.prop` after the directive into a dictionary word.
+        token d = lexDirectiveToken(retval);
+        prevTokenValue = d.value;
+        return d;
+    }
 
     if(retval.is("'")) return lexCharLiteralToken(retval);
 

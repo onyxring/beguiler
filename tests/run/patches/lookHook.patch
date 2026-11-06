@@ -1,0 +1,10 @@
+--- a/verblib.h	2026-11-03 18:15:24
++++ b/verblib.h	2026-11-03 18:15:24
+@@ -2444,6 +2444,7 @@
+ ];
+ 
+ [ LookSub allow_abbrev  visibility_levels i j k nl_flag;
++    print "[look hook]^";
+     if (parent(player) == 0) return RunTimeError(10);
+ 
+   .MovedByInitial;

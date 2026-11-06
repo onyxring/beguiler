@@ -1576,7 +1576,7 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                                     "an object-backed class, is out of range, or overloads disagree here "
                                     "— write '<Type>{{ … }}' to name the type explicitly", where));
             }
-            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            string anonName = nextAnonName();
             bakeInlineObjectAggregate(cls, cls->name, anonName, func, body);  // consumes through '}'
             expression* arg = new expression();
             arg->tokens.push_back(anonName);

@@ -64,4 +64,5 @@ object bgl
     print "say ~hi~ caf@'e ";
     print x;
     print " 'ok' 't'";
+    rtrue;
 ];

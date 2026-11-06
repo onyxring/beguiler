@@ -1,0 +1,515 @@
+//===================================================================================================
+// english.bgl — English pronouns and verbs that agree with an object, for interpolated text.
+//---------------------------------------------------------------------------------------------------
+// The word picks the case; the object picks the person, number and gender, from the narrative voice,
+// `pluralname`, `male`, `female`, `neuter` and `animate`:
+//     #using bgl.printRules;
+//     #using bgl.english;
+//     print($"{cThe(player, "give", "gives", "gave")} {the(noun)} to {them(second)}.");
+//     // You give the ball to her.  /  Bob gave the ball to them.
+//
+// A subject is written with its verb, as the verb has to agree with it: `the(o, …)` and `cThe(o, …)`
+// name the object, or give the player's pronoun; `they(o, …)` and `cThey(o, …)` give a pronoun.
+// `cTheReport(o, …)` is `cThe(o, …)` for a refusal: when an NPC acts on an order, it starts with "Bob
+// observes that " and goes on in lower case, the NPC as "he" or "she". The
+// verb is three forms (present, present for one other than "I" or "you", past) or one of `are`,
+// `isnt`, `have`, `can`, `cant`, `will` and `dont`. The other pronouns are `they`, `them`, `their`,
+// `theirs` and `themselves`, or by the names that list their forms (`meYouItThem`, …). A `c` in front
+// starts a sentence.
+//
+// The narrative voice and tense follow the player's `narrative_voice` and `narrative_tense`, unless a
+// setting fixes them: `narrativeTense` (1 present, 2 past) and `narrativeVoice` (1, 2 or 3). With a
+// fixed tense, the forms of the other tense are not compiled.
+//===================================================================================================
+#once
+
+extend class beguilerSettingsType {
+    int narrativeTense;   /// 1 for present, 2 for past; unset, the player's `narrative_tense` decides.
+    int narrativeVoice;   /// 1, 2 or 3; unset, the player's `narrative_voice` decides.
+}
+
+// One type per verb, so each overload calls only its own verb's routine.
+enum _englishAre  { are }
+enum _englishIsnt { isnt }
+enum _englishHave { have }
+enum _englishCan  { can }
+enum _englishCant { cant }
+enum _englishWill { will }
+enum _englishDont { dont }
+
+/// English pronouns, verbs and plurals for interpolated text.
+superposed _bglObject _bglEnglish {
+    //-- Verbs, for `cThe(o, are)` and the like --------------------------------
+    emitter _englishAre  are  { 0 }   /// am, are, is; was, were.
+    emitter _englishIsnt isnt { 0 }   /// am not, aren't, isn't; wasn't, weren't.
+    emitter _englishHave have { 0 }   /// have, has; had.
+    emitter _englishCan  can  { 0 }   /// can; could.
+    emitter _englishCant cant { 0 }   /// can't; couldn't.
+    emitter _englishWill will { 0 }   /// will; would.
+    emitter _englishDont dont { 0 }   /// don't, doesn't; didn't.
+
+    //-- Pronouns --------------------------------------------------------------
+    emitter void they(object o)        { _englishSubject($o, false); }      /// The subject pronoun: I, you, he, she, it, they.
+    emitter void cThey(object o)       { _englishSubject($o, true); }       /// As `they`, capitalized.
+    emitter void them(object o)        { _englishObject($o, false); }       /// The object pronoun: me, you, him, her, it, them.
+    emitter void cThem(object o)       { _englishObject($o, true); }        /// As `them`, capitalized.
+    emitter void their(object o)       { _englishPossessive($o, false); }   /// The possessive: my, your, his, her, its, their.
+    emitter void cTheir(object o)      { _englishPossessive($o, true); }    /// As `their`, capitalized.
+    emitter void theirs(object o)      { _englishPossessivePronoun($o, false); }   /// The possessive pronoun: mine, yours, his, hers, its, theirs.
+    emitter void cTheirs(object o)     { _englishPossessivePronoun($o, true); }    /// As `theirs`, capitalized.
+    emitter void themselves(object o)  { _englishReflexive($o, false); }    /// The reflexive: myself, yourself, himself, herself, itself, themselves.
+    emitter void cThemselves(object o) { _englishReflexive($o, true); }     /// As `themselves`, capitalized.
+
+    emitter void iYouItThey(object o)                     { _englishSubject($o, false); }             /// `they`, by its forms.
+    emitter void cIYouItThey(object o)                    { _englishSubject($o, true); }              /// `cThey`, by its forms.
+    emitter void meYouItThem(object o)                    { _englishObject($o, false); }              /// `them`, by its forms.
+    emitter void cMeYouItThem(object o)                   { _englishObject($o, true); }               /// `cThem`, by its forms.
+    emitter void myYourItsTheir(object o)                 { _englishPossessive($o, false); }          /// `their`, by its forms.
+    emitter void cMyYourItsTheir(object o)                { _englishPossessive($o, true); }           /// `cTheir`, by its forms.
+    emitter void mineYoursItsTheirs(object o)             { _englishPossessivePronoun($o, false); }   /// `theirs`, by its forms.
+    emitter void cMineYoursItsTheirs(object o)            { _englishPossessivePronoun($o, true); }    /// `cTheirs`, by its forms.
+    emitter void myselfYourselfItselfThemselves(object o) { _englishReflexive($o, false); }           /// `themselves`, by its forms.
+    emitter void cMyselfYourselfItselfThemselves(object o){ _englishReflexive($o, true); }            /// `cThemselves`, by its forms.
+
+    /// The reflexive when `o` is the actor; otherwise `o` with "the".
+    emitter void theSelf(object o)  { if ($o == actor) _englishReflexive($o, false); else print (the) $o; }
+    /// As `theSelf`, capitalized.
+    emitter void cTheSelf(object o) { if ($o == actor) _englishReflexive($o, true); else print (The) $o; }
+
+    emitter void that(object o)  { _englishDemonstrative($o, false, false); }   /// that, those; him, her or you for a person.
+    emitter void cThat(object o) { _englishDemonstrative($o, false, true); }    /// That, Those; He, She or You for a person.
+    emitter void this(object o)  { _englishDemonstrative($o, true, false); }    /// this, these.
+    emitter void cThis(object o) { _englishDemonstrative($o, true, true); }     /// This, These.
+
+    //-- A subject pronoun with its verb ---------------------------------------
+    emitter void they(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past)  {
+##if #beguilerSettings.narrativeTense == 1
+        _englishTheySp($o, false);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishTheySp($o, false);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishTheyVerb($o, false, $present, $presentOne, $past);
+##endif
+    }   /// "it falls", "you fell".
+    emitter void cThey(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
+##if #beguilerSettings.narrativeTense == 1
+        _englishTheySp($o, true);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishTheySp($o, true);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishTheyVerb($o, true, $present, $presentOne, $past);
+##endif
+    }    /// As `they(o, …)`, capitalized.
+    emitter void they(object o, _englishAre v)   { _englishTheyBe($o, false); }
+    emitter void cThey(object o, _englishAre v)  { _englishTheyBe($o, true); }
+    emitter void they(object o, _englishIsnt v)  { _englishTheyIsnt($o, false); }
+    emitter void cThey(object o, _englishIsnt v) { _englishTheyIsnt($o, true); }
+    emitter void they(object o, _englishHave v)  { _englishTheyHave($o, false); }
+    emitter void cThey(object o, _englishHave v) { _englishTheyHave($o, true); }
+    emitter void they(object o, _englishCan v)   { _englishTheyCan($o, false); }
+    emitter void cThey(object o, _englishCan v)  { _englishTheyCan($o, true); }
+    emitter void they(object o, _englishCant v)  { _englishTheyCant($o, false); }
+    emitter void cThey(object o, _englishCant v) { _englishTheyCant($o, true); }
+    emitter void they(object o, _englishWill v)  { _englishTheyWill($o, false); }
+    emitter void cThey(object o, _englishWill v) { _englishTheyWill($o, true); }
+    emitter void they(object o, _englishDont v)  { _englishTheyDont($o, false); }
+    emitter void cThey(object o, _englishDont v) { _englishTheyDont($o, true); }
+
+    //-- Verbs on their own ----------------------------------------------------
+    /// The verb form that agrees with `o`: "flies" for one thing, "fly" for several, or for I or you.
+    emitter void agree(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) { 
+##if #beguilerSettings.narrativeTense == 1
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishVerb($o, $present, $presentOne, $past);
+##endif
+    }
+    /// "is" or "are" for `o` (was or were in past tense).
+    emitter void isAre(object o) { _englishBe($o, false); }
+    /// The text for the narrative tense.
+    emitter void byTense(stringLiteral present, stringLiteral past) {
+##if #beguilerSettings.narrativeTense == 1
+        print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishTense($present, $past);
+##endif
+    }
+
+    //-- Plurals ---------------------------------------------------------------
+    emitter void s(int n)  { if ($n ~= 1) print "s"; }    /// "s" unless n is 1.
+    emitter void es(int n) { if ($n ~= 1) print "es"; }   /// "es" unless n is 1.
+}
+
+extend bgl {
+    alias english = _bglEnglish;   /// English pronouns, verbs and plurals for interpolated text.
+}
+
+// The subject noun phrase with its verb: the player's pronoun, or the object with "the".
+extend _bglPrintRules {
+    emitter void the(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past)  {
+##if #beguilerSettings.narrativeTense == 1
+        _englishTheSp($o, false);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishTheSp($o, false);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishTheVerb($o, false, $present, $presentOne, $past);
+##endif
+    }   /// "the phoenix flew", "you fly".
+    emitter void cThe(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
+##if #beguilerSettings.narrativeTense == 1
+        _englishTheSp($o, true);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishTheSp($o, true);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishTheVerb($o, true, $present, $presentOne, $past);
+##endif
+    }   /// As `the(o, …)`, capitalized.
+    emitter void the(object o, _englishAre v)   { _englishTheBe($o, false); }
+    emitter void cThe(object o, _englishAre v)  { _englishTheBe($o, true); }
+    emitter void the(object o, _englishIsnt v)  { _englishTheIsnt($o, false); }
+    emitter void cThe(object o, _englishIsnt v) { _englishTheIsnt($o, true); }
+    emitter void the(object o, _englishHave v)  { _englishTheHave($o, false); }
+    emitter void cThe(object o, _englishHave v) { _englishTheHave($o, true); }
+    emitter void the(object o, _englishCan v)   { _englishTheCan($o, false); }
+    emitter void cThe(object o, _englishCan v)  { _englishTheCan($o, true); }
+    emitter void the(object o, _englishCant v)  { _englishTheCant($o, false); }
+    emitter void cThe(object o, _englishCant v) { _englishTheCant($o, true); }
+    emitter void the(object o, _englishWill v)  { _englishTheWill($o, false); }
+    emitter void cThe(object o, _englishWill v) { _englishTheWill($o, true); }
+    emitter void the(object o, _englishDont v)  { _englishTheDont($o, false); }
+    emitter void cThe(object o, _englishDont v) { _englishTheDont($o, true); }
+    // When an NPC acts on an order, "Bob observes that " and the subject in lower case; otherwise as `cThe(o, …)`.
+    emitter void cTheReport(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
+##if #beguilerSettings.narrativeTense == 1
+        _englishReportSp($o, true);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishReportSp($o, true);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishReportVerb($o, true, $present, $presentOne, $past);
+##endif
+    }
+    emitter void cTheReport(object o, _englishAre v)  { _englishReportBe($o, true); }
+    emitter void cTheReport(object o, _englishIsnt v) { _englishReportIsnt($o, true); }
+    emitter void cTheReport(object o, _englishHave v) { _englishReportHave($o, true); }
+    emitter void cTheReport(object o, _englishCan v)  { _englishReportCan($o, true); }
+    emitter void cTheReport(object o, _englishCant v) { _englishReportCant($o, true); }
+    emitter void cTheReport(object o, _englishWill v) { _englishReportWill($o, true); }
+    emitter void cTheReport(object o, _englishDont v) { _englishReportDont($o, true); }
+    // As `cTheReport(o, …)`, in lower case when there is no lead-in ("But you aren't …").
+    emitter void theReport(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
+##if #beguilerSettings.narrativeTense == 1
+        _englishReportSp($o, false);
+        if (_englishOne($o)) print (string)$presentOne; else print (string)$present;
+##endif
+##if #beguilerSettings.narrativeTense == 2
+        _englishReportSp($o, false);
+        print (string)$past;
+##endif
+##if #beguilerSettings.narrativeTense == 0
+        _englishReportVerb($o, false, $present, $presentOne, $past);
+##endif
+    }
+    emitter void theReport(object o, _englishAre v)  { _englishReportBe($o, false); }
+    emitter void theReport(object o, _englishIsnt v) { _englishReportIsnt($o, false); }
+    emitter void theReport(object o, _englishHave v) { _englishReportHave($o, false); }
+    emitter void theReport(object o, _englishCan v)  { _englishReportCan($o, false); }
+    emitter void theReport(object o, _englishCant v) { _englishReportCant($o, false); }
+    emitter void theReport(object o, _englishWill v) { _englishReportWill($o, false); }
+    emitter void theReport(object o, _englishDont v) { _englishReportDont($o, false); }
+}
+
+//===================================================================================================
+// Routines. Each is compiled only when something calls it.
+//===================================================================================================
+
+// Whether the narration is in the past tense.
+superposed bool _englishPast() {
+#if #beguilerSettings.narrativeTense == 2
+    return true;
+#else
+#if #beguilerSettings.narrativeTense == 1
+    return false;
+#else
+    bool past = false;
+#if I6_STANDARD_LIBRARY
+    #i6 { if (player provides narrative_tense && player.narrative_tense == PAST_TENSE) past = true; }
+#endif
+    return past;
+#endif
+#endif
+}
+
+// The player's narrative voice: 1, 2 or 3.
+superposed int _englishVoice() {
+#if #beguilerSettings.narrativeVoice > 0
+    return #beguilerSettings.narrativeVoice;
+#else
+    int voice = 2;
+#if I6_STANDARD_LIBRARY
+    #i6 { if (player provides narrative_voice) voice = player.narrative_voice; }
+#endif
+    return voice;
+#endif
+}
+
+// Which forms `o` takes: 1 I, 2 we, 3 you, 4 you (several), 5 he, 6 she, 7 it, 8 they.
+superposed int _englishForm(object o) {
+    if (o == player) {
+        int voice = _englishVoice();
+        if (voice == 1) return o.has(pluralname) ? 2 : 1;
+        if (voice == 2) return o.has(pluralname) ? 4 : 3;
+    }
+    if (o.has(pluralname)) return 8;
+    if (o.has(female)) return 6;
+    if ((o.has(male) || o.has(animate)) && o.hasnt(neuter)) return 5;
+    return 7;
+}
+
+// Whether `o` takes the verb form for one other than "I" or "you": he, she or it.
+superposed bool _englishOne(object o) {
+    int form = _englishForm(o);
+    return form >= 5 && form <= 7;
+}
+
+superposed void _englishSubject(object o, bool caps) {
+    switch (_englishForm(o)) {
+        case 1: print("I");
+        case 2: print(caps ? "We" : "we");
+        case 3, 4: print(caps ? "You" : "you");
+        case 5: print(caps ? "He" : "he");
+        case 6: print(caps ? "She" : "she");
+        case 7: print(caps ? "It" : "it");
+        default: print(caps ? "They" : "they");
+    }
+}
+
+superposed void _englishObject(object o, bool caps) {
+    switch (_englishForm(o)) {
+        case 1: print(caps ? "Me" : "me");
+        case 2: print(caps ? "Us" : "us");
+        case 3, 4: print(caps ? "You" : "you");
+        case 5: print(caps ? "Him" : "him");
+        case 6: print(caps ? "Her" : "her");
+        case 7: print(caps ? "It" : "it");
+        default: print(caps ? "Them" : "them");
+    }
+}
+
+superposed void _englishPossessive(object o, bool caps) {
+    switch (_englishForm(o)) {
+        case 1: print(caps ? "My" : "my");
+        case 2: print(caps ? "Our" : "our");
+        case 3, 4: print(caps ? "Your" : "your");
+        case 5: print(caps ? "His" : "his");
+        case 6: print(caps ? "Her" : "her");
+        case 7: print(caps ? "Its" : "its");
+        default: print(caps ? "Their" : "their");
+    }
+}
+
+superposed void _englishPossessivePronoun(object o, bool caps) {
+    switch (_englishForm(o)) {
+        case 1: print(caps ? "Mine" : "mine");
+        case 2: print(caps ? "Ours" : "ours");
+        case 3, 4: print(caps ? "Yours" : "yours");
+        case 5: print(caps ? "His" : "his");
+        case 6: print(caps ? "Hers" : "hers");
+        case 7: print(caps ? "Its" : "its");
+        default: print(caps ? "Theirs" : "theirs");
+    }
+}
+
+superposed void _englishReflexive(object o, bool caps) {
+    switch (_englishForm(o)) {
+        case 1: print(caps ? "Myself" : "myself");
+        case 2: print(caps ? "Ourselves" : "ourselves");
+        case 3: print(caps ? "Yourself" : "yourself");
+        case 4: print(caps ? "Yourselves" : "yourselves");
+        case 5: print(caps ? "Himself" : "himself");
+        case 6: print(caps ? "Herself" : "herself");
+        case 7: print(caps ? "Itself" : "itself");
+        default: print(caps ? "Themselves" : "themselves");
+    }
+}
+
+// "that" and "those" for things; for a person or the player, the object pronoun ("That" starting a
+// sentence: the subject pronoun), as the library's ThatOrThose does.
+superposed void _englishDemonstrative(object o, bool near, bool caps) {
+    if (!near && (o == player || ((o.has(male) || o.has(female) || o.has(animate)) && o.hasnt(pluralname) && o.hasnt(neuter)))) {
+        if (caps) _englishSubject(o, true); else _englishObject(o, false);
+        return;
+    }
+    bool several = o.has(pluralname);
+    if (near) {
+        if (several) print(caps ? "These" : "these"); else print(caps ? "This" : "this");
+    } else {
+        if (several) print(caps ? "Those" : "those"); else print(caps ? "That" : "that");
+    }
+}
+
+// The subject as a noun phrase: the player's pronoun, unless the voice is the third person.
+superposed void _englishTheSubject(object o, bool caps) {
+    if (o == player && _englishVoice() != 3) { _englishSubject(o, caps); return; }
+    #i6 { if (caps) print (The) o; else print (the) o; }
+}
+
+// After an NPC's lead-in ("Bob observes that "), the subject in lower case, and the NPC as a pronoun.
+superposed void _englishReportSubject(object o, bool caps) {
+    if (actor == player || o == player) { _englishTheSubject(o, caps); return; }
+    L__M(Miscellany, 60, actor);
+    if (o == actor) _englishSubject(o, false);
+    else _englishTheSubject(o, false);
+}
+
+superposed void _englishAgree(object o, string present, string presentOne) {
+    if (_englishOne(o)) print(presentOne); else print(present);
+}
+
+superposed void _englishVerb(object o, string present, string presentOne, string past) {
+    if (_englishPast()) print(past); else if (_englishOne(o)) print(presentOne); else print(present);
+}
+
+superposed void _englishTense(string present, string past) {
+    if (_englishPast()) print(past); else print(present);
+}
+
+// The verbs below follow their subject: `joined` puts the space before them, or after the player's
+// pronoun the contraction the library uses ("You're", "I'm", "You've", "You'll").
+superposed bool _englishContracts(object o, bool joined) {
+    return joined && o == player && _englishVoice() != 3;
+}
+
+superposed void _englishBe(object o, bool joined) {
+    int form = _englishForm(o);
+    bool contracts = _englishContracts(o, joined);
+    if (joined && !contracts) print(" ");
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { if (contracts) print(" "); if (form == 1 || (form >= 5 && form <= 7)) print("was"); else print("were"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    if (contracts) { if (form == 1) print("'m"); else print("'re"); return; }
+    if (form == 1) print("am"); else if (form >= 5 && form <= 7) print("is"); else print("are");
+#endif
+}
+
+superposed void _englishIsnt(object o, bool joined) {
+    int form = _englishForm(o);
+    bool contracts = _englishContracts(o, joined) && form == 1;
+    if (joined && !contracts) print(" ");
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { if (contracts) print(" "); if (form == 1 || (form >= 5 && form <= 7)) print("wasn't"); else print("weren't"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    if (contracts) { print("'m not"); return; }
+    if (form >= 5 && form <= 7) print("isn't"); else print("aren't");
+#endif
+}
+
+superposed void _englishHave(object o, bool joined) {
+    bool contracts = _englishContracts(o, joined);
+    if (joined && !contracts) print(" ");
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { if (contracts) print("'d"); else print("had"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    if (contracts) { print("'ve"); return; }
+    if (_englishOne(o)) print("has"); else print("have");
+#endif
+}
+
+superposed void _englishDont(object o) {
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { print("didn't"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    if (_englishOne(o)) print("doesn't"); else print("don't");
+#endif
+}
+
+superposed void _englishCan() {
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { print("could"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    print("can");
+#endif
+}
+
+superposed void _englishCant() {
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { print("couldn't"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    print("can't");
+#endif
+}
+
+superposed void _englishWill(object o, bool joined) {
+    bool contracts = _englishContracts(o, joined);
+    if (joined && !contracts) print(" ");
+#if #beguilerSettings.narrativeTense != 1
+    if (_englishPast()) { if (contracts) print("'d"); else print("would"); return; }
+#endif
+#if #beguilerSettings.narrativeTense != 2
+    if (contracts) print("'ll"); else print("will");
+#endif
+}
+
+// With the tense left to the player, a subject with its verb in one call.
+superposed void _englishTheyVerb(object o, bool caps, string present, string presentOne, string past){ _englishSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
+superposed void _englishTheVerb(object o, bool caps, string present, string presentOne, string past){ _englishTheSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
+superposed void _englishReportVerb(object o, bool caps, string present, string presentOne, string past){ _englishReportSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
+
+// A subject with its verb, one routine for each pair a program uses, so each use is a single call.
+superposed void _englishTheySp(object o, bool caps){ _englishSubject(o, caps); print(" "); }
+superposed void _englishTheyBe(object o, bool caps){ _englishSubject(o, caps); _englishBe(o, true); }
+superposed void _englishTheyIsnt(object o, bool caps){ _englishSubject(o, caps); _englishIsnt(o, true); }
+superposed void _englishTheyHave(object o, bool caps){ _englishSubject(o, caps); _englishHave(o, true); }
+superposed void _englishTheyCan(object o, bool caps){ _englishSubject(o, caps); print(" "); _englishCan(); }
+superposed void _englishTheyCant(object o, bool caps){ _englishSubject(o, caps); print(" "); _englishCant(); }
+superposed void _englishTheyWill(object o, bool caps){ _englishSubject(o, caps); _englishWill(o, true); }
+superposed void _englishTheyDont(object o, bool caps){ _englishSubject(o, caps); print(" "); _englishDont(o); }
+superposed void _englishTheSp(object o, bool caps){ _englishTheSubject(o, caps); print(" "); }
+superposed void _englishTheBe(object o, bool caps){ _englishTheSubject(o, caps); _englishBe(o, true); }
+superposed void _englishTheIsnt(object o, bool caps){ _englishTheSubject(o, caps); _englishIsnt(o, true); }
+superposed void _englishTheHave(object o, bool caps){ _englishTheSubject(o, caps); _englishHave(o, true); }
+superposed void _englishTheCan(object o, bool caps){ _englishTheSubject(o, caps); print(" "); _englishCan(); }
+superposed void _englishTheCant(object o, bool caps){ _englishTheSubject(o, caps); print(" "); _englishCant(); }
+superposed void _englishTheWill(object o, bool caps){ _englishTheSubject(o, caps); _englishWill(o, true); }
+superposed void _englishTheDont(object o, bool caps){ _englishTheSubject(o, caps); print(" "); _englishDont(o); }
+superposed void _englishReportSp(object o, bool caps){ _englishReportSubject(o, caps); print(" "); }
+superposed void _englishReportBe(object o, bool caps){ _englishReportSubject(o, caps); _englishBe(o, true); }
+superposed void _englishReportIsnt(object o, bool caps){ _englishReportSubject(o, caps); _englishIsnt(o, true); }
+superposed void _englishReportHave(object o, bool caps){ _englishReportSubject(o, caps); _englishHave(o, true); }
+superposed void _englishReportCan(object o, bool caps){ _englishReportSubject(o, caps); print(" "); _englishCan(); }
+superposed void _englishReportCant(object o, bool caps){ _englishReportSubject(o, caps); print(" "); _englishCant(); }
+superposed void _englishReportWill(object o, bool caps){ _englishReportSubject(o, caps); _englishWill(o, true); }
+superposed void _englishReportDont(object o, bool caps){ _englishReportSubject(o, caps); print(" "); _englishDont(o); }

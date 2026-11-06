@@ -1,0 +1,27 @@
+//===================================================================================================
+// trackSeen.bgl — the `beenSeen` attribute: what the player has examined, and the rooms looked at.
+//---------------------------------------------------------------------------------------------------
+// An object gains `beenSeen` after it is examined. A room gains it after a LOOK, when the player
+// arrives in it, and at the start of play. For rooms it matches the library's `visited`, except
+// that it is also given by a LOOK.
+//
+// Include it after the library's verblib.
+//
+// Ported from orLibrary's _orTrackSeen.
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/informLibrary>
+#include <extensions/stdlib/hooks/standardLibrary>
+#include <extensions/stdlib/hooks/verbs>
+
+attribute beenSeen;   /// The player has examined this object, or seen this room.
+
+object _trackSeenHooks {
+    parent = LibraryExtensions;
+    void ext_afterAction() {
+        if(action == Examine && noun != null) noun.give(beenSeen);
+        if(action == Look) location.give(beenSeen);
+    }
+    void ext_afterGamePrologueNotify() { location.give(beenSeen); }
+    void ext_playerToNotify(object newLocation) { newLocation.give(beenSeen); }
+}

@@ -567,7 +567,8 @@ class bglParser {
         // $i6Expr placeholders standing for a MEMBER array: a subscript on one addresses the property
         // data (`$self.&$prop-->i`), since $self is then the owning object.
         set<string> i6ExprMemberArrays;
-        int anonObjectCounter = 0;          // counter for unique _bglAnonN inline-object names
+        int anonObjectCounter = 0;          // counter for unique anonymous array and inline-object names
+        string nextAnonName();
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         vector<size_t> tryBlockDepths;      // activeBlockStack's size where each enclosing try body begins
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
@@ -889,6 +890,7 @@ class bglParser {
         bool directiveStoredEmitFirst(token directive, abstractObject& contextObj);  // #storedemitfirst name { raw I6 }
         bool directiveStoredEmitLast(token directive, abstractObject& contextObj);   // #storedemitlast name { raw I6 }
         bool directiveIncludeI6(token directive, abstractObject& contextObj);        // #includei6 "file" / @"file"
+        bool directiveMergeI6(token directive, abstractObject& contextObj);          // #mergei6 "patch" / ?"patch"
         bool directiveI6(token directive, abstractObject& contextObj);               // #i6 — dispatches to the single-line or block form
         bool directiveI6SingleLine(token t, statementBlock* body, const sourceLocation& i6DirLoc);                 // #i6 <rest of line>
         bool directiveI6Block(statementBlock* body, abstractObject& contextObj, const sourceLocation& i6DirLoc);   // #i6 { raw I6 interleaved with #bgl{} }
@@ -954,6 +956,7 @@ class bglParser {
                 vector<string> prefixParens;  // structural '(' tokens to restore after assembly
                 string trueSetUp;             // set-up the true branch needs, run only when it is taken
                 size_t falseMark = 0;         // where the false branch's own set-up starts in pendingInjections
+                class i6RawNode* trueInner = nullptr;   // the true branch's set-up when it is one nested ?:
             };
             vector<PendingTernary> pendingTernaries;
             const vector<string>* terminators = nullptr;
@@ -991,7 +994,19 @@ class bglParser {
         ExprStep parseExprOperator(ExprParseState& st);
         class functionDef* negationThroughInt(const string& type);
         bool parseExprUnaryOperand(ExprParseState& st, const string& op, token operand);
-        string takeBranchSetUp(size_t mark);
+        string takeBranchSetUp(size_t mark, class i6RawNode** only = nullptr);
+        // A lowered ?: — `if (cond) { t = a; } else { t = b; }` — kept in parts, so a statement whose argument
+        // is the temporary can take each branch's value itself instead (distributeTernaryCall).
+        struct ternaryLowering {
+            string cond, temp, text;
+            string trueValue, trueType, trueSetUp; class i6RawNode* trueInner = nullptr;
+            string falseValue, falseType, falseSetUp; class i6RawNode* falseInner = nullptr;
+        };
+        std::map<class i6RawNode*, ternaryLowering> ternaryLowerings;
+        statement* distributeTernaryCall(functionCallStatement* call);
+        bool readsOnly(const string& text);
+        bool distributableTernary(const ternaryLowering& L, bool valuesReadOnly);
+        bool makeChoiceSegment(struct interpolatedSegment& seg, const std::function<void(expression*)>& prepare);
         ExprStep parseExprDictionaryWord(ExprParseState& st);
         ExprStep parseExprDotChain(ExprParseState& st);
         ExprStep parseExprTernaryStart(ExprParseState& st);

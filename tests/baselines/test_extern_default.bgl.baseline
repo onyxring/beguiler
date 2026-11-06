@@ -60,10 +60,12 @@ object _zcode
 object bgl
 ;
 [Epilogue;
-    print (string)"The End.^";
+    "The End.";
+
 ];
 [use s;
     clearscreen();
     s=chooseobjects(0,0);
     epilogue();
+    rtrue;
 ];

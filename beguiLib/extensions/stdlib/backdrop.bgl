@@ -1,0 +1,185 @@
+//===================================================================================================
+// backdrop.bgl — scenery a room mentions, answered without an object for every word.
+//---------------------------------------------------------------------------------------------------
+// A room, or any `backdrop` object, lists its scenery in a `backdrops` member, one row per thing:
+//     array<array<var>> backdrops = {
+//         {.canopy, .roof, "High above, the canopy blots out the sky.", "It's out of reach."},
+//         {.dirt, .tracks, "Monkey tracks, you suspect.", bdDirtReply},
+//         {.mouth, "If only you'd seen a mouth around here someplace.", bdDescr}
+//     };
+// The last two slots are a description, printed for EXAMINE, and a reply, printed for anything else;
+// every slot before them is a word the player may use, alone or together.
+// Either text may be plain, interpolated, a routine or an object that prints. The reply may instead be:
+//   - `bdDefault`, or the description may, for the library's message;
+//   - `bdDescr`, to use the description as the reply too.
+// A reply routine runs as that word's before rule and can check `action`. It returns false for the
+// library's message, true when it printed text, or `bdRedirected` when it ran another action.
+//
+// Real objects win over backdrops: a word that names both means the object.
+// A `backdrop` object serves rows of its own across rooms: give it `rawArray<object> found_in = {…}`
+// or a `bool found_in()` method.
+//
+// Include it after the library's verblib. Ported from orLibrary's orBackdrop.
+//===================================================================================================
+#once
+#include <array>
+#include <bindings/i6StandardLibrary>
+
+const int bdDefault    = -1;   /// In a text slot: the library's message.
+const int bdDescr      = 1;    /// In the reply slot: the reply is the description.
+const int bdRedirected = 2;    /// Returned by a reply routine that ran another action.
+
+property backdrops;            /// A room's or backdrop object's rows: words, description, reply.
+
+/// A set of scenery rows that can float between rooms. Declare `backdrops`, and `found_in` to span rooms.
+class backdrop : object {
+    attributes = {scenery};
+
+    int parse_name() {
+        if(parser_action == TheSame) return -2;
+        object holder = self == backdropEngine ? self.parent : self;
+        if(holder == null || !holder.provides((property)backdrops)) return 0;
+        int start = wn;
+        int count = 0;
+        dictionaryWord word = NextWord();
+        while(word != null && _backdropAnyRowHas(holder, word)) {
+            count++;
+            word = NextWord();
+        }
+        int rows = count == 0 ? 0 : _bglArray.length(holder, (property)backdrops);
+        for(int i = 0; i < rows; i++) {
+            var row = _bglArray.get(holder, (property)backdrops, i);
+            wn = start;
+            bool all = true;
+            for(int c = 0; c < count && all; c++) all = _backdropRowHas(row, NextWord());
+            if(all) {
+                backdropEngine._row = row;
+                backdropEngine._holder = holder;
+                wn = start + count;
+                return count;
+            }
+        }
+        wn = start;
+        return 0;
+    }
+
+    bool description() {
+        if(!_backdropRespond(true)) print("^");
+        rtrue;
+    }
+
+    bool before() {
+        if(backdropEngine._isDescriptionVerb()) rfalse;
+        if(!_backdropRespond(false)) print("^");
+        rtrue;
+    }
+}
+
+/// Serves the `backdrops` of whichever room the player is in.
+backdrop backdropEngine {
+    attributes = {proper};
+    string short_name = "your surroundings";
+    bool found_in() { rtrue; }
+
+    var _row = 0;                    // the row the parser last matched
+    object _holder = null;           // and what held it
+    rawArray<int> _descriptionVerbs = {0, 0, 0, 0, 0};
+
+    bool _isDescriptionVerb() {
+        if(action == Examine) rtrue;
+        for(int i = 0; i < 5; i++)
+            if(_descriptionVerbs[i] == (int)action) rtrue;
+        rfalse;
+    }
+
+    /// Have an action on a backdrop print its description, as EXAMINE does. Up to five are kept.
+    void registerDescriptionVerb(verb v) {
+        for(int i = 0; i < 5; i++) {
+            if(_descriptionVerbs[i] == 0) {
+                _descriptionVerbs[i] = (int)v;
+                return;
+            }
+        }
+    }
+
+    /// The first word of the row this action's backdrop matched, or null if it refers to no backdrop or, given one, not that holder's.
+    dictionaryWord getKeyword(object holder = null) {
+        if(_row == 0 || !(_backdropIs(noun) || _backdropIs(second))) return null;
+        if(holder != null && _holder != holder) return null;
+        return (dictionaryWord)_bglArray.get(_row, 0, 0);
+    }
+}
+
+// Runs the parser's choices through the library's extension hooks. Backdrops stay out of "all", and
+// a point for every other object lifts a real object above a backdrop that matches the same words,
+// without the parser noting its choice when that object is the only one.
+object _backdropHooks {
+    parent = LibraryExtensions;
+    int ext_chooseobjects(object obj, int code) {
+        if(code < 2) return _backdropIs(obj) ? 2 : 0;
+        if(_backdropIs(obj)) {
+            if(_backdropRealMatches() == 1) no_infer_message = true;
+            return 0;
+        }
+        return 1;
+    }
+    // The engine can be spoken to while a command is parsed. Talkable during its action too, it would
+    // be the first thing in the room to answer a conversation that names no one.
+    void ext_afterprompt() {
+        backdropEngine._row = 0;
+        backdropEngine.give(talkable);
+    }
+    bool ext_gamepreroutine() {
+        backdropEngine.ungive(talkable);
+        rfalse;
+    }
+}
+
+superposed bool _backdropIs(var value) {
+    return typeof(value) == eType.object && ((object)value).is(backdrop);
+}
+
+superposed int _backdropRealMatches() {
+    int count = 0;
+    for(int i = 0; i < number_matched; i++)
+        if(match_list[i] != -1 && !_backdropIs(match_list[i])) count++;
+    return count;
+}
+
+superposed bool _backdropRowHas(var row, dictionaryWord word) {
+    int words = _bglArray.length(row, 0) - 2;
+    for(int i = 0; i < words; i++)
+        if(_bglArray.get(row, 0, i) == word) rtrue;
+    rfalse;
+}
+
+superposed bool _backdropAnyRowHas(object holder, dictionaryWord word) {
+    int rows = _bglArray.length(holder, (property)backdrops);
+    for(int i = 0; i < rows; i++)
+        if(_backdropRowHas(_bglArray.get(holder, (property)backdrops, i), word)) rtrue;
+    rfalse;
+}
+
+// Prints the matched row's description or reply. Returns true if the caller needn't end the line.
+superposed bool _backdropRespond(bool describing) {
+    var row = backdropEngine._row;
+    var text = bdDefault;
+    if(row != 0) {
+        int last = _bglArray.length(row, 0) - 1;
+        text = _bglArray.get(row, 0, describing ? last - 1 : last);
+        if(!describing && text == bdDescr) text = _bglArray.get(row, 0, last - 1);
+    }
+    if(text == bdDefault) {
+        L__M(Miscellany, 39);
+        rtrue;
+    }
+    if(typeof(text) == eType.routine) {
+        func<int> reply = (func<int>)text;
+        int result = reply();
+        if(result == 0) { L__M(Miscellany, 39); rtrue; }
+        return result == bdRedirected;
+    }
+    if(typeof(text) == eType.object) { #i6 { if(text provides print) text.print(); else print (name) text; } rfalse; }
+    print((string)text);
+    rfalse;
+}

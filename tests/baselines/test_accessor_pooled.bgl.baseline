@@ -107,4 +107,5 @@ self.b._val = 0;
     r = _bglClass_Thing.create();
     print r.b._opconv_int();
     print q.b._opconv_int();
+    rtrue;
 ];

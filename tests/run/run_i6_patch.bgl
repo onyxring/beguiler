@@ -1,0 +1,21 @@
+// run_i6_patch — `#mergeI6` applies a unified diff to the Inform 6 file it names. Two patches,
+// each made against the unchanged file, change the same routine; the patched file is reached
+// through a nested include, so the copy must come first on the include path. A patch is found
+// with or without its extension, applies once however often it is merged, and `?` skips a missing one.
+// EXPECT_OUTPUT: [look hook]
+// EXPECT_OUTPUT: [top line]
+// EXPECT_OUTPUT: Room A
+// INPUT: look
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#mergeI6 "patches/lookHook"
+#includeI6 "parser"
+#includeI6 "patches/wrapVerblib.h"
+#mergeI6 "patches/lookTopLine.patch"
+#mergeI6 "patches/lookHook.patch"
+#mergeI6 ?"patches/noSuchPatch"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

@@ -559,7 +559,8 @@ is a compile-time error; copy it into an array with a capacity of its own first.
   gives its slot a copy of its initial value.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
-- `pop()`, `popEnd()` and `dequeue()` hand back the slot's instance, which stays the array's.
+- `pop()`, `popEnd()` and `dequeue()` release the slot's instance, as `remove` does, and return it. It stays readable
+  until the instance is handed out again, so copy what you need before adding to an array of that struct.
 - Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
   `ref` to an element follows that element to its new place.
 - A view is valid only while its source is unchanged: once the source removes or clears an element, the view may

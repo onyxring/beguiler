@@ -93,5 +93,6 @@ _bglClass_wrapper w
 [main;
     pb._opeq(makepoint());
     w.inner._opeq(makepoint());
+    rtrue;
 ];
 _bglClass_point _bglLocal_makepoint_p;

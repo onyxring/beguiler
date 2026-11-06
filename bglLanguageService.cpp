@@ -165,6 +165,7 @@ void bglLanguageService::reset(){
     infTrailer.clear();
     isInfMode = false;
     sawBglIsland = false;
+    i6Patches = i6PatchSet();
     // Re-register the four base types
     registerType("void");
     registerType("var");

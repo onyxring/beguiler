@@ -66,6 +66,7 @@ object bgl
 ;
 [apply fn x;
     fn(x);
+    rtrue;
 ];
 [main base i flag count;
     base = 10;
@@ -88,6 +89,7 @@ object bgl
         count++;
     }
     apply(_bglLambda_3, 5);
+    rtrue;
 ];
 [_bglLambda_0 n _bglcl0 total;
     _bglcl0 = _bglCap0;
@@ -124,4 +126,5 @@ object bgl
         shared = _bglCap3;
         outern = _bglCap4;
     }
+    rtrue;
 ];

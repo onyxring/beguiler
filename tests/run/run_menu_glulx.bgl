@@ -1,0 +1,72 @@
+// run_menu_glulx — <extensions/stdlib/menu>: a leaf's description and rawDescription show and the menu carries on;
+// a concealed choice and a parent of only concealed children aren't offered; `childMenuItems` lists choices and
+// `menuDisplay` renames one; `ext_handleMenuResult` hears a result; a childless choice with no text ends
+// the menu and show() returns it; leaving returns null. Glulx, because the Z-machine runner has no key input.
+// EXPECT_OUTPUT: First text.
+// EXPECT_OUTPUT: Second text.
+// EXPECT_OUTPUT: chosen: action item
+// EXPECT_OUTPUT: left: true
+// EXPECT_OUTPUT: heard: action item
+// EXPECT_OUTPUT: listed: list two
+// INPUT: runmenu
+// INPUT: 
+// INPUT: k
+// INPUT: n
+// INPUT: 
+// INPUT: k
+// INPUT: n
+// INPUT: 
+// INPUT: runmenu2
+// INPUT: q
+// INPUT: runlist
+// INPUT: n
+// INPUT: 
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = glulx; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/menu>
+object hall { short_name = "Hall"; string description = "A hall."; attributes = {light}; }
+menu root { "Root"; }
+menu firstItem { "First", root; string description = "First text."; }
+menu secondItem { "Second", root; void rawDescription() { print("Second text.^"); } }
+menu hiddenOne { "Hidden", root; attributes = {concealed}; }
+menu emptied { "Emptied", root; }
+menu emptiedChild { "Gone", emptied; attributes = {concealed}; }
+menu actionItem { "Action", root; string short_name = "action item"; }
+object heardResult = null;
+menu listOne { "list one"; }
+menu listTwo { "list two"; string menuDisplay = "Second listed"; }
+menu listed { "Listed"; rawArray<object> childMenuItems = {listOne, listTwo}; }
+object resultWatcher { parent = LibraryExtensions;
+    bool ext_handlemenuresult(object chosen) { heardResult = chosen; rfalse; }
+}
+verb RunMenu {
+    meta = true;
+    grammar = {.runmenu};
+    void handler() {
+        object chosen = root.show();
+        print("chosen: "); print(chosen); print("^");
+        print("heard: "); print(heardResult); print("^");
+    }
+}
+verb RunList {
+    meta = true;
+    grammar = {.runlist};
+    void handler() {
+        object chosen = listed.show();
+        print("listed: "); print(chosen); print("^");
+    }
+}
+verb RunMenu2 {
+    meta = true;
+    grammar = {.runmenu2};
+    void handler() {
+        object chosen = root.show(menuStyle.topOnly);
+        print("left: "); print(chosen == null); print("^");
+    }
+}
+void Initialise(){ location = hall; }
+#includeI6 "grammar"

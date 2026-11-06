@@ -1,0 +1,75 @@
+# standardLibrary.patch: calls to the hooks of <extensions/stdlib/hooks/standardLibrary> in the standard library (6.12.8).
+# Each merge chunk adds a call, LibraryExtensions.RunAll or RunWhile, and where a hook can take over,
+# an `if` around the library's own code. With nothing answering a hook, the library behaves as it
+# does without the patch.
+#
+# parser.h: Identical, NounWord, NextWord, AfterRoutines, DisplayStatus and ActionPrimitive.
+
+--- a/parser.h
++++ b/parser.h
+@@ -3894,6 +3894,7 @@
+ ! ----------------------------------------------------------------------------
+ 
+ [ Identical o1 o2 p1 p2 n1 n2 i j flag;
++    if (LibraryExtensions.RunWhile(ext_identical, true, o1, o2) == false) rfalse;
+     if (o1 == o2) rtrue;  ! This should never happen, but to be on the safe side
+     if (o1 == 0 || o2 == 0) rfalse;  ! Similarly
+     if (parent(o1) == Compass || parent(o2) == Compass) rfalse; ! Saves time
+@@ -4650,6 +4651,9 @@
+ ! ----------------------------------------------------------------------------
+ 
+ [ NounWord i j s;
++    i = wn; s = LibraryExtensions.RunWhile(ext_nounWord, 0);
++    if (s) return s;
++    wn = i;
+     i = NextWord();
+     if (i == 0) rfalse;
+     if (i == ME1__WD or ME2__WD or ME3__WD) return 1;
+@@ -4676,6 +4680,8 @@
+ #Ifdef TARGET_ZCODE;
+ 
+ [ NextWord i j;
++    i = LibraryExtensions.RunWhile(ext_nextWord, 0);
++    if (i) return i;
+     if (wn <= 0 || wn > parse->1) { wn++; rfalse; }
+     i = wn*2-1; wn++;
+     j = parse-->i;
+@@ -4724,6 +4730,8 @@
+ #Ifnot; ! TARGET_GLULX
+ 
+ [ NextWord i j;
++    i = LibraryExtensions.RunWhile(ext_nextWord, 0);
++    if (i) return i;
+     if (wn <= 0 || wn > parse-->0) { wn++; rfalse; }
+     i = wn*3-2; wn++;
+     j = parse-->i;
+@@ -5492,11 +5500,11 @@
+ 
+ #Ifdef TARGET_ZCODE;
+ 
+-[ ActionPrimitive; (#actions_table-->action)(); ];
++[ ActionPrimitive; if (LibraryExtensions.RunWhile(ext_beforeAction, false)) return; (#actions_table-->action)(); LibraryExtensions.RunAll(ext_afterAction); ];
+ 
+ #Ifnot; ! TARGET_GLULX
+ 
+-[ ActionPrimitive; (#actions_table-->(action+1))(); ];
++[ ActionPrimitive; if (LibraryExtensions.RunWhile(ext_beforeAction, false)) return; (#actions_table-->(action+1))(); LibraryExtensions.RunAll(ext_afterAction); ];
+ 
+ #Endif; ! TARGET_
+ 
+@@ -5620,6 +5628,7 @@
+ ];
+ 
+ [ AfterRoutines rv;
++    if (LibraryExtensions.RunWhile(ext_afterRoutines, 0)) rtrue;
+     scope_reason = REACT_AFTER_REASON; parser_one = 0;
+     SearchScope(ScopeCeiling(player), player, 0); scope_reason = PARSING_REASON;
+     if (parser_one) rtrue;
+@@ -5754,6 +5763,7 @@
+ ! ----------------------------------------------------------------------------
+ 
+ [ DisplayStatus;
++    if (LibraryExtensions.RunWhile(ext_displayStatus, false)) rfalse;
+     if (sys_statusline_flag == 0) { sline1 = score; sline2 = turns; }
+     else { sline1 = the_time/60; sline2 = the_time%60;}
+ ];

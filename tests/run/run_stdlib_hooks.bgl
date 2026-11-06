@@ -1,0 +1,40 @@
+// run_stdlib_hooks — <extensions/stdlib/hooks> merges hooks into the standard library: a
+// library extension answers them, in the order extensions are declared, and the banner shows extensions' and the game's
+// text. It is included before the library, which its declarations and patch don't mind.
+// EXPECT_OUTPUT: [LOOK hooked]
+// EXPECT_OUTPUT: [no jumping]
+// EXPECT_OUTPUT: You see nothing unexpected in that direction.
+// EXPECT_OUTPUT: As good-looking as ever.
+// EXPECT_OUTPUT: [first banner line]
+// EXPECT_OUTPUT: [game banner line]
+// EXPECT_OUTPUT: order: first second third
+// INPUT: jump
+// INPUT: look north
+// INPUT: x me
+// INPUT: order
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#include <extensions/stdlib/hooks>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object myHooks {
+    parent = LibraryExtensions;
+    bool ext_lookSub() { print("[LOOK hooked]^"); rfalse; }
+    bool ext_bannerText() { print("[first banner line]^"); rtrue; }
+    int ext_playLoopPerformSingleObjectAction() {
+        if(action != Jump) return 0;
+        print("[no jumping]^");
+        return 2;
+    }
+}
+void orBannerText() { print("[game banner line]^"); }
+// Asked in the order they are declared.
+object firstHooks { parent = LibraryExtensions; bool ext_beforeAction() { if(action == ShowOrder) print("order: first "); rfalse; } }
+object secondHooks { parent = LibraryExtensions; bool ext_beforeAction() { if(action == ShowOrder) print("second "); rfalse; } }
+object thirdHooks { parent = LibraryExtensions; bool ext_beforeAction() { if(action == ShowOrder) print("third^"); rfalse; } }
+verb ShowOrder { grammar = { {.order} }; void handler() { } }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

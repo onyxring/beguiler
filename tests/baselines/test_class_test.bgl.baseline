@@ -71,12 +71,13 @@ _bglClass_Box g_box
 ;
 [main;
     if ((g_box ofclass _bglClass_Container)) {
-        print (string)"box is container";
+        print "box is container";
     }
     if ((g_box ofclass _bglClass_Box)) {
-        print (string)"box is box";
+        print "box is box";
     }
     if ((g_box ofclass libdefinedclass)) {
-        print (string)"box is libDefinedClass";
+        print "box is libDefinedClass";
+        rtrue;
     }
 ];

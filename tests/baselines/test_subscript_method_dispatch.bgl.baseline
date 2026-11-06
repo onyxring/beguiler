@@ -74,7 +74,7 @@ _bglClass_Room r1
 ;
 _bglClass_Room r2
 ;
-Array _bglhdr_g_rooms --> $9084 2;
+Array bglhae --> $9084 2;
 array g_rooms table r1 r2;
 [main _bglrcv0 v v2 _bglrcv1;
     if (true) {
@@ -86,6 +86,7 @@ array g_rooms table r1 r2;
     if (true) {
         _bglrcv1 =  _bglAt(g_rooms, 1, 0)-->0;
         _bglrcv1.visit();
+        rtrue;
     }
 ];
 [_bglAt arr i w n;

@@ -1,0 +1,57 @@
+/*  run_struct_array_pop_releases — pop, popEnd and dequeue give a struct array's slot back, so a queue
+    can run for longer than it has slots, and the value they return can still be read and copied.
+    An array of an owning type releases too, and its value reads the same way. */
+// EXPECT_OUTPUT: queue 100 200
+// EXPECT_OUTPUT: stack 7 8
+// EXPECT_OUTPUT: copy 9
+// EXPECT_OUTPUT: strings hello world
+// EXPECT_OUTPUT: held hi
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+struct item { int n = 0; }
+struct labeled { stringObj text; }
+array<item> q[2];
+array<item> s[2];
+array<stringObj> words[2];
+array<labeled> tags[1];
+void main(){
+    bglInit();
+    int total = 0;
+    int last = 0;
+    item i;
+    for(int t = 1; t <= 100; t++){
+        i.n = t;
+        q.enqueue(i);
+        i.n = t * 2;
+        q.enqueue(i);
+        total = q.dequeue().n;
+        last = q.dequeue().n;
+    }
+    print($"queue {total} {last}^");
+    i.n = 7;
+    s.push(i);
+    i.n = 8;
+    s.enqueue(i);
+    int top = s.pop().n;
+    int end = s.popEnd().n;
+    print($"stack {top} {end}^");
+    i.n = 9;
+    s += i;
+    item copied = s.pop();
+    print($"copy {copied.n}^");
+    stringObj a = "hello";
+    stringObj b = "world";
+    words += a;
+    words += b;
+    stringObj first = words.pop();
+    stringObj second = words.dequeue();
+    print($"strings {first} {second}^");
+    labeled tag;
+    tag.text = "hi";
+    for(int t = 0; t < 5; t++){
+        tags += tag;
+        labeled held = tags.pop();
+        if(t == 4) print($"held {held.text}^");
+    }
+}

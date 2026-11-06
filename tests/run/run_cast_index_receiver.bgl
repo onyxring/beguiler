@@ -1,0 +1,33 @@
+/*  run_cast_index_receiver — a member call or read on a parenthesized cast of an indexed element.
+
+    `((object)list[i]).has(shiny)` retypes the element to `object`, so `has`/`hasnt`/`give` expand
+    through their emitters exactly as on a variable of that type.  */
+// EXPECT_OUTPUT: has
+// EXPECT_OUTPUT: not hasnt
+// EXPECT_OUTPUT: var has
+// EXPECT_OUTPUT: given
+// EXPECT_OUTPUT: weight 5
+#beguilerSettings { target = z5; informName = "none"; }
+
+attribute shiny;
+attribute glowy;
+class Crate { int weight = 5; }
+Crate c1;
+object a { attributes = {shiny}; }
+object b { }
+rawArray<int> list = {0, 0};
+
+void main() {
+    list[0] = (int)a;
+    list[1] = (int)b;
+    int i = 0;
+    if(((object)list[0]).has(shiny)) print("has^");
+    if(((object)list[i]).hasnt(shiny)) print("hasnt^"); else print("not hasnt^");
+    object o = (object)list[0];
+    if(o.has(shiny)) print("var has^");
+    ((object)list[1]).give(glowy);
+    if(((object)list[1]).has(glowy)) print("given^");
+    list[0] = (int)c1;
+    int w = ((Crate)list[0]).weight;
+    print($"weight {w}^");
+}

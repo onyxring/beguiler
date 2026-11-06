@@ -1510,7 +1510,7 @@ bool bglParser::parseInlineAccessor(variableDeclaration& prop, const string& typ
 void bglParser::parsePropertyValue(variableDeclaration& prop, string typeName){
     if(memberBodyForm){
         memberBodyForm = false;
-        string anon = format("_bglanon{0}", anonObjectCounter++);
+        string anon = nextAnonName();
         bakeInlineObjectAggregate(languageService.findClass(typeName), typeName, anon, nullptr, nullptr);
         expression* expr = new expression();
         expr->tokens.push_back(anon);
@@ -2895,7 +2895,7 @@ string bglParser::bakeMemberValue(objectDef& od, variableDeclaration* target, to
                 parsingError(format("inline '{0}{{...}}': member '{1}' is neither an array nor an object-backed type, so it cannot take a '{{ … }}' value",
                                     typeDisplay, target->name));
             // object-typed member: a nested inline object (the '{' is already consumed as `vt`).
-            string anonName = format("_bglanon{0}", anonObjectCounter++);
+            string anonName = nextAnonName();
             bakeInlineObjectAggregate(fcls, target->type.name, anonName, func, body);
             variableDeclaration& mem = *(new variableDeclaration());
             mem.name = target->name;
@@ -3661,10 +3661,10 @@ void bglParser::giveInstanceOwnRows(objectDef& obj){
     if(obj.objectClass == nullptr) return;
     function<expression*(expression*)> copyRow = [&](expression* e) -> expression* {
         string t = e != nullptr ? e->text() : "";
-        auto* row = t.rfind("_bglanon", 0) == 0 ? languageService.findGlobalAs<arrayDeclaration>(t) : nullptr;
+        auto* row = isAnonName(t) ? languageService.findGlobalAs<arrayDeclaration>(t) : nullptr;
         if(row == nullptr) return e;
         auto* mine = new arrayDeclaration(*row);
-        mine->name = mine->displayName = format("_bglanon{0}", anonObjectCounter++);
+        mine->name = mine->displayName = nextAnonName();
         if(auto* list = dynamic_cast<initializerList*>(row->declaredExpressionValue)){
             auto* rows = new initializerList(*list);
             for(expression*& inner : rows->elements) inner = copyRow(inner);
@@ -3887,7 +3887,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
                 // Inferred inline object: a bare `{ … }` takes the array's element type (the '{' is
                 // already consumed). Bake an anon object and inject a reference, just like the explicit
                 // `Type{ … }` form below. The clause keyword (or ';') follows the closing '}'.
-                string anonName = format("_bglanon{0}", anonObjectCounter++);
+                string anonName = nextAnonName();
                 bakeInlineObjectAggregate(elemCls, arr->elementType, anonName, nullptr, nullptr);
                 elem = new expression();
                 elem->tokens.push_back(anonName);
@@ -3901,7 +3901,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
                 if(elem->terminator == token::endStatement) clauseStr = ";";
             } else if(elemTok.is(token::braceOpen) && isArrayOfArraysElement(arr->elementType)){
                 // An inner array, baked as the array's own `{ … }` elements are.
-                string anonName = format("_bglanon{0}", anonObjectCounter++);
+                string anonName = nextAnonName();
                 bakeInlineArrayAggregate(arrayInnerType(arr->elementType), anonName, nullptr, nullptr);
                 elem = new expression();
                 elem->tokens.push_back(anonName);

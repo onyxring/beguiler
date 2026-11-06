@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -102,28 +103,34 @@ object bgl
 ;
 [testIf n;
     if (n < 0) {
-        print (string)"negative";
+        print "negative";
+        rtrue;
     }
     else {
         if (n == 0) {
-            print (string)"zero";
+            print "zero";
+            rtrue;
         }
         else {
-            print (string)"positive";
+            print "positive";
+            rtrue;
         }
     }
 ];
 [testNestedIf a b;
     if (a > 0) {
         if (b > 0) {
-            print (string)"both positive";
+            print "both positive";
+            rtrue;
         }
         else {
-            print (string)"a positive, b not";
+            print "a positive, b not";
+            rtrue;
         }
     }
     else {
-        print (string)"a not positive";
+        print "a not positive";
+        rtrue;
     }
 ];
 [countdown start n;

@@ -76,4 +76,5 @@ object shelf
     print n;
     print children(shelf);
     print children(bowl);
+    rtrue;
 ];

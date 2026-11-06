@@ -72,11 +72,12 @@ object bgl
 ;
 [main ws;
     bglinit();
-    print (string)"Feature A enabled";
-    print (string)"Many items";
+    print "Feature A enabledMany items";
+
     print (string)story;
     ws=2;
     print ws;
+    rtrue;
 ];
 
     [ BglTestHelper; return 0; ];

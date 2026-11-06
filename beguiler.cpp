@@ -11,6 +11,7 @@
 
 #include "settings.h"
 #include "beguiler.h"
+#include "i6Patch.h"
 #include "helpers.h"
 #include "bglParser.h"
 #include "bglLanguageService.h"
@@ -467,11 +468,37 @@ void beguiler::resolveOutputPaths(CompileJob& job) {
     }
 }
 
+// Writes the Inform 6 files that patches changed into the output folder's `i6patched` folder, and
+// points the transpiled .inf's includes of the originals at the copies. True on failure.
+bool beguiler::writePatchedI6Files(const fs::path& outDir) {
+    i6PatchSet& patches = languageService.i6Patches;
+    if(!patches.files.empty() && languageService.isInfMode){
+        cerr << "Error: Inform 6 patches can't be used when compiling a .inf file." << endl;
+        return true;
+    }
+    string err = patches.writeCopies((fs::absolute(outDir) / "i6patched").string());
+    if(!err.empty()){
+        cerr << "Error: " << err << endl;
+        return true;
+    }
+    for(auto& [original, pf] : patches.files){
+        string from = "\"" + rewritePathSeps(original) + "\"";
+        string to = "\"" + rewritePathSeps(patches.copyPathFor(original)) + "\"";
+        for(typeDef* g : languageService.globals)
+            if(auto* raw = dynamic_cast<i6RawNode*>(g); raw && raw->text.rfind("#include ", 0) == 0){
+                size_t at = raw->text.find(from);
+                if(at != string::npos) raw->text.replace(at, from.size(), to);
+            }
+    }
+    return false;
+}
+
 // Writes the transpiled .inf, then verifies no raw property-class member access survived into the
 // emitted I6, and writes the .bgldbg bundle in debug mode. True on a write failure or a raw access.
 bool beguiler::emitOutput(CompileJob& job) {
     const fs::path& srcPath = job.srcPath;
     const fs::path& outDir  = job.outDir;
+    if(writePatchedI6Files(outDir)) return true;
     if(writeFile(settings.tmpFile)) return true;
 
     // ── property-class dispatch invariant (generic; forbidden names derived from the BLR) ────────
@@ -740,7 +767,7 @@ bool beguiler::runInform6() {
             // constant, a lifted routine), which no source can act on. Errors are always shown.
             string lowerMsg = message;
             transform(lowerMsg.begin(), lowerMsg.end(), lowerMsg.begin(), ::tolower);
-            bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos;
+            bool blrSymbol = lowerMsg.find("\"_bgl") != string::npos || lowerMsg.find("\"bglr") != string::npos || lowerMsg.find("\"bglh") != string::npos;
             if(!isError && blrSymbol){ i6WarnHidden++; continue; }
             // ERROR uppercase / warning lowercase — the visual contrast surfaces
             // severity at a glance. Fatal errors collapse to ERROR for tooling consistency.
@@ -810,6 +837,7 @@ void beguiler::buildBlorb(CompileJob& job) {
 bool beguiler::go(int argc, char* argv[]) {
 
     if(tryRunLspServer(argc, argv)) return false;
+    if(int rc = runPatchTool(argc, argv); rc >= 0) return rc != 0;
 
    cout << "Beguiler " << (BEGUILER_VERSION / 1000) << "." << ((BEGUILER_VERSION % 1000) / 10)
         << "." << (BEGUILER_VERSION % 10)
@@ -865,6 +893,10 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
         cout << "  -lib=<dir>           Path to the Beguile system library (default: beguiLib/ next to binary)\n";
         cout << "  --debug              Enable debug mode (emit .bgldbg debug info)\n";
         cout << "  -filterVerbSplitWarnings=<true|false>  Hide I6's warnings about extern verbs left empty by a split (default true)\n";
+        cout << "\n";
+        cout << "Patch tools (for #mergeI6):\n";
+        cout << "  beguiler --make-patch <original> <edited> [...] -o <patch>   Write a patch of the changes\n";
+        cout << "  beguiler --apply-patch <patch> <original> -o <copy>         Write the patched file\n";
         cout << "\n";
         cout << "Most options can also be set via #beguilerSettings in the source file.\n";
         cout << "The compiler should be placed in the same folder as the I6 compiler,\n";

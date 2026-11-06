@@ -1,0 +1,31 @@
+//===================================================================================================
+// hooks/verbs.bgl — hooks in the verbs (PlayerTo, GoSub, LookSub, ExamineSub).
+//---------------------------------------------------------------------------------------------------
+// verbs.patch merges calls to these hooks into the standard library. Including it changes nothing
+// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+//===================================================================================================
+#once
+#include <bindings/i6StandardLibrary>
+
+#mergeI6 "verbs"
+
+// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+#emitfirst {
+    #Ifndef ext_lookSub;         Property individual ext_lookSub;         #Endif;
+    #Ifndef ext_examineSub;      Property individual ext_examineSub;      #Endif;
+    #Ifndef ext_preDescription;  Property individual ext_preDescription;  #Endif;
+    #Ifndef ext_postDescription; Property individual ext_postDescription; #Endif;
+    #Ifndef ext_goSub;           Property individual ext_goSub;           #Endif;
+    #Ifndef ext_goSubNoDir;      Property individual ext_goSubNoDir;      #Endif;
+    #Ifndef ext_playerToNotify;  Property individual ext_playerToNotify;  #Endif;
+    #Ifndef orSuppressNewlineAfterDescription; Global orSuppressNewlineAfterDescription = false; #Endif;
+}
+
+extern property ext_lookSub;         /// True replaces LOOK.
+extern property ext_examineSub;      /// True replaces EXAMINE.
+extern property ext_preDescription;  /// Told before LOOK or EXAMINE prints a description.
+extern property ext_postDescription; /// Told after LOOK or EXAMINE prints a description.
+extern property ext_goSub;           /// True replaces GO.
+extern property ext_goSubNoDir;      /// Given the direction: true replaces "You can't go that way."
+extern property ext_playerToNotify;  /// Told (place, flag) when PlayerTo moves the player.
+extern bool orSuppressNewlineAfterDescription; /// Set true during EXAMINE to leave the description's line unended.

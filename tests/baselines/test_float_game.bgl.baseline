@@ -84,6 +84,7 @@ object _glulx
      _l_target(); 
     if (context == 0) {
         _bglresumelineinput(inputBuf, typed);
+        rtrue;
     }
     return true;
 ];
@@ -116,23 +117,26 @@ _bglClass_Combatant goblin
 [setHp c v;
     c.hp = v;
     c.maxhp = v;
+    rtrue;
 ];
 [applyDamage _l_target damage;
     _l_target.hp = _bglFloatFsub(_l_target.hp, damage);
     if (_bglFloatLt(_l_target.hp, _bglFloatNumtof(0))) {
         _l_target.hp = _bglFloatNumtof(0);
+        rtrue;
     }
 ];
 [healthBar c pct;
     pct = _bglFloatFmul(_bglFloatFdiv(c.hp, c.maxhp), _bglFloatNumtof(100));
     print (string)c.short_name;
-    print (string)": ";
+    print ": ";
     _bglFloatPrintDecimal(c.hp);
-    print (string)"/";
+    print "/";
     _bglFloatPrintDecimal(c.maxhp);
-    print (string)" (";
+    print " (";
     _bglFloatPrintDecimal(pct);
-    print (string)"%)^";
+    "%)";
+
 ];
 class _bglClass_Marker
   class object
@@ -163,6 +167,7 @@ _bglClass_RunningAvg avg
 [addSample a v;
     a.total = _bglFloatFadd(a.total, v);
     a.count++;
+    rtrue;
 ];
 [mean a;
     if (a.count == 0) {
@@ -175,7 +180,7 @@ _bglClass_RunningAvg avg
     sethp(goblin, _bglFloatNumtof(25));
     treasure.x = _bglFloatNumtof(6);
     treasure.y = _bglFloatNumtof(8);
-    print (string)"--- combat ---^";
+    print "--- combat ---^";
     healthbar(player);
     healthbar(goblin);
     applydamage(goblin, _bglFloatNumtof(8));
@@ -185,60 +190,61 @@ _bglClass_RunningAvg avg
     applydamage(player, _bglFloatFdiv(_bglFloatNumtof(125), _bglFloatNumtof(10)));
     healthbar(player);
     healthbar(goblin);
-    print (string)"--- map ---^";
+    print "--- map ---^";
     d = distance(home,treasure);
-    print (string)"distance home->treasure: ";
+    print "distance home->treasure: ";
     _bglFloatPrintDecimal(d);
-    print (string)"^";
+    print "^";
     dSquared = _bglFloatPow(d, _bglFloatNumtof(2));
-    print (string)"d^2 = ";
+    print "d^2 = ";
     _bglFloatPrintDecimal(dSquared);
-    print (string)"^";
+    print "^";
     roundTrip = _bglFloatExp(_bglFloatLog(d));
-    print (string)"exp(log(d)) ~ ";
+    print "exp(log(d)) ~ ";
     _bglFloatPrintDecimal(roundTrip);
-    print (string)"^";
+    print "^";
     pi4 = _bglFloatFdiv(_bglFloatNumtof(3927), _bglFloatNumtof(5000));
     sinComp = _bglFloatSin(pi4);
     cosComp = _bglFloatCos(pi4);
-    print (string)"sin(pi/4) ~ ";
+    print "sin(pi/4) ~ ";
     _bglFloatPrintDecimal(sinComp);
-    print (string)"^";
-    print (string)"cos(pi/4) ~ ";
+    print "^cos(pi/4) ~ ";
+
     _bglFloatPrintDecimal(cosComp);
-    print (string)"^";
-    print (string)"--- chance ---^";
+    print "^--- chance ---^";
+
     threshold = _bglFloatFdiv(_bglFloatNumtof(3), _bglFloatNumtof(10));
     if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(15), _bglFloatNumtof(100)))) {
-        print (string)"0.15 hit^";
+        print "0.15 hit^";
     }
     if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(45), _bglFloatNumtof(100)))) {
-        print (string)"0.45 hit^";
+        print "0.45 hit^";
     }
     if (roll(threshold,_bglFloatFdiv(_bglFloatNumtof(30), _bglFloatNumtof(100)))) {
-        print (string)"0.30 hit^";
+        print "0.30 hit^";
     }
-    print (string)"--- stats ---^";
+    print "--- stats ---^";
     addsample(avg, _bglFloatFdiv(_bglFloatNumtof(15), _bglFloatNumtof(10)));
     addsample(avg, _bglFloatFdiv(_bglFloatNumtof(23), _bglFloatNumtof(10)));
     addsample(avg, _bglFloatFdiv(_bglFloatNumtof(8), _bglFloatNumtof(10)));
-    print (string)"turn-cost mean: ";
+    print "turn-cost mean: ";
     _bglFloatPrintDecimal(mean(avg));
-    print (string)"^";
+    print "^";
     dx = _bglFloatFsub(_bglFloatNumtof(0), _bglFloatNumtof(7));
-    print (string)"abs(-7) = ";
+    print "abs(-7) = ";
     _bglFloatPrintDecimal(_bglFloatAbs(dx));
-    print (string)"^";
+    print "^";
     modPart = _bglFloatFmod(_bglFloatFdiv(_bglFloatNumtof(17), _bglFloatNumtof(2)), _bglFloatNumtof(3));
-    print (string)"8.5 mod 3 = ";
+    print "8.5 mod 3 = ";
     _bglFloatPrintDecimal(modPart);
-    print (string)"^";
-    print (string)"ceil(3.2)  = ";
+    print "^ceil(3.2)  = ";
+
     _bglFloatPrintDecimal(_bglFloatCeil(_bglFloatFdiv(_bglFloatNumtof(32), _bglFloatNumtof(10))));
-    print (string)"^";
-    print (string)"floor(3.8) = ";
+    print "^floor(3.8) = ";
+
     _bglFloatPrintDecimal(_bglFloatFloor(_bglFloatFdiv(_bglFloatNumtof(38), _bglFloatNumtof(10))));
-    print (string)"^";
+    print "^";
+    rtrue;
 ];
 [_bgl_float__oplteqgt a b;
     
@@ -342,20 +348,21 @@ _bglClass_RunningAvg avg
         fdigits = 9999;
     }
     if (isneg && (ipart ~= 0 || fdigits ~= 0)) {
-        print (string)"-";
+        print "-";
     }
     print ipart;
-    print (string)".";
+    print ".";
     if (fdigits < 1000) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 100) {
-        print (string)"0";
+        print "0";
     }
     if (fdigits < 10) {
-        print (string)"0";
+        print "0";
     }
     print fdigits;
+    rtrue;
 ];
 [_bglFloatSin v r;
      @sin v r; 

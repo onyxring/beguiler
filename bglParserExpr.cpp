@@ -1320,16 +1320,19 @@ void bglParser::parseExprTernary(expression* expr, const vector<string>& termina
     string condText = expr->text();
     size_t mark = pendingInjections.size();
     expression* trueExpr  = parseExpression(file.getToken(), {":"}, func, body);
-    string trueSetUp = takeBranchSetUp(mark);
+    i6RawNode* trueInner = nullptr; i6RawNode* falseInner = nullptr;
+    string trueSetUp = takeBranchSetUp(mark, &trueInner);
     mark = pendingInjections.size();
     expression* falseExpr = parseExpression(file.getToken(), terminators, func, body);
-    string falseSetUp = takeBranchSetUp(mark);
+    string falseSetUp = takeBranchSetUp(mark, &falseInner);
     string injText = "if (" + condText + ") { " + trueSetUp + tempName + " = " + trueExpr->text()
                    + "; } else { " + falseSetUp + tempName + " = " + falseExpr->text() + "; }";
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
     inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
+    ternaryLowerings[inj] = {condText, tempName, injText, trueExpr->text(), trueExpr->resolvedType, trueSetUp, trueInner,
+                             falseExpr->text(), falseExpr->resolvedType, falseSetUp, falseInner};
     expr->tokens.clear();
     expr->tokens.push_back(tempName);
     expr->resolvedType = !trueExpr->resolvedType.empty() ? trueExpr->resolvedType : falseExpr->resolvedType;
@@ -1912,7 +1915,8 @@ void bglParser::exprEmitRawBinaryOp(ExprParseState& st, const string& opTok){
 // The set-up a ternary branch's own expression produced (a nested ternary, a `?.` test), taken out of
 // the statement's pending list so it runs inside that branch only. Plain raw text is moved; anything
 // else stays where it is, ahead of the whole ternary.
-string bglParser::takeBranchSetUp(size_t mark){
+string bglParser::takeBranchSetUp(size_t mark, i6RawNode** only){
+    if(only != nullptr) *only = nullptr;
     if(mark >= pendingInjections.size()) return "";
     for(size_t i = mark; i < pendingInjections.size(); i++){
         auto* raw = dynamic_cast<i6RawNode*>(pendingInjections[i]);
@@ -1926,6 +1930,9 @@ string bglParser::takeBranchSetUp(size_t mark){
         if(captureLoads.count(pendingInjections[i])){ kept.push_back(pendingInjections[i]); continue; }
         text += dynamic_cast<i6RawNode*>(pendingInjections[i])->text + " ";
     }
+    // The set-up is one nested ?: and nothing else: the caller can keep it in parts.
+    if(only != nullptr && kept.empty() && pendingInjections.size() == mark + 1)
+        if(auto* raw = dynamic_cast<i6RawNode*>(pendingInjections[mark]); raw && ternaryLowerings.count(raw)) *only = raw;
     pendingInjections.resize(mark);
     pendingInjections.insert(pendingInjections.end(), kept.begin(), kept.end());
     return text;
@@ -1952,13 +1959,16 @@ void bglParser::exprAssembleTernary(ExprParseState& st){
         if(branch.find_first_not_of(" ") == string::npos) parsingError("The ?: has no value after its ':'.");
         if(pt.trueText.find_first_not_of(" ") == string::npos) parsingError("The ?: has no value before its ':'.");
     }
-    string falseSetUp = takeBranchSetUp(pt.falseMark);
+    i6RawNode* falseInner = nullptr;
+    string falseSetUp = takeBranchSetUp(pt.falseMark, &falseInner);
     string injText = "if (" + pt.condText + ") { " + pt.trueSetUp + pt.tempName + " = " + pt.trueText
                    + "; } else { " + falseSetUp + pt.tempName + " = " + falseText + "; }";
     i6RawNode* inj = new i6RawNode();
     inj->text = injText;
     inj->cooked = true;   // built from Beguile expressions: locals take their renames
     pendingInjections.push_back(inj);
+    ternaryLowerings[inj] = {pt.condText, pt.tempName, injText, pt.trueText, pt.trueType, pt.trueSetUp, pt.trueInner,
+                             falseText, falseType, falseSetUp, falseInner};
     expr->tokens.clear();
     expr->emitterSelf.clear();   // the result is the temporary, not a member read in the condition
     // Restore structural prefix parens so the outer expression stays balanced
@@ -2351,6 +2361,19 @@ bglParser::ExprStep bglParser::parseExprParenOpen(ExprParseState& st){
                 if(m->isEmitter && anc != nullptr)
                     parsingError(format("Ancestor-qualified dispatch '({0}){1}.{2}(...)' is not supported: '{2}' is an emitter method.",
                                         outer, recvText, member.value));
+                if(m->isEmitter && !m->isPrePassStub){
+                    if(auto* blk = dynamic_cast<i6Block*>(m->body)){
+                        string recv = parenthesizeReceiver(recvText);
+                        emitterBindings em; em.self = recv; em.val = recv;
+                        em.selfType = castT;
+                        em.fn = m;
+                        for(expression* a : pal.args){ em.args.push_back(a->text()); em.argTypes.push_back(a->resolvedType); }
+                        em.trim = emitterTrim::wsSemi;
+                        expr->tokens.push_back(expandEmitterBody(blk, em));
+                        expr->resolvedType = m->returnType.name;
+                        return ExprStep::Advance;
+                    }
+                }
                 string callName = methodCallName(m, member.value);
                 string call = parenthesizeReceiver(recvText) + "." + (anc != nullptr ? anc->i6Name() + "::" + callName : callName) + "(";
                 for(size_t i = 0; i < pal.args.size(); i++) call += (i ? ", " : "") + pal.args[i]->text();
@@ -2776,7 +2799,7 @@ bglParser::ExprStep bglParser::parseExprInlineObject(ExprParseState& st){
 
     classDef* cls = getDispatchClass(cur.value);
     token nameTok = cur;                          // inherit src/line; override identity
-    nameTok.value = format("_bglanon{0}", anonObjectCounter++);
+    nameTok.value = nextAnonName();
     nameTok.originalValue = "";
     nameTok.tokenType = eTokenType::identifier;
     file.getToken(token::braceOpen);              // consume '{'
@@ -6203,7 +6226,7 @@ bglParser::ExprStep bglParser::parseExprTernaryStart(ExprParseState& st){
     expression* trueExpr = parseExpression(file.getToken(), {":"}, func, body);
     if(trueExpr != nullptr && trueExpr->resolvedType == "void")
         parsingError("A ?: branch must have a value, and this one is a call that returns none.");
-    pt.trueSetUp = takeBranchSetUp(mark);
+    pt.trueSetUp = takeBranchSetUp(mark, &pt.trueInner);
     pt.falseMark = pendingInjections.size();
     pt.trueText = trueExpr->text();
     pt.trueType = trueExpr->resolvedType;

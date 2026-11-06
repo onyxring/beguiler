@@ -1,0 +1,22 @@
+// run_grammar_evict_extern_extend — a word evicted from a library verb and reclaimed by a native verb
+// keeps the lines another library verb adds for it with `grammar +=`.
+// EXPECT_OUTPUT: [reading the book]
+// EXPECT_OUTPUT: You discover nothing of interest in the book.
+// INPUT: read book
+// INPUT: read about frogs in book
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object book { "book"; rawArray<dictionaryWord> name = {.book}; parent = roomA; }
+extend Examine { grammar -= { {.read} }; }
+verb ReadIt {
+    grammar = { {.read, NOUN} };
+    void handler() { print("[reading the book]^"); }
+}
+extend Consult { grammar += { {.read, .about, TOPIC, .in, NOUN} }; }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

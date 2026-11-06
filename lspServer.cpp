@@ -196,6 +196,10 @@ void LspServer::handleMessage(const json& msg) {
                 sendResponse(id, handleSemanticTokensFull(params));
             else if(method == "workspace/symbol")
                 sendResponse(id, handleWorkspaceSymbol(params));
+            else if(method == "beguile/i6Files")
+                sendResponse(id, handleI6Files(params));
+            else if(method == "beguile/i6PatchInfo")
+                sendResponse(id, handleI6PatchInfo(params));
             else
                 sendError(id, -32601, "Method not found: " + method);
         } catch(const exception& e) {
@@ -2522,14 +2526,76 @@ json LspServer::completeQuotedInclude(const string& uri, int line, int col, cons
     return json();
 }
 
+// The Inform 6 files reachable from a document (its directory and the include paths), named as
+// #includeI6 names them: relative to their root, without .h. With `patches`, the .patch and .diff
+// files instead, without their extension. Each comes with its full path.
+vector<pair<string, string>> LspServer::reachableI6Files(const string& uri, bool patches) {
+    vector<pair<string, string>> found;
+    string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
+    filesystem::path srcDir = filesystem::path(curFile).parent_path();
+    vector<filesystem::path> roots;
+    if(!srcDir.empty()) roots.push_back(srcDir);
+    for(const string& sp : beguilerSettings.includePaths) {
+        if(sp.empty()) continue;
+        filesystem::path p(sp);
+        roots.push_back(p);
+        if(p.is_relative() && !srcDir.empty()) roots.push_back(srcDir / p);
+    }
+    for(const filesystem::path& root : roots) {
+        std::error_code ec;
+        if(!filesystem::exists(root, ec) || !filesystem::is_directory(root, ec)) continue;
+        filesystem::recursive_directory_iterator it(root, ec), end;
+        for(; !ec && it != end; it.increment(ec)) {
+            if(!it->is_regular_file(ec)) continue;
+            filesystem::path p = it->path();
+            string filename = p.filename().string();
+            if(filename.empty() || filename[0] == '.') continue;
+            string ext = p.extension().string();
+            for(char& c : ext) c = (char)tolower((unsigned char)c);
+            if(patches ? !isI6PatchFile(filename) : ext != ".h") continue;
+            filesystem::path rel = filesystem::relative(p, root, ec);
+            if(ec || rel.empty()) continue;
+            string relStr = rel.string();
+            for(char& c : relStr) if(c == '\\') c = '/';
+            relStr = relStr.substr(0, relStr.size() - ext.size());
+            if(relStr.empty() || relStr[0] == '/') continue;
+            found.push_back({relStr, filesystem::absolute(p).lexically_normal().string()});
+        }
+    }
+    return found;
+}
+
+// beguile/i6Files {uri}: the Inform 6 files the document can include, for the editor's Create I6 patch.
+json LspServer::handleI6Files(const json& params) {
+    json files = json::array();
+    std::set<string> seen;
+    for(const auto& [name, full] : reachableI6Files(params.value("uri", ""), false))
+        if(seen.insert(name).second) files.push_back({{"name", name}, {"path", full}});
+    return files;
+}
+
+// beguile/i6PatchInfo {uri, line}: the #mergeI6 on that line (0-based) as the last parse met it: its
+// patch and the original of each file the patch changes. Null when the line holds none.
+json LspServer::handleI6PatchInfo(const json& params) {
+    string path = canonPath(uriToPath(params.value("uri", "")));
+    int line = params.value("line", -1) + 1;
+    for(const auto& m : languageService.i6Patches.merges) {
+        if(m.line != line || canonPath(m.sourceFile) != path) continue;
+        json targets = json::array();
+        for(const auto& [name, original] : m.targets) targets.push_back({{"name", name}, {"original", original}});
+        return {{"patchPath", m.patchPath}, {"targets", targets}};
+    }
+    return nullptr;
+}
+
 // Completion case: `#includeI6 "..."` Inform 6 library files.
 json LspServer::completeI6Include(const string& uri, int line, int col, const string& lineText, bool& handled) {
     handled = false;
     // ── Phase 0c: `#includeI6 "…"` Inform 6 library completion ─────────────
     // `#includeI6 "name"` resolves an I6 file (exact name, then name.h) from the source
     // dir + includePaths. Offer the .h files reachable from those roots, named without
-    // the .h extension (the idiomatic form, e.g. `#includeI6 "parser"` → parser.h). Same
-    // roots as Phase 0b; tolerates the optional `?` and raw `@` markers; runs before the
+    // the .h extension (the idiomatic form, e.g. `#includeI6 "parser"` → parser.h). `#mergeI6 "…"`
+    // offers the .patch and .diff files the same way. Same roots as Phase 0b; tolerates the optional `?` and raw `@` markers; runs before the
     // string-literal suppression. Distinct from `#include` (Phase 0b, .bgl only) — the I6
     // library folder holds .h files, which are correctly absent from #include completion.
     {
@@ -2546,44 +2612,16 @@ json LspServer::completeI6Include(const string& uri, int line, int col, const st
             // Tolerate `#includeI6 ?"…"` (optional) and `#includeI6 @"…"` (raw) markers.
             while(!headCompact.empty() && (headCompact.back() == '?' || headCompact.back() == '@'))
                 headCompact.pop_back();
-            if(headCompact == "#includei6") {
+            bool forMerge = headCompact == "#mergei6";
+            if(headCompact == "#includei6" || forMerge) {
                 json items = json::array();
                 std::set<string> seen;
                 int delimCol = (int)(lt + q);
                 string query = includeQuery(lineText, col, delimCol);
-                string curFile = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
-                filesystem::path srcDir = filesystem::path(curFile).parent_path();
-                vector<filesystem::path> roots;
-                if(!srcDir.empty()) roots.push_back(srcDir);
-                for(const string& sp : beguilerSettings.includePaths) {
-                    if(sp.empty()) continue;
-                    filesystem::path p(sp);
-                    roots.push_back(p);
-                    if(p.is_relative() && !srcDir.empty()) roots.push_back(srcDir / p);
-                }
-                for(const filesystem::path& root : roots) {
-                    std::error_code ec;
-                    if(!filesystem::exists(root, ec) || !filesystem::is_directory(root, ec)) continue;
-                    filesystem::recursive_directory_iterator it(root, ec), end;
-                    for(; !ec && it != end; it.increment(ec)) {
-                        if(!it->is_regular_file(ec)) continue;
-                        filesystem::path p = it->path();
-                        string filename = p.filename().string();
-                        if(filename.empty() || filename[0] == '.') continue;
-                        if(filename.size() < 3) continue;
-                        string ext = filename.substr(filename.size() - 2);
-                        for(char& c : ext) c = (char)tolower((unsigned char)c);
-                        if(ext != ".h") continue;
-                        filesystem::path rel = filesystem::relative(p, root, ec);
-                        if(ec || rel.empty()) continue;
-                        string relStr = rel.string();
-                        for(char& c : relStr) if(c == '\\') c = '/';
-                        relStr = relStr.substr(0, relStr.size() - 2);  // strip ".h"
-                        if(relStr.empty() || relStr[0] == '/') continue;
-                        if(!ciContains(relStr, query)) continue;     // server-side substring filter
-                        if(!seen.insert(relStr).second) continue;
-                        items.push_back(makeIncludeItem(relStr, "Inform 6 file", delimCol, query, line, col));
-                    }
+                for(const auto& [relStr, full] : reachableI6Files(uri, forMerge)) {
+                    if(!ciContains(relStr, query)) continue;     // server-side substring filter
+                    if(!seen.insert(relStr).second) continue;
+                    items.push_back(makeIncludeItem(relStr, forMerge ? "Inform 6 patch" : "Inform 6 file", delimCol, query, line, col));
                 }
                 // isIncomplete: re-query each keystroke so the substring filter re-runs.
                 handled = true; return json{{"isIncomplete", true}, {"items", items}};
@@ -5227,7 +5265,7 @@ json LspServer::handleSemanticTokensFull(const json& params) {
                 // Mirrors the TS side skipping include lines entirely (semanticTokens.ts INCLUDE_RE).
                 string directive = lineText.substr(dirStart, i - dirStart);
                 transform(directive.begin(), directive.end(), directive.begin(), ::tolower);
-                if(directive == "include" || directive == "includei6") break;
+                if(directive == "include" || directive == "includei6" || directive == "mergei6") break;
                 continue;
             }
 

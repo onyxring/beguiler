@@ -61,11 +61,14 @@ object bgl
 ;
 [greet _l_name times;
     print (string)_l_name;
+    rtrue;
 ];
 [spawn _l_name x y hostile;
     print (string)_l_name;
+    rtrue;
 ];
 [main;
     greet("Jim", 3);
     spawn("goblin", 10, 20, true);
+    rtrue;
 ];

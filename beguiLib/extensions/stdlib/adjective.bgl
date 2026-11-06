@@ -1,0 +1,129 @@
+//===================================================================================================
+// adjective.bgl — words that describe an object without naming it.
+//---------------------------------------------------------------------------------------------------
+// An object's `adjective` words match it as its `name` words do, but the parser prefers an object
+// named by a noun. With a drinking glass (name glass) and a glass marble (name marble, adjective
+// glass), X GLASS is the drinking glass and X MARBLE the marble, where the library would ask which
+// was meant. X GLASS TABLE still picks the glass table over the marble one, and X DRINKING still
+// finds the glass.
+//
+// A command may name an object by adjectives alone unless `adjectiveParser.mode` is
+// `adjectiveMode.nounRequired`. An object's `requireNoun`, true or false, or a routine returning
+// one, decides that for the object itself.
+//
+// Include it after the library's verblib, and after the extensions that answer the parser's hooks
+// first.
+//
+// Ported from orLibrary's orAdjective.
+//===================================================================================================
+#once
+#include <extensions/stdlib/parserUtil>
+#include <extensions/stdlib/hooks/parser>
+#include <extensions/stdlib/hooks/standardLibrary>
+
+property adjective;     /// Words that describe the object without naming it.
+property requireNoun;   /// True when a command must name the object with a noun.
+
+enum adjectiveMode { nounRequired = 0, nounPreferred = 1 }   /// Whether adjectives alone can name an object.
+
+attribute _nounReferenced;   // The command named the object with a noun.
+
+object adjectiveParser {
+    parent = LibraryExtensions;
+    adjectiveMode mode = adjectiveMode.nounPreferred;   /// Whether adjectives alone can name an object.
+
+    // The number of words naming obj, from wn on; -1 for none, so another routine can try them.
+    int ext_parsenoun(object obj) {
+        int adjectives = 0; int nouns = 0;
+        int startWn = wn;
+        obj.ungive(_nounReferenced);
+        while(wn <= num_words) {
+            int found = _adjectiveOrNoun(obj);
+            if(found == 0) break;
+            if(found == 1 || found == 2) { nouns++; obj.give(_nounReferenced); }
+            if(found == 2) parser_action = PluralFound;
+            if(found == 3) adjectives++;
+        }
+        if(adjectives + nouns == 0) { wn = startWn; return -1; }
+        bool nounRequired = false;
+        if(obj.provides((property)requireNoun)) nounRequired = ValueOrRun(obj, (property)requireNoun) != 0;
+        else nounRequired = mode == adjectiveMode.nounRequired;
+        if(nouns == 0 && nounRequired) return 0;
+        return adjectives + nouns;
+    }
+
+    // With one object named by a noun among others named only by adjectives, that object; with more,
+    // the others leave the choice.
+    var ext_adjudicate() {
+        int byNoun = 0; int byAdjective = 0;
+        var only = 0;
+        for(int i = 0; i < number_matched; i++) {
+            object o = (object)match_list[i];
+            if(o.has(_nounReferenced)) { byNoun++; only = o; }
+            else byAdjective++;
+        }
+        if(byNoun == 0 || byAdjective == 0) return false;
+        if(byNoun == 1) { no_infer_message = true; return only; }
+        for(int i = number_matched - 1; i >= 0; i--) {
+            object o = (object)match_list[i];
+            if(o.hasnt(_nounReferenced)) removeMatchPos(i);
+        }
+        return false;
+    }
+
+    int ext_chooseobjects(object obj, int code) {
+        if(code < ASKING_FOR_HINT) return 0;
+        if(obj.has(_nounReferenced)) return 2;
+        if(_anyReferencedByNoun()) excludeObjFromDisambiguation(obj);
+        if(number_matched == 1) return 1;
+        if(number_matched > 1) return -1;
+        return 0;
+    }
+
+    // False when both objects have adjectives and the two sets differ, so the player can tell them apart.
+    bool ext_identical(object o1, object o2) {
+        property adj = (property)adjective;
+        if(o1.provides(adj) && o2.provides(adj)) {
+            int n1 = 0; int n2 = 0;
+            #i6 { n1 = o1.#adjective / WORDSIZE; n2 = o2.#adjective / WORDSIZE; }
+            for(int p = 0; p < n1; p++) {
+                var w = 0;
+                #i6 { w = o1.&adjective-->p; }
+                if(WordInProperty(w, o2, adj) == false) rfalse;
+            }
+            for(int p = 0; p < n2; p++) {
+                var w = 0;
+                #i6 { w = o2.&adjective-->p; }
+                if(WordInProperty(w, o1, adj) == false) rfalse;
+            }
+        }
+        rtrue;
+    }
+}
+
+// Whether any of the matches was named by a noun.
+superposed bool _anyReferencedByNoun() {
+    for(int i = 0; i < number_matched; i++) {
+        object o = (object)match_list[i];
+        if(match_list[i] > 0 && o.has(_nounReferenced)) return true;
+    }
+    return false;
+}
+
+// What the next word is to obj: 1 a noun, 2 a plural noun, 3 an adjective, 0 neither.
+superposed int _adjectiveOrNoun(object obj) {
+    dictionaryWord w = NextWord();
+    if(w != null && obj.provides((property)adjective) && WordInProperty(w, obj, (property)adjective) == true) return 3;
+    if(WordInProperty(w, obj, (property)name) == true) {
+        int plural = 0;
+        #i6 { if(w ~= 0 && ((w->#dict_par1) & 4) ~= 0) plural = 1; }
+        return plural == 1 ? 2 : 1;
+    }
+    // orLibrary's orRecogName also matches the object's short name.
+    #i6 {
+        #ifdef orRecogName_STAGE;
+            if(MatchAgainstShortName(obj, wn - 1) == true) return 1;
+        #endif;
+    }
+    return 0;
+}
