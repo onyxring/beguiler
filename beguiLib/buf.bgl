@@ -117,6 +117,8 @@ extend class byteArray {
     emitter bool isTracked()              { _bglBuf._bglText_isTracked($val) }
     /// Copy another buffer's bytes and length into this one, up to this buffer's size.
     replace emitter void copyFrom(array<char> src) { _bglBuf._bglText_setFromBuffer($self, $src) }
+    /// Print the bytes in use.
+    emitter void print()                  { _bglBuf.print($val) }
 }
 
 /// With `<buf>`, a buffer's `length` is assignable.
@@ -196,8 +198,8 @@ superposed object _bglBuf {
     }
 
     // size returns the data capacity in chars from the size WORD at buf-->(-1).
-    // For untracked byteArrays returns -1 — distinguishes from a legitimately
-    // empty buf and parallels orBuf's sized-buf convention.
+    // Beguile's buffers all have that word; an I6 `Array X buffer N` doesn't, so don't call
+    // this, or capture/release, on one. A null buffer returns -1.
     superposed int size(array<char> buf) asI6 _bglText_size {
         if((int)buf == 0) return -1;
         return _bglGetWord(buf, -1);

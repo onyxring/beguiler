@@ -1,0 +1,13 @@
+/*  run_object_local_no_value — a local of the root class with no value starts empty and holds whatever it is given;
+    it used to make a global and an object of one name, which Inform 6 rejected. */
+// EXPECT_OUTPUT: empty true
+// EXPECT_OUTPUT: held true
+#beguilerSettings { target = z5; informName = "none"; }
+object thing1 { }
+void main(){
+    bglInit();
+    object held;
+    print("empty "); print(held == null); print("^");
+    held = thing1;
+    print("held "); print(held == thing1); print("^");
+}

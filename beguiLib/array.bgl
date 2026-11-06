@@ -169,13 +169,30 @@ superposed object _bglArray {
     //   (0-indexed, no count slot). otherwise → global/local array address:
     //   count-prefixed, element n at obj-->(n+1). All higher methods build on these,
     //   so member ↔ global parity is decided once, here, at runtime.
+    //   A promoted member reads as global: storage() swaps its owner for its table.
+    // The property word may be plain data, so it must lie in dynamic memory, which ends where header
+    // word 7 says, before it is read as an address. Addresses compare unsigned.
+    superposed var storage(var obj, var prop) asI6 _bglArr_storage {
+        #if TARGET_ZCODE
+            #i6 {
+                if(metaclass(obj)==object && obj.#prop==WORDSIZE){
+                    prop = obj.prop;
+                    if((prop >= 64 && (0-->7 < 0 || prop < 0-->7)) || (prop < 0 && 0-->7 < 0 && prop < 0-->7))
+                        if(_bglArrTracked(prop)) return prop;
+                }
+            }
+        #endif
+        return obj;
+    }
     superposed var get(var obj, var prop, int n) asI6 _bglArr_get {
+        obj = storage(obj, prop);
         #i6 {
             if(metaclass(obj)==object) return obj.&prop-->n;
             return obj-->(n+1);
         }
     }
     superposed void set(var obj, var prop, int n, var v) asI6 _bglArr_set {
+        obj = storage(obj, prop);
         #i6 {
             if(metaclass(obj)==object){ obj.&prop-->n = v; return; }
             obj-->(n+1) = v;
@@ -200,6 +217,7 @@ superposed object _bglArray {
     // Property arrays are never tracked (no magic/length slot); size = #prop/WORDSIZE,
     // length == size. Global/local arrays use the tracked layout when <array> stamped a marker.
     superposed bool isTracked(var obj, var prop) asI6 _bglArr_isTracked {
+        obj = storage(obj, prop);
         #i6 { if(metaclass(obj)==object) rfalse; }
         return _bglArrTracked(obj);
     }
@@ -209,11 +227,13 @@ superposed object _bglArray {
         // the property holds. The data keeps 0-based `obj.&prop-->n` indexing — putting the
         // length first would have shifted every subscript. `rawArray<T>` members opt out of
         // the slot entirely and reject the operations that would read it.
+        obj = storage(obj, prop);
         #i6 { if(metaclass(obj)==object) return obj.#prop/WORDSIZE - 1; }
         return _bglArrSize(obj);
     }
 
     superposed int length(var obj, var prop) asI6 _bglArr_length {
+        obj = storage(obj, prop);
         #i6 { if(metaclass(obj)==object) return obj.&prop-->(obj.#prop/WORDSIZE - 1); }
         return _bglArrLength(obj);
     }
@@ -225,6 +245,7 @@ superposed object _bglArray {
         }
         int room = size(obj, prop);
         if(n > room) n = room;   // never past capacity: later reads would walk off the end
+        obj = storage(obj, prop);
         #i6 { if(metaclass(obj)==object){ obj.&prop-->(obj.#prop/WORDSIZE - 1) = n; return; } }
         _bglArrSetLength(obj, n);   // an array Inform 6 declares: no length word, nothing to set
     }

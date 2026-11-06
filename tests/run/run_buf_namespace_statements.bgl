@@ -3,6 +3,7 @@
     `buf` was hooked into `bgl.util` with `auto`, an ordinary member, so a statement call emitted the raw
     run-time chain `bgl.util.buf.set(…)` (a property read on `bgl`) instead of `_bglBuf.set(…)`.  */
 // EXPECT_OUTPUT: HELLO WORLD 11
+// EXPECT_OUTPUT: printed HELLO WORLD
 #beguilerSettings { target = z5; informName = "none"; }
 #include <buf>
 array<char> line[64];
@@ -15,4 +16,6 @@ void main(){
     bgl.util.buf.toUpper(line);
     bgl.util.buf.print(line);
     print($" {line.length}");
+    print("^printed ");
+    print(line);
 }

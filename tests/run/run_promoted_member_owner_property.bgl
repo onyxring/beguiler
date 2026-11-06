@@ -1,0 +1,36 @@
+/*  run_promoted_member_owner_property — the owner + property path reaches a promoted member array.
+
+    A Z-machine member array over 31 elements keeps its data in a table, with the address in the
+    property. A caller that passes the owner and the property, as loop arrays do, must read and write
+    that table and leave the address alone. A one-word dictionary array or a scalar is real data, not an
+    address: reading it as one prints a programming error between the values the test expects.  */
+// EXPECT_OUTPUT: small 101 2 2
+// EXPECT_OUTPUT: big 1 41 41
+// EXPECT_OUTPUT: wrote 77 77
+// EXPECT_OUTPUT: shrunk 5 3
+// EXPECT_OUTPUT: oneword true
+// EXPECT_OUTPUT: scalars 1 -1 -2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+
+object o {
+    array<int> small = {101, 102};
+    array<int> big = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40};
+    array<dictionaryWord> one = {.lantern};
+    int flagOne = 1;
+    int flagMinus = -1;
+    int flagLow = -2;
+}
+
+void main(){
+    print("small "); print((int)_bglArray.get(o, (property)small, 0)); print(" "); print(_bglArray.length(o, (property)small)); print(" "); print(_bglArray.size(o, (property)small)); print("^");
+    print("big "); print((int)_bglArray.get(o, (property)big, 1)); print(" "); print(_bglArray.length(o, (property)big)); print(" "); print(_bglArray.size(o, (property)big)); print("^");
+    _bglArray.set(o, (property)big, 0, 77);
+    print("wrote "); print((int)_bglArray.get(o, (property)big, 0)); print(" "); print(o.big[0]); print("^");
+    _bglArray.setLength(o, (property)big, 5);
+    print("shrunk "); print(o.big.length); print(" "); print(o.big[3]); print("^");
+    var viaOwner = _bglArray.get(o, (property)one, 0);
+    var direct = o.one[0];
+    print("oneword "); print(viaOwner == direct && viaOwner != 0); print("^");
+    print("scalars "); print((int)_bglArray.get(o, (property)flagOne, 0)); print(" "); print((int)_bglArray.get(o, (property)flagMinus, 0)); print(" "); print((int)_bglArray.get(o, (property)flagLow, 0)); print("^");
+}

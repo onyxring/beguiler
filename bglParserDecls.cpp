@@ -1170,8 +1170,9 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
     // operator= exists and the user expects per-local independent state.
     if(func != nullptr && body != nullptr && !isExternal && !isConst && !isRef){
         classDef* cls = languageService.findClass(varDecl.type.name);
-        // A plain local of a reference class with no value owns an object of its own as well.
-        bool ownsReference = plainSlotOwnsReferenceInstance(cls) && (!hasValue || hasCopyOperator(cls));
+        // A plain local of a reference class with no value owns an object of its own as well, except
+        // the root's: it can be any object, so it starts empty.
+        bool ownsReference = plainSlotOwnsReferenceInstance(cls) && cls->name != "object" && (!hasValue || hasCopyOperator(cls));
         if(cls && (ownsReference || (!cls->isEmitterClass && !cls->isAlias && !cls->isExternal
                  && classHasStoredFields(cls) && !isReferenceBacked(cls)))){
             // Named like a parameter backing: the class context keeps same-named methods of two
