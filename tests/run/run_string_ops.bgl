@@ -1,7 +1,7 @@
 /*  Mutating string operations: concat (+), append/prepend (string + char),
     insert, delete, replace, replaceAll. These are clone-mutate-free ephemerals
     whose CONTENT is invisible in emitted I6 — only a real run proves them.
-    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+    Ported from the retired WIP/stringRuntime harness. */
 // EXPECT_OUTPUT: concat-str-str: foobar
 // EXPECT_OUTPUT: concat-str-lit: foolit
 // EXPECT_OUTPUT: concat-lit-str: litfoo

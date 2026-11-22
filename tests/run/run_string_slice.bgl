@@ -1,7 +1,7 @@
 /*  Substring extraction (mid/left/right, incl. degenerate left(0) and a length
     that spans the whole string) plus the case/reverse transforms. Content-only
     behavior, invisible in emitted I6 — verified by running.
-    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate).
+    Ported from the retired WIP/stringRuntime harness.
     NB: trim/trimLeft/trimRight live in run_string_trim.bgl. */
 // EXPECT_OUTPUT: mid: lo, W
 // EXPECT_OUTPUT: left: Hello

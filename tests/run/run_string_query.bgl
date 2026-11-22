@@ -1,7 +1,7 @@
 /*  Non-mutating introspection: assignment, length, isEmpty, search
     (indexOf/startsWith/endsWith/contains), equality against literal and against
     another string, and switch dispatch on a string. Runtime-only truths.
-    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+    Ported from the retired WIP/stringRuntime harness. */
 // EXPECT_OUTPUT: assign-literal: hello
 // EXPECT_OUTPUT: assign-string: hello
 // EXPECT_OUTPUT: assign-empty: yes

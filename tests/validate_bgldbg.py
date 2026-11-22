@@ -137,12 +137,11 @@ def validate(bgl):
             check(1 <= bglline <= lc, f"[map] bglLine {bglline} out of range for {os.path.basename(bglfile)} (has {lc} lines)")
         check(1 <= i6 <= inf_lines, f"[map] i6Line {i6} out of range for transpiled .inf (has {inf_lines} lines)")
 
-    # G. superposed/spliced anchor bug — the splice-region defect Jill filed. A `superposed` routine's
+    # G. superposed/spliced anchor bug. A `superposed` routine's
     #    body was stamped onto a single non-executable splice line (a blank or bare terminator that
     #    carries no sequence point), so ALL its statements clustered there and breakpoints never bound.
     #    A correct build never *clusters* on a structural line. (Single stray structural entries come
-    #    from a separate, pre-existing off-by-one in statement line accounting — see
-    #    .design/BUG_sourcemap_offbyone.md — and are tolerated here rather than masking this check.)
+    #    from a separate off-by-one in statement line accounting and are tolerated here.)
     from collections import Counter
     struct_hits = Counter(i6 for i6, _, _ in rows
                           if 1 <= i6 <= len(inf_lst) and inf_lst[i6 - 1].strip() in STRUCTURAL)

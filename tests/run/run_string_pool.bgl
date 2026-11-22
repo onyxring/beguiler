@@ -3,7 +3,7 @@
     and that chained ephemerals (clone-mutate-free) read correctly inline.
     This allocator stress has no emission signature at all — the retired
     WIP/stringRuntime harness carried it precisely because baselines can't see it.
-    Ported by Joe (<string> substrate). */
+    Ported from the retired harness. */
 // EXPECT_OUTPUT: pool-first: 1
 // EXPECT_OUTPUT: pool-last: 8
 // EXPECT_OUTPUT: pool-recycle: recycled

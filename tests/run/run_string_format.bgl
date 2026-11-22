@@ -6,7 +6,7 @@
     a `stringObj` routes the same way. (Earlier the `string` emitters mis-routed to
     `$self.format`, which trapped because a `string` is a packed literal, not a
     _bglString — fixed by giving `_bglStr.format` a source-string first arg.)
-    Ported from the retired WIP/stringRuntime harness (Joe, <string> substrate). */
+    Ported from the retired WIP/stringRuntime harness. */
 // EXPECT_OUTPUT: str-format-0arg: Hello [world]!
 // EXPECT_OUTPUT: str-format-1arg: world+x
 // EXPECT_OUTPUT: str-format-2arg: world+a+b
