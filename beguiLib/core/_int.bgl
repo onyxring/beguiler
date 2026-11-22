@@ -14,7 +14,7 @@ primitive class intLiteral {
     int operator auto();         /// Convert to an `int` implicitly.
 }
 
-/// The type of a negative literal such as `-1`. Behaves as `intLiteral`, but needs an explicit cast to become a `uint`.
+/// The type of a negative literal such as `-1`. It needs an explicit cast to become a `uint`.
 primitive class negativeIntLiteral {
     emitter int operator();      /// Convert to an `int`.
 }

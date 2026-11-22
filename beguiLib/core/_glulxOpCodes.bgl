@@ -10,7 +10,7 @@
     #error "ERROR: Glulx assembly binding are not compatible with Z-code."
 #endif
 
-// Short names under bgl.glulx.
+// Short names under bgl.glulx
 extend _glulx{
     alias eWinType for eGlulxWindowType;            /// The kinds of Glk window.
     alias eImgAlign for eGlulxImageAlign;           /// Where an image sits in a text window.
@@ -90,21 +90,21 @@ superposed class bglOpCodes {
     emitter int bitor(int a, int b){ ($a | $b) }   /// Return the bitwise OR of `a` and `b` (`@bitor`).
     static superposed int bitxor(int a, int b){ int result; #i6 { @bitxor a b result; } return result; }  /// Return the bitwise exclusive OR of `a` and `b` (`@bitxor`).
     emitter int bitnot(int a){ (~$a) }             /// Return the bitwise NOT of `a` (`@bitnot`).
-    /// Shift `a` left by `b` bits (`@shiftl`). A shift of 32 or more gives 0, not a rotation.
+    /// Shift `a` left by `b` bits (`@shiftl`).
     static superposed int shiftl(int a, int b){ int result; #i6 { @shiftl a b result; } return result; }
-    /// Shift `a` right by `b` bits, carrying the SIGN bit down (`@sshiftr`) — arithmetic shift.
+    /// Shift `a` right by `b` bits, keeping the sign (`@sshiftr`).
     static superposed int sshiftr(int a, int b){ int result; #i6 { @sshiftr a b result; } return result; }
-    /// Shift `a` right by `b` bits, filling with ZEROS (`@ushiftr`) — logical shift.
+    /// Shift `a` right by `b` bits, filling with zeros (`@ushiftr`).
     static superposed int ushiftr(int a, int b){ int result; #i6 { @ushiftr a b result; } return result; }
 
     //-- Memory Access ---------------------------------------------------------
-    /// Read WORD `idx` at `addr` — a byte offset of `idx*4` (`@aload`).
+    /// Read word `idx` at `addr` (`@aload`).
     static superposed int aload(int addr, int idx){ int result; #i6 { @aload addr idx result; } return result; }
-    /// Read 16-bit SHORT `idx` at `addr` (`@aloads`). Note the different stride from `aload`.
+    /// Read 16-bit short `idx` at `addr` (`@aloads`).
     static superposed int aloads(int addr, int idx){ int result; #i6 { @aloads addr idx result; } return result; }
-    /// Read BYTE `idx` at `addr` (`@aloadb`).
+    /// Read byte `idx` at `addr` (`@aloadb`).
     static superposed int aloadb(int addr, int idx){ int result; #i6 { @aloadb addr idx result; } return result; }
-    /// Read BIT `idx` at `addr` (`@aloadbit`). The index may run past one byte, and may be negative.
+    /// Read bit `idx` at `addr` (`@aloadbit`).
     static superposed int aloadbit(int addr, int idx){ int result; #i6 { @aloadbit addr idx result; } return result; }
     /// Write word `idx` at `addr` (`@astore`).
     emitter void astore(int addr, int idx, int v) { @astore $addr $idx $v; }
@@ -123,9 +123,9 @@ superposed class bglOpCodes {
     static superposed int sexb(int v){ int result; #i6 { @sexb v result; } return result; }
 
     //-- Stack Operations ------------------------------------------------------
-    /// How many values are on the stack above the current call frame (`@stkcount`).
+    /// Count the values on the stack (`@stkcount`).
     static superposed int stkcount(){ int result; #i6 { @stkcount result; } return result; }
-    /// Read the stack `idx` values down from the top, without popping (`@stkpeek`).
+    /// Read the stack value `idx` down from the top (`@stkpeek`).
     static superposed int stkpeek(int idx){ int result; #i6 { @stkpeek idx result; } return result; }
     /// Exchange the top two stack values (`@stkswap`).
     emitter void stkswap()               { @stkswap; }
@@ -152,7 +152,7 @@ superposed class bglOpCodes {
     //-- Memory Management -----------------------------------------------------
     /// The current size of memory in bytes (`@getmemsize`).
     static superposed int getmemsize(){ int result; #i6 { @getmemsize result; } return result; }
-    /// Grow or shrink memory to `size` bytes (`@setmemsize`). Non-zero on failure. Invalid while `malloc` blocks are live.
+    /// Grow or shrink memory to `size` bytes; non-zero on failure (`@setmemsize`).
     static superposed int setmemsize(int size){ int result; #i6 { @setmemsize size result; } return result; }
     /// Allocate `size` bytes from the heap and return the address, or 0 (`@malloc`).
     static superposed int malloc(int size){ int result; #i6 { @malloc size result; } return result; }
@@ -160,11 +160,11 @@ superposed class bglOpCodes {
     emitter void mfree(int addr)         { @mfree $addr; }
     /// Zero `count` bytes starting at `addr` (`@mzero`).
     emitter void mzero(int count, int addr) { @mzero $count $addr; }
-    /// Copy `count` bytes from `src` to `dst` (`@mcopy`). Overlapping regions copy correctly.
+    /// Copy `count` bytes from `src` to `dst` (`@mcopy`).
     emitter void mcopy(int count, int src, int dst) { @mcopy $count $src $dst; }
 
     //-- Searching -------------------------------------------------------------
-    /// Walk an array of fixed-size structures looking for `key` (`@linearsearch`). `keySize` is 1, 2 or 4 bytes; `options` bit 0 says the key is passed by address, bit 1 returns the index instead of the address, bit 2 stops at a zero key.
+    /// Search an array of fixed-size structures for `key` (`@linearsearch`).
     static superposed int linearsearch(int key, int keySize, int start, int structSize, int numStructs, int keyOffset, int options){ int result; #i6 { @linearsearch key keySize start structSize numStructs keyOffset options result; } return result; }
     /// As `linearsearch`, but the structures must already be sorted by key (`@binarysearch`).
     static superposed int binarysearch(int key, int keySize, int start, int structSize, int numStructs, int keyOffset, int options){ int result; #i6 { @binarysearch key keySize start structSize numStructs keyOffset options result; } return result; }
@@ -172,29 +172,29 @@ superposed class bglOpCodes {
     static superposed int linkedsearch(int key, int keySize, int start, int keyOffset, int nextOffset, int options){ int result; #i6 { @linkedsearch key keySize start keyOffset nextOffset options result; } return result; }
 
     //-- Random Numbers --------------------------------------------------------
-    static superposed int random(int range){ int result; #i6 { @random range result; } return result; }  /// Return a random number: 0 to `range`-1 for a positive `range`, any value for 0 (`@random`).
-    emitter void setrandom(int seed)     { @setrandom $seed; }                                           /// Seed the random-number generator; 0 seeds it unpredictably (`@setrandom`).
+    static superposed int random(int range){ int result; #i6 { @random range result; } return result; }  /// Return a random number below `range` (`@random`).
+    emitter void setrandom(int seed)     { @setrandom $seed; }                                           /// Seed the random-number generator (`@setrandom`).
 
     //-- Game State ------------------------------------------------------------
     emitter void quit()                  { @quit; }     /// End the game immediately (`@quit`).
     emitter void restart()               { @restart; }  /// Restart the game (`@restart`).
-    /// Save the game state to a stream (`@save`). 0 on success, 1 on failure, and 2 in the branch that resumes from `restore`.
+    /// Save the game state to a stream (`@save`).
     static superposed int save(int stream){ int result; #i6 { @save stream result; } return result; }
-    /// Restore a saved state from a stream (`@restore`). Does not return here on success — execution resumes inside the `save` that wrote it.
+    /// Restore a saved state from a stream (`@restore`).
     static superposed int restore(int stream){ int result; #i6 { @restore stream result; } return result; }
-    /// Take an undo snapshot (`@saveundo`). Same return convention as `save`.
+    /// Take an undo snapshot (`@saveundo`).
     static superposed int saveundo(){ int result; #i6 { @saveundo result; } return result; }
-    /// Go back to the last snapshot (`@restoreundo`). Does not return here on success.
+    /// Go back to the last snapshot (`@restoreundo`).
     static superposed int restoreundo(){ int result; #i6 { @restoreundo result; } return result; }
-    /// Mark a range to survive `restore` and `restoreundo` (`@protect`). One range at a time; a length of 0 clears it.
+    /// Mark a range to survive `restore` and `restoreundo` (`@protect`).
     emitter void protect(int addr, int len) { @protect $addr $len; }
     /// Check the story file against its header checksum (`@verify`). 0 when intact.
     static superposed int verify(){ int result; #i6 { @verify result; } return result; }
 
     //-- System ----------------------------------------------------------------
-    /// Signal the interpreter's debugger (`@debugtrap`). Does nothing in an ordinary interpreter.
+    /// Signal the interpreter's debugger (`@debugtrap`).
     emitter void debugtrap(int val)      { @debugtrap $val; }
-    /// Call a Glk function by selector, with `argc` arguments already pushed on the stack (`@glk`). The typed wrappers below are the ones to reach for.
+    /// Call a Glk function by selector (`@glk`).
     emitter int glk(int sel, int argc)   { @glk $sel $argc $target }
 
     //-- I/O System ------------------------------------------------------------
@@ -226,10 +226,10 @@ superposed class bglOpCodes {
     static superposed int asin(int f){ int result; #i6 { @asin f result; } return result; }             /// Return the arcsine of float `f`, in radians (`@asin`).
     static superposed int acos(int f){ int result; #i6 { @acos f result; } return result; }             /// Return the arccosine of float `f`, in radians (`@acos`).
     static superposed int atan(int f){ int result; #i6 { @atan f result; } return result; }             /// Return the arctangent of float `f`, in radians (`@atan`).
-    static superposed int atan2(int a, int b){ int result; #i6 { @atan2 a b result; } return result; }  /// Return the arctangent of `a/b`, in radians, using both signs to find the quadrant (`@atan2`).
+    static superposed int atan2(int a, int b){ int result; #i6 { @atan2 a b result; } return result; }  /// Return the arctangent of `a/b`, in radians (`@atan2`).
 
     //-- Acceleration ----------------------------------------------------------
-    /// Ask the interpreter to run its own fast version of the routine at `addr` (`@accelfunc`). A speed-up only; the behaviour must match.
+    /// Ask the interpreter to accelerate the routine at `addr` (`@accelfunc`).
     emitter void accelfunc(int idx, int addr) { @accelfunc $idx $addr; }
     /// Give the accelerated functions a parameter they need, such as the address of a class (`@accelparam`).
     emitter void accelparam(int idx, int val) { @accelparam $idx $val; }
@@ -401,7 +401,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(36, $a, $b)
     }
 
-    /// Measure window `a`, writing its width to the address `b` and its height to `c`. Cells for a grid window, pixels for a graphics one.
+    /// Measure window `a`, writing its width to address `b` and height to `c`.
     emitter void windowGetSize(int a, int b, int c){
         __glkHook(37, $a, $b, $c)
     }
@@ -431,7 +431,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(42, $a)
     }
 
-    /// Put the cursor of grid window `a` at column `b`, line `c`. Counts from 0 here, unlike the Beguile wrapper.
+    /// Put the cursor of grid window `a` at column `b`, line `c`.
     emitter void windowMoveCursor(int a, int b, int c){
         __glkHook(43, $a, $b, $c)
     }
@@ -441,7 +441,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(44, $a)
     }
 
-    /// Copy everything printed to window `a` into stream `b` as well — a transcript.
+    /// Copy everything printed to window `a` into stream `b` as well.
     emitter void windowSetEchoStream(int a, int b){
         __glkHook(45, $a, $b)
     }
@@ -476,12 +476,12 @@ Constant wintype_TextGrid = 4;
         __glkHook(66, $a, $b, $c)
     }
 
-    /// Open a stream writing into the buffer at `a`, `b` bytes long. `c` is the file mode, `d` a rock. Printing to it captures text instead of showing it.
+    /// Open a stream on the buffer at `a`, `b` bytes long, with file mode `c` and rock `d`.
     emitter int streamOpenMemory(int a, int b, int c, int d){
         __glkHook(67, $a, $b, $c, $d)
     }
 
-    /// Close stream `a`, writing its read and write counts to the address `b`. For a memory stream, `b` is how you learn how much was written.
+    /// Close stream `a`, writing its read and write counts to address `b`.
     emitter void streamClose(int a, int b){
         __glkHook(68, $a, $b)
     }
@@ -501,7 +501,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(71, $a)
     }
 
-    /// The stream plain output currently goes to — save it before redirecting.
+    /// The stream plain output currently goes to.
     emitter int streamGetCurrent(){
         __glkHook(72)
     }
@@ -621,7 +621,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(161, $a)
     }
 
-    /// Ask that windows of type `a` render style `b` with hint `c` set to `d`. A request, not a guarantee — set hints before opening the window.
+    /// Ask that windows of type `a` render style `b` with hint `c` set to `d`.
     emitter void stylehintSet(int a, int b, int c, int d){
         __glkHook(176, $a, $b, $c, $d)
     }
@@ -636,7 +636,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(178, $a, $b, $c)
     }
 
-    /// Read back the actual value of hint `c` for style `b` in window `a`, writing it to the address `d`. 0 when the interpreter will not say.
+    /// Read the value of hint `c` for style `b` in window `a` into address `d`.
     emitter int styleMeasure(int a, int b, int c, int d){
         __glkHook(179, $a, $b, $c, $d)
     }
@@ -696,7 +696,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(225, $a, $b, $c, $d)
     }
 
-    /// Draw `img` scaled to `width` by `height`; `alignOrX` is an alignment in a text window or x in a graphics window (`glk_image_draw_scaled`).
+    /// Draw `img` scaled to `width` by `height` (`glk_image_draw_scaled`).
     emitter int imageDrawScaled(int win, var img, var alignOrX, int y, int width, int height){
         __glkHook(226, $win, $img, $alignOrX, $y, $width, $height)
     }
@@ -716,7 +716,7 @@ Constant wintype_TextGrid = 4;
         __glkHook(234, $a, $b, $c, $d, $e, $f)
     }
 
-    /// Set graphics window `a`'s background to `b` (0xRRGGBB). Takes effect on the next clear.
+    /// Set graphics window `a`'s background to `b` (0xRRGGBB).
     emitter void windowSetBackgroundColor(int a, int b){
         __glkHook(235, $a, $b)
     }
@@ -988,12 +988,12 @@ Constant wintype_TextGrid = 4;
 }
 
 
-// Dispatches every Glk call; included only when one is used.
+// Dispatch every Glk call; included only when used
 superposed int __glkHook(int _vararg_count){
     int api;
-    #i6 { @copy sp api; }                 //the first parameter is the api code expected by the glk dispatcher. Pull it off because we have to supply it separately from the other parameters.
-    int args=_vararg_count -1;         //adjust the count of arguments down by one (we just pulled off the opcode)
-    int retval=bglOpCodes.glk(api, args); //call the glk opcode
+    #i6 { @copy sp api; }                 // The first parameter is the API code
+    int args=_vararg_count -1;         // Exclude the API code
+    int retval=bglOpCodes.glk(api, args);
     return retval;
 }
 

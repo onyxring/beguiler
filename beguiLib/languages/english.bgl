@@ -1,25 +1,7 @@
 //===================================================================================================
-// english.bgl — English pronouns and verbs that agree with an object, for interpolated text.
-//---------------------------------------------------------------------------------------------------
-// The word picks the case; the object picks the person, number and gender, from the narrative voice,
-// `pluralname`, `male`, `female`, `neuter` and `animate`:
-//     #using bgl.printRules;
-//     #using bgl.english;
-//     print($"{cThe(player, "give", "gives", "gave")} {the(noun)} to {them(second)}.");
-//     // You give the ball to her.  /  Bob gave the ball to them.
-//
-// A subject is written with its verb, as the verb has to agree with it: `the(o, …)` and `cThe(o, …)`
-// name the object, or give the player's pronoun; `they(o, …)` and `cThey(o, …)` give a pronoun.
-// `cTheReport(o, …)` is `cThe(o, …)` for a refusal: when an NPC acts on an order, it starts with "Bob
-// observes that " and goes on in lower case, the NPC as "he" or "she". The
-// verb is three forms (present, present for one other than "I" or "you", past) or one of `are`,
-// `isnt`, `have`, `can`, `cant`, `will` and `dont`. The other pronouns are `they`, `them`, `their`,
-// `theirs` and `themselves`, or by the names that list their forms (`meYouItThem`, …). A `c` in front
-// starts a sentence.
-//
-// The narrative voice and tense follow the player's `narrative_voice` and `narrative_tense`, unless a
-// setting fixes them: `narrativeTense` (1 present, 2 past) and `narrativeVoice` (1, 2 or 3). With a
-// fixed tense, the forms of the other tense are not compiled.
+// english.bgl — English pronouns and verbs that agree with an object, for interpolated text
+// The word picks the case; the object picks the person, number and gender. A `c` in front starts a
+// sentence: `print($"{cThe(player, "give", "gives", "gave")} {the(noun)} to {them(second)}.")`.
 //===================================================================================================
 #once
 
@@ -28,7 +10,6 @@ extend class beguilerSettingsType {
     int narrativeVoice;   /// 1, 2 or 3; unset, the player's `narrative_voice` decides.
 }
 
-// One type per verb, so each overload calls only its own verb's routine.
 enum _englishAre  { are }
 enum _englishIsnt { isnt }
 enum _englishHave { have }
@@ -39,7 +20,7 @@ enum _englishDont { dont }
 
 /// English pronouns, verbs and plurals for interpolated text.
 superposed _bglObject _bglEnglish {
-    //-- Verbs, for `cThe(o, are)` and the like --------------------------------
+    //-- Verbs, for cThe(o, are) and the like --------------------------------
     emitter _englishAre  are  { 0 }   /// am, are, is; was, were.
     emitter _englishIsnt isnt { 0 }   /// am not, aren't, isn't; wasn't, weren't.
     emitter _englishHave have { 0 }   /// have, has; had.
@@ -160,7 +141,6 @@ extend bgl {
     alias english = _bglEnglish;   /// English pronouns, verbs and plurals for interpolated text.
 }
 
-// The subject noun phrase with its verb: the player's pronoun, or the object with "the".
 extend _bglPrintRules {
     emitter void the(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past)  {
 ##if #beguilerSettings.narrativeTense == 1
@@ -202,7 +182,7 @@ extend _bglPrintRules {
     emitter void cThe(object o, _englishWill v) { _englishTheWill($o, true); }
     emitter void the(object o, _englishDont v)  { _englishTheDont($o, false); }
     emitter void cThe(object o, _englishDont v) { _englishTheDont($o, true); }
-    // When an NPC acts on an order, "Bob observes that " and the subject in lower case; otherwise as `cThe(o, …)`.
+    // As cThe, but after an NPC's lead-in the subject is lower case
     emitter void cTheReport(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
 ##if #beguilerSettings.narrativeTense == 1
         _englishReportSp($o, true);
@@ -223,7 +203,7 @@ extend _bglPrintRules {
     emitter void cTheReport(object o, _englishCant v) { _englishReportCant($o, true); }
     emitter void cTheReport(object o, _englishWill v) { _englishReportWill($o, true); }
     emitter void cTheReport(object o, _englishDont v) { _englishReportDont($o, true); }
-    // As `cTheReport(o, …)`, in lower case when there is no lead-in ("But you aren't …").
+    // As cTheReport, in lower case
     emitter void theReport(object o, stringLiteral present, stringLiteral presentOne, stringLiteral past) {
 ##if #beguilerSettings.narrativeTense == 1
         _englishReportSp($o, false);
@@ -246,11 +226,9 @@ extend _bglPrintRules {
     emitter void theReport(object o, _englishDont v) { _englishReportDont($o, false); }
 }
 
-//===================================================================================================
-// Routines. Each is compiled only when something calls it.
-//===================================================================================================
+//-- Routines ------------------------------------------------------------------
 
-// Whether the narration is in the past tense.
+// Test for past-tense narration
 superposed bool _englishPast() {
 #if #beguilerSettings.narrativeTense == 2
     return true;
@@ -267,7 +245,7 @@ superposed bool _englishPast() {
 #endif
 }
 
-// The player's narrative voice: 1, 2 or 3.
+// Get the narrative voice: 1, 2 or 3
 superposed int _englishVoice() {
 #if #beguilerSettings.narrativeVoice > 0
     return #beguilerSettings.narrativeVoice;
@@ -280,7 +258,7 @@ superposed int _englishVoice() {
 #endif
 }
 
-// Which forms `o` takes: 1 I, 2 we, 3 you, 4 you (several), 5 he, 6 she, 7 it, 8 they.
+// Get the form o takes: 1 I, 2 we, 3 you, 4 you (several), 5 he, 6 she, 7 it, 8 they
 superposed int _englishForm(object o) {
     if (o == player) {
         int voice = _englishVoice();
@@ -293,7 +271,7 @@ superposed int _englishForm(object o) {
     return 7;
 }
 
-// Whether `o` takes the verb form for one other than "I" or "you": he, she or it.
+// Test for the he, she or it verb form
 superposed bool _englishOne(object o) {
     int form = _englishForm(o);
     return form >= 5 && form <= 7;
@@ -360,8 +338,7 @@ superposed void _englishReflexive(object o, bool caps) {
     }
 }
 
-// "that" and "those" for things; for a person or the player, the object pronoun ("That" starting a
-// sentence: the subject pronoun), as the library's ThatOrThose does.
+// Print "that" and "those"; for a person, the pronoun
 superposed void _englishDemonstrative(object o, bool near, bool caps) {
     if (!near && (o == player || ((o.has(male) || o.has(female) || o.has(animate)) && o.hasnt(pluralname) && o.hasnt(neuter)))) {
         if (caps) _englishSubject(o, true); else _englishObject(o, false);
@@ -375,13 +352,13 @@ superposed void _englishDemonstrative(object o, bool near, bool caps) {
     }
 }
 
-// The subject as a noun phrase: the player's pronoun, unless the voice is the third person.
+// Print the subject as a noun phrase
 superposed void _englishTheSubject(object o, bool caps) {
     if (o == player && _englishVoice() != 3) { _englishSubject(o, caps); return; }
     #i6 { if (caps) print (The) o; else print (the) o; }
 }
 
-// After an NPC's lead-in ("Bob observes that "), the subject in lower case, and the NPC as a pronoun.
+// Print the subject after an NPC's lead-in
 superposed void _englishReportSubject(object o, bool caps) {
     if (actor == player || o == player) { _englishTheSubject(o, caps); return; }
     L__M(Miscellany, 60, actor);
@@ -401,8 +378,7 @@ superposed void _englishTense(string present, string past) {
     if (_englishPast()) print(past); else print(present);
 }
 
-// The verbs below follow their subject: `joined` puts the space before them, or after the player's
-// pronoun the contraction the library uses ("You're", "I'm", "You've", "You'll").
+// Contract after the player's pronoun ("You're", "I'm") when joined
 superposed bool _englishContracts(object o, bool joined) {
     return joined && o == player && _englishVoice() != 3;
 }
@@ -483,12 +459,11 @@ superposed void _englishWill(object o, bool joined) {
 #endif
 }
 
-// With the tense left to the player, a subject with its verb in one call.
+// Print a subject with its verb
 superposed void _englishTheyVerb(object o, bool caps, string present, string presentOne, string past){ _englishSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
 superposed void _englishTheVerb(object o, bool caps, string present, string presentOne, string past){ _englishTheSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
 superposed void _englishReportVerb(object o, bool caps, string present, string presentOne, string past){ _englishReportSubject(o, caps); print(" "); _englishVerb(o, present, presentOne, past); }
 
-// A subject with its verb, one routine for each pair a program uses, so each use is a single call.
 superposed void _englishTheySp(object o, bool caps){ _englishSubject(o, caps); print(" "); }
 superposed void _englishTheyBe(object o, bool caps){ _englishSubject(o, caps); _englishBe(o, true); }
 superposed void _englishTheyIsnt(object o, bool caps){ _englishSubject(o, caps); _englishIsnt(o, true); }

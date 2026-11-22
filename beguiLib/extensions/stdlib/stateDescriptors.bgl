@@ -1,24 +1,7 @@
 //===================================================================================================
-// stateDescriptors.bgl — the notes on an object's state in lists, such as "(providing light)".
-//---------------------------------------------------------------------------------------------------
-// In room descriptions and inventories the library follows an object's name with notes on its state:
-// "(closed, empty and providing light)". Here each note comes from a handler, so a game can add its
-// own, take one away or replace one. A handler is told the object and whether to print:
-//     bool onBack(object obj, bool suppress) {
-//         if (!suppress && obj.parent == player) print("on your back");
-//         return obj.parent == player;
-//     }
-//     stateDescriptors.addInventoryHandler(onBack);
-// It returns whether the object has the state, and prints the note only when `suppress` is false.
-//
-// Room descriptions start with sdClosedContainer, sdEmptyContainer and sdLight; inventories with
-// sdWorn, sdClosedContainer, sdOpenContainer, sdLockedContainer, sdEmptyContainer and sdLight.
-// The library's list messages 1 to 6 print the note texts ("closed", "empty", "providing light",
-// "being worn", "locked", "open"). An object no handler describes gets the library's own notes.
-//
-// Include it after the library's verblib.
-//
-// Ported from orLibrary's orStateDescriptors.
+// stateDescriptors.bgl — the notes on an object's state in lists, such as "(providing light)"
+// Each note comes from a handler, so a game can add, remove or replace one
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <array>
@@ -86,7 +69,7 @@ object stateDescriptors {
         rtrue;
     }
 
-    // " (which is closed, empty and providing light)": the notes, joined as a list.
+    // Print the notes as a list
     void _printNotes(object o, int count, bool roomDescription) {
         _total = count;
         _remaining = count;
@@ -99,7 +82,7 @@ object stateDescriptors {
         print(")");
     }
 
-    // After a note: a comma, or the "and" before the last.
+    // Print a comma, or "and" before the last note
     void _between(bool hasState) {
         if(!hasState) return;
         _remaining--;

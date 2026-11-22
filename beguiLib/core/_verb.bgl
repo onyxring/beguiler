@@ -11,18 +11,17 @@ alias class verb for object{
     grammarRuleList grammar;  /// The patterns that match this verb: `grammar = { {.take, NOUN} }`.
     bool meta;                /// True for an out-of-world command, such as SAVE, that takes no game time.
     int priority asI6 _bglVerb_priority = 10;   /// Where this verb's grammar sits among others: lower matches earlier; the default is 10.
-    int libraryPriority = 20; /// Where a library verb's grammar sits; above the default, so a verb that adds to a library word matches first.
+    int libraryPriority = 20; /// Where a library verb's grammar sits in matching order.
 
-    /// What the verb does: every verb declared in Beguile gives it; an extern verb runs its Inform 6 routine.
+    /// What the verb does.
     required default emitter void handler(){ $selfsub(); }
 
     emitter void perform()                   { <($action)> }            /// Run this action now, as though the player typed it.
     emitter void perform(object n)           { <($action) ($n)> }       /// Run this action now on `n`, as though the player typed it.
     emitter void perform(object n, object s) { <($action) ($n) ($s)> }  /// Run this action now on `n` and `s`, as though the player typed it.
 
-    emitter eBool operator == (verb v){ $val == $v }     /// True when this is action `v`.
-    emitter eBool operator != (verb v){ $val ~= $v }     /// True unless this is action `v`.
-    // Emits the verb's action routine, which runs handler().
+    emitter eBool operator == (verb v){ $action == $v }  /// True when this is action `v`.
+    emitter eBool operator != (verb v){ $action ~= $v }  /// True unless this is action `v`.
     emitter void _bglGlobalDeclaration() {
         [$selfsub;
             $self.handler();

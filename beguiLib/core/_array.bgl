@@ -1,31 +1,31 @@
 /* -----------------------------------------------------------------------------
     _array.bgl - Arrays
-    Declares `array<T>`, the fixed-capacity array, and `rawArray<T>`, a bare
-    block of memory for passing to and from Inform 6 code. `#include <array>`
-    adds appending, sorting and the other array operations.
+    Declares array<T> and rawArray<T>, the wrappers for native arrays. 
+    This is installed by default.  #include <array> to add extended array 
+    operations.
 
     Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
    -----------------------------------------------------------------------------*/
 #once
 
-/// A fixed-capacity array of `T`, declared sized (`array<int> a[8]`) or from a list (`array<int> a = {1,2,3}`).
+/// A fixed-capacity array of `T`: `array<int> a[8]` or `array<int> a = {1,2,3}`.
 extern emitter class array<T>{
     replace emitter T    operator[](int i)        { _bglAt($val, $i, 0)-->0 }       /// The element at `i`.
     replace emitter T    operator[]=(int i, T v)  { _bglAt($val, $i, 1)-->0 = $v }  /// Set the element at `i`.
     replace emitter int  size                     { _bglArrSize($val) }    /// How many elements the array can hold.
     typesealed arrayLength length;                                         /// How many elements are in use.
-    /// Refer to `v`'s array. (Taking a function's returned local array copies it into this array's storage.)
+    /// Copy `v`'s elements into this array.
     emitter void operator = (array<T> v)          { _bglArrCopyFrom($self, $v, $opref(=)) }
 }
 
-/// The type of an array's `length`: how many elements are in use. `<array>` makes it assignable.
+/// An array's `length`: how many elements are in use.
 extern emitter class arrayLength {
     emitter int operator()                        { _bglArrLength($self) } /// How many elements are in use.
 }
 
-/// A bare block of memory with no length, for passing to and from Inform 6 code; `rawArray<char>` holds bytes.
+/// A bare block of memory with no length; `rawArray<char>` holds bytes.
 extern emitter class rawArray<T> {
-    // The char forms come first: a subscript takes the first operator[] whose result type matches.
+    // The char forms must come first
     emitter char operator[](int i)          { $val->$i }        /// The byte at `i`.
     emitter char operator[]=(int i, char v) { $val->$i = $v }   /// Set the byte at `i`.
     emitter T    operator[](int i)          { $val-->$i }       /// The element at `i`.
@@ -37,183 +37,143 @@ extern emitter class byteArray : array {
     replace emitter char operator[](int i)          { _bglByteAt($val, $i, 0)->0 }       /// The character at `i`.
     replace emitter char operator[]=(int i, char v) { _bglByteAt($val, $i, 1)->0 = $v }  /// Set the character at `i`.
     replace emitter int  size                       { (($val) + 0)-->(-1) }               /// How many characters the array can hold.
-    // Its own type, so byte arrays don't take `<array>`'s length, which suits word arrays only.
     replace typesealed byteArrayLength length;                                       /// How many characters the array holds.
-    /// Refer to `v`'s array. (Taking a function's returned local array copies it into this array's storage.)
+    /// assign elements to an array<char>
     replace emitter void operator = (array<char> v) { $self = _bglByteArrAssign($self, $v) }
 }
 
-/// The type of an `array<char>`'s `length`. `<buf>` makes it assignable.
+/// An `array<char>`'s `length`: how many characters are in use.
 extern emitter class byteArrayLength {
-    emitter int operator()                          { $self-->0 }                    /// How many characters are in use.
+    emitter int operator()  { $self-->0 }                    /// How many characters are in use.
 }
 //-- Implementation ------------------------------------------------------------
-// Subscripts of an array<T> are checked against its size. Out of range, a message is printed and the
-// access goes to a scratch word instead.
+// Check subscripts: out of range prints an error and uses a scratch word
 superposed rawArray<int> _bglSink[1];
-superposed int _bglOutOfRange(int i, int n, int w){
-    #i6 {
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    }
+superposed int _bglOutOfRange(int i, int n, bool isWrite){
+    print("\n[Beguile run-time error: array index "); print(i); print(" is outside the "); print(n); print(" element");
+    if(n != 1) print("s");
+    print(" it ");
+    if(isWrite) print("can hold"); else print("holds");
+    print("; the ");
+    if(isWrite) print("write"); else print("read");
+    print(" is skipped]\n");
+    _bglSink[0] = 0;
+    return (int)_bglSink;
 }
-// The address of element `i` of a global or local array; `w` is 1 for a write.
-superposed int _bglAt(int arr, int i, int w){
-    int n = 0;
-    #i6 {
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
-    }
+superposed int _bglAt(int arr, int i, bool isWrite){
+    int n = _bglArrSize(arr);
+    if(i >= 0 && i < n) return arr + (i + 1) * bgl.wordsize;
+    return _bglOutOfRange(i, n, isWrite);
 }
-// A Beguile array is an I6 `table` (word 0 its capacity) preceded by two words: the marker $9084, then
-// its length. An array Inform 6 declares has neither, and its length is its size.
+// Test for a Beguile array, which keeps a marker and its length ahead of its table
 superposed bool _bglArrTracked(int arr){
-    #i6 {
-        if(arr == 0) rfalse;
-        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
-        rfalse;
-    }
+    rawArray<int> a = (rawArray<int>)arr;
+    if(arr == 0) return false;
+    return a[-2] == $9084 && a[-1] >= 0 && a[-1] <= a[0];
 }
-// How many elements a global or local array can hold.
 superposed int _bglArrSize(int arr){
-    #i6 { return arr-->0; }
+    return ((rawArray<int>)arr)[0];
 }
-// How many elements of a global or local array are in use.
 superposed int _bglArrLength(int arr){
-    #i6 {
-        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
-        if(_bglArrTracked(arr)) return arr-->(-1);
-        return arr-->0;
-    }
+    rawArray<int> a = (rawArray<int>)arr;
+    if(arr == 0) return 0;
+    if(_bglArrTracked(arr)) return a[-1];
+    return a[0];
 }
-// Set how many elements of a global or local array are in use; an array Inform 6 declares has no length.
 superposed void _bglArrSetLength(int arr, int n){
-    #i6 { if(_bglArrTracked(arr)) arr-->(-1) = n; }
+    if(_bglArrTracked(arr)) ((rawArray<int>)arr)[-1] = n;
 }
-// A returned local array lies in frame space its routine has already given back: anything the program
-// keeps of it is copied out. <linq> adds its scratch buffers by replacing this.
+// Test for a returned local array, which must be copied to be kept
 superposed bool _bglArrEphemeral(int arr){
     #i6 {
         #Ifdef _bglFramePoolWords;
-            ! Addresses compare unsigned: on the Z-machine one above 32767 is negative as a signed word.
+            ! Addresses compare unsigned.
             if(_bglUnsignedCompare(arr, _bglFramePool + _bglFrameTop * WORDSIZE) >= 0
                && _bglUnsignedCompare(arr, _bglFramePool + _bglFramePoolWords * WORDSIZE) < 0) rtrue;
         #Endif;
         rfalse;
     }
 }
-// src's elements and length, up to dst's capacity, copied into dst; returns dst.
-superposed int _bglArrCopyInto(int dst, int src, var assign = 0){
-    int i = 0;
-    int n = 0;
-    #i6 {
-        n = _bglArrLength(src);
-        if(n > dst-->0) n = dst-->0;
-        for(i = 1 : i <= n : i++){
-            if(assign) dst-->i = assign(dst-->i, src-->i);
-            else dst-->i = src-->i;
-        }
-        dst-->(-1) = n;
-        return dst;
+superposed int _bglArrCopyInto(int dst, int src, func<int,int,int> assign = null){
+    rawArray<int> d = (rawArray<int>)dst;
+    rawArray<int> s = (rawArray<int>)src;
+    int n = _bglArrLength(src);
+    if(n > d[0]) n = d[0];
+    for(int i = 1; i <= n; i++){
+        if(assign) d[i] = assign(d[i], s[i]);
+        else d[i] = s[i];
     }
+    d[-1] = n;
+    return dst;
 }
-// _bglArrCopyInto for a source that points at instances, some of which may be dst's own (`a = a.orderBy(…)`):
-// dst's instances are swapped into the source's order, so none is overwritten before it is read, and an element
-// from elsewhere is copied into an instance of dst's that no later element needs.
-superposed void _bglArrCopyShared(int dst, int src, var assign){
-    int room = 0;
-    int n = 0;
-    int i = 0;
+// Copy where src may point at dst's own instances
+superposed void _bglArrCopyShared(int dst, int src, func<int,int,int> assign){
+    rawArray<int> d = (rawArray<int>)dst;
+    rawArray<int> s = (rawArray<int>)src;
+    int room = d[0];
+    int n = _bglArrLength(src);
     int j = 0;
     int k = 0;
     int e = 0;
     int w = 0;
-    #i6 {
-        room = dst-->0;
-        n = _bglArrLength(src);
-        if(n > room) n = room;
-        for(i = 1 : i <= n : i++){
-            e = src-->i;
-            for(j = i : j <= room : j++) if(dst-->j == e) break;
-            if(j > room){
-                for(j = i : j <= room : j++){
-                    w = dst-->j;
-                    if(w == 0) break;
-                    for(k = i + 1 : k <= n : k++) if(src-->k == w) break;
-                    if(k > n) break;
-                }
-                if(j > room) j = i;
+    if(n > room) n = room;
+    for(int i = 1; i <= n; i++){
+        e = s[i];
+        for(j = i; j <= room; j++) if(d[j] == e) break;
+        if(j > room){
+            for(j = i; j <= room; j++){
+                w = d[j];
+                if(w == 0) break;
+                for(k = i + 1; k <= n; k++) if(s[k] == w) break;
+                if(k > n) break;
             }
-            w = dst-->i; dst-->i = dst-->j; dst-->j = w;
-            if(dst-->i ~= e) dst-->i = assign(dst-->i, e);
+            if(j > room) j = i;
         }
-        dst-->(-1) = n;
+        w = d[i]; d[i] = d[j]; d[j] = w;
+        if(d[i] != e) d[i] = assign(d[i], e);
     }
+    d[-1] = n;
 }
-// `dst = src` on arrays: src's elements and length, up to dst's capacity, copied into dst's own storage. A source
-// nothing owns (a step's result, a call's returned array) is freed once copied. Returns dst.
-superposed int _bglArrCopyFrom(int dst, int src, var assign = 0){
-    int n = 0;
-    int i = 0;
-    #i6 {
-        if(dst == 0){ print "^[Beguile run-time error: copying into an array that is null; bind it with := first]^"; return 0; }
-        if(dst-->(-2) == $DEAD){ print "^[Beguile run-time error: copying into an array that was freed]^"; return dst; }
-        if(src == 0 || dst == src) return dst;
-        if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
-        if(_bglHeapBorrows(dst)){
-            ! A view of a struct array: the values go into the instances it shows (it can't take more than it has).
-            if(assign && dst-->(-1) > 0 && metaclass(dst-->1) == Object){
-                n = _bglArrLength(src);
-                if(n > dst-->(-1)) n = dst-->(-1);
-                for(i = 1 : i <= n : i++) assign(dst-->i, src-->i);
-                if(_bglHeapIsFresh(src)) _bglHeapFree(src);
-                return dst;
-            }
-            assign = 0;   ! an array with no instances of its own takes the pointers
+superposed int _bglArrCopyFrom(int dst, int src, func<int,int,int> assign = null){
+    rawArray<int> d = (rawArray<int>)dst;
+    rawArray<int> s = (rawArray<int>)src;
+    if(dst == 0){ print("\n[Beguile run-time error: copying into an array that is null; bind it with := first]\n"); return 0; }
+    if(d[-2] == $DEAD){ print("\n[Beguile run-time error: copying into an array that was freed]\n"); return dst; }
+    if(src == 0 || dst == src) return dst;
+    if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
+    if(_bglHeapBorrows(dst)){
+        // A view of a struct array: copy into its instances
+        if(assign && d[-1] > 0 && _bglMcObject(d[1])){
+            int n = _bglArrLength(src);
+            if(n > d[-1]) n = d[-1];
+            for(int i = 1; i <= n; i++) assign(d[i], s[i]);
+            if(_bglHeapIsFresh(src)) _bglHeapFree(src);
+            return dst;
         }
-        if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
-        else _bglArrCopyInto(dst, src, assign);
-        if(_bglHeapIsFresh(src)) _bglHeapFree(src);
-        return dst;
+        assign = null;   // no instances of its own: take the pointers
     }
+    if(assign && _bglHeapBorrows(src)) _bglArrCopyShared(dst, src, assign);
+    else _bglArrCopyInto(dst, src, assign);
+    if(_bglHeapIsFresh(src)) _bglHeapFree(src);
+    return dst;
 }
-// The same as an element type's assignment, for an array of arrays: a slot that holds an array is copied into;
-// an empty one (an append) takes the array itself, which another reference now keeps.
+// Assign an array of arrays
 superposed int _bglArrCopyAssign(int cur, int src){
-    #i6 {
-        if(cur == 0) return _bglHeapEscape(src);
-        return _bglArrCopyFrom(cur, src);
-    }
+    if(cur == 0) return _bglHeapEscape(src);
+    return _bglArrCopyFrom(cur, src);
 }
-// `=` into a row of an array of arrays: an empty slot takes a copy of src (src itself when nothing else holds it), so
-// a later copy into that row can't change src.
+// Assign a row of an array of arrays
 superposed int _bglArrCopyRow(int cur, int src){
-    #i6 {
-        if(cur ~= 0) return _bglArrCopyFrom(cur, src);
-        if(src == 0 || _bglHeapIsFresh(src)) return _bglHeapEscape(src);
-        return _bglHeapEscape(_bglHeapCopyOf(src));
-    }
+    if(cur != 0) return _bglArrCopyFrom(cur, src);
+    if(src == 0 || _bglHeapIsFresh(src)) return _bglHeapEscape(src);
+    return _bglHeapEscape(_bglHeapCopyOf(src));
 }
-// `rows[i] = src`: the row slot is found once, and `assign` copies src into the array it holds.
-superposed int _bglArrRowStore(int arr, int i, int src, var assign){
-    int s = 0;
-    #i6 {
-        if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
-        s = _bglAt(arr, i, 1);
-        if(s ~= _bglSink) s-->0 = assign(s-->0, src);
-        return 0;
-    }
+superposed int _bglArrRowStore(int arr, int i, int src, func<int,int,int> assign){
+    if(assign == _bglArrCopyAssign) assign = _bglArrCopyRow;
+    rawArray<int> s = (rawArray<int>)_bglAt(arr, i, true);
+    if(s != _bglSink) s[0] = assign(s[0], src);
+    return 0;
 }
-// A whole member array that is its property's data, assigned from `src`: src's elements and length,
-// up to its capacity, copied into the property, whose last word is the length; `assign` as for _bglArrAssign.
 superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
     int i = 0;
     int n = 0;
@@ -230,7 +190,6 @@ superposed int _bglMemberArrCopy(var obj, var prop, int src, var assign = 0){
         return 0;
     }
 }
-// One such member array assigned from another.
 superposed int _bglMemberArrCopyMember(var obj, var prop, var sobj, var sprop, var assign = 0){
     int i = 0;
     int n = 0;
@@ -247,8 +206,6 @@ superposed int _bglMemberArrCopyMember(var obj, var prop, var sobj, var sprop, v
         return 0;
     }
 }
-// `dst = obj.member`, a member that is its property's data: the member's elements and length copied into dst's
-// storage, up to its capacity. Returns dst.
 superposed int _bglArrFromMember(int dst, var obj, var prop, var assign = 0){
     int i = 0;
     int n = 0;
@@ -264,15 +221,10 @@ superposed int _bglArrFromMember(int dst, var obj, var prop, var assign = 0){
         return dst;
     }
 }
-// The same for an array<char>: its capacity is the word before it, its length word 0, its bytes after.
 superposed int _bglByteArrAssign(int dst, int src){
-    #i6 {
-        if(src == 0 || dst == 0 || dst == src || ~~_bglArrEphemeral(src)) return src;
-        return _bglByteArrCopyInto(dst, src);
-    }
+    if(src == 0 || dst == 0 || dst == src || !_bglArrEphemeral(src)) return src;
+    return _bglByteArrCopyInto(dst, src);
 }
-// `dst = src` where dst is a global or member array<char>: as _bglByteArrAssign, but any array in the frame
-// pool is copied, as for _bglArrStore.
 superposed int _bglByteArrStore(int dst, int src){
     #i6 {
         if(src == 0 || dst == 0 || dst == src) return src;
@@ -284,29 +236,23 @@ superposed int _bglByteArrStore(int dst, int src){
         return _bglByteArrAssign(dst, src);
     }
 }
-// src's characters and length, up to dst's capacity, copied into dst; returns dst.
 superposed int _bglByteArrCopyInto(int dst, int src){
-    int i = 0;
-    int n = 0;
-    #i6 {
-        n = src-->0;
-        if(n > dst-->(-1)) n = dst-->(-1);
-        for(i = 0 : i < n : i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
-        dst-->0 = n;
-        return dst;
-    }
+    rawArray<int> d = (rawArray<int>)dst;
+    rawArray<int> s = (rawArray<int>)src;
+    rawArray<char> db = (rawArray<char>)dst;
+    rawArray<char> sb = (rawArray<char>)src;
+    int n = s[0];
+    if(n > d[-1]) n = d[-1];
+    for(int i = 0; i < n; i++) db[bgl.wordsize + i] = sb[bgl.wordsize + i];
+    d[0] = n;
+    return dst;
 }
-// The address of character `i` of an array<char>, whose capacity is in the word before it.
-superposed int _bglByteAt(int arr, int i, int w){
-    int n = 0;
-    #i6 {
-        n = arr-->(-1);
-        if(i >= 0 && i < n) return arr + WORDSIZE + i;
-        return _bglOutOfRange(i, n, w);
-    }
+superposed int _bglByteAt(int arr, int i, bool isWrite){
+    int n = ((rawArray<int>)arr)[-1];
+    if(i >= 0 && i < n) return arr + bgl.wordsize + i;
+    return _bglOutOfRange(i, n, isWrite);
 }
-// The address of element `i` of an object's member array; `f` is 1 for a write, plus 2 when the
-// member keeps its length in its last word.
+// f is 1 for a write, plus 2 when the member keeps its length
 superposed int _bglMemberAt(var obj, var prop, int i, int f){
     int n = 0;
     #i6 {

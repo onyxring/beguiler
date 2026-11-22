@@ -1,14 +1,7 @@
 //===================================================================================================
-// english/messages.bgl — the standard library's messages, in place of English.h's LanguageLM.
-//---------------------------------------------------------------------------------------------------
-// The same messages, written with <languages/english>, so they follow its narrativeTense and
-// narrativeVoice settings: with a fixed tense, the other tense's text is not compiled, and the
-// helper routines English.h's messages call are left out of the story file.
-//
-// English.h stays included for the vocabulary the parser reads. A game's LibraryMessages object
-// still answers first.
-//
-// Include it after the library's verblib: the messages name the library's actions.
+// english/messages.bgl — the standard library's messages, in place of English.h's LanguageLM
+// The standard library's messages, following the narrativeTense and narrativeVoice settings. English.h
+// stays included for the parser's vocabulary, and a game's LibraryMessages object still answers first
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>
@@ -18,15 +11,14 @@
 
 #mergeI6 "messages"
 
-// Ahead of English.h, so its LanguageLM is left out.
+// Must come before English.h
 #emitfirst { Constant BGL_ENGLISH_MESSAGES; }
 
-extern int sw__var;   // the action whose message is asked for
+extern int sw__var;
 
 /// Print `onIt` for a supporter, `inIt` for anything else.
 emitter void onOrIn(object o, stringLiteral onIt, stringLiteral inIt) { if ($o has supporter) print (string)$onIt; else print (string)$inIt; }
 
-// "You decide that's not such a good idea."
 superposed void _englishDecideAgainst() {
     printLine($"{cThe(actor, "decide", "decides", "decided")} that{byTense("'s not", " wasn't")} such a good idea.");
 }

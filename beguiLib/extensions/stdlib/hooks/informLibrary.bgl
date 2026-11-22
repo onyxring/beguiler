@@ -1,15 +1,15 @@
 //===================================================================================================
-// hooks/informLibrary.bgl — hooks in the play loop (InformLibrary.play).
+// hooks/informLibrary.bgl — hooks in the play loop (InformLibrary.play)
 //---------------------------------------------------------------------------------------------------
 // informLibrary.patch merges calls to these hooks into the standard library. Including it changes nothing
-// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+// until a library extension answers a hook (see <extensions/stdlib/hooks>)
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>
 
 #mergeI6 "informLibrary"
 
-// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+// Declared before the library; guarded in case already made
 #emitfirst {
     #Ifndef ext_afterGamePrologueNotify;           Property individual ext_afterGamePrologueNotify;           #Endif;
     #Ifndef ext_playLoopRewriteParsedCommands;     Property individual ext_playLoopRewriteParsedCommands;     #Endif;
@@ -19,7 +19,7 @@
 }
 
 extern property ext_afterGamePrologueNotify;           /// Told after the game's prologue, before the first turn.
-extern property ext_playLoopRewriteParsedCommands;     /// True skips the library's rewriting of the parsed command (GIVE X Y to GIVE Y TO X, and the like).
+extern property ext_playLoopRewriteParsedCommands;     /// True skips the library's rewriting of the parsed command.
 extern property ext_playLoopAssignObjectVariables;     /// True skips setting noun and second from the parsed command.
-extern property ext_playLoopPerformSingleObjectAction; /// Performs a single-object action: 1 begins the action again, 2 ends the turn, 3 reads a new command.
-extern property ext_playLoopPerformMultiObjectAction;  /// Performs a multiple-object action: 1 begins the action again, 2 ends the turn, 3 reads a new command.
+extern property ext_playLoopPerformSingleObjectAction; /// Performs a single-object action.
+extern property ext_playLoopPerformMultiObjectAction;  /// Performs a multiple-object action.

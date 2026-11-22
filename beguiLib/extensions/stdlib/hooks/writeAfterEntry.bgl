@@ -1,15 +1,15 @@
 //===================================================================================================
-// hooks/writeAfterEntry.bgl — hooks in the text after each entry of a list (WriteAfterEntry).
+// hooks/writeAfterEntry.bgl — hooks in the text after each entry of a list (WriteAfterEntry)
 //---------------------------------------------------------------------------------------------------
 // writeAfterEntry.patch merges calls to these hooks into the standard library. Including it changes nothing
-// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+// until a library extension answers a hook (see <extensions/stdlib/hooks>)
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>
 
 #mergeI6 "writeAfterEntry"
 
-// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+// Declared before the library; guarded in case already made
 #emitfirst {
     #Ifndef ext_sdPartInvBit; Property individual ext_sdPartInvBit; #Endif;
     #Ifndef ext_sdFullInvBit; Property individual ext_sdFullInvBit; #Endif;

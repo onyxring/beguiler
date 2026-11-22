@@ -1,20 +1,7 @@
 //===================================================================================================
-// adjective.bgl — words that describe an object without naming it.
-//---------------------------------------------------------------------------------------------------
-// An object's `adjective` words match it as its `name` words do, but the parser prefers an object
-// named by a noun. With a drinking glass (name glass) and a glass marble (name marble, adjective
-// glass), X GLASS is the drinking glass and X MARBLE the marble, where the library would ask which
-// was meant. X GLASS TABLE still picks the glass table over the marble one, and X DRINKING still
-// finds the glass.
-//
-// A command may name an object by adjectives alone unless `adjectiveParser.mode` is
-// `adjectiveMode.nounRequired`. An object's `requireNoun`, true or false, or a routine returning
-// one, decides that for the object itself.
-//
-// Include it after the library's verblib, and after the extensions that answer the parser's hooks
-// first.
-//
-// Ported from orLibrary's orAdjective.
+// adjective.bgl — words that describe an object without naming it
+// The parser prefers an object named by a noun over one matched by adjective words alone
+// Include it after the library's verblib, and after the extensions that answer the parser's hooks first
 //===================================================================================================
 #once
 #include <extensions/stdlib/parserUtil>
@@ -26,13 +13,13 @@ property requireNoun;   /// True when a command must name the object with a noun
 
 enum adjectiveMode { nounRequired = 0, nounPreferred = 1 }   /// Whether adjectives alone can name an object.
 
-attribute _nounReferenced;   // The command named the object with a noun.
+attribute _nounReferenced;
 
 object adjectiveParser {
     parent = LibraryExtensions;
     adjectiveMode mode = adjectiveMode.nounPreferred;   /// Whether adjectives alone can name an object.
 
-    // The number of words naming obj, from wn on; -1 for none, so another routine can try them.
+    // Count the words naming obj from wn; -1 for none
     int ext_parsenoun(object obj) {
         int adjectives = 0; int nouns = 0;
         int startWn = wn;
@@ -52,8 +39,7 @@ object adjectiveParser {
         return adjectives + nouns;
     }
 
-    // With one object named by a noun among others named only by adjectives, that object; with more,
-    // the others leave the choice.
+    // Prefer the one object named by a noun over those named only by adjectives
     var ext_adjudicate() {
         int byNoun = 0; int byAdjective = 0;
         var only = 0;
@@ -80,7 +66,7 @@ object adjectiveParser {
         return 0;
     }
 
-    // False when both objects have adjectives and the two sets differ, so the player can tell them apart.
+    // False when both objects have different adjective sets
     bool ext_identical(object o1, object o2) {
         property adj = (property)adjective;
         if(o1.provides(adj) && o2.provides(adj)) {
@@ -101,7 +87,7 @@ object adjectiveParser {
     }
 }
 
-// Whether any of the matches was named by a noun.
+// Test whether any match was named by a noun
 superposed bool _anyReferencedByNoun() {
     for(int i = 0; i < number_matched; i++) {
         object o = (object)match_list[i];
@@ -110,7 +96,7 @@ superposed bool _anyReferencedByNoun() {
     return false;
 }
 
-// What the next word is to obj: 1 a noun, 2 a plural noun, 3 an adjective, 0 neither.
+// Classify the next word: 1 noun, 2 plural noun, 3 adjective, 0 neither
 superposed int _adjectiveOrNoun(object obj) {
     dictionaryWord w = NextWord();
     if(w != null && obj.provides((property)adjective) && WordInProperty(w, obj, (property)adjective) == true) return 3;
@@ -119,7 +105,7 @@ superposed int _adjectiveOrNoun(object obj) {
         #i6 { if(w ~= 0 && ((w->#dict_par1) & 4) ~= 0) plural = 1; }
         return plural == 1 ? 2 : 1;
     }
-    // orLibrary's orRecogName also matches the object's short name.
+    // Also match the object's short name
     #i6 {
         #ifdef orRecogName_STAGE;
             if(MatchAgainstShortName(obj, wn - 1) == true) return 1;

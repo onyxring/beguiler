@@ -23,9 +23,9 @@ But most of this is transparent to the user. For all practical purposes, here's 
 game.bgl -> beguiler -> game.blorb (or just the game file; blorbification is optional)
 ```
 
-## Status: Preview
+## Status: Beta
 
-This is an **experimental preview**. The language and compiler are evolving rapidly and not all features are stable. Feedback and bug reports are welcome via [GitHub Issues](https://github.com/onyxring/beguiler/issues).
+This is **beta**. The language and compiler are stabilizing. Feedback and bug reports are welcome via [GitHub Issues](https://github.com/onyxring/beguiler/issues).
 
 ## Companion: VS Code Extension
 
@@ -64,7 +64,7 @@ Depending on which C++ compiler you have installed, you may need to substitute t
 
 You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler in a number of ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
 
-Use [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference. At the moment, since this is a preview, much of these documents are actively being revised.
+Use [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference. At the moment, since this is a beta, much of these documents are actively being revised.
 
 ## License
 

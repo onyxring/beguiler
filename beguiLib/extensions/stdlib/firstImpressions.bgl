@@ -1,15 +1,7 @@
 //===================================================================================================
-// firstImpressions.bgl — text shown with a description only the first time the player sees it.
-//---------------------------------------------------------------------------------------------------
-// An object's or room's `preImpression` prints before its description, and its `postImpression`
-// after, until it has `beenSeen` (see <extensions/stdlib/trackSeen>). Each is a string, plain or
-// interpolated, or a method that prints. REVIEW shows them again (see <extensions/stdlib/review>).
-// A `postImpression` continues the description's line, so a description routine on a thing that
-// has one leaves its line unended; this extension ends it, whether or not the impression is shown.
-//
-// Include it after the library's verblib.
-//
-// Ported from orLibrary's orFirstImpressions.
+// firstImpressions.bgl — text shown with a description only the first time the player sees it
+// An object's preImpression and postImpression print until it has beenSeen
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <extensions/stdlib/trackSeen>
@@ -27,18 +19,18 @@ object _firstImpressionsHooks {
     }
 }
 
-// True when a description routine was just printed: the library ends the line only after a string.
+// Test for a just-printed description routine, which leaves its line open
 superposed bool _firstImpressionEndsLine() {
     #i6 {
         if (noun.#description > WORDSIZE || metaclass(noun.description) ~= Routine) rfalse;
         if (action ~= ##Look or ##Go) rtrue;
-        ! LookSub's own test for printing the room's description.
+        ! LookSub's test for printing the room's description
         return lookmode < 3 && visibility_ceiling == location && location.&describe == 0
             && (action == ##Look || lookmode == 2 || location hasnt visited);
     }
 }
 
-// The room for LOOK and GO, which describe it; otherwise the object being examined.
+// Show the impression for the room (LOOK, GO) or the examined object
 superposed void _firstImpression(property impression) {
     if(noun == null || action == Look || action == Go) noun = location;
     if(noun.hasnt(beenSeen) && noun.provides(impression) && noun.impression != 0) {

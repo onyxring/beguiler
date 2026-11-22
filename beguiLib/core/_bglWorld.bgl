@@ -8,20 +8,20 @@
 #once
 
 //-- Implementation ------------------------------------------------------------
-// Each buffer's capacity: word 0 holds the length when `<array>` isn't included, so it can't say.
+// Each buffer's capacity: word 0 holds the length when <array> isn't included, so it can't say
 #if #beguilerSettings.worldBufSize < 1
     #error "beguilerSettings property 'worldBufSize' must be at least 1"
 #endif
 const int _bglWorldBufSize = #beguilerSettings.worldBufSize;
-// The buffers query results are returned in, used in rotation so queries can nest.
+// The buffers query results are returned in, used in rotation so queries can nest
 superposed array<object> _bglWorldBuf0[_bglWorldBufSize];
 superposed array<object> _bglWorldBuf1[_bglWorldBufSize];
 superposed array<object> _bglWorldBuf2[_bglWorldBufSize];
 superposed array<object> _bglWorldBuf3[_bglWorldBufSize];
-// Not superposed: I6 must see this global before the routine that uses it.
+// Not superposed: I6 must see this global before the routine that uses it
 int _bglWorldBufIdx = -1;
 
-// Advance the rotation and hand back the next buffer in the pool.
+// Advance the rotation and hand back the next buffer in the pool
 superposed array<object> _bglWorldNextBuf(){
     _bglWorldBufIdx = (_bglWorldBufIdx + 1) % 4;
     switch(_bglWorldBufIdx){
@@ -33,12 +33,12 @@ superposed array<object> _bglWorldNextBuf(){
     return _bglWorldBuf0;
 }
 
-// Record a filled buffer's length in the word after its elements, where `length` reads it.
+// Record a filled buffer's length in the word after its elements, where length reads it
 superposed void _bglWorldStamp(var buf, int count){
     #i6 { buf-->(-1) = count; }
 }
 
-// Collect every object.
+// Collect every object
 superposed array<object> _bglWorldGetAll(var pred){
     array<object> buf = _bglWorldNextBuf();
     ref object o;
@@ -54,7 +54,7 @@ superposed array<object> _bglWorldGetAll(var pred){
     return buf;
 }
 
-// Collect the objects of a class.
+// Collect the objects of a class
 superposed array<object> _bglWorldInstances(var cls, var pred){
     array<object> buf = _bglWorldNextBuf();
     ref object o;
@@ -70,7 +70,7 @@ superposed array<object> _bglWorldInstances(var cls, var pred){
     return buf;
 }
 
-// Collect the children of `parent`.
+// Collect the children of parent
 superposed array<object> _bglWorldInParent(object parent, var pred){
     array<object> buf = _bglWorldNextBuf();
     ref object o;

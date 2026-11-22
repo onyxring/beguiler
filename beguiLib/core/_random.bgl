@@ -18,7 +18,7 @@ emitter class _bglRandom {
     emitter var get(var a, var b, var c, var d, var e, var f, var g){ random($a, $b, $c, $d, $e, $f, $g) }  /// Return one of the listed values, chosen at random.
     emitter var get(var a, var b, var c, var d, var e, var f, var g, var h){ random($a, $b, $c, $d, $e, $f, $g, $h) }  /// Return one of the listed values, chosen at random.
 
-    /// Seed the generator: 0 re-seeds from the environment; any other value repeats the same sequence every run.
+    /// Seed the generator; 0 re-seeds unpredictably.
     emitter void seed(int s){
         ##if TARGET_GLULX
         @setrandom $s;

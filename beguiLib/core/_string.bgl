@@ -8,7 +8,7 @@
 #once
 
 //-- Literals ------------------------------------------------------------------
-/// The type of a `"…"` literal. `==` compares addresses, so two identical literals are not equal; `#include <string>` compares content.
+/// The type of a `"…"` literal.
 primitive class stringLiteral {
     emitter string operator();                                   /// Convert to a `string`.
     emitter void print(){ print (string)$val; }          /// Print the text.
@@ -24,13 +24,13 @@ primitive class stringLiteral {
 
 /// The type of a `$"…{expr}…"` literal, which prints its text with each expression's value inserted.
 primitive class interpolatedStringLiteral{}
-/// A routine that prints `$"…"` text: an interpolated string assigned to one becomes it, and its `{ }` expressions are evaluated each time it prints.
+/// A routine that prints `$"…"` text, evaluating its `{ }` expressions each time.
 primitive class interpolatedString {
     emitter eBool operator ?() { $val ~= 0 }   /// True unless it is null.
 }
 
 //-- Strings -------------------------------------------------------------------
-/// A string value that refers to text in the story file. Assigning copies the reference, not the text; `#include <string>` adds `stringObj` for text built at run time.
+/// A string value that refers to text in the story file; `#include <string>` adds `stringObj` for text built at run time.
 primitive class string {
     /// Assignment: the variable refers to the literal's text.
     emitter string operator = (stringLiteral v){

@@ -42,11 +42,10 @@ extern attribute door;         /// is a door between locations
 extern attribute locked;       /// container/door is locked
 extern attribute lockable;     /// can be locked and unlocked
 extern attribute workflag;     /// internal working flag (parser use)
-extern attribute reactive;     /// marks objects that run each_turn, react_before, react_after or add_to_scope; set at startup unless OPTIONAL_MANUAL_REACTIVE is defined
+extern attribute reactive;     /// marks objects that run each_turn, react_before, react_after or add_to_scope
 extern attribute scored;       /// object/room has been scored
 
 //-- Properties ------------------------------------------
-// A direction command sets selected_direction to one of these, and noun to Directions.
 extern property n_to;
 extern property s_to;
 extern property e_to;
@@ -68,7 +67,7 @@ extern additive property time_out;   /// Runs when the object's timer reaches ze
 extern additive property each_turn;  /// Runs at the end of every turn the object is in scope; string or routine.
 
 //-- Global constants ---------------------------------------------------------------
-// Direction values the parser uses before a direction is resolved; most code uses selected_direction.
+// Direction values the parser uses before a direction is resolved
 extern const int FAKE_N_OBJ;
 extern const int FAKE_S_OBJ;
 extern const int FAKE_E_OBJ;
@@ -104,7 +103,7 @@ extern int      special_word;               /// dictionary address for "special"
 extern int      special_number;             /// number typed for "special" token
 extern int      verb_word;                  /// the verb word
 extern int      verb_wordnum;               /// verb position in input
-extern int      scope_stage;                /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on; place objects in scope on pass 2.
+extern int      scope_stage;                /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on
 extern int      wn;                         /// word number currently being parsed
 extern int      num_words;                  /// number of words typed
 extern int      keep_silent;                /// suppress action output
@@ -127,7 +126,7 @@ extern eColor   clr_fginput;                /// player input color (PUNY++)
 extern eColor   clr_fgstatus;               /// status line color
 extern int      things_score;               /// score from picking up scored objects
 extern int      places_score;               /// score from visiting scored rooms
-extern bool     scope_modified;             /// Set true after moving objects from code the library didn't call (a verb handler), so the next command sees them.
+extern bool     scope_modified;             /// Set true after moving objects from a verb handler, so the next command sees them.
 extern const object thedark;                    /// the darkness object (in-scope when no light)
 extern const object selfobj;              /// the player self object
 extern const object Directions;                 /// shared placeholder bound to `noun` for direction commands
@@ -137,7 +136,6 @@ extern const object Directions;                 /// shared placeholder bound to 
 #endif
 
 //-- Global routines ------------------------------------------------
-// Routines PunyInform compiles only under an option constant, or only for z5 and later, are noted in their docs.
 extern void           _StatusLineHeight(int h);                                                  /// Sets the status window to `h` lines and remembers it.
 extern void           Banner();                                                                  /// Prints the game name and serial number.
 extern void           ChangeFgColour(eColor colour);                                             /// Changes the foreground color when colors are enabled (z5 and later; a stub on z3).
@@ -169,7 +167,7 @@ extern void           PrintMsg(int msg, var arg1 = 0, var arg2 = 0);            
 extern int            PrintOrRun(object obj, property prop, bool noNewline = false);             /// Runs `obj.prop` if it is a routine, or prints it (and a newline) if it is a string.
 extern void           PronounNotice(object obj);                                                 /// Makes the pronouns that fit `obj` refer to it.
 extern int            RunRoutines(object obj, property prop, int switchValue = 0);               /// Runs the routines in `obj.prop` until one returns non-zero, and returns that value.
-extern void           ScopeWithin(object obj);                                                   /// Puts everything within `obj` in scope, searching supporters, transparent objects and open containers.
+extern void           ScopeWithin(object obj);                                                   /// Puts everything within `obj` in scope.
 extern void           SetTime(int minutes, int step = 0);                                        /// Sets the time to `minutes` after midnight; a positive `step` is minutes per turn.
 extern void           StartDaemon(object obj);                                                   /// Starts running obj's `daemon` property every turn.
 extern void           StartTimer(object obj, int turns);                                         /// Starts obj's timer; its `time_out` runs after `turns` turns.
@@ -234,13 +232,13 @@ extern enum grammarToken {
     TOPIC,        /// A free-form topic phrase (any sequence of words the player types).
     MULTI,        /// One or more in-scope objects.
     MULTIHELD,    /// One or more held objects.
-    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched.
     MULTIINSIDE,  /// Multiple objects inside a specific container.
     SPECIAL,      /// A number or a single dictionary word.
     ANYNUMBER,    /// Any number typed by the player (no range check).
     NUMBER,       /// A number typed by the player (range-checked to fit a word).
     SCOPE,        /// Placeholder marker — use the `SCOPE(Routine)` form on a real grammar line to set scope.
-    REVERSE       /// Pseudo-token: reverse the noun and second variables. If present, it must appear as the LAST element of a grammar line.
+    REVERSE       /// Pseudo-token: reverse the noun and second variables; it must be the last element of a grammar line.
 }
 
 //-- PunyInform actions ----------------------------------------------------
@@ -297,7 +295,7 @@ extern verb Unlock    { .unlock|.pry|.prise|.prize|.lever|.jemmy|.force }       
 extern verb Wait      { .wait|.z }                                              /// wait
 extern verb Wear      { .wear }                                                 /// wear noun
 
-#if OPTIONAL_EXTENDED_VERBSET   // the library defines these actions only with its extended verb set
+#if OPTIONAL_EXTENDED_VERBSET
     extern verb Blow      { .blow }                                                 /// blow noun
     extern verb Burn      { .burn|.light }                                          /// burn noun [with second]
     extern verb Buy       { .buy|.purchase }                                        /// buy noun
@@ -397,37 +395,37 @@ extend _bglOutput {
 union iStringOrObject = string | interpolatedString | object {
     emitter bool isObject() { metaclass($val) == Object }   /// True when the value is an object.
 }
-/// An iString or a routine that prints, such as a lambda or a routine assigned while the game runs.
+/// An iString or a routine that prints, such as a lambda.
 union iStringOrRoutine = string | interpolatedString | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }   /// True when the value is a routine, an interpolated string included.
 }
 extend _bglOutput {
     emitter void print(iStringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
 }
-// A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
+// A routine, so an argument is evaluated once
 superposed void _bglPrintOrRun(iStringOrRoutine v){
     #i6 {
         if(metaclass(v) == Routine) v();
         else print (string)v;
     }
 }
-// The library lets every object override its instanceName with the short_name property.
+// Every object can override its instanceName with short_name
 extend class object {
-    // Positional, as in an Inform 6 object header: the name, then the parent (`object hook { "brass hook", cloakroom; }`).
+    // Positional, as in an Inform 6 object header: name, then parent
     inline instanceName;
     inline parent;
     iString short_name;
 }
 
-// The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata. Let's reuse these and keep their definitions all the same.
+// Reuse the settings title and headline for Treaty of Babel metadata
 #emitfirst {
     Constant story    = ##beguilerSettings.title;
     Constant headline = ##beguilerSettings.headline;
 }
 
-// Substitute the library's backing for the status bar, replacing Beguile's core behavior for this.
+// Back the status bar with the library's
 extend _bglStatus {
-    replace auto id = {   // the Z-machine has no window ids
+    replace auto id = {
         int operator() { return 0; }
     }
     replace auto height = {
@@ -436,11 +434,9 @@ extend _bglStatus {
     }
 }
 
-// Automatically start up the Beguile run-time environment, unless the program asked to do it itself.
+// Start the Beguile runtime before main unless the program does it
 //-- Remaining library routines
-// Every other routine PunyInform's core files define, so a member named like one is renamed rather than clashing
-// in Inform 6. Inform 6 does not separate parameters from locals, so each takes its first locals as
-// optional parameters; an omitted one is 0, as Inform 6 leaves it.
+// Each routine's locals are optional parameters; an omitted one is 0
 extern var ADirection();
 extern var AnswerSub();
 extern var AskSub();
@@ -494,7 +490,7 @@ extern var TurnSub();
 extern var UnlockSub();
 extern var WaitSub();
 extern var WearSub();
-#if OPTIONAL_EXTENDED_VERBSET   // the library defines these routines only with its extended verb set
+#if OPTIONAL_EXTENDED_VERBSET
     extern var BlowSub();
     extern var BurnSub();
     extern var BuySub();
@@ -619,9 +615,7 @@ extern var TouchCeiling(var p_actor = 0, var _parent = 0);
     }
 #endif
 //-- Runtime hooks ---------------------------------------------------
-// Runs the Beguile runtime's work at each prompt (the heap's collector, once the heap is in use), ahead of
-// PunyInform reading the player's input; the library's routine is kept under another name. Only the turn's
-// prompt runs the hook: a question asked mid-routine (YesOrNo) reads with no prompt.
+// Run the runtime's prompt hook before the turn's input is read
 #emitfirst {
     Replace _ReadPlayerInput _bglPunyReadPlayerInput;
 }
@@ -632,8 +626,7 @@ extern var TouchCeiling(var p_actor = 0, var _parent = 0);
     ];
 }
 
-// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize (and
-// stringHeapSize, with <stringObj>). Its grammar follows the library's own.
+// Debug verb that reports heap use
 #emitlast {
     #Ifdef DEBUG;
     [ _bglHeapVerbSub;

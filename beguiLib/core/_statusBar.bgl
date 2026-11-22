@@ -24,8 +24,8 @@ superposed _bglObject _bglStatus {
     auto width asI6 _bglStatus_width = {
         int operator() { return _bglWinWidth(outer.id); }
     }
-    /// Put the cursor at a cell of the status bar, which output must be going to. Columns and lines count from 0.
-    void moveCursor(int col, int line) asI6 _bglWin_moveCursor { _bglWinMoveCursor(self.id, col, line); }   // `MoveCursor` is a standard-library routine
+    /// Put the cursor at a cell of the status bar, whose output must be current; counts from 0.
+    void moveCursor(int col, int line) asI6 _bglWin_moveCursor { _bglWinMoveCursor(self.id, col, line); }
     /// The status bar's height, in lines; setting it opens or resizes the window.
     auto height asI6 _bglStatus_height = {
         int _h   = 0;

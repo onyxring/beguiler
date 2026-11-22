@@ -43,7 +43,6 @@ superposed class bglOpCodes {
 
     //-- Object Tree (all versions) --------------------------------------------
     static superposed int getParent(int obj){ int result; #i6 { @get_parent obj -> result; } return result; }  /// Return the object's parent, or 0 (`@get_parent`).
-    // These opcodes also branch; the label after each lets execution fall through.
     static superposed int getChild(int obj){ int result; #i6 { @get_child obj -> result ?~gc; .gc; } return result; }  /// Return the object's first child, or 0 (`@get_child`).
     static superposed int getSibling(int obj){ int result; #i6 { @get_sibling obj -> result ?~gs; .gs; } return result; }  /// Return the object's next sibling, or 0 (`@get_sibling`).
     emitter void insertObj(int obj, int dst) { @insert_obj $obj $dst; }  /// Move `obj` to be the first child of `dst` (`@insert_obj`).
@@ -52,11 +51,11 @@ superposed class bglOpCodes {
 
     //-- Object Properties (all versions) --------------------------------------
     static superposed int getProp(int obj, int prop){ int result; #i6 { @get_prop obj prop -> result; } return result; }  /// Return property `prop` of `obj`, or the property's default (`@get_prop`).
-    /// The ADDRESS of a property's data, or 0 when the object lacks it (`@get_prop_addr`). This is how you reach a property longer than one word.
+    /// The address of a property's data, or 0 when the object lacks it (`@get_prop_addr`).
     static superposed int getPropAddr(int obj, int prop){ int result; #i6 { @get_prop_addr obj prop -> result; } return result; }
-    /// How many bytes the property at this address holds (`@get_prop_len`). Takes an address from `getPropAddr`, not a property number.
+    /// How many bytes the property at this address holds (`@get_prop_len`).
     static superposed int getPropLen(int propAddr){ int result; #i6 { @get_prop_len propAddr -> result; } return result; }
-    /// The next property number after `prop` on this object, or 0 at the end (`@get_next_prop`). Pass 0 to start.
+    /// The next property number after `prop` on this object, or 0 at the end (`@get_next_prop`).
     static superposed int getNextProp(int obj, int prop){ int result; #i6 { @get_next_prop obj prop -> result; } return result; }
     emitter void putProp(int obj, int prop, int v) { @put_prop $obj $prop $v; }  /// Set property `prop` of `obj` to `v` (`@put_prop`).
 
@@ -80,9 +79,9 @@ superposed class bglOpCodes {
     emitter void setWindow(int win)     { @set_window $win; }      /// Send output to window `win`: 0 lower, 1 upper (`@set_window`).
 
     //-- Streams (Z3+) ---------------------------------------------------------
-    /// Turn output stream `n` on, or off when `n` is negative (`@output_stream`). 1 screen, 2 transcript, 3 table, 4 command record.
+    /// Turn output stream `n` on, or off when `n` is negative (`@output_stream`).
     emitter void outputStream(int n)              { @output_stream $n; }
-    /// Redirect output into a table in memory — stream 3 (`@output_stream`). The first word of `table` receives the character count. Redirects nest.
+    /// Redirect output into a table in memory (`@output_stream`).
     emitter void outputStream(int n, int table)   { @output_stream $n $table; }
     /// Choose where input comes from: 0 keyboard, 1 a command file (`@input_stream`).
     emitter void inputStream(int n)               { @input_stream $n; }
@@ -126,8 +125,7 @@ superposed class bglOpCodes {
             #i6 { @read_char dev -> c; }
             return c;
         }
-        // This opcode also branches; the label lets execution fall through.
-        /// Search `table` for `x`, returning its address or 0 (`@scan_table`). Words by default; add $80 to `len` for bytes.
+        /// Search `table` for `x`, returning its address or 0 (`@scan_table`); add $80 to `len` to search bytes.
         static superposed int scanTable(int x, int table, int len){ int result; #i6 { @scan_table x table len -> result ?~st; .st; } return result; }
 
         //-- Function Calls (Z4+) --------------------------------------------------
@@ -137,11 +135,11 @@ superposed class bglOpCodes {
         //-- Bitwise (Z5+ EXT) -----------------------------------------------------
         /// Shift `a` left by `places`, or right when negative, filling with ZEROS (`@log_shift`).
         static superposed int logShift(int a, int places){ int result; #i6 { @log_shift a places -> result; } return result; }
-        /// Shift `a` left by `places`, or right when negative, carrying the SIGN bit down (`@art_shift`). This is the one that divides a negative number correctly.
+        /// Shift `a` left by `places`, or right when negative, keeping the sign (`@art_shift`).
         static superposed int artShift(int a, int places){ int result; #i6 { @art_shift a places -> result; } return result; }
 
         //-- Memory (Z5+) ----------------------------------------------------------
-        /// Copy `size` bytes between tables (`@copy_table`). A `dst` of 0 zeroes `src` instead; overlapping regions copy correctly.
+        /// Copy `size` bytes between tables (`@copy_table`); a `dst` of 0 zeroes `src`.
         emitter void copyTable(int src, int dst, int size) { @copy_table $src $dst $size; }
 
         //-- I/O (Z5+) -------------------------------------------------------------
@@ -163,11 +161,11 @@ superposed class bglOpCodes {
         //-- Game State (Z5+ EXT) --------------------------------------------------
         /// Save `bytes` of `table` to a named auxiliary file (`@save`). Non-zero on success.
         static superposed int save(int table, int bytes, int name){ int result; #i6 { @save table bytes name -> result; } return result; }
-        /// Read a named auxiliary file back into `table` (`@restore`). Returns how many bytes were read.
+        /// Read a named auxiliary file back into `table` (`@restore`).
         static superposed int restore(int table, int bytes, int name){ int result; #i6 { @restore table bytes name -> result; } return result; }
-        /// Take an undo snapshot (`@save_undo`). 1 saved, 0 failed, 2 on the return from `restoreUndo`, -1 unsupported.
+        /// Take an undo snapshot (`@save_undo`).
         static superposed int saveUndo(){ int result; #i6 { @save_undo -> result; } return result; }
-        /// Go back to the last `saveUndo()` snapshot (`@restore_undo`). On success it does not return here — execution resumes inside that `saveUndo`.
+        /// Go back to the last `saveUndo()` snapshot (`@restore_undo`).
         static superposed int restoreUndo(){ int result; #i6 { @restore_undo -> result; } return result; }
 
         //-- Function Calls (Z5+) --------------------------------------------------
@@ -175,7 +173,7 @@ superposed class bglOpCodes {
         emitter void call2n(int routine, int a)      { @call_2n $routine $a; }  /// Call `routine` with `a`, discarding its result (`@call_2n`).
 
         //-- Unicode (Z5+ EXT) -----------------------------------------------------
-        /// Ask whether the interpreter can print or read this Unicode character (`@check_unicode`). Bit 0 print, bit 1 input.
+        /// Ask whether the interpreter can print or read this Unicode character (`@check_unicode`).
         static superposed int checkUnicode(int ch){ int result; #i6 { @check_unicode ch -> result; } return result; }
     }
 #endif

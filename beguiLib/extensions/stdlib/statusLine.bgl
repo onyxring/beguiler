@@ -1,13 +1,6 @@
 //===================================================================================================
-// statusLine.bgl — a status line with left, middle and right sections a game can replace.
-//---------------------------------------------------------------------------------------------------
-//     replace void statusRight() { print($"Score: {score} in {turns} turns"); }
-//
-// By default it matches the library's status line: the room on the left, the score and turns or the
-// time on the right, and nothing in the middle.
-//
-// Include it after the library's verblib. Ported from orLibrary's
-// orStatusLine.
+// statusLine.bgl — a status line with left, middle and right sections a game can replace
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <buf>

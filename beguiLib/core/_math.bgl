@@ -8,7 +8,6 @@
 #once
 
 //-- Implementation routines ---------------------------------------------------
-// The sign bit of a word is masked off by BGL_SIGN_MASK.
 #if TARGET_GLULX
     #define BGL_SIGN_MASK $7FFFFFFF
 #else
@@ -63,7 +62,7 @@ superposed int _bglShiftLeft(int i, int numBits){ return i * _bglPow(2, numBits)
 superposed int _bglShiftRight(int i, int numBits){
     int p = _bglPow(2, numBits);
     int q = i / p;
-    if(i < 0 && q * p != i) q--;   // an arithmetic shift rounds toward minus infinity; division rounds toward zero
+    if(i < 0 && q * p != i) q--;   // Shift rounds down; division rounds toward zero
     return q;
 }
 

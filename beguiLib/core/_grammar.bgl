@@ -19,5 +19,5 @@ extern emitter class grammarRule {
 
 /// A verb's grammar: a list of grammar rules.
 extern emitter class grammarRuleList {
-    grammarRule rule;  // Gives the list its element type.
+    grammarRule rule;  // Element type
 }

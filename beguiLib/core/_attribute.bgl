@@ -12,10 +12,9 @@ primitive class attribute {
     emitter attribute operator !() { ~$val }   /// Turn the flag off in an `attributes` list: `{light, !scenery}`.
 }
 
-// Backs NO_ATTRIBUTE.
-// Referenced in the #Ifdef, so Inform 6 has no warning for it when a program leaves it unused.
+// The #Ifdef stops Inform 6 warning when unused
 #i6 { Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; }
-extern const attribute NO_ATTRIBUTE;   /// No attribute, for leaving an attribute-typed member unset; a bare 0 is not an attribute.
+extern const attribute NO_ATTRIBUTE;   /// No attribute, for leaving an attribute-typed member unset.
 
 /// The set of flags in an object's `attributes` member.
 extern emitter class attributeList{

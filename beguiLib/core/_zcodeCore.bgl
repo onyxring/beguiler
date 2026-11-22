@@ -14,7 +14,6 @@ extend bgl{
     alias zcode = _zcode;   /// Z-machine-specific facilities.
 }
 
-// The object behind bgl.zcode.
 _bglObject _zcode{
 
 }
@@ -42,6 +41,5 @@ extend bgl {
     alias header = _bglHeader;   /// The story file header.
 }
 
-// Every Z-machine window is as wide as the screen; only the upper window has a cursor to move.
 superposed int _bglWinWidth(int win){ return bgl.asm.loadb(0, $21); }
 superposed void _bglWinMoveCursor(int win, int col, int line){ bgl.asm.setCursor(line + 1, col + 1); }

@@ -3,26 +3,15 @@
     #error "<glulxImage> is a Glulx extension and is not compatible with the Z-machine. Set `target = Glulx`, or guard the include with `#if TARGET_GLULX`."
 #endif
 //=============================================================================
-// glulxImage.bgl — a typed handle to a Glulx image resource (blorb asset).
-//
-// `glulxImage` is a METADATA wrapper: it answers "how big is this picture?"
-// (natural pixel dimensions from glk_image_get_info). Drawing lives in the
-// windows (`window.drawImage`) and in print rules (`bgl.printRules.img`) — a
-// glulxImage passes straight into those because it IS the raw resource int.
-//
-// Representation: `primitive class` — a zero-overhead newtype
-// over the asset id. The value is literally the int, so there is NO backing, NO
-// pool, NO emitted I6 class; every member inlines to a `$self`-based call. A
-// glulxImage therefore flows anywhere an image id (var/int) is expected.
+// glulxImage.bgl — a typed handle to a Glulx image resource (blorb asset)
+// It reports an image's pixel size; drawing is done by windows and print rules.
 //=============================================================================
 
 array<int> _glkTmpSizeBuf[2];
 
-// Natural pixel size of a glk image resource. Takes the raw resource int (a glulxImage,
-// a cast eImages, or a bare id all satisfy it). The single metadata primitive the wrapper
-// and any draw facade share.
+// Get the natural pixel size of an image resource
 bglSize _bglGetImageInfo(int imgId){
-    int ptrWidth  = &_glkTmpSizeBuf + bgl.wordsize;   // advance past the array length slot
+    int ptrWidth  = &_glkTmpSizeBuf + bgl.wordsize;   // Skip the array length slot
     int ptrHeight = ptrWidth + bgl.wordsize;
     bglSize retval;
     bgl.asm.imageGetInfo(imgId, ptrWidth, ptrHeight);
@@ -33,16 +22,14 @@ bglSize _bglGetImageInfo(int imgId){
 int _imgWidth (int imgId){ return _bglGetImageInfo(imgId).width;  }
 int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
 
-// The image handle. Assign it a blorb asset (or a raw resource id); query its size.
 /// A picture from the blorb file. Ask it how big it is; draw it through a window's `drawImage()`
 /// or a print rule.
 primitive class glulxImage {
-    emitter void operator = (eImages a){ $self = $a; }        // glulxImage pic = eImages.logo;
-    emitter void operator = (int id)   { $self = $id; }       // …or a raw resource id
-    emitter int  operator ()           { ($self) }            // → int: the raw resource id
-    emitter eImages operator ()       { ($self) }            // → eImages: pass it wherever an image asset goes
+    emitter void operator = (eImages a){ $self = $a; }     
+    emitter void operator = (int id)   { $self = $id; }    
+    emitter int  operator ()           { ($self) }         
+    emitter eImages operator ()       { ($self) }         
 
-    // Natural (unscaled) pixel dimensions of the asset.
     /// The image's natural size in pixels.
     emitter bglSize size    { (_bglGetImageInfo($self)) }
     /// The image's natural width in pixels.
@@ -51,8 +38,7 @@ primitive class glulxImage {
     emitter int     height  { (_imgHeight($self)) }
 }
 
-// `eImages.logo.width` with no handle: a value of eImages is the resource id, so each inlines with
-// `$self` = the id. These appear only on images, which is why the asset enum is split by kind.
+// Size members on image assets, e.g. eImages.logo.width
 extend enum eImages {
     /// The image's natural size in pixels.
     emitter bglSize size   { (_bglGetImageInfo($self)) }

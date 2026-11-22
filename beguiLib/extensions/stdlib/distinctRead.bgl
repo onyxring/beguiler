@@ -1,14 +1,7 @@
 //===================================================================================================
-// distinctRead.bgl — READ as its own action, not a synonym for EXAMINE.
-//---------------------------------------------------------------------------------------------------
-// READ <object> prints the object's `readDescription`: a string, plain or interpolated, or a method
-// that prints. An object without one "cannot be read". `readDescription = description` sends READ
-// on to EXAMINE, as the library does. READ ABOUT <topic> IN <object> and READ <topic> IN <object>
-// still consult the object.
-//
-// Include it after the library's verblib.
-//
-// Ported from orLibrary's orDistinctRead.
+// distinctRead.bgl — READ as its own action, not a synonym for EXAMINE
+// READ prints the object's readDescription
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>

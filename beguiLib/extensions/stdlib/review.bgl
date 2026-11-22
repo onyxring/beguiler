@@ -1,14 +1,6 @@
 //===================================================================================================
-// review.bgl — REVIEW: look again, or examine again, without a turn passing.
-//---------------------------------------------------------------------------------------------------
-// REVIEW describes the room as LOOK would; REVIEW <object> describes an object the player has already
-// examined, as EXAMINE would. Neither takes a turn. Each describes the room or object as though for
-// the first time, so text kept for the first look (see <extensions/stdlib/firstImpressions>) shows
-// again.
-//
-// Include it after the library's verblib.
-//
-// Ported from orLibrary's orReview.
+// review.bgl — REVIEW: look again, or examine again, without a turn passing
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <extensions/stdlib/trackSeen>

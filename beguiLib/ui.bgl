@@ -1,49 +1,28 @@
 //-----------------------------------------------------------------------------
-// ui.bgl — the <ui> extension: the opt-in half of the UI namespace.
+// ui.bgl — the <ui> extension: the opt-in half of the UI namespace
 //
-// Usage:
-//   #include <ui> in your .bgl file to activate these routines.
-//
-// The bgl.ui namespace and its emitter-based text styles (bgl.ui.style.bold()
-// etc.) are always present in core (core/_ui.bgl) and need no include. This
-// file adds the *runtime* routines — real property-routines on the _bglUi
-// object, so they only exist when a program opts in — via `extend _bglUi`, the
-// same shape <array>/<string> use to grow their core-defined type.
+// Include <ui> to add the runtime routines (hideCursor, showCursor, waitForKey)
 //-----------------------------------------------------------------------------
 #once
 
 extend _bglUi {
 
-    // Park the text caret out of the prose, ahead of a key read.
-    //
-    // The targets need opposite moves because they bind the caret differently:
-    //   Glulx  - glk draws it on the window the char request NAMES, and a text-grid window draws it
-    //            at that window's own cursor. So this positions the status grid's cursor and hands
-    //            back the window the caller must request input on.
-    //   Z-code - @read_char draws at the CURRENT window's cursor, so this switches to the upper
-    //            window. The caller must call showCursor() once the key has been read.
-    //
-    // Returns the window to request char input on (Glulx), or 0 when there is no usable status
-    // window and the caller should fall back to the main window.
-    /// Point keyboard input at the status window and return the window to read from, or 0 when
-    /// there is no usable one. Call `showCursor()` afterwards. `waitForKey` does both for you.
+    /// Move the caret to the status window and return the window to read input from, or 0 for none.
     int hideCursor() asI6 _bglUi_hideCursor {
         int h = bgl.ui.statusBar.height;
     #if TARGET_GLULX
-        // `id` stays 0 until the status window is open, so both must hold before redirecting the request.
+        // The id is 0 until the status window is open
         if(h <= 0 || bgl.ui.statusBar.id == 0) return 0;
         bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - 1, h - 1);
         return bgl.ui.statusBar.id;
     #else
         if(h <= 0) return 0;
-        bgl.asm.setWindow(1);            // the cursor moves only in the upper window
+        bgl.asm.setWindow(1);            // The cursor moves only in the upper window
         bgl.ui.statusBar.moveCursor(bgl.ui.statusBar.width - 1, h - 1);
         return 0;
     #endif
     }
 
-    // Undo hideCursor. Z-code: hand the current window back to the main window. Glulx: nothing to
-    // undo - the caret belonged to the input request, which has already completed.
     /// Undo `hideCursor()`, putting input back on the main window.
     void showCursor() asI6 _bglUi_showCursor {
     #if TARGET_GLULX
@@ -53,8 +32,7 @@ extend _bglUi {
     #endif
     }
 
-    /// Wait for one key press and return it. Prints `separator` first if given - a "[MORE]" line,
-    /// for example.
+    /// Wait for a key press and return it, printing `separator` first if given.
     char waitForKey(string separator=null) asI6 _bglUi_waitForKey {
     
     if(separator !=null) {
@@ -64,26 +42,26 @@ extend _bglUi {
     
     #if TARGET_GLULX
 
-        rawArray<int> eventPayload[4];  // a Glk event: type, window, val1, val2
-        rawArray<int> keyResult[1];     // HandleGlkEvent returning 2 puts the key here
+        rawArray<int> eventPayload[4];  // Glk event: type, window, val1, val2
+        rawArray<int> keyResult[1];     // Key from HandleGlkEvent returning 2
 
         int inputWin = bgl.ui.hideCursor();
         if(inputWin == 0) inputWin = bgl.ui.mainWin.id;
 
-        bgl.asm.requestCharEvent(inputWin); // let glk know we care about the next key press
+        bgl.asm.requestCharEvent(inputWin);
         
         while (true) { 
-            bgl.asm.select(&eventPayload); //get the next event in the queue
+            bgl.asm.select(&eventPayload);
 
-            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == inputWin)  //if its a keypress from the window we asked, return it
+            if(eventPayload[0]==(int)eGlulxEventType.charInput && eventPayload[1] == inputWin)
                 return (char)eventPayload[2]; 
-            if(HandleGlkEvent(&eventPayload, 1, &keyResult) == 2)   // any other event: hyperlinks, then the author's handler
+            if(HandleGlkEvent(&eventPayload, 1, &keyResult) == 2)   // Other events go to the author's handler
                 return (char)keyResult[0];
         }
     #else
         bgl.ui.hideCursor();
-        int k = bgl.asm.readChar(1);   // read_char is now a value-returning routine; returns cleanly
-        bgl.ui.showCursor();           // put the current window back before handing the key over
+        int k = bgl.asm.readChar(1);
+        bgl.ui.showCursor();
         return (char)k;
     #endif
     }

@@ -1,15 +1,15 @@
 //===================================================================================================
-// hooks/writeList.bgl — hooks in counting the groups of a list (WriteListR).
+// hooks/writeList.bgl — hooks in counting the groups of a list (WriteListR)
 //---------------------------------------------------------------------------------------------------
 // writeList.patch merges calls to these hooks into the standard library. Including it changes nothing
-// until a library extension answers a hook (see <extensions/stdlib/hooks>).
+// until a library extension answers a hook (see <extensions/stdlib/hooks>)
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>
 
 #mergeI6 "writeList"
 
-// Ahead of the library, which the patched code uses them in. Inform 6 code may already have made them.
+// Declared before the library; guarded in case already made
 #emitfirst {
     #Ifndef ext_forceSingular; Property individual ext_forceSingular; #Endif;
     #Ifndef ext_wlrPluralMany; Property individual ext_wlrPluralMany; #Endif;

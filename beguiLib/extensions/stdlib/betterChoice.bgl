@@ -1,16 +1,7 @@
 //===================================================================================================
-// betterChoice.bgl — better decisions when the parser has to choose between objects.
-//---------------------------------------------------------------------------------------------------
-// Objects a command can't sensibly mean drop out of the choice: TAKE passes over what is already
-// carried, fixed in place or only in scope through something else; DROP and SHOW keep to what is
-// carried; EAT prefers what is edible.
-//
-// An object can answer for itself with `chooseAnswer chooseobject(chooseCode code)`. While the parser
-// plans a list for "all", the code is `planExclude` or `planInclude`, and the answer can force the
-// object in or out. While it picks between matches, the code is `askingForHint`, and the object can
-// `return excludeFromChoice(self)`.
-//
-// Include it after the library's verblib. Ported from orLibrary's orBetterChoice.
+// betterChoice.bgl — better decisions when the parser has to choose between objects
+// An object can answer for itself with chooseAnswer chooseobject(chooseCode code)
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <bindings/i6StandardLibrary>
@@ -19,7 +10,7 @@ enum chooseCode { planExclude = 0, planInclude = 1, askingForHint = 2 } /// What
 enum chooseAnswer { parser = -1, defer = 0, include = 1, exclude = 2 }   /// An answer while the parser plans a list; `parser` skips this logic.
 
 extern property chooseobject;   /// An object's own answer to the parser's choice.
-// Inform 6 code may already have made this property by giving an object one.
+// Guard against Inform 6 code having made this property already
 #i6 {
     #Ifndef chooseobject;
     Property individual chooseobject;

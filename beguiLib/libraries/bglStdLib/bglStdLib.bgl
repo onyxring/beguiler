@@ -1,13 +1,10 @@
 #once
 /*============================================================================
   beguiLib / bglStdLib / bglStdLib.bgl
-
-  Umbrella include for the Beguile Standard Library.  A game pulls the whole
-  library with `#include <bglStdLib>`.  Files are listed in dependency order,
-  the same shape core uses in __beguileCore.bgl (siblings do not cross-include;
-  the umbrella orders them).
+  Umbrella include for the Beguile Standard Library: `#include <bglStdLib>`.
   ============================================================================*/
 
-#include <bglStdLib/_verdict>     // eVerdict - the outcome every rule returns
-#include <bglStdLib/_rulebook>    // runRulebook - the generic rulebook runner
-#include <bglStdLib/_gameLoop>    // rootRulebook / gameTurnRulebook + entry point
+// Order matters: siblings do not cross-include
+#include <bglStdLib/_verdict>
+#include <bglStdLib/_rulebook>
+#include <bglStdLib/_gameLoop>

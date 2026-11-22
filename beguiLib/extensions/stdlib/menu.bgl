@@ -1,25 +1,7 @@
 //===================================================================================================
-// menu.bgl — a tree of menus for help, hints and about screens.
-//---------------------------------------------------------------------------------------------------
-//     menu helpMenu { "Help"; }
-//     menu aboutItem { "About this game", helpMenu; string description = "Text the player can read."; }
-//     menu hintsMenu { "Hints", helpMenu; }
-//     menu hintOne { "Hint 1", hintsMenu; void rawDescription() { bgl.output.center("Look up."); } }
-//
-//     object chosen = helpMenu.show();
-//
-// A menu's children are its choices, and a menu with hidden children only is hidden too. `show()` runs
-// full screen: choosing a childless menu with a `description` insets that text and its `rawDescription`
-// method prints freely, and the menu carries on. `show(menuStyle.topOnly)` leaves the transcript alone
-// and draws in the status bar. A childless choice with no text, or any one in that style, ends the
-// menu and `show()` returns it; leaving returns null.
-//
-// `rawArray<var> childMenuItems` lists a menu's choices in place of its children; each may be an object or text.
-// `menuDisplay` is a choice's text in its parent's menu, in place of its name. `itemWindowId` gives
-// the items a [Glulx] window of their own. `initForDisplay()` can replace numbering a menu's choices.
-// A library extension's `ext_handleMenuResult` is told a result, and returning true keeps the menu open.
-//
-// Include it after the library's verblib. Ported from orLibrary's orMenu.
+// menu.bgl — a tree of menus for help, hints and about screens
+// A menu's children are its choices; `show()` runs the menu.
+// Include it after the library's verblib
 //===================================================================================================
 #once
 #include <ui>
@@ -59,7 +41,7 @@ class menu : object {
         return _menuSession.result;
     }
 
-    /// Whether this menu is offered: not concealed, and not a parent whose children are all hidden.
+    /// True when this menu is offered.
     bool canDisplay() {
         if(self.has(concealed)) rfalse;
         if(_menuVisibleChildren(self) > 0) rtrue;
@@ -83,7 +65,7 @@ superposed void _menuWindow(int win) {
     #endif
 }
 
-// Clear the main window (0), the status bar (1), or on the Z-machine the screen (-1).
+// Clear the main window (0), the status bar (1), or the Z-machine screen (-1)
 superposed void _menuErase(int win) {
     #if TARGET_GLULX
         if(win >= 0) bgl.asm.windowClear(win == 0 ? bgl.ui.mainWin.id : bgl.ui.statusBar.id);
@@ -111,7 +93,7 @@ superposed int _menuVisibleChildren(object parent) {
     return count;
 }
 
-// Number the choices a menu offers, returning how many there are.
+// Number a menu's choices and return how many
 superposed int _menuPrepare(object current) {
     #i6 { if(current provides initForDisplay) return current.initForDisplay(); }
     if(_menuIsList(current)) return _menuListLength(current);
@@ -132,7 +114,7 @@ superposed var _menuItem(object current, int position) {
 }
 
 superposed void _menuResize(object current) {
-    if(((menu)_menuSession.root).itemWindowId != 0) return;   // the items have their own window, so the status bar keeps its size
+    if(((menu)_menuSession.root).itemWindowId != 0) return;
     int base = _menuSession.style == menuStyle.fullScreen ? _menuHeaderHeight : _menuSession.startingHeight;
     bgl.ui.statusBar.height = base + _menuVisibleChildren(current);
 }
@@ -171,7 +153,7 @@ superposed void _menuMoveItemCursor(int line) {
 
 var _menuDrawing = 0;
 
-// Prints the item being drawn, for bgl.output.center.
+// Print the item being drawn
 superposed bool _menuItemText() {
     #i6 {
         if(metaclass(_menuDrawing) == String) print (string) _menuDrawing;
@@ -234,7 +216,7 @@ superposed void _menuDrawItems(object current) {
     _menuHighlight(current, _menuSession.highlight);
 }
 
-// Act on a key, returning true when this level of the menu is finished.
+// Act on a key; true when this level is finished
 superposed bool _menuHandleKey(int key, object current) {
     int count = _menuVisibleChildren(current);
     if(count == 0) rtrue;
@@ -261,7 +243,7 @@ superposed bool _menuHandleKey(int key, object current) {
     rfalse;
 }
 
-// Show a menu or its text, returning when the player has finished with it.
+// Show a menu or its text
 superposed void _menuRender(object current) {
     _menuSession.highlight = 0;
     bool full = _menuSession.style == menuStyle.fullScreen;

@@ -1,8 +1,7 @@
 /* -----------------------------------------------------------------------------
     _output.bgl - Output
     Provides `bgl.output`: print() in every form, printLine(), printName(), spaces()
-    and the debug-only log(). print, printLine and printName are also global names.
-    Each type adds its own print() overload here with `extend _bglOutput`.
+    and the debug-only log().
 
     Copyright (c) 2024-2026 Jim Fisher (OnyxRing). MIT License.
    -----------------------------------------------------------------------------*/
@@ -34,6 +33,6 @@ extend bgl {
     alias output = _bglOutput;   /// Printing to the current output.
 }
 
-alias print     = _bglOutput.print;       // the print family is called without a path
+alias print     = _bglOutput.print;
 alias printLine = _bglOutput.printLine;
 alias printName = _bglOutput.printName;

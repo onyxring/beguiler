@@ -17,7 +17,6 @@ enum eType {
     class          /// A class.
 }
 
-// Kind tests behind typeof().
 emitter bool _bglMcRoutine(var v) { (metaclass($v) == Routine) }
 emitter bool _bglMcString(var v)  { (metaclass($v) == String) }
 emitter bool _bglMcObject(var v)  { (metaclass($v) == Object) }
@@ -30,13 +29,12 @@ emitter eType typeof(char v) { $i6Expr(eType.int) }
 /// `null` is the empty reference: it holds nothing, so it reports `unknown`.
 emitter eType typeof(nullLiteral v) { $i6Expr(eType.unknown) }
 
-/// Return what kind of value `v` holds; bool, char and enum values report `int`. A plain number
-/// can't be told from the object with that number, so test a union's members, not arbitrary values.
+/// Return what kind of value `v` holds.
 superposed eType typeof(var v) {
     if (v == null)          return eType.unknown;
     if (_bglMcRoutine(v))   return eType.routine;
     if (_bglMcString(v))    return eType.string;
-    if (_bglMcClass(v))     return eType.class;   // test Class before Object
+    if (_bglMcClass(v))     return eType.class;   // Class must be tested before Object
     if (_bglMcObject(v))    return eType.object;
     return eType.int;
 }

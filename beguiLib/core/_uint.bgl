@@ -63,7 +63,7 @@ extend class negativeIntLiteral {
     explicit emitter uint operator() { $val }   /// Convert a negative literal to a `uint`; it needs an explicit cast.
 }
 
-// Prints a value as unsigned.
+// Print a value as unsigned
 superposed void _bglPrintUint(int v){
     if(v >= 0){ print(v); return; }
     print(_bglUnsignedDiv(v, 10));

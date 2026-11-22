@@ -122,7 +122,7 @@ superposed float _bglFloatAbs(float v){
     return v;
 }
 
-// Comparisons; NaN compares false. Equality is IEEE's, so -0.0 equals 0.0.
+// NaN compares false; -0.0 equals 0.0
 superposed bool _bglFloatEq(float x, float y){
     #i6 { @jfeq x y 0 ?yes; rfalse; .yes; rtrue; }
 }
@@ -139,12 +139,11 @@ superposed bool _bglFloatGe(float x, float y){
     #i6 { @jfge x y ?yes; rfalse; .yes; rtrue; }
 }
 
-// Prints a float as a decimal rounded to four places.
+// Print a float rounded to four places
 superposed void _bglFloatPrintDecimal(float v){
     bool isNeg = _bglFloatLt(v, (float)0);
     if(isNeg) v = (float)0 - v;
-    v = v + 0.00005;   // round half up at the fourth place
-
+    v = v + 0.00005;
     int ipart = (int)v;
     float frac = v - (float)ipart;
     int fdigits = (int)(frac * (float)10000);
@@ -161,7 +160,6 @@ superposed void _bglFloatPrintDecimal(float v){
 }
 
 //-- Float math ----------------------------------------------------------------
-// Float forms of the bgl.util.math helpers.
 extend class _bglMath {
     emitter float sqrt(float v)          { _bglFloatSqrt($v) }      /// Return the square root of `v`.
     emitter float exp(float v)           { _bglFloatExp($v) }       /// Return e raised to the power `v`.

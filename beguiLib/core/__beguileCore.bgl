@@ -50,7 +50,7 @@ _bglObject bgl{
     emitter int wordsize {WORDSIZE}  /// The size of a word in bytes: 2 on the Z-machine, 4 on Glulx.
     alias util = _bglUtil;           /// General utilities; extensions add their own here.
 }
-// The object behind bgl.util, where extensions attach their utilities.
+// The object behind bgl.util, where extensions attach their utilities
 superposed _bglObject _bglUtil{}
 
 //-- Base types ----------------------------------------------------------------
@@ -120,7 +120,7 @@ superposed struct bglSize{
 }
 
 //-- General bits of setup -----------------------------------------------------
-// Holds an argument while a parameter that owns its value takes its own copy.
+// Holds an argument while a parameter that owns its value takes its own copy
 #storedEmitFirst paramCopySupport {
     Global _bglParamArg;
 }

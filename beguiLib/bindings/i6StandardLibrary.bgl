@@ -9,6 +9,17 @@
 #once
 #declare I6_STANDARD_LIBRARY
 
+// Binds release 6.12; an earlier release lacks many of these names
+#emitlast {
+    #Ifndef LIBRARY_VERSION;
+        Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+    #Ifnot;
+        #Iftrue LIBRARY_VERSION < 612;
+            Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+        #Endif;
+    #Endif;
+}
+
 //-- Attributes ------------------------------------------
 extern attribute light;        /// object is a light source
 extern attribute worn;         /// clothing item is currently worn
@@ -56,8 +67,7 @@ extern property          u_to;      /// the room or door up
 extern property          d_to;      /// the room or door down
 extern property          in_to;     /// the room or door inside
 extern property          out_to;    /// the room or door outside
-// The library's other common properties: an object declares the ones it provides (§23.3.11); these
-// declarations only keep their names from being taken by a program's own globals.
+// Reserve the names of the library's other common properties
 extern property          add_to_scope;
 extern property          article;
 extern property          articles;
@@ -83,8 +93,8 @@ extern property          when_open;
 extern property          with_key;
 extern additive property before;     /// runs before an action on this object; return true to stop the action
 extern additive property after;      /// runs after an action on this object; return true to replace the library's report
-extern additive property life;       /// handles actions aimed at an animate object (Attack, Kiss, Give, Show, Ask, Tell, Answer…); return true to stop them
-extern additive property orders;     /// handles commands given to this character ("bob, go north"); on the player, sees every command; return true to stop it
+extern additive property life;       /// handles actions aimed at an animate object; return true to stop them
+extern additive property orders;     /// handles commands given to this character; return true to stop it
 extern additive property describe;   /// prints the object's paragraph in a room description; return true to replace the default
 extern property          time_left;  /// turns left on the object's timer; an object with a timer declares it (`int time_left;`)
 extern additive property time_out;   /// runs when the object's timer (StartTimer, time_left) reaches zero
@@ -125,6 +135,8 @@ extern rawArray<int>  line_tdata;              /// The token data of the grammar
 extern rawArray<int>  line_token;              /// The tokens of the grammar line being analyzed.
 extern int           number_matched;          /// How many objects are in match_list.
 extern rawArray<int>  match_list;              /// The objects matched so far.
+extern int           match_length;            /// How many words the current matches span.
+extern int           match_from;              /// The word number at which the current matches begin.
 extern rawArray<int>  match_classes;           /// The equivalence classes of the matched objects.
 extern rawArray<int>  match_scores;            /// The scores of the matched objects.
 extern rawArray<int>  gg_event;                /// The last Glk event on Glulx.
@@ -158,7 +170,7 @@ extern int          time_step;             /// time update increment
 extern object       noun;                  /// first noun
 extern object       second;                /// second noun
 extern verb         action;                /// current action being performed (type verb for action constant comparisons)
-extern verb         action_to_be;          /// the action about to be performed (set before the before/react_before stage; type verb for constant comparisons)
+extern verb         action_to_be;          /// the action about to be performed
 extern int          inp1;                  /// first input (0, 1, or object)
 extern int          inp2;                  /// second input (0, 1, or object)
 extern bool         meta;                  /// true if verb is a meta-command (I6 int flag; bool so `meta = true` type-checks)
@@ -184,7 +196,7 @@ extern int          just_undone;           /// True right after an UNDO.
 extern bool         no_implicit_actions;   /// Set to stop the library taking things for a command.
 extern object       not_holding;           /// What a command needed held but was not.
 extern int          wn;                    /// word number currently being parsed
-extern int          scope_stage;           /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on; place objects in scope on pass 2.
+extern int          scope_stage;           /// 1, 2 or 3: the pass a `SCOPE(Routine)` routine is called on
 extern int          inventory_stage;       /// 1 or 2: which pass of an inventory listing is calling `invent`
 extern int          num_words;             /// number of words typed
 extern object       itobj;                 /// object currently referred to as "it"
@@ -250,7 +262,7 @@ extern int  NextWordStopped();                                             /// a
 extern void SetPronoun(dictionaryWord dword, object value);                 /// bind a pronoun word ('it'/'him'/…) to an object
 extern void PronounNotice(object obj);                                      /// update the pronoun table so "it"/"him" refers to obj
 extern void PlaceInScope(object obj);                                       /// inside a scope routine: put obj in scope, ignoring its children
-extern void ScopeWithin(object domain, object nosearch = null, int context = 0);  /// inside a scope routine: put everything within domain in scope, except what is inside nosearch
+extern void ScopeWithin(object domain, object nosearch = null, int context = 0);  /// inside a scope routine: put everything within domain in scope
 extern void AddToScope(object obj);                                         /// inside an add_to_scope routine: bring obj into parser scope
 extern void MoveFloatingObjects();                                          /// relocate `found_in` backdrops/floating objects for the current location
 extern void StartTimer(object obj, int turns);                              /// start obj's timer; its time_out runs after `turns` turns
@@ -271,8 +283,8 @@ extern void Tokenise__(var inputBuffer, var wordTable);                      ///
 extern void StatusLineHeight(int height);                                   /// set the status window height to `height` lines
 extern void DrawStatusLine();                                               /// redraws the status line
 extern void AfterGameOver();                                                /// post-game-over menu loop: AMUSING/UNDO/etc.
-extern void CSubjectVerb(object obj, bool reportage, bool nocaps, string v1, string v2 = null, string v3 = null, string past = null);  /// Prints obj with a verb that agrees with it ("You take", "Bob takes"); unused verb forms are 0.
-extern void SetColour(eColor fg, eColor bg, eWindow window = eWindow.all);  /// sets text colors; does nothing unless the COLOUR option is set (#defineI6 COLOUR)
+extern void CSubjectVerb(object obj, bool reportage, bool nocaps, string v1, string v2 = null, string v3 = null, string past = null);  /// Prints obj with a verb that agrees with it.
+extern void SetColour(eColor fg, eColor bg, eWindow window = eWindow.all);  /// sets text colors; needs the COLOUR option
 extern bool WriteListFrom(object o, eListStyle style, int depth = 0);       /// lists o and its siblings; false if there was nothing to list
 extern void Achieved(int task);                                             /// marks a task done and awards its score, once
 extern bool YesOrNo();                                                      /// waits for a yes/no answer; true for yes
@@ -399,13 +411,13 @@ extern enum grammarToken {
     TOPIC,        /// A free-form topic phrase (any sequence of words the player types).
     MULTI,        /// One or more in-scope objects.
     MULTIHELD,    /// One or more held objects.
-    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched (commonly used after a preposition).
+    MULTIEXCEPT,  /// Multiple in-scope objects, excluding one already matched.
     MULTIINSIDE,  /// Multiple objects inside a specific container.
     SPECIAL,      /// A number or a single dictionary word.
     ANYNUMBER,    /// Any number typed by the player (no range check).
     NUMBER,       /// A number typed by the player (range-checked to fit a word).
     SCOPE,        /// Placeholder marker — use the `SCOPE(Routine)` form on a real grammar line to set scope.
-    REVERSE       /// Pseudo-token: reverse the noun and second variables. If present, it must appear as the LAST element of a grammar line.
+    REVERSE       /// Pseudo-token: reverse the noun and second variables; it must be the last element of a grammar line.
 }
 
 //-- StdLib actions ----------------------------------------------------
@@ -576,44 +588,44 @@ extend _bglOutput {
 union iStringOrObject = string | interpolatedString | object {
     emitter bool isObject() { metaclass($val) == Object }   /// True when the value is an object.
 }
-/// An iString or a routine that prints, such as a lambda or a routine assigned while the game runs.
+/// An iString or a routine that prints, such as a lambda.
 union iStringOrRoutine = string | interpolatedString | func<void> {
     emitter bool isRoutine() { metaclass($val) == Routine }   /// True when the value is a routine, an interpolated string included.
 }
 extend _bglOutput {
     emitter void print(iStringOrRoutine v){ _bglPrintOrRun($v) }   /// Print the text, or run the routine.
 }
-// A routine, so an argument with side effects (`print(x.getNext())`) is evaluated once.
+// A routine, so an argument is evaluated once
 superposed void _bglPrintOrRun(iStringOrRoutine v){
     #i6 {
         if(metaclass(v) == Routine) v();
         else print (string)v;
     }
 }
-// The stdLib allows all objects to override their instanceName via the short_name property.
+// Every object can override its instanceName with short_name
 extend class object {
-    // Positional, as in an Inform 6 object header: the name, then the parent (`object hook { "brass hook", cloakroom; }`).
+    // Positional, as in an Inform 6 object header: name, then parent
     inline instanceName;
     inline parent;
     iString short_name;
     property door_dir;   /// On a direction object, the exit property it reads (`n_to`, …); on a door, the way it leads.
 }
 
-// The story title and headline fields in the beguilerSettings block serve Treaty of Babel metadata.  Let's reuse these and keep their definitions all the same.
+// Reuse the settings title and headline for Treaty of Babel metadata
 #emitfirst {
     Constant story    = ##beguilerSettings.title;
     Constant headline = ##beguilerSettings.headline;
 }
 
-// Substitute the stdLib's backings for status bar and main window, replacing Beguile's core behavior for this.
+// Back the status bar and main window with the library's
 #if(TARGET_GLULX)
-    // Pause and resume the library's line input around a link handler clicked at the prompt.
+    // Pause and resume line input around a link click
     #emitlast { Array _bglLineEvent --> 4; }
     replace int _bglSuspendLineInput(var inputBuf){
         int typed = 0;
         #i6 {
             glk_cancel_line_event(gg_mainwin, _bglLineEvent);
-            typed = _bglLineEvent-->2;   ! characters typed so far; Glk left them in the buffer
+            typed = _bglLineEvent-->2;
         }
         return typed;
     }
@@ -625,10 +637,7 @@ extend class object {
         }
     }
     superposed array<int> _bglArrangeBuf[1];
-    // The library's StatusLineHeight re-arranges the status window's own parent, which is wrong once
-    // the status bar has been split: its parent is then the new pair. The height belongs to the first
-    // pair above it that splits above or below.
-    // The library's gg_statuswin_cursize is reset by restore and undo, so the height is read from Glk.
+    // Read the height from Glk, since restore and undo reset gg_statuswin_cursize
     superposed int _bglStatusGetHeight(){
         if(gg_statuswin == 0) return 0;
         bgl.asm.windowGetSize(gg_statuswin, 0, ((int)_bglArrangeBuf) + bgl.wordsize);
@@ -640,11 +649,11 @@ extend class object {
         while(pair != 0){
             bgl.asm.windowGetArrangement(pair, ((int)_bglArrangeBuf) + bgl.wordsize, 0, 0);
             int method = _bglArrangeBuf[0] & $0F;
-            if(method == 2 || method == 3) break;                       // above or below
+            if(method == 2 || method == 3) break;                    
             pair = bgl.asm.windowGetParent(pair);
         }
         if(pair == 0) return;
-        bgl.asm.windowSetArrangement(pair, ($12), lines, 0);            // above, fixed size, keep the key window
+        bgl.asm.windowSetArrangement(pair, ($12), lines, 0);         
         gg_statuswin_cursize = lines;
     }
     extend _bglStatus {
@@ -665,7 +674,7 @@ extend class object {
     }
 #else // Z-code
     extend _bglStatus {
-        replace auto id = {   // the Z-machine has no window ids
+        replace auto id = {
             int operator() { return 0; }
         }
         replace auto height = {
@@ -675,7 +684,7 @@ extend class object {
     }
 #endif
 
-// Update the Banner to show that this game is a Beguile game
+// Add Beguile to the banner
 replace void Banner(){
     print($"^{bgl.printRules.bold}{story}{bgl.printRules.roman}{headline}");
     print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}");
@@ -683,7 +692,6 @@ replace void Banner(){
     print($"^{bgl.printRules.italics}Compiled with{bgl.printRules.roman} Inform v");
     #i6 { inversion; }
     print($" / Library v{LibRelease} ");
-    // The library's switch letters: S strict mode, X the Infix debugger, otherwise D a debug build.
     #i6 {
         #Ifdef STRICT_MODE; print "S"; #Endif;
         #Ifdef INFIX; print "X";
@@ -692,12 +700,11 @@ replace void Banner(){
     print("^");
     #i6 { _bglBannerExtras(); }
 }
-extern property ext_bannerText;   /// A library extension's routine printing its text after the banner, returning true when it did.
+extern property ext_bannerText;   /// A library extension's routine printing its text after the banner.
 #emitfirst {
     #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
 }
-// Each library extension's ext_bannerText, then the game's orBannerText (a routine or a string), and a
-// line between them and the game. At the end, where LibraryExtensions is defined.
+// Print each extension's ext_bannerText, then orBannerText; emitted last, where LibraryExtensions is defined
 #emitlast {
     Default orBannerText 0;
     [ _bglBannerExtras more;
@@ -713,9 +720,7 @@ extern property ext_bannerText;   /// A library extension's routine printing its
 }
 
 //-- Remaining library routines
-// Every other routine parser.h, verblib.h and english.h define, so a member named like one is renamed rather than clashing
-// in Inform 6. Inform 6 does not separate parameters from locals, so each takes its first locals as
-// optional parameters; an omitted one is 0, as Inform 6 leaves it.
+// Each routine's locals are optional parameters; an omitted one is 0
 extern var AnalyseToken(var token = 0, var m = 0);
 extern var UnpackGrammarLine(var line_address = 0, var i = 0, var m = 0);
 extern var GGWordCompare(var str1 = 0, var str2 = 0, var ix = 0, var jx = 0);
@@ -1024,7 +1029,7 @@ extern var LowerCase(var c = 0);
 extern var UpperCase(var c = 0);
 extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
 
-// Automatically start up the Beguile run-time environment...
+// Start the Beguile runtime before main
 #if bglAutoInitialize
     #emitfirst{
         replace main _oldmain;
@@ -1037,8 +1042,7 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
     }
 #endif
 //-- Runtime hooks ---------------------------------------------------
-// Runs the Beguile runtime's work at each prompt: the heap's collector, once the heap is in use. A library
-// older than 6.12 has no LibraryExtensions, so a game there calls bgl.gc.collect() itself.
+// Run the runtime's prompt hook after each prompt
 #emitlast {
     #Ifdef LibraryExtensions;
         Object _bglLibraryHooks LibraryExtensions
@@ -1046,8 +1050,7 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
     #Endif;
 }
 
-// The `heap` debug verb: the heap's size, the words in use and the most ever in use, for setting heapSize (and
-// stringHeapSize, with <stringObj>). Its grammar follows the library's own.
+// Debug verb that reports heap use
 #emitlast {
     #Ifdef DEBUG;
     [ _bglHeapVerbSub;

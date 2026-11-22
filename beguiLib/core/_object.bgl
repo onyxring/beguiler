@@ -58,14 +58,13 @@ extern emitter class parentProp{
     }
 }
 
-/// The type of `object.children`: the objects directly inside an object, iterable with `for … in`.
+/// The objects directly inside an object, iterable with `for … in`.
 extern emitter class childrenProp{
     emitter int length { children($host) }   /// How many children the object has.
     emitter int size   { children($host) }   /// How many children the object has; the same as `length`.
 }
 
-// Moves `o` into `p`, or takes it out of the object tree when `p` is null (`move o to nothing` is a
-// run-time error in Inform 6).
+// Move o into p, or out of the tree when p is null
 superposed void _bglMoveTo(object o, object p){
     #i6 { if (p) move o to p; else remove o; }
 }

@@ -106,4 +106,4 @@ With the extension, set a breakpoint in your `.bgl` and start debugging to step 
 - **[Beguile for the I6 Developer](Beguile%20for%20the%20I6%20Developer.md):** learn the language through a complete, annotated Cloak of Darkness port, mapped back to the Inform 6 you already know. This is the place to start.
 - **[Language Specification](languageSpec.md):** the full reference.
 
-Found a rough edge? That is expected in this preview. Please open an issue and include your `.bgl`, your target, the beguiler version, and the generated `.transpiled.inf`.
+Found a rough edge? That is expected in this beta. Please open an issue and include your `.bgl`, your target, the beguiler version, and the generated `.transpiled.inf`.
