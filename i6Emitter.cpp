@@ -4103,6 +4103,9 @@ void i6Emitter::emitStatementOnly(statement* stmt, string indent){
     if(auto* arrLoc = dynamic_cast<arrayDeclaration*>(stmt)){ emitLocalArrayDeclaration(arrLoc, indent); return; }
     if(typeid(*stmt) == typeid(variableDeclaration) && laterOwnedLocals.count((variableDeclaration*)stmt))
         out << format("{0}{1} = {2};\n", indent, spillName(((variableDeclaration*)stmt)->name), ((variableDeclaration*)stmt)->backingName);
+    if(typeid(*stmt) == typeid(variableDeclaration) && ((variableDeclaration*)stmt)->resetsEachPass)
+        if(classDef* cls = languageService.findClass(((variableDeclaration*)stmt)->type.name))
+            emitBackingReset(cls, ((variableDeclaration*)stmt)->backingName, indent);
     if(typeid(*stmt) == typeid(variableDeclaration)) emitLocalDeclaration((variableDeclaration*)stmt, indent);
     else if(typeid(*stmt) == typeid(assignmentStatement)) emitAssignment((assignmentStatement*)stmt, indent);
     else if(typeid(*stmt) == typeid(returnStatement)) emitReturn((returnStatement*)stmt, indent);
@@ -5036,6 +5039,13 @@ void i6Emitter::emitObject(objectDef* obj){
     // `extern object Name { ... }` now lives in `globals` (so it's referenceable), so the emit loop
     // reaches it here — this guard keeps it emission-free.
     if(obj->isExternal) return;
+
+    // A verb of a subclass of verb can be held as a value of that class: its object carries its action.
+    if(auto* vo = dynamic_cast<verbObjectDef*>(obj); languageService.verbActionRead && vo != nullptr && vo->objectClass != nullptr && vo->objectClass->name != "verb"){
+        auto* act = new i6RawNode();
+        act->text = "_bglVerb_action ##" + vo->dName();
+        obj->members.push_back(act);
+    }
 
     // Storage for member arrays held through their property (see memberArrayPromotes).
     // Emitted BEFORE the object so the `with prop <name>` pointer has a declared target.

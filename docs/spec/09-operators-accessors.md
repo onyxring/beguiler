@@ -373,6 +373,8 @@ second form declares the accessor as an owned member of a host class or object.
   must be declared without an initializer or `ref`, so that it is owned (§8.3.4); otherwise the member
   refers to an instance owned elsewhere and no accessor dispatch occurs. An in-place accessor (§9.9.2)
   is a struct implicitly.
+- A struct variable of the accessor's own type that is assigned or initialized from the member
+  (`heightProxy h = t.height;`) is a copy of the accessor, backing members included; the getter doesn't run.
 - Inside either operator, `self` is the accessor instance and its backing members. A named accessor
   class has no access to its host; `outer` (§9.9.3) is available only to an inline accessor.
 

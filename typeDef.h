@@ -226,6 +226,7 @@ class expression {
         vector<string> tokens;     // raw token strings making up the expression
         string resolvedType;       // inferred Beguile type name, or "" if unknown
         string terminator;         // which terminator token ended this expression
+        string defineName;         // the #define this expression is the name of, alone
         string emitterSelf;        // host text for $self when this expr is a property access
                                    // (e.g. for `o.parent` → "o"); empty for non-property-access exprs
         // A member word array read whole through a computed receiver (`((Bay)o).counts`): the receiver's
@@ -325,6 +326,7 @@ class variableDeclaration:public typeMember, public statement, public typeDef, p
         // bare-int-slot semantics + reference-semantics via inherited operator=(object).
         // See languageSpec.md §9.2.1 "Class-Typed Locals and Reference Semantics".
         bool isClassLocalWithBacking = false;
+        bool resetsEachPass = false;   // such a local declared in a loop body: each pass's declaration resets its fields
         string backingName;   // the local's backing instance; the local is set to it at routine entry
         bool isInstanceBacking = false;   // this global IS an instance (a local's or parameter's backing), not a variable
         bool staticHasGlobal = false;     // a static member of an owning type: its storage is a program global

@@ -1,0 +1,21 @@
+// A verb and a #define may share a name (§13.3): the name is the #define, except where a verb is
+// expected, either side of a comparison with a verb included.
+// EXPECT_OUTPUT: 3 4 yes yes no yes step arr
+#beguilerSettings { target = z5; informName = "none"; }
+#define STEP 3
+verb Step { grammar = { {.step} }; void handler() { print("stepped"); } }
+verb Hop { grammar = { {.hop} }; void handler() { print("hopped"); } }
+bool isStep(verb v) { return v == Step; }
+void main() {
+    print($"{STEP} ");
+    int n = step + 1;
+    print($"{n} ");
+    verb v = Step;
+    print(Step == v ? "yes " : "no ");
+    print(v == Step ? "yes " : "no ");
+    print(Step != v ? "yes " : "no ");
+    print(isStep(Step) ? "yes " : "no ");
+    switch (v) { case Hop: print("hop "); case Step: print("step "); }
+    array<verb> vs[2] = { Hop, Step };
+    print(vs[1] == v ? "arr" : "no");
+}

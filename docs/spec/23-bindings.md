@@ -45,6 +45,9 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 
 Each binding is `#once`-guarded.
 
+The standard-library binding requires release 6.12 of that library. Against an earlier release, such as
+6/10, the binding stops the build with an error naming the release it needs.
+
 **Include order.** Declarations are emitted in source order (§18.6), so the library's own includes sit
 where Inform 6 expects them. For the standard library:
 
@@ -124,7 +127,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1). PunyInform's entry points are not declared (§23.2).
 
-Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's; and a program's own `extern` declaration of a library routine replaces the binding's.
+Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's, except a member reached only through `#using`, which loses to the routine with a warning (§10.4); and a program's own `extern` declaration of a library routine replaces the binding's.
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4). Both bindings also make the object's name and its `parent` positional, in that order (§8.3.5), so an object can open as an Inform 6 object header does: `object hook { "small brass hook", cloakroom; }`.
 

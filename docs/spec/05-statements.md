@@ -446,7 +446,8 @@ executes with no active `try` on the call stack, the program prints an error and
 
 Before it unwinds, a `throw` releases the owning locals (§8.5) of the blocks it leaves in its own
 routine. A routine that the throw passes through on its way to a `catch` in a caller does not release
-its locals. Where that matters, the routine can wrap the call in its own `try` and re-throw from the
+its locals. The routine that catches it releases the owning locals of its own `try` block before the
+`catch` body runs. Where a routine in between matters, the routine can wrap the call in its own `try` and re-throw from the
 `catch`: the re-throw releases its locals.
 
 **Example**

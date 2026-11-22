@@ -58,7 +58,7 @@ Level: low.
 Sets 1, pours 0 over 0 add(s), headroom 7.
 Temp 48, peak 58, writes 8; wet.
 > swap red with green
-The red tank now holds 2, the green tank 9; held copy 9, set 1 time(s).
+The red tank now holds 2, the green tank 9; held copy 9, set 0 time(s).
 > drain blue
 The blue tank drains 4; it now holds 0.
 > drain blue

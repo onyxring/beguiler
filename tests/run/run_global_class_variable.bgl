@@ -4,8 +4,8 @@
     re-pointed or assigned. Now a struct global owns an instance the variable starts out holding,
     and assignment copies into it (an initializer too, at startup); a `ref` global is empty until assigned, and assignment
     makes it refer to the assigned instance. Static data that names an owning global (the array below)
-    names its instance, which is what it holds at compile time.  */
-// EXPECT_OUTPUT: own 3, copy 5, independent 5, refers 7, init 0, array 3
+    gets a copy of its initial value.  */
+// EXPECT_OUTPUT: own 3, copy 5, independent 5, refers 7, init 0, array 0
 #beguilerSettings { target = z5; informName = "none"; }
 
 struct Window {

@@ -167,7 +167,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | Operator | Description |
 |---|---|
 | `s = "text"` / `s = other` | Assign. On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer. `stringObj` also accepts an interpolated string, capturing its output. |
-| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char`). Returns a new `stringObj`; neither operand is changed. |
+| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char` on either side: `s + '!'`, `'#' + s`). Returns a new `stringObj`; neither operand is changed. |
 | `s += v` | **`stringObj` only.** Append in place. `v` may also be an interpolated string, whose output is appended (`s += $" {n} left";`). |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
 | `s =~ v` | Content comparison ignoring case. |
@@ -230,15 +230,25 @@ void Main() {
 
 **Storage**
 
+A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors. A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function that returns `stringObj` can return null, so `??` gives a fallback for those:
+
+```bgl
+stringObj s = null;                  // error
+ref stringObj r := null;             // fine: r refers to no string
+print(r ?? "none");                  // none
+```
+
 Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
 
-Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room is cut short to it, and the program runs on. On Glulx the rest is simply not written. On the Z-machine it has already been written past the block: where the heap's free end lay there for the whole capture nothing is lost but that text, and anywhere else (a block with others after it, a temporary buffer, a capture that changed the heap as it ran, text past the heap's end) it has overwritten memory in use, so the program stops with a run-time error naming the setting. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
 
-A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so on the Z-machine they stop with the run-time error above, and on Glulx they see only its first `stringCaptureSize` characters. Copy it into a `stringObj` first.
 
 Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
 
-When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the string takes what room is left and the rest of the text is dropped; the program runs on, and a string made while the heap is full is empty. A Z-machine capture is the exception: it can't be held to less than `stringCaptureSize` characters, so with no room for one the program stops. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
+In a debug build (§20.3), text that is cut short prints a run-time warning naming the setting to raise; a release build cuts it short silently.
 
 **Settings**
 
@@ -831,7 +841,7 @@ Does not require `bglInit()`. Does not require `generateBlorb`, but without pack
 
 **Description**
 
-Each `stringObj` takes a buffer of `bglStringDefaultSize` bytes (default `500`, §22.2) from a pool of `bglStringPoolReserve` (default `10`), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+Each `stringObj` holds at most `bglStringDefaultSize` characters (default `500`, §22.2), in a buffer from a pool of `bglStringPoolReserve` (default `10`); the buffer's own header is allocated on top of that. The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) is cut short on Glulx, and on the Z-machine stops the program with a run-time error, since printing there can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }

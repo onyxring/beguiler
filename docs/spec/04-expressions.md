@@ -72,7 +72,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
 | 1 | `? :` | ternary | right | Conditional (§4.9) |
-| 1 | `??` | infix | — | Null coalescing (§4.10) |
+| 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
 There is no unary bitwise-not operator. Inform 6's `~` and `~~` are not Beguile operators: write `!` for logical not.
@@ -158,6 +158,10 @@ print(u :== s);      // true: u refers to s
 
 `&&`, `||` and prefix `!` are tabulated in §4.5.
 
+An operand of `&&` or `||` that is a reference (an object, a class instance, a `ref`, a string or a
+function value) is its null test, as it is when it stands alone as a condition: `if (ready && door.lock)`
+is `if (ready && door.lock?)`.
+
 ## 4.8 Bitwise and Shift Operators
 
 `& | ^ << >>` are tabulated in §4.5; the compound forms `&= |= ^= <<= >>=` are in §5.6.
@@ -226,10 +230,10 @@ plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the me
 `null`; the result is undefined.
 
 **`??`** yields the left operand if it is non-null, otherwise the right operand, which is evaluated only
-in that case.
+in that case. A chain groups to the right: `a ?? b ?? c` is `a ?? (b ?? c)`, the first of the three that isn't null.
 
 **Postfix `?`** yields the null test as an `eBool`; `noun?` is `noun != null` for objects, and `!noun?`
-negates it. Where a `?` could begin a ternary, as the right operand of a binary operator, it is the
+negates it. A function value (`func<…>`) is tested the same way. Where a `?` could begin a ternary, as the right operand of a binary operator, it is the
 ternary; the postfix query applies only when the `?` ends the expression.
 
 **Example**

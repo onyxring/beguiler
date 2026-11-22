@@ -83,8 +83,7 @@ stringObj logSummary() {
 bool sendCode(int code) {
     for (SignalVerb v in signalVerbs) {
         if (v.code == code) {
-            // WORKAROUND(scale-7): perform() through a verb-class variable runs the object's number as an action.
-            v.handler();
+            v.perform();
             return true;
         }
     }

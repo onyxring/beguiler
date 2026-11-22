@@ -203,13 +203,12 @@ array g_nums table 7 8 9;
     rb= _bglAt(loc, 0, 0)-->0;
     _bglHeapLocalDrop();
 ];
-[_bglAt arr i w n;
-    n = 0;
-    
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglAt arr i isWrite n;
+    n=_bglarrsize(arr);
+    if (i >= 0 && i < n) {
+        return arr + (i + 1) * WORDSIZE;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
 [_bglHeapLocal n kind a;
     a = 0;
@@ -223,7 +222,7 @@ array g_nums table 7 8 9;
     
         _bglFrameTop--;
         _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
-        _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
+        _bglFramePool-->_bglFrameTop = 0;   ! A leftover word would keep the array alive
     
 ];
 [_bglMemberAt obj prop i f n;
@@ -235,18 +234,32 @@ array g_nums table 7 8 9;
         return _bglOutOfRange(i, n, f & 1);
     
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
 ];
 [_bglUnsignedCompare x y u v;
     if (x == y) {
@@ -267,7 +280,7 @@ array g_nums table 7 8 9;
 ];
 array _bglsink --> 1;
 [_bglArrSize arr;
-     return arr-->0; 
+    return  ((arr))-->0 ;
 ];
 [_bglHeapAlloc n kind need o b nb a i;
     need = 0;
@@ -282,7 +295,7 @@ array _bglsink --> 1;
         while(o < (_bglHeap-->1)){
             b = (_bglHeap-->0) + o;
             if(b-->2 == 0){
-                ! Merge the free blocks that follow into this one.
+                ! Merge following free blocks
                 while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
                     nb = b + (b-->0) * WORDSIZE;
                     if(nb-->2 ~= 0) break;
@@ -325,8 +338,7 @@ array _bglsink --> 1;
     roots = 48;
     
         if(_bglHeap == 0) return;
-        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too. One recorded
-        ! below every routine's marker was made for Inform 6 code, and no statement's end will free it.
+        ! Mid-routine, unowned results are roots; those below the first marker were made for Inform 6 code and are freed
         if(midRoutine){
             roots = 56;
             if(_bglFresh-->47 == 0){
@@ -351,8 +363,7 @@ array _bglsink --> 1;
             #Ifdef DEBUG;
                 if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
             #Endif;
-            ! A freed array of structs gives its instances back, which let go of what their members held: those
-            ! arrays are swept by another pass.
+            ! Freeing a struct array can release arrays its instances held: sweep again
             again = false;
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
                 b = (_bglHeap-->0) + o;
@@ -453,8 +464,7 @@ array _bglsink --> 1;
     b = 0;
     w = 0;
     
-        ! On the Z-machine Inform 6 holds values in its globals and arrays, which follow the object tables (their
-        ! encoded text could pass for an address).
+        ! The Z-machine keeps values in globals and arrays after the object tables
         #Ifdef TARGET_ZCODE;
             p = 0-->6; last = 0-->7;
         #Ifnot;

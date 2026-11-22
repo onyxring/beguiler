@@ -1,0 +1,7 @@
+// Negative test: a member that hides an enum value in a case label: the error says how to reach it.
+// EXPECT_ERROR: write '::tool' for the Kind value
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+enum Kind { tool, toy }
+class Item { int tool; Kind k; void f() { switch (k) { case tool: print("t"); case toy: print("y"); } } }
+Item it;
+void main() { it.f(); }

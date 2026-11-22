@@ -127,6 +127,15 @@ extend only 'beta'
 extend only 'gamma' first
     * 'check' -> myown;
 
+    #Ifndef LIBRARY_VERSION;
+        Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+    #Ifnot;
+        #Iftrue LIBRARY_VERSION < 612;
+            Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+        #Endif;
+    #Endif;
+
+
     Default orBannerText 0;
     [ _bglBannerExtras more;
         #Ifdef LibraryExtensions;

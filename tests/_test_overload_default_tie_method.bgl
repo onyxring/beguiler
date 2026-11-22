@@ -1,0 +1,12 @@
+// Negative test: a method call that fits two overloads differing only in a defaulted parameter is ambiguous (§6.4).
+// EXPECT_ERROR: This call fits both 'F' overloads
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class Box {
+    void F(int a) { print(a); }
+    void F(int a, int b = 0) { print(a + b); }
+}
+Box crate;
+void main(){
+    crate.F(1, 2);
+    crate.F(1);
+}

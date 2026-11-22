@@ -158,6 +158,7 @@ void bglLanguageService::reset(){
     verbs.clear();
     ternaryTempCount = 0;
     tryCatchNeeded = false;
+    verbActionRead = false;
     tryCatchCounter = 0;
     captureCounter = 0;
     switchTempNeeded = false;

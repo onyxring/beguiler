@@ -747,7 +747,8 @@ There are four kinds:
   instance; parameters and returns still share (§8.2.9). Arrays behave the same way: an array with storage
   owns it, `=` copies into it, parameters and returns share, and only a `ref array` re-points (§12.5).
 - **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
-  members are zeroed (a local's at routine entry). Assignment, passing and returning copy, through
+  members are zeroed (a local's at routine entry, and again by its declaration on each pass of a loop
+  it is declared in). Assignment, passing and returning copy, through
   the struct's copy operator, which it gets automatically when it declares none. A struct is never
   null and has no subclasses. A `ref` variable of a struct shares an instance instead (§3.7). A
   routine that calls itself keeps each call's locals and parameters its own across the inner call.

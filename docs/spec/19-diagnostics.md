@@ -188,8 +188,10 @@ message and halts the story with `quit`, except where stated.
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
-| The string heap is full (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
-| Text printed into a string buffer runs past its room (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
+| The string heap is full (§22.3) — the text is cut short; debug builds only | `[Beguile run-time warning: the string heap is full, so text was cut short; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
+| The string heap can't hold the string pool at startup, or has no room for a Z-machine capture (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`. |
+| Text printed into a string runs past its room (§22.3, §22.9) — the text is cut short; debug builds only | `[Beguile run-time warning: N characters were printed into room for M, so the text was cut short; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
+| The same on the Z-machine, where the text has overwritten memory in use (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names. |
 | `bgl.gc.free` given an array already freed (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
 | `bgl.gc.free` given a file-scope or member array (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
 | Copying into a `ref array` bound to nothing (§12.5) — the program continues | `[Beguile run-time error: copying into an array that is null; bind it with := first]` | Bind it with `:=`. |

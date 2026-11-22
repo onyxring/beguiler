@@ -87,19 +87,22 @@ array g_src table 1 2 3;
     print total;
     rtrue;
 ];
-[_bglArrLength arr;
-    
-        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
-        if(_bglArrTracked(arr)) return arr-->(-1);
-        return arr-->0;
-    
+[_bglArrLength arr a;
+    a = arr;
+    if (arr == 0) {
+        return 0;
+    }
+    if (_bglarrtracked(arr)) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
-[_bglArrTracked arr;
-    
-        if(arr == 0) rfalse;
-        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
-        rfalse;
-    
+[_bglArrTracked arr a;
+    a = arr;
+    if (arr == 0) {
+        return false;
+    }
+    return  a-->-2  == 36996 &&  a-->-1  >= 0&& a-->-1  <=  a-->0 ;
 ];
 [_bglHeapAdopt a b;
     b = 0;
@@ -107,7 +110,7 @@ array g_src table 1 2 3;
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
         b-->2 = (b-->2 & ~8) | 32;
-        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
+        if(a == _bglHeap-->4) _bglHeap-->4 = 0;
         return a;
     
 ];

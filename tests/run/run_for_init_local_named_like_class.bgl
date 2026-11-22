@@ -1,0 +1,14 @@
+/*  run_for_init_local_named_like_class — `for (k = …` and `for (k in …` use the local `k`
+    when a class is named `K` too.  */
+// EXPECT_OUTPUT: 3 6
+#beguilerSettings { target = z5; informName = "none"; }
+class K { int v; }
+array<int> nums = { 1, 2, 3 };
+void main() {
+    int k = 0;
+    int sum = 0;
+    for (k = 1; k < 3; k++) { }
+    print($"{k} ");
+    for (k in nums) sum += k;
+    print(sum);
+}

@@ -1,5 +1,5 @@
 /* extend ... inject of a global int variable */
-// EXPECT_ERROR: 'g' is a variable, and the initial elements of 'nums' are fixed when the program is compiled
+// EXPECT_ERROR: _test_inject_global_variable.bgl:7:1: ERROR: 'g' is a variable, and the initial elements of 'nums' are fixed when the program is compiled
 #beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <array>
 array<int> nums = { 1 };

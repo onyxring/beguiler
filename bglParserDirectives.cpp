@@ -281,6 +281,12 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     struct popper { vector<const i6Block*>& c; ~popper(){ c.pop_back(); } } pop{emitterExpansionChain};
 
     string out = processBglConditionals(blk->i6Body);
+    // `#error "text"` as an emitter's body: using the emitter is the error.
+    if(size_t h = out.find_first_not_of(" \t\n\r"); h != string::npos && out.compare(h, 6, "#error") == 0){
+        size_t q1 = out.find('"', h), q2 = out.rfind('"');
+        parsingError(q1 != string::npos && q2 > q1 ? out.substr(q1 + 1, q2 - q1 - 1) : string("This can't be used here."));
+        return "";
+    }
     if(b.trim != emitterTrim::none){
         const char* tail = b.trim == emitterTrim::wsSemi ? " \t\n\r;" : " \t\n\r";
         size_t s = out.find_first_not_of(" \t\n\r"); if(s != string::npos) out = out.substr(s);
@@ -308,12 +314,15 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     // $action: the receiver as an action — `##Name` for a verb (its object is named apart from its
     // action), else the value itself, which a verb-typed variable or member already holds.
     if(b.self && out.find("$action") != string::npos){
-        string act = *b.self, low = act;
+        const string& recv = b.val ? *b.val : *b.self;   // a member's value, not its owner
+        string act = recv, low = act;
         transform(low.begin(), low.end(), low.begin(), ::tolower);
         for(verbObjectDef* v : languageService.verbs){
             string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
             if(v->name == low || (!vi6.empty() && vi6 == low)){ act = "##" + v->dName(); break; }
         }
+        // A value typed as a subclass of verb is the verb's object, which carries its action.
+        if(act == recv && isVerbSubclass(b.selfType)){ act = "(" + act + ")._bglVerb_action"; languageService.verbActionRead = true; }
         out = i6Emitter::replaceWord(out, "$action", act);
     }
     if(b.self && !shadowed("self"))  out = i6Emitter::replaceOperand(out, "$self",  *b.self);

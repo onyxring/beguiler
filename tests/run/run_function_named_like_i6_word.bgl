@@ -1,0 +1,13 @@
+// A global function named like an Inform 6 operator word or built-in name is emitted under another
+// name, so a call to it isn't read as that word.
+// EXPECT_OUTPUT: 3 2 2 2 2 9
+#beguilerSettings { target = z5; informName = "none"; }
+int Or(int a, int b) { return a | b; }
+int Has(int a) { return a + 1; }
+int In(int a) { return a + 1; }
+int Provides(int a) { return a + 1; }
+int Nothing(int a) { return a + 1; }
+int Class(int a, int b = 4) { return a + b; }
+void main() {
+    print($"{Or(1, 2)} {Has(1)} {In(1)} {Provides(1)} {Nothing(1)} {Class(5)}");
+}

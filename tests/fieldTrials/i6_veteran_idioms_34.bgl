@@ -63,7 +63,7 @@ object scales {
     void Note(int n)       { print($"<n {n}>"); }
     void Note(string s)    { print($"<s {s}>"); }
     void Note(Coin c)      { print($"<c {c.mark}>"); }
-    void Note(Coin c, bool brief = true) { if (brief) print($"<c* {c.mark}>"); else print($"<c* {c.mark} {c.worth}d>"); }
+    void Note(Coin c, bool brief) { if (brief) print($"<c* {c.mark}>"); else print($"<c* {c.mark} {c.worth}d>"); }
     void description() {
         print($"A brass balance, used {uses} times.^");
     }

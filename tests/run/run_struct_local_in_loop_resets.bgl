@@ -1,0 +1,21 @@
+// run_struct_local_in_loop_resets — a struct local declared in a loop body is reset by its declaration on
+// every pass (§8.2.7): in a for, a while and a for-in loop, with an array member emptied too.
+// EXPECT_OUTPUT: for 0 1 2 | while 5 5 | forin 10/1 20/1 30/1 | init 7 7
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+struct Row { int total; int count; array<int> seen[4]; }
+void add(ref Row r, int n){ r.total = r.total + n; r.count++; r.seen += n; }
+array<int> teams = { 10, 20, 30 };
+void main(){
+    bglInit();
+    print("for");
+    for(int i = 0; i < 3; i++){ Row r; add(r, i); print($" {r.total}"); }
+    print(" | while");
+    int n = 0;
+    while(n < 2){ Row w; w.total = w.total + 5; print($" {w.total}"); n++; }
+    print(" | forin");
+    for(int t in teams){ Row f; add(f, t); print($" {f.total}/{f.seen.length}"); }
+    print(" | init");
+    Row seven; seven.total = 7;
+    for(int k = 0; k < 2; k++){ Row c = seven; print($" {c.total}"); c.total = 99; }
+}

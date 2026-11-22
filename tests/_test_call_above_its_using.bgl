@@ -1,0 +1,7 @@
+// Negative test: an imported method called above the #using that imports it: the error names the cause.
+// EXPECT_ERROR: which a #using further down imports
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+object kit { int twice(int n) { return n * 2; } }
+int early() { return twice(2); }
+#using kit;
+void main() { print(early()); }

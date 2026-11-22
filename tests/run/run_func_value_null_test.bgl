@@ -1,0 +1,14 @@
+// The postfix `?` tests a function value for null, as it does any reference.
+// EXPECT_OUTPUT: unset set 8 none
+#beguilerSettings { target = z5; informName = "none"; }
+int twice(int n) { return n * 2; }
+class Tool { func<int,int> rule; }
+Tool saw;
+void main() {
+    func<int,int> f = null;
+    print(f? ? "bad " : "unset ");
+    f = twice;
+    print(f? ? "set " : "unset ");
+    if (f?) print(f(4));
+    print(saw.rule? ? " some" : " none");
+}

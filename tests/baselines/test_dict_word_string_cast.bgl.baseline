@@ -1,0 +1,558 @@
+!% -v5
+!% -E1
+!% $OMIT_UNUSED_ROUTINES=1
+Constant beguiler = 5;
+#Ifdef beguiler;#Endif;
+   Array _bglFramePool --> 64;
+   Constant _bglFramePoolWords = 64;
+   Global _bglFrameTop = 0;
+   Global _bglRetHold = 0;   ! a return value read before the frame it came from is freed
+   [ _bglFrameAlloc size r;
+      if (_bglFrameTop + size > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      r = _bglFrameTop;
+      _bglFrameTop = _bglFrameTop + size;
+      return _bglFramePool + (r * WORDSIZE);
+   ];
+   ! A routine's spilled locals start at 0, as real locals do: the pool holds earlier frames' words.
+   [ _bglFrameAllocZ size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglFrameFree size;
+      _bglFrameTop = _bglFrameTop - size;
+   ];
+   ! The marker and the length, then an I6 table of `size` elements; the array is the table.
+   [ _bglArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size + 3);
+      r-->0 = $9084;
+      r-->1 = 0;
+      r = r + 2 * WORDSIZE;
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   Global _bglFrameTaken = 0;
+   Global _bglFrameSrc = 0;
+   ! A local array with room for src's n elements: `cur` when it has room, else a new block. When src
+   ! is a returned local lying in freed frame space at or above the top, its elements are moved down
+   ! into the new block (forward, so none is overwritten before it is read) and _bglFrameSrc names
+   ! the block to copy from instead.
+   [ _bglArrayLocalCopyAlloc n src cur top i;
+      _bglFrameTaken = 0;
+      _bglFrameSrc = src;
+      if (cur ~= 0 && cur-->(-2) == $9084 && cur-->0 >= n) return cur;
+      top = _bglFramePool + _bglFrameTop * WORDSIZE;
+      if (_bglUnsignedCompare(src - 2 * WORDSIZE, top) < 0 || _bglUnsignedCompare(src, _bglFramePool + 64 * WORDSIZE) >= 0) {
+         _bglFrameTaken = n + 3;
+         return _bglArrayLocalAlloc(n);
+      }
+      if (_bglFrameTop + n + 3 > 64) {
+         print "^[Beguile runtime error: frame pool exhausted]^";
+         quit;
+      }
+      _bglFrameTop = _bglFrameTop + n + 3;
+      top-->0 = $9084;
+      top-->1 = n;
+      top = top + 2 * WORDSIZE;
+      for (i = 1: i <= n: i++) top-->i = src-->i;
+      top-->0 = n;
+      _bglFrameTaken = n + 3;
+      _bglFrameSrc = top;
+      return top;
+   ];
+   [ _bglArrayLocalAllocPlain size r i;
+      r = _bglFrameAlloc(size + 1);
+      r-->0 = size;
+      for (i = 1: i <= size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglRawArrayLocalAlloc size r i;
+      r = _bglFrameAlloc(size);
+      for (i = 0: i < size: i++) r-->i = 0;
+      return r;
+   ];
+   [ _bglByteArrayLocalAlloc nbytes words r i;
+      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      r = _bglFrameAlloc(words);
+      for (i = 0: i < words: i++) r-->i = 0;
+      r-->0 = nbytes;
+      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + WORDSIZE;
+   ];
+   [ _bglByteArrayLocalFree nbytes;
+      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+   ];
+   [ _bglByteArrayLocalCopy dst src i;
+      for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
+      dst-->0 = src-->0;
+   ];
+
+    Constant story    = "";
+    Constant headline = "";
+
+Replace banner;
+
+    #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
+
+
+        replace main _oldmain;
+    
+constant _bglWorldBufSize = 128;
+#Ifdef _bglWorldBufSize;#Endif;
+constant _bglHeapWords = 1536;
+#Ifdef _bglHeapWords;#Endif;
+global _bglWorldBufIdx = -1;
+global _bglHeap = 0;
+global _bglPromptHook = 0;
+global _bglInitDone = 0;
+#Ifdef TARGET_GLULX;
+[ _bglLowAddressGuard;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop; @nop;
+    return _bglLowAddressGuard;
+];
+Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UNUSED_ROUTINES keeps it
+#Endif;
+[bglInit;
+    if(_bglInitDone) return;
+    _bglInitDone = 1;
+    #Ifdef TARGET_GLULX; @setiosys 2 0; #Endif;
+];
+ Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
+object _zcode
+;
+object bgl
+;
+[Banner;
+    print "^";
+    style bold;
+    print (string)story;
+    style roman;
+    print (string)headline;
+    print "Release ";
+    print _bglheader._bglHeader_release._opconv_int();
+    print " / Serial number ";
+    _bglheader._bglHeader_printSerial();
+    print "^";
+    style underline;
+    print "Written in";
+    style roman;
+    print " Beguile v";
+    print 0;
+    print ".";
+    print 0;
+    print ".";
+    print 5;
+    print "^";
+    style underline;
+    print "Compiled with";
+    style roman;
+    print " Inform v";
+     inversion; 
+    print " / Library v";
+    print (string)librelease;
+    print " ";
+    
+        #Ifdef STRICT_MODE; print "S"; #Endif;
+        #Ifdef INFIX; print "X";
+        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
+    
+    print "^";
+     _bglBannerExtras(); 
+];
+object key101
+  with name 'key' '101' '7//' 'o^clock' 
+;
+[main w ws;
+    ws = _bglHeapLocal(2);
+    w = '100';
+    ws-->1 = 'a//';
+    ws-->2 = '2nd';
+    ws-->(-1) = 2;
+    if (w == '100') {
+        print "same";
+    }
+    _bglHeapLocalDrop();
+];
+
+    #Ifndef LIBRARY_VERSION;
+        Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+    #Ifnot;
+        #Iftrue LIBRARY_VERSION < 612;
+            Message fatalerror "<bindings/i6StandardLibrary> needs release 6.12 of the Inform 6 Standard Library; the one included is older.";
+        #Endif;
+    #Endif;
+
+
+    Default orBannerText 0;
+    [ _bglBannerExtras more;
+        #Ifdef LibraryExtensions;
+        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        #Endif;
+        switch (metaclass(orBannerText)) {
+            Routine: orBannerText(); more = true;
+            String:  print (string) orBannerText; more = true;
+        }
+        if (more) new_line;
+    ];
+
+
+        [main;
+            bglInit();
+            _oldmain();
+        ];
+    
+
+    #Ifdef LibraryExtensions;
+        Object _bglLibraryHooks LibraryExtensions
+          with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
+    #Endif;
+
+
+    #Ifdef DEBUG;
+    [ _bglHeapVerbSub;
+        if (_bglHeap == 0) print "Heap: nothing allocated yet.^";
+        else print "Heap: ", (_bglHeap-->1) / WORDSIZE, " words; ", _bglHeap-->2, " in use, ", _bglHeap-->6, " at most.^";
+        #Ifdef _bglStrHeapReport; _bglStrHeapReport(); #Endif;
+    ];
+    Verb meta 'heap' * -> _bglHeapVerb;
+    #Endif;
+
+class _bglaccessor5
+  with
+    _opconv_int[;
+        return _bgl_bglOpCodes_loadw(2, 0) & 1023;
+    ]
+;
+_bglaccessor5 __bglheader_release;
+object _bglHeader
+  with _bglHeader_release __bglheader_release,
+       _bglHeader_serialChar [i;
+    return _bgl_bglOpCodes_loadb(18, i);
+  ],
+       _bglHeader_printSerial [i;
+    i = 0;
+    for (i = 0 : i < 6 : i++) {
+        print (char)self._bglHeader_serialChar(i);
+    }
+  ]
+;
+[_bglHeapLocal n kind a;
+    a = 0;
+    
+        a = _bglHeapAlloc(n, kind);
+        _bglFrameAlloc(1)-->0 = a;
+        return a;
+    
+];
+[_bglHeapLocalDrop;
+    
+        _bglFrameTop--;
+        _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
+        _bglFramePool-->_bglFrameTop = 0;   ! A leftover word would keep the array alive
+    
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+];
+[_bgl_bglOpCodes_loadb arr idx result;
+     @loadb arr idx -> result; 
+    return result;
+];
+[_bgl_bglOpCodes_loadw arr idx result;
+     @loadw arr idx -> result; 
+    return result;
+];
+[_bglHeapAlloc n kind need o b nb a i;
+    need = 0;
+    o = 0;
+    b = 0;
+    nb = 0;
+    a = 0;
+    i = 0;
+    
+        if(_bglHeap == 0) _bglHeapInit();
+        need = n + 6;
+        while(o < (_bglHeap-->1)){
+            b = (_bglHeap-->0) + o;
+            if(b-->2 == 0){
+                ! Merge following free blocks
+                while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
+                    nb = b + (b-->0) * WORDSIZE;
+                    if(nb-->2 ~= 0) break;
+                    _bglHeapSetStart(nb, false);
+                    b-->0 = b-->0 + nb-->0;
+                }
+                if(b-->0 >= need){
+                    if(b-->0 - need >= 6){
+                        nb = b + need * WORDSIZE;
+                        nb-->0 = b-->0 - need;
+                        nb-->1 = 0;
+                        nb-->2 = 0;
+                        _bglHeapSetStart(nb, true);
+                        b-->0 = need;
+                    }
+                    b-->1 = kind;
+                    b-->2 = 1;
+                    a = b + 5 * WORDSIZE;
+                    a-->(-2) = $9084;
+                    a-->(-1) = 0;
+                    a-->0 = n;
+                    for(i = 1 : i <= n : i++) a-->i = 0;
+                    _bglHeap-->2 = _bglHeap-->2 + b-->0;
+                    _bglHeap-->3 = _bglHeap-->3 + b-->0;
+                    if(_bglHeap-->2 > _bglHeap-->6) _bglHeap-->6 = _bglHeap-->2;
+                    return a;
+                }
+            }
+            o = o + (b-->0) * WORDSIZE;
+        }
+        if(_bglHeap-->3 > 0){ _bglHeapCollect(true); return _bglHeapAlloc(n, kind); }
+        print "^[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is ", _bglHeap-->5, " words)]^";
+        quit;
+    
+];
+[_bglHeapCollect midRoutine o b again roots;
+    o = 0;
+    b = 0;
+    again = 0;
+    roots = 48;
+    
+        if(_bglHeap == 0) return;
+        ! Mid-routine, unowned results are roots; those below the first marker were made for Inform 6 code and are freed
+        if(midRoutine){
+            roots = 56;
+            if(_bglFresh-->47 == 0){
+                for(o = 1 : o <= _bglFresh-->0 && _bglFresh-->o ~= 0 : o++){
+                    b = _bglHeapBlockOf(_bglFresh-->o);
+                    if(b ~= 0 && (b-->2 & 60) == 8 && _bglFresh-->o ~= _bglHeap-->4) _bglHeapRelease(b);
+                }
+                if(o > 1){
+                    for(again = o : again <= _bglFresh-->0 : again++) _bglFresh-->(again - o + 1) = _bglFresh-->again;
+                    _bglFresh-->0 = _bglFresh-->0 - o + 1;
+                }
+                again = false;
+            }
+        }
+        do {
+            _bglGcRoots();
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if(b-->2 & roots) _bglHeapMark(b + 5 * WORDSIZE);
+            }
+            _bglHeapTrace();
+            #Ifdef DEBUG;
+                if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
+            #Endif;
+            ! Freeing a struct array can release arrays its instances held: sweep again
+            again = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) == 1){ if(b-->1) again = true; _bglHeapRelease(b); }
+                else if((b-->2 & 3) == 3) b-->2 = b-->2 - 2;
+            }
+        } until(again == false);
+        _bglHeap-->3 = 0;
+    
+];
+[_bglHeapDropOwned a b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(a);
+        if(b == 0) return;
+        b-->2 = b-->2 & ~32;
+        if((b-->2 & 12) ~= 0) return;
+        if(a == _bglHeap-->4){ b-->2 = b-->2 | 8; _bglHeap-->4 = 0; _bglHeapNoteFresh(a); return; }
+        _bglHeapRelease(b);
+    
+];
+[_bglHeapInit words bm i;
+    words=_bglheapwords;
+    bm = 0;
+    i = 0;
+    _bglheapstore-->0 = 0;
+    
+        _bglHeap = _bglHeapStore;
+        bm = 7 + (words / 8 + WORDSIZE) / WORDSIZE;
+        for(i = 0 : i < bm * WORDSIZE : i++) _bglHeap->i = 0;
+        _bglHeap-->5 = words;
+        _bglHeap-->0 = _bglHeap + bm * WORDSIZE;
+        _bglHeap-->1 = (words - bm) * WORDSIZE;
+        (_bglHeap-->0)-->0 = words - bm;
+        (_bglHeap-->0)-->1 = 0;
+        (_bglHeap-->0)-->2 = 0;
+        _bglHeapSetStart(_bglHeap-->0, true);
+        _bglPromptHook = _bglHeapAtPrompt;
+    
+];
+[_bglHeapMark w b;
+    b = 0;
+    
+        b = _bglHeapBlockOf(w);
+        if(b ~= 0 && (b-->2 & 3) == 1) b-->2 = b-->2 + 1;
+    
+];
+[_bglHeapNoteFresh a;
+    
+        if(_bglFresh-->47 == 0 && _bglFresh-->0 < 46){ _bglFresh-->0 = _bglFresh-->0 + 1; _bglFresh-->(_bglFresh-->0) = a; }
+    
+];
+[_bglHeapRelease b a i;
+    a = 0;
+    i = 0;
+    
+        a = b + 5 * WORDSIZE;
+        if(b-->1) for(i = 1 : i <= a-->0 : i++) if(a-->i) (b-->1)(a-->i);
+        a-->(-2) = $DEAD;
+        b-->2 = 0;
+        _bglHeap-->2 = _bglHeap-->2 - b-->0;
+    
+];
+[_bglHeapSetStart b on i;
+    i = 0;
+    
+        i = 7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8;
+        if(on) _bglHeap->i = (_bglHeap->i) | _bglHeapBitMask(b);
+        else _bglHeap->i = (_bglHeap->i) & ~_bglHeapBitMask(b);
+    
+];
+[_bglHeapTrace o b a i more;
+    o = 0;
+    b = 0;
+    a = 0;
+    i = 0;
+    more = 0;
+    
+        do {
+            more = false;
+            for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
+                b = (_bglHeap-->0) + o;
+                if((b-->2 & 3) ~= 2) continue;
+                b-->2 = b-->2 + 1;
+                more = true;
+                a = b + 5 * WORDSIZE;
+                for(i = 1 : i <= a-->0 : i++) _bglHeapMark(a-->i);
+            }
+        } until(more == false);
+    
+];
+[_bglHeapVerify found p last a o b w;
+    found = 0;
+    p = 0;
+    last = 0;
+    a = 0;
+    o = 0;
+    b = 0;
+    w = 0;
+    
+        ! The Z-machine keeps values in globals and arrays after the object tables
+        #Ifdef TARGET_ZCODE;
+            p = 0-->6; last = 0-->7;
+        #Ifnot;
+            p = 0-->2; last = 0-->4;
+        #Endif;
+        a = (_bglHeap-->0) + 5 * WORDSIZE;
+        for(last = last - WORDSIZE : _bglUnsignedCompare(p, last) <= 0 : p++){
+            if(p == _bglHeap){ p = _bglHeap + (_bglHeap-->5) * WORDSIZE - 1; continue; }
+            w = p-->0;
+            o = w - a;
+            if(o < 0 || o >= _bglHeap-->1) continue;
+            b = _bglHeapBlockOf(w);
+            if(b == 0 || (b-->2 & 3) ~= 1) continue;
+            print "^[Beguile debug: the array at ", w, " is still referred to from address ", p,
+                  ", which the collector doesn't track; it is kept]^";
+            _bglHeapMark(w);
+            found = true;
+        }
+        return found;
+    
+];
+array _bglfresh --> 48;
+array _bglheapstore --> 1536;
+array _bglheaptracelevel --> 1;
+[_bglHeapAtPrompt now;
+    
+        if(_bglHeap == 0) return;
+        if(now){ _bglHeapCollect(true); return; }
+        if(_bglHeap-->3 * 4 >= (_bglHeap-->1) / WORDSIZE) _bglHeapCollect();
+    
+];
+[_bglHeapBitMask b m k;
+    m = 1;
+    k = 0;
+    
+        for(k = ((b - _bglHeap) / WORDSIZE) % 8 : k > 0 : k--) m = m * 2;
+        return m;
+    
+];
+[_bglHeapBlockOf a b o;
+    b = 0;
+    o = 0;
+    
+        if(_bglHeap == 0) return 0;
+        b = a - 5 * WORDSIZE;
+        o = b - (_bglHeap-->0);
+        if(o < 0 || o >= (_bglHeap-->1) || o % WORDSIZE ~= 0) return 0;
+        if(_bglHeapIsStart(b) == false || b-->2 == 0) return 0;
+        return b;
+    
+];
+[_bglHeapIsStart b;
+    
+        if((_bglHeap->(7 * WORDSIZE + (b - _bglHeap) / WORDSIZE / 8)) & _bglHeapBitMask(b)) rtrue;
+        rfalse;
+    
+];
+
+[ _bglGcRoots o i;
+    o = 0; i = 0;
+    for(i = 0 : i < _bglFrameTop : i++) _bglHeapMark(_bglFramePool-->i);
+];

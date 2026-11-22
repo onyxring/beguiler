@@ -60,4 +60,4 @@ board C relays to board A: lvl 7, glow on, mode fast, top 9.
 board B relays to board B: lvl 0, glow on, mode off, top 9.
 > meter
 Boards: board A=7/1 on fast ->board B board B=0/0 on off board C=9/3 on slow ->board A.
-Spare 9 (sets 2); glowing yes; band A 10.
+Spare 9 (sets 1); glowing yes; band A 10.

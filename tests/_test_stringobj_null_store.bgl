@@ -1,0 +1,8 @@
+// Negative test: null can't be stored in a stringObj (§22.3).
+// EXPECT_ERROR: A stringObj always holds a string and can't be null
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void main(){
+    bglInit();
+    stringObj s = null;
+}

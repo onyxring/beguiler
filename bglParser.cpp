@@ -378,6 +378,7 @@ void bglParser::reset(){
     loopDepth = 0;
     ternaryDepth = 0;
     preScanOnceFiles.clear();
+    ownPrintOverloads.clear();
     preScanDepth = 0;
     pendingInjections.clear();
     postInjections.clear();
@@ -843,9 +844,19 @@ void bglParser::resolveArrayInitialGlobals(){
                     e->tokens[0] = copyName;
                     continue;
                 }
-            // An uninitialized value-class global names the instance it owns.
-            if(vc != nullptr && isValueClass(vc) && gv->declaredExpressionValue == nullptr) continue;
-            string where = ad->src.line > 0 ? format("{0}:{1}:1: ", ad->src.file, ad->src.line) : string();
+            // An uninitialized value-class global is copied too: the slot gets a default instance.
+            if(vc != nullptr && isValueClass(vc) && !vc->isEmitterClass && gv->declaredExpressionValue == nullptr){
+                string copyName = nextAnonName();
+                objectDef& copy = languageService.registerObject(copyName, false, "");
+                copy.objectClass = vc;
+                if(std::find(languageService.globals.begin(), languageService.globals.end(), &copy) == languageService.globals.end())
+                    languageService.globals.push_back(&copy);
+                e->tokens[0] = copyName;
+                continue;
+            }
+            sourceLocation at = ad->src;
+            if(auto it = injectedAt.find(e); it != injectedAt.end()) at = it->second;
+            string where = at.line > 0 ? format("{0}:{1}:1: ", at.file, at.line) : string();
             parsingError(where + format("'{0}' is a variable, and the initial elements of '{1}' are fixed when the program "
                 "is compiled; assign the element when the program runs, or make '{0}' a const.", gv->dName(), ad->dName()));
         }

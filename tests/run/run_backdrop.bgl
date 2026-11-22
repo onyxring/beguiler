@@ -1,6 +1,7 @@
 // run_backdrop — <extensions/stdlib/backdrop>: rows of words, description and reply on a room and on a
 // floating backdrop object; plain, interpolated and routine texts; bdDefault, bdDescr and bdRedirected;
-// several words of one row, and words of two rows; a real object beats a backdrop, with no parser note.
+// several words of one row, and words of two rows; a real object beats a backdrop, with no parser note;
+// a backdrop noun keeps its own row when the second noun also matched another backdrop's row.
 // EXPECT_OUTPUT: High above, the canopy.
 // EXPECT_OUTPUT: Out of reach.
 // EXPECT_OUTPUT: Worn tracks.
@@ -14,6 +15,8 @@
 // EXPECT_OUTPUT: You can't see any such thing.
 // EXPECT_OUTPUT: Study
 // EXPECT_OUTPUT: word=canopy
+// EXPECT_OUTPUT: put word=hook
+// EXPECT_OUTPUT: Hook reply.
 // INPUT: x canopy
 // INPUT: take roof
 // INPUT: x high roof
@@ -27,6 +30,7 @@
 // INPUT: x rock
 // INPUT: x vine
 // INPUT: take vine
+// INPUT: put hook on rock
 // INPUT: x canopy dirt
 // INPUT: smell roof
 // INPUT: push path
@@ -54,6 +58,9 @@ object hall {
             print("word="); print((dictionaryWord)backdropEngine.getKeyword()); print("^");
             rtrue;
         }
+        if(action == PutOn && backdropEngine.getKeyword() != null) {
+            print("put word="); print((dictionaryWord)backdropEngine.getKeyword()); print("^");
+        }
         rfalse;
     }
 }
@@ -65,6 +72,10 @@ object realRock { parent = hall; short_name = "rock"; name = {.rock}; attributes
 backdrop farVine {
     rawArray<object> found_in = {hall};
     array<array<var>> backdrops = { {.vine, "A vine.", "You can't reach the vine."} };
+}
+backdrop farHook {
+    rawArray<object> found_in = {hall};
+    array<array<var>> backdrops = { {.hook, "A hook.", "Hook reply."} };
 }
 void Initialise(){
     location = hall;

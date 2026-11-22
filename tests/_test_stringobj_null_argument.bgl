@@ -1,0 +1,9 @@
+// Negative test: null can't be passed to a stringObj parameter that takes a copy (§22.3).
+// EXPECT_ERROR: A stringObj always holds a string and can't be null
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void take(stringObj p){ print(p); }
+void main(){
+    bglInit();
+    take(null);
+}

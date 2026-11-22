@@ -14,7 +14,7 @@ const int sieveSize = 3000;
 /// One flag per number below sieveSize: 1 when composite.
 array<char> sieve[sieveSize];
 /// The primes below sieveSize, in order.
-array<int> primes[450];
+array<int> primes[430];
 
 /// Distances between grid rooms, by from * 40 + to; -1 where no path exists.
 array<int> distances[1600];

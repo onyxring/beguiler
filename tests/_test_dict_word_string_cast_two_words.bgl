@@ -1,0 +1,7 @@
+// Negative test: a string literal cast to dictionaryWord holds exactly one word (§1.6.7).
+// EXPECT_ERROR: A dictionary word is one word
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){
+    bglInit();
+    dictionaryWord w = (dictionaryWord)"room 101";
+}

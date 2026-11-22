@@ -1,9 +1,8 @@
 // run_stringobj_long_text_glulx — <stringObj>: a literal longer than stringCaptureSize (512) is kept whole when
 // the heap has room (printing a literal runs no code, so it may use all of the heap's free room); a capture
-// longer than that stops the program with an error naming the setting.
+// longer than that is cut short to stringCaptureSize characters, and the program runs on.
 // EXPECT_OUTPUT: lit 700 vwx e=EEEE
-// EXPECT_OUTPUT: 701 characters were printed into room for
-// EXPECT_OUTPUT: raise the stringCaptureSize setting
+// EXPECT_OUTPUT: cut 512 AFTER
 #beguilerSettings { target = glulx; informName = "none"; }
 #include <string>
 #include "glulxConsole.bgl"
@@ -16,5 +15,5 @@ void main(){
     print($"lit {a.length} {a.right(3)} e={e}^");
     int n = 7;
     stringObj d = $"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwx{n}";
-    print($"not reached {d.length} {after}");
+    print($"cut {d.length} {after}");
 }

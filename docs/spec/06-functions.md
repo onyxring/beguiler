@@ -174,6 +174,10 @@ A call is resolved in two steps:
    A declared object is an exact match for its class, as a variable of that class is: for an object
    of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
 
+Two candidates that fit a call equally well and differ only in parameters left to their defaults make
+the call a compile-time error: with `F(int a)` beside `F(int a, int b = 0)`, `F(1)` could be either, and
+`F(1, 0)` says which.
+
 Type compatibility itself is specified in §2.10.1.
 
 **A reference is not a call.** A bare function name used as a value (`func<int,int> f = twice;`)

@@ -73,7 +73,7 @@ Warm 3, any fan true, all open true.
 By temp: hall=16 lounge-east!=24 kitchen=25 vault=35
 Total 100 over 4.
 First warm lounge-east!.
-All writes 24, setpoint changes 9.
+All writes 23, setpoint changes 9.
 
 > extras
 Bands: hot mild hot; damper 70.

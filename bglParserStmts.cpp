@@ -1212,7 +1212,9 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     }
 
     token peek = file.peekToken();
-    if(peek.isDataType()){
+    // `for (k = …` and `for (k in …` name a variable, though a class is called `k` too.
+    bool namesVariable = peek.isDataType() && (file.peekToken(2).is(token::assignment) || file.peekToken(2).is("in"));
+    if(peek.isDataType() && !namesVariable){
         token typeTok = file.getToken(eTokenType::dataType);
         if(typeTok.value == "func") typeTok.value = parseFuncType();  // func<...> loop var type
         else if(typeTok.value == "array" || typeTok.value == "rawarray") typeTok.value = parseArrayTypeTail(typeTok.value);  // array<...> / array<array<T>> loop var
@@ -1330,8 +1332,8 @@ bool bglParser::processFor(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             }
             return processForCStyle(nameTok.value, stmtLoc, func, body);
         }
-    } else if(peek.is(eTokenType::identifier)){
-        token nameTok = file.getToken(eTokenType::identifier);
+    } else if(peek.is(eTokenType::identifier) || namesVariable){
+        token nameTok = file.getToken();
         if(file.peekToken().is("in")){
             isForIn = true;
             elemVarName = nameTok.value;
@@ -1465,6 +1467,8 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
                 expression* val = parseExpression(file.getToken(), {":", ",", "to"}, func, body);
                 currentExpectedType = savedExpectedCase;
                 foldCaseConstant(val);
+                // A verb of a subclass of verb, named as a case of an action: the emitter writes its action.
+                if(conditionType == "verb" && isVerbSubclass(val->resolvedType)) val->resolvedType = "verb";
                 // The class's `operator switch` taking this value's type compares it; the emitter
                 // looks its body up by the type recorded on the value.
                 string emitterKey;
@@ -1490,8 +1494,8 @@ bool bglParser::processSwitch(vector<token>& t, Qualifiers&, abstractObject& ctx
                     string shown = typeDisplayName(val->resolvedType);
                     if(objectDef* od = languageService.findObjectType(val->resolvedType); od && od->objectClass)
                         shown = od->objectClass->dName();
-                    parsingError(format("Switch case type '{0}' does not match condition type '{1}'",
-                                       shown, typeDisplayName(conditionType)));
+                    parsingError(format("Switch case type '{0}' does not match condition type '{1}'{2}",
+                                       shown, typeDisplayName(conditionType), hiddenNameHint(val, conditionType)));
                 }
                 return val;
             };
@@ -1690,16 +1694,30 @@ bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     tcStmt.src = stmtLoc;
     // Caller already consumed "try" "{"
     tcStmt.tryBody = new statementBlock();
+    TryOwned owned;
     {
         functionDef tryCtx;
         if(func != nullptr){ tryCtx.returnType = func->returnType; tryCtx.params = func->params; }
         tryCtx.body = tcStmt.tryBody;
         tryBlockDepths.push_back(activeBlockStack.size());
+        tryOwnedStack.emplace_back();
+        tryOwnedStack.back().id = tcStmt.id;
         openCompileContext(eCompileContext::codeBlock, tcStmt.tryBody);
         try { while(processNextStatement(tryCtx) == false){} }
-        catch(...) { tryBlockDepths.pop_back(); throw; }
+        catch(...) { tryBlockDepths.pop_back(); tryOwnedStack.pop_back(); throw; }
         closeCompileContext(eCompileContext::codeBlock);
         tryBlockDepths.pop_back();
+        owned = std::move(tryOwnedStack.back());
+        tryOwnedStack.pop_back();
+    }
+    // Nothing is live when the try begins.
+    statementBlock* ownerBody = currentFunc ? dynamic_cast<statementBlock*>(currentFunc->body) : body;
+    for(variableDeclaration* flag : owned.flags){
+        if(ownerBody != nullptr) ownerBody->statements.push_back(flag);
+        i6RawNode* clear = new i6RawNode();
+        clear->text = flag->name + " = 0;";
+        clear->cooked = true;
+        if(body != nullptr) body->statements.push_back(clear);
     }
     token catchTok = file.getToken();
     if(!catchTok.is("catch"))
@@ -1723,6 +1741,13 @@ bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         statementBlock* funcBody = currentFunc ? dynamic_cast<statementBlock*>(currentFunc->body) : body;
         if(funcBody != nullptr) funcBody->statements.push_back(&catchVar);
         tcStmt.catchBody->statements.push_back(&catchVar);
+        // A throw from a called routine skipped the try body's deinits: the locals still live are released here.
+        for(auto r = owned.live.rbegin(); r != owned.live.rend(); ++r){
+            i6RawNode* release = new i6RawNode();
+            release->text = format("if ({0}) {{ {1} }}", r->first, r->second);
+            release->cooked = true;
+            tcStmt.catchBody->statements.push_back(release);
+        }
         functionDef catchCtx;
         if(func != nullptr){ catchCtx.returnType = func->returnType; catchCtx.params = func->params; }
         catchCtx.body = tcStmt.catchBody;
@@ -4021,7 +4046,8 @@ void bglParser::resolveAssignmentOperator(assignmentStatement& a, expression* va
             if(!found && valueTypeName == "interpolatedstringliteral")
                 parsingError(interpolatedTargetError(leftType->name));
             if(!found)
-                parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName(leftType->name)));
+                parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'{2}", typeDisplayName(valueTypeName), typeDisplayName(leftType->name),
+                                    laterUsingHint(val->tokens.size() == 1 ? val->tokens[0] : string(), valueTypeName)));
         }
     }
     // A member array as the value (`d = holder.rows;`) is read through (owner, prop), as the copy's
@@ -4152,6 +4178,13 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
                     ownOperatorOperand = pc;
                     currentExpectedType = pc->name;
                 }
+    // A struct variable assigned an accessor member of its own type takes the member itself, by copy.
+    if(classDef* lc = leftType != nullptr ? getDispatchClass(leftType->name) : nullptr;
+       lc != nullptr && ownOperatorOperand == savedOwnOperandAssign && isValueClass(lc) && !lc->isPrimitive
+       && !lc->isEmitterClass && target.variableLeft.find('.') == string::npos && !target.lhsIsRefLocal){
+        ownOperatorOperand = lc;
+        currentExpectedType = lc->name;
+    }
     expression* rhs = nullptr;
     try { rhs = parseExpression(file.getToken(), {token::endStatement, "?"}, func, body); }
     catch(...){ ownOperatorOperand = savedOwnOperandAssign; throw; }
@@ -4461,6 +4494,9 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
     if(rhs != nullptr && rhs->resolvedType == "verb") applyActionConstant(rhs);   // `watched += Take` → ##Take
+    if(rhs != nullptr && isVerbSubclass(rhs->resolvedType))
+        if(auto* verbs = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(tok.value, func, body)); verbs != nullptr && verbs->elementType == "verb")
+            applyActionConstant(rhs);
     if(symbol.value == "+=")
         if(auto* arr = dynamic_cast<arrayDeclaration*>(findAssignedDeclaration(tok.value, func, body)))
             if(arr->literalElements) checkLiteralElements(*arr, {rhs});

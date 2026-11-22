@@ -274,6 +274,7 @@ class bglParser {
         void resolveStubParamAliases();
         void validateEqualityPairs();
         void resolveArrayInitialGlobals();
+        map<expression*, sourceLocation> injectedAt;   // where each `inject`ed array element was written
         // Does a member array carry the trailing length slot? Must match the emitter's rule.
         bool memberArrayIsTracked(const std::string& ownerName, const std::string& propName,
                                   functionDef* func, statementBlock* body);
@@ -571,6 +572,15 @@ class bglParser {
         string nextAnonName();
         int lambdaCounter = 0;              // counter for unique _bglLambdaN function names
         vector<size_t> tryBlockDepths;      // activeBlockStack's size where each enclosing try body begins
+        // The owning locals of each enclosing try body. A throw from a called routine reaches the catch
+        // without their deinits, so each has a flag bit, set while it is live; the catch releases those.
+        struct TryOwned {
+            std::vector<variableDeclaration*> flags;            // one per 15 locals
+            int id = 0;                                         // the try statement's
+            int bits = 0;                                       // bits handed out in flags.back()
+            std::vector<std::pair<std::string, std::string>> live;   // {test, release} per local, in declared order
+        };
+        vector<TryOwned> tryOwnedStack;
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
         // Every `continue` parsed, with the loopDepth it belongs to — a do loop whose condition needs
         // set-up retargets its own to run that set-up first.
@@ -701,6 +711,8 @@ class bglParser {
         class arrayDeclaration* localStructArray(const string& name, statementBlock* body);
         void rejectEscapingView(const expression* e, const string& how);
         void ensureOwnPrintOverload(const string& typeName);
+        void dropSupersededOwnPrints();
+        vector<functionDef*> ownPrintOverloads;
         functionDef* replaceOwner();
         map<string, string> forwardReplaceBodies;   // a global `replace emitter`'s body, by emitterSignatureKey
         bool preScanIsConst = false;                // the pre-scanned declaration carries `const`
@@ -1305,6 +1317,16 @@ class bglParser {
         // A verb named as a value (`action = Take`, `{ Drop, … }`) is its I6 action constant `##Take`.
         // A verb-typed variable, and the library's action-holding globals, stay as they are.
         bool applyActionConstant(expression* e);
+        // A class derived from `verb`: a value of it is the verb's object, whose action is read from it.
+    bool isStoreLocation(expression* e);
+    bool referenceAsCondition(string& text, string& type);
+    string laterUsingHint(const string& text, const string& type);
+    string hiddenNameHint(expression* e, const string& wantedType);
+    bool replacesOrReplacedBy(functionDef* a, functionDef* b);
+    class verbObjectDef* verbNamedLikeDefine(expression* e);
+    string lastDefineRead, lastDefineText;   // the #define most recently read as a value, and the text it gave
+    functionDef* findNullAssignOperator(classDef* cls);
+    bool isVerbSubclass(const string& typeName);
         bool applyAssignOperatorAsValue(expression* e, const string& targetType);
         void checkReturnValue(expression* e, const string& returnType, const string& fnName);
         void checkClasslessAssignable(const expression* value, const string& targetType, const string& what);

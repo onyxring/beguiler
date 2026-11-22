@@ -1,0 +1,64 @@
+// run_verb_subclass_value — a value typed as a subclass of verb behaves as a verb value does: it is
+// performed, compared with an action and with other verbs, passed and stored as a `verb`, and named as
+// a case; its own members are reached, and a subclass's own perform() replaces the inherited one (§13.3).
+// EXPECT_OUTPUT: You whistle.
+// EXPECT_OUTPUT: You hum.
+// EXPECT_OUTPUT: [v is the action] [action is v] [a is Hum] [v is not Hum] [v is Whistle]
+// EXPECT_OUTPUT: [as verb: You whistle.
+// EXPECT_OUTPUT: ] [arg whistle] [arg hum] [arg take]
+// EXPECT_OUTPUT: [stored 4] [found] [case hum] [reply You whistle.]
+// EXPECT_OUTPUT: LOUD You shout. | LOUD You shout.
+// INPUT: probe
+// INPUT: hum
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#include <array>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+class chatVerb : verb {
+    string reply = "Nothing to say.";
+    void handler() {
+        print(reply); print("^");
+        if (action == Hum) check(Whistle);
+    }
+}
+chatVerb Hum { grammar = {.hum}; reply = "You hum."; }
+chatVerb Whistle { grammar = {.whistle}; reply = "You whistle."; }
+class loudVerb : chatVerb { void perform() { print("LOUD "); print(reply); } }
+loudVerb Shout { grammar = {.shout}; reply = "You shout."; }
+array<chatVerb> chats = { Hum, Whistle };
+array<verb> acts[6] = { Hum, Take, Shout };
+void name(verb x) {
+    if (x == Whistle) print("[arg whistle] ");
+    if (x == Hum) print("[arg hum] ");
+    if (x == Take) print("[arg take]");
+}
+// Run while Hum is the action, with `v` holding Whistle.
+void check(chatVerb v) {
+    chatVerb h = chats[0];
+    if (h == action) print("[v is the action] ");
+    if (action == h) print("[action is v] ");
+    verb a = action;
+    if (a == Hum) print("[a is Hum] ");
+    if (v != Hum) print("[v is not Hum] ");
+    if (v == Whistle) print("[v is Whistle]");
+    print("^[as verb: ");
+    verb plain = v;
+    plain.perform();
+    print("] ");
+    name(v); name(h); name(Take);
+    acts += v;
+    print($"^[stored {acts.length}] ");
+    if (acts.contains(v) && acts[3] == v) print("[found] ");
+    switch (action) { case Whistle: print("[case whistle] "); case Hum: print("[case hum] "); }
+    print($"[reply {v.reply}]^");
+    loudVerb l = Shout;
+    l.perform(); print(" | "); Shout.perform(); print("^");
+}
+verb Probe { grammar = {.probe}; void handler() {
+    chatVerb v = chats[1];
+    v.perform();
+} }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

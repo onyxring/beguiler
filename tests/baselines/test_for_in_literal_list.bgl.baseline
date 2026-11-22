@@ -199,19 +199,22 @@ _bglClass_Room r3
     _bglHeapLocalDrop();
     _bglHeapLocalDrop();
 ];
-[_bglArrLength arr;
-    
-        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
-        if(_bglArrTracked(arr)) return arr-->(-1);
-        return arr-->0;
-    
+[_bglArrLength arr a;
+    a = arr;
+    if (arr == 0) {
+        return 0;
+    }
+    if (_bglarrtracked(arr)) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
-[_bglArrTracked arr;
-    
-        if(arr == 0) rfalse;
-        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
-        rfalse;
-    
+[_bglArrTracked arr a;
+    a = arr;
+    if (arr == 0) {
+        return false;
+    }
+    return  a-->-2  == 36996 &&  a-->-1  >= 0&& a-->-1  <=  a-->0 ;
 ];
 [_bglHeapLocal n kind a;
     a = 0;
@@ -225,7 +228,7 @@ _bglClass_Room r3
     
         _bglFrameTop--;
         _bglHeapDropOwned(_bglFramePool-->_bglFrameTop);
-        _bglFramePool-->_bglFrameTop = 0;   ! a word left there would keep the array from the collector
+        _bglFramePool-->_bglFrameTop = 0;   ! A leftover word would keep the array alive
     
 ];
 [_bglUnsignedCompare x y u v;
@@ -258,7 +261,7 @@ _bglClass_Room r3
         while(o < (_bglHeap-->1)){
             b = (_bglHeap-->0) + o;
             if(b-->2 == 0){
-                ! Merge the free blocks that follow into this one.
+                ! Merge following free blocks
                 while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
                     nb = b + (b-->0) * WORDSIZE;
                     if(nb-->2 ~= 0) break;
@@ -301,8 +304,7 @@ _bglClass_Room r3
     roots = 48;
     
         if(_bglHeap == 0) return;
-        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too. One recorded
-        ! below every routine's marker was made for Inform 6 code, and no statement's end will free it.
+        ! Mid-routine, unowned results are roots; those below the first marker were made for Inform 6 code and are freed
         if(midRoutine){
             roots = 56;
             if(_bglFresh-->47 == 0){
@@ -327,8 +329,7 @@ _bglClass_Room r3
             #Ifdef DEBUG;
                 if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
             #Endif;
-            ! A freed array of structs gives its instances back, which let go of what their members held: those
-            ! arrays are swept by another pass.
+            ! Freeing a struct array can release arrays its instances held: sweep again
             again = false;
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
                 b = (_bglHeap-->0) + o;
@@ -429,8 +430,7 @@ _bglClass_Room r3
     b = 0;
     w = 0;
     
-        ! On the Z-machine Inform 6 holds values in its globals and arrays, which follow the object tables (their
-        ! encoded text could pass for an address).
+        ! The Z-machine keeps values in globals and arrays after the object tables
         #Ifdef TARGET_ZCODE;
             p = 0-->6; last = 0-->7;
         #Ifnot;

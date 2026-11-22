@@ -83,28 +83,41 @@ array g_fibonacci table 1 1 2 3 5 8;
     first =  _bglAt(g_primes, 0, 0)-->0 ;
     total =  _bglAt(g_primes, 0, 0)-->0 ;
 ];
-[_bglAt arr i w n;
-    n = 0;
-    
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglAt arr i isWrite n;
+    n=_bglarrsize(arr);
+    if (i >= 0 && i < n) {
+        return arr + (i + 1) * WORDSIZE;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
 ];
 array _bglsink --> 1;
 [_bglArrSize arr;
-     return arr-->0; 
+    return  ((arr))-->0 ;
 ];

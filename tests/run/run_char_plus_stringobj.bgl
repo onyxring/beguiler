@@ -1,0 +1,13 @@
+// A char on the left of a stringObj gives a new string that starts with it (§22.3); the string is unchanged.
+// EXPECT_OUTPUT: #tag >tag tag 4 #tag!
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+void main() {
+    bglInit();
+    stringObj s = "tag";
+    char c = '>';
+    stringObj a = '#' + s;
+    stringObj b = c + s;
+    print($"{a} {b} {s} {a.length} ");
+    print('#' + s + '!');
+}

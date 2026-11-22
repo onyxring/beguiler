@@ -1,0 +1,12 @@
+// Negative test: `=` through a ref stringObj stores into the string it refers to, so null is refused;
+// `:=` binds the ref and takes null (§22.3).
+// EXPECT_ERROR: A stringObj always holds a string and can't be null
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <string>
+void main(){
+    bglInit();
+    stringObj u = "x";
+    ref stringObj r := null;
+    r := u;
+    r = null;
+}

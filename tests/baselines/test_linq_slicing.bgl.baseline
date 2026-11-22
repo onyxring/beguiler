@@ -325,13 +325,12 @@ object _bglArray
     return _bglret;
   ]
 ;
-[_bglAt arr i w n;
-    n = 0;
-    
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglAt arr i isWrite n;
+    n=_bglarrsize(arr);
+    if (i >= 0 && i < n) {
+        return arr + (i + 1) * WORDSIZE;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
 [_bglHeapBlockOf a b o;
     b = 0;
@@ -389,7 +388,7 @@ object _bglArray
     b = 0;
     
         n = _bglHeapAdopt(a);
-        ! An array kept elsewhere (a global's) is held while the routine runs, in case that slot lets go meanwhile.
+        ! Hold an array kept elsewhere while the routine runs
         if(n == 0){ b = _bglHeapBlockOf(a); if(b ~= 0 && (b-->2 & 36) == 4){ b-->2 = b-->2 | 32; n = a; } }
         if(own ~= a) _bglHeapDropOwned(own);
         return n;
@@ -429,40 +428,63 @@ object _bglArray
 [_bglLinqUsed obj prop;
      if(prop == -1 && _bglHeapIsFresh(obj)) _bglHeapFree(obj); 
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
 ];
 array _bglfresh --> 48;
 array _bglsink --> 1;
-[_bglArrLength arr;
-    
-        if(arr == 0) return 0;   ! a `ref array` not bound yet is empty
-        if(_bglArrTracked(arr)) return arr-->(-1);
-        return arr-->0;
-    
+[_bglArrLength arr a;
+    a = arr;
+    if (arr == 0) {
+        return 0;
+    }
+    if (_bglarrtracked(arr)) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
-[_bglArrSetLength arr n;
-     if(_bglArrTracked(arr)) arr-->(-1) = n; 
+[_bglArrSetLength arr n _bglrcv0;
+    if (_bglarrtracked(arr)) {
+        if (true) {
+            _bglrcv0 = (arr);
+            _bglrcv0-->-1 = n;
+            rtrue;
+        }
+    }
 ];
 [_bglArrSize arr;
-     return arr-->0; 
+    return  ((arr))-->0 ;
 ];
-[_bglArrTracked arr;
-    
-        if(arr == 0) rfalse;
-        if(arr-->(-2) == $9084 && arr-->(-1) >= 0 && arr-->(-1) <= arr-->0) rtrue;
-        rfalse;
-    
+[_bglArrTracked arr a;
+    a = arr;
+    if (arr == 0) {
+        return false;
+    }
+    return  a-->-2  == 36996 &&  a-->-1  >= 0&& a-->-1  <=  a-->0 ;
 ];
 [_bglHeapAdopt a b;
     b = 0;
@@ -470,7 +492,7 @@ array _bglsink --> 1;
         b = _bglHeapBlockOf(a);
         if(b == 0 || (b-->2 & 12) ~= 8) return 0;
         b-->2 = (b-->2 & ~8) | 32;
-        if(a == _bglHeap-->4) _bglHeap-->4 = 0;   ! a returned array, now taken
+        if(a == _bglHeap-->4) _bglHeap-->4 = 0;
         return a;
     
 ];
@@ -521,7 +543,7 @@ array _bglsink --> 1;
         while(o < (_bglHeap-->1)){
             b = (_bglHeap-->0) + o;
             if(b-->2 == 0){
-                ! Merge the free blocks that follow into this one.
+                ! Merge following free blocks
                 while(o + (b-->0) * WORDSIZE < (_bglHeap-->1)){
                     nb = b + (b-->0) * WORDSIZE;
                     if(nb-->2 ~= 0) break;
@@ -564,8 +586,7 @@ array _bglsink --> 1;
     roots = 48;
     
         if(_bglHeap == 0) return;
-        ! In the middle of a routine an unclaimed result may still be on its way somewhere: it is kept too. One recorded
-        ! below every routine's marker was made for Inform 6 code, and no statement's end will free it.
+        ! Mid-routine, unowned results are roots; those below the first marker were made for Inform 6 code and are freed
         if(midRoutine){
             roots = 56;
             if(_bglFresh-->47 == 0){
@@ -590,8 +611,7 @@ array _bglsink --> 1;
             #Ifdef DEBUG;
                 if(_bglHeapTraceLevel-->0 >= 2 && _bglHeapVerify()) _bglHeapTrace();
             #Endif;
-            ! A freed array of structs gives its instances back, which let go of what their members held: those
-            ! arrays are swept by another pass.
+            ! Freeing a struct array can release arrays its instances held: sweep again
             again = false;
             for(o = 0 : o < (_bglHeap-->1) : o = o + (b-->0) * WORDSIZE){
                 b = (_bglHeap-->0) + o;
@@ -665,8 +685,7 @@ array _bglsink --> 1;
     b = 0;
     w = 0;
     
-        ! On the Z-machine Inform 6 holds values in its globals and arrays, which follow the object tables (their
-        ! encoded text could pass for an address).
+        ! The Z-machine keeps values in globals and arrays after the object tables
         #Ifdef TARGET_ZCODE;
             p = 0-->6; _l_last = 0-->7;
         #Ifnot;

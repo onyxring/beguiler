@@ -282,6 +282,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     functionDef* exactMatch = nullptr;
     functionDef* classMatch = nullptr;   // every argument exact or an instance of the parameter's class: no conversion
     functionDef* stubGuess = nullptr;   // a stub whose parameters weren't recorded: the last resort
+    vector<functionDef*> fitting;       // every overload the arguments fit
     // Beguile is case-insensitive: stored names are canonical (lowercased), but the
     // methodName arriving here may be a display name (split from a qualified path like
     // "self.doStuff"). Normalize to canonical so direct string compares against fdIn->name
@@ -379,6 +380,7 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
             }
         }
         if(!argsOk) return;
+        fitting.push_back(fd);
         if(usesVar){ if(!varFallback) varFallback = fd; }
         else {
             if(allExact && !exactMatch) exactMatch = fd;
@@ -453,6 +455,19 @@ bglParser::MethodMatch bglParser::resolveMethod(const string& typeName, const st
     if(exactMatch) result.method = exactMatch;
     else if(classMatch && result.method != nullptr && result.method != varFallback) result.method = classMatch;
     if(!result.method) result.method = stubGuess;
+    // `F(int)` beside `F(int, int b = 0)` in one class, called `x.F(1)`: neither is the better match.
+    if(functionDef* m = result.method)
+        for(functionDef* r : fitting){
+            if(r == m || r->params.size() == m->params.size() || r->isStatic != m->isStatic || r->isEmitter != m->isEmitter
+               || r->params.size() < args.size() || m->params.size() < args.size()) continue;
+            if(cls != nullptr && cls->declaringClassOf(r) != cls->declaringClassOf(m)) continue;
+            if(replacesOrReplacedBy(r, m)) continue;
+            bool same = true;
+            for(size_t i = 0; i < args.size() && same; i++) same = r->params[i]->type.name == m->params[i]->type.name;
+            if(same)
+                parsingError(format("This call fits both '{0}' overloads, with {1} and {2} parameters; give the "
+                                    "defaulted argument to say which.", m->dName(), (int)m->params.size(), (int)r->params.size()));
+        }
     return result;
 }
 
@@ -1633,9 +1648,12 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                 currentExpectedType = ownOperatorOperand->name;
             }
             expression* arg = nullptr;
+            lastDefineRead.clear();
             try { arg = parseExpression(firstArgTok, {token::comma, token::parenClose}, func, body); }
             catch(...){ ownOperatorOperand = savedOwnOperand; throw; }
             ownOperatorOperand = savedOwnOperand;
+            // An argument that is a #define's name alone: a verb of that name fits a verb parameter.
+            if(!lastDefineRead.empty() && arg->tokens.size() == 1 && arg->tokens[0] == lastDefineText) arg->defineName = lastDefineRead;
             readingForBind = false;
             currentExpectedType = "";
             if(arg->resolvedType == "void")
@@ -1673,6 +1691,16 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
     functionDef* literalMatch = nullptr;      // exact once a literal counts as its base type
     functionDef* conversionMatch = nullptr;
     functionDef* varFallback = nullptr;
+    // Two overloads that take the written arguments equally well and differ only in parameters left to
+    // their defaults (`F(int)` beside `F(int, int b = 0)` for `F(1)`): neither is the better match.
+    map<functionDef*, functionDef*> rivals;
+    auto noteRival = [&](functionDef* held, functionDef* fd){
+        if(held == nullptr || held == fd || held->params.size() == fd->params.size() || held->isEmitter != fd->isEmitter
+           || replacesOrReplacedBy(held, fd)) return;
+        for(size_t i = 0; i < args.size(); i++)
+            if(held->params[i]->type.name != fd->params[i]->type.name) return;
+        rivals.emplace(held, fd);
+    };
     // Ranks one candidate; true when it is an exact match (nothing can beat it).
     auto consider = [&](functionDef* fd) -> bool {
         if(fd->name != name) return false;
@@ -1711,11 +1739,15 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
             if(argsOk && !genericValueFits(args[i], paramType, func, body)) argsOk = false;
         }
         if(!argsOk) return false;
-        if(usesVar){ if(varFallback == nullptr) varFallback = fd; }
-        else if(!needsConversion && viaLiteralBase){ if(literalMatch == nullptr) literalMatch = fd; }
-        else if(!needsConversion){ result.match = fd; return true; }
-        else if(onlyUpcasts){ if(upcastMatch == nullptr || upcastSteps < bestUpcastSteps){ upcastMatch = fd; bestUpcastSteps = upcastSteps; } }
+        if(usesVar){ if(varFallback == nullptr) varFallback = fd; else noteRival(varFallback, fd); }
+        else if(!needsConversion && viaLiteralBase){ if(literalMatch == nullptr) literalMatch = fd; else noteRival(literalMatch, fd); }
+        else if(!needsConversion){ if(result.match == nullptr) result.match = fd; else noteRival(result.match, fd); return true; }
+        else if(onlyUpcasts){
+            if(upcastMatch == nullptr || upcastSteps < bestUpcastSteps){ upcastMatch = fd; bestUpcastSteps = upcastSteps; }
+            else if(upcastSteps == bestUpcastSteps) noteRival(upcastMatch, fd);
+        }
         else if(conversionMatch == nullptr) conversionMatch = fd;
+        else noteRival(conversionMatch, fd);
         return false;
     };
     auto settle = [&]{
@@ -1723,10 +1755,14 @@ bglParser::GlobalCallMatch bglParser::resolveGlobalCall(const string& name, cons
         if(result.match == nullptr) result.match = upcastMatch;
         if(result.match == nullptr) result.match = conversionMatch;
         if(result.match == nullptr) result.match = varFallback;
+        if(auto r = rivals.find(result.match); result.match != nullptr && r != rivals.end())
+            parsingError(format("This call fits both '{0}' overloads, with {1} and {2} parameters; give the "
+                                "defaulted argument to say which.", result.match->dName(),
+                                (int)r->first->params.size(), (int)r->second->params.size()));
     };
     for(typeDef* g : languageService.globals)
-        if(auto* fd = dynamic_cast<functionDef*>(g))
-            if(consider(fd)) return result;
+        if(g->name == name)
+            if(auto* fd = dynamic_cast<functionDef*>(g)) consider(fd);
     settle();
     // If no global found, check #using imports for a method with the matching name, ranked the same way.
     // This lets `#using bgl.asm` make `get_prop_len(x)` work as a bare call.
@@ -1817,8 +1853,8 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
             parsingError(format("'{0}' is a type, and a type can't be called: convert with a cast, `({0})value`, or "
                                 "declare one, `{0} x = value;`.", typeDisplayName(funcName)));
         if(!gcm.varType.empty())
-            parsingError(format("'{0}' is a variable of type '{1}', not a function, so it can't be called.",
-                                funcName, typeDisplayName(gcm.varType)));
+            parsingError(format("'{0}' is a variable of type '{1}', not a function, so it can't be called.{2}",
+                                funcName, typeDisplayName(gcm.varType), laterUsingHint(funcName, gcm.varType)));
         parsingError(format("Undeclared function '{0}'", funcName));
     }
     string dispName = gcm.nameMatch ? gcm.nameMatch->dName() : funcName;
@@ -4017,6 +4053,7 @@ std::string bglParser::qualifyIdentifier(std::string name, functionDef* func, st
             // A #defineI6 symbol is an I6 Constant too: it is read by name.
             if(auto i6 = i6DefinedSymbols.find(name); i6 != i6DefinedSymbols.end()) text = i6->second;
             candidates.push_back({text, ct, format("#define symbol '{0}'", name), false});
+            lastDefineRead = name; lastDefineText = text;
         }
     }
 
@@ -4208,13 +4245,15 @@ functionDef* bglParser::findAssignOperator(classDef* cls, const string& valueTyp
                                            const string& targetType){
     if(cls == nullptr || valueType.empty()) return nullptr;
     // `null`, the empty reference, fits an operator taking any class type (not a primitive value).
-    if(valueType == "nullliteral")
+    if(valueType == "nullliteral"){
+        if(functionDef* own = findNullAssignOperator(cls); own != nullptr && accept(own)) return own;
         return dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* mm){
             auto* fn = dynamic_cast<functionDef*>(mm);
             if(!fn || fn->name != "=" || fn->isStatic || fn->params.size() != 1 || !accept(fn)) return false;
             classDef* pc = getDispatchClass(fn->params[0]->type.name);
             return pc != nullptr && (!pc->isPrimitive || fn->params[0]->type.name == "string");   // a string may be null
         }));
+    }
     classDef* valCls = valueType == "var" ? nullptr : getDispatchClass(valueType);
     bool valueIsCls = valueType == "var" || (valCls != nullptr && (valCls == cls || valCls->hasAncestor(cls)));
     // The value's type, then its class and that class's ancestors, nearest first.
@@ -4695,8 +4734,28 @@ bool bglParser::applyAssignOperatorAsValue(expression* e, const string& targetTy
     return true;
 }
 
+bool bglParser::isVerbSubclass(const string& typeName){
+    if(typeName.empty() || typeName == "verb") return false;
+    classDef* c = languageService.findClass(typeName);
+    classDef* v = languageService.findClass("verb");
+    return c != nullptr && v != nullptr && c != v && c->hasAncestor(v);
+}
+
+// A verb value as its action number: a verb named directly is `##Name`; a value typed as a subclass of
+// verb is the verb's object, which carries its action.
 bool bglParser::applyActionConstant(expression* e){
-    if(e == nullptr || e->resolvedType != "verb" || e->tokens.size() != 1) return false;
+    if(e == nullptr || e->tokens.empty()) return false;
+    bool subclass = isVerbSubclass(e->resolvedType);
+    if(e->resolvedType != "verb" && !subclass) return false;
+    if(e->tokens.size() != 1){
+        if(!subclass) return false;
+        string text = e->text();
+        e->tokens.clear();
+        e->tokens.push_back("(" + text + ")._bglVerb_action");
+        languageService.verbActionRead = true;
+        e->resolvedType = "verb";
+        return true;
+    }
     string t = e->tokens[0];
     if(t.rfind("##", 0) == 0) return false;
     string tl = t; transform(tl.begin(), tl.end(), tl.begin(), ::tolower);
@@ -4705,6 +4764,13 @@ bool bglParser::applyActionConstant(expression* e){
         string vi6 = v->i6name; transform(vi6.begin(), vi6.end(), vi6.begin(), ::tolower);
         if(v->name != tl && vi6 != tl) continue;
         e->tokens[0] = "##" + v->dName();   // an action is named for the verb, whatever its object's I6 name
+        e->resolvedType = "verb";
+        return true;
+    }
+    if(subclass){
+        e->tokens[0] = "(" + t + ")._bglVerb_action";
+        languageService.verbActionRead = true;
+        e->resolvedType = "verb";
         return true;
     }
     return false;
@@ -4718,8 +4784,25 @@ bool bglParser::zeroFitsBnum(expression* e, const string& targetType){
 
 // An argument that fits a parameter by a rule rather than by its type: a literal 0 for a bnum, or a
 // bare member name for a `property` parameter, which names the property (§11.7.3).
+// One of the two is a `replace` of the other, or stands in for one: they are one function, not two overloads.
+bool bglParser::replacesOrReplacedBy(functionDef* a, functionDef* b){
+    if(a->isReplaceStub || b->isReplaceStub) return true;
+    for(functionDef* f = a->replacedFunc; f != nullptr; f = f->replacedFunc) if(f == b) return true;
+    for(functionDef* f = b->replacedFunc; f != nullptr; f = f->replacedFunc) if(f == a) return true;
+    return false;
+}
+
+// The verb that shares its name with the #define an expression read (`Step` beside `#define STEP`), or null.
+verbObjectDef* bglParser::verbNamedLikeDefine(expression* e){
+    if(e == nullptr || e->defineName.empty()) return nullptr;
+    for(verbObjectDef* v : languageService.verbs)
+        if(strcasecmp(v->name.c_str(), e->defineName.c_str()) == 0) return v;
+    return nullptr;
+}
+
 bool bglParser::argFitsByRule(expression* e, const string& paramType){
     if(zeroFitsBnum(e, paramType)) return true;
+    if(paramType == "verb" && verbNamedLikeDefine(e) != nullptr) return true;
     if(e == nullptr || paramType != "property") return false;
     string t = e->text();
     return t.rfind("self.", 0) == 0 && languageService.isKnownPropertyName(t.substr(5));
@@ -4771,6 +4854,16 @@ bool bglParser::applyImplicitConversion(expression* e, const string& targetType)
     return true;
 }
 
+// A class's own `operator = (nullLiteral)`: what the class does with null, ahead of the rule that
+// null fits any class.
+functionDef* bglParser::findNullAssignOperator(classDef* cls){
+    if(cls == nullptr) return nullptr;
+    return dynamic_cast<functionDef*>(findMemberInHierarchy(cls, [&](typeMember* mm){
+        auto* fn = dynamic_cast<functionDef*>(mm);
+        return fn && fn->name == "=" && !fn->isStatic && fn->params.size() == 1 && fn->params[0]->type.name == "nullliteral";
+    }));
+}
+
 void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef* fd){
     for(size_t i = 0; i < args.size() && i < fd->params.size(); i++){
         string paramType = fd->params[i]->type.name;
@@ -4802,11 +4895,22 @@ void bglParser::applyArgConversions(std::vector<expression*>& args, functionDef*
         }
         // A verb named as an argument is its action constant (`Take` → ##Take); a verb-typed variable or
         // one of the library's action globals already holds an action value and passes as it is.
-        if(argType == "verb" && (paramType == "verb" || paramType == "var")){
+        if((argType == "verb" && (paramType == "verb" || paramType == "var")) || (paramType == "verb" && isVerbSubclass(argType))){
             applyActionConstant(args[i]);
             continue;
         }
+        if(paramType == "verb")
+            if(verbObjectDef* v = verbNamedLikeDefine(args[i])){
+                args[i]->tokens[0] = "##" + v->dName(); args[i]->resolvedType = "verb";
+                continue;
+            }
         if(paramType == "var" || argType == paramType || argType.empty()) continue;
+        // null into a parameter that takes a copy is null stored into the class: its own operator decides.
+        if(argType == "nullliteral" && !fd->params[i]->isRef && !fd->isEmitter)
+            if(functionDef* own = findNullAssignOperator(languageService.findClass(paramType)); own != nullptr && own->isEmitter){
+                emitterBindings nb; nb.fn = own;
+                expandEmitterBody(dynamic_cast<i6Block*>(own->body), nb);
+            }
         // Look for conversion operator on arg's class
         classDef* argCls = getDispatchClass(argType);
         if(argCls == nullptr){ applyAssignOperatorAsValue(args[i], paramType); continue; }
@@ -5110,12 +5214,71 @@ void bglParser::finalizeCallArgs(vector<expression*>& args, vector<string>& name
     lastRefBacks.clear();
     if(!fd->isEmitter && !fd->isExternal)
         for(size_t i = 0; i < args.size() && i < fd->params.size(); i++)
-            if(refCopiesBack(fd->params[i]) && args[i] != nullptr){
+            if(refCopiesBack(fd->params[i]) && args[i] != nullptr && isStoreLocation(args[i])){
                 i6RawNode& back = *(new i6RawNode());
                 back.text = args[i]->text() + " = " + refBackGlobal(i) + ";";
                 postInjections.push_back(&back);
                 lastRefBacks.push_back(&back);
             }
+}
+
+// A bare member named like something at file scope of the type wanted (`open`, a bool member, where the
+// attribute is meant): the words that say how to reach the hidden one, or "".
+string bglParser::hiddenNameHint(expression* e, const string& wantedType){
+    if(e == nullptr || wantedType.empty()) return "";
+    string t = e->text();
+    if(t.rfind("self.", 0) != 0) return "";
+    string name = t.substr(5);
+    if(name.rfind("_m_", 0) == 0) name = name.substr(3);   // a member renamed apart from what it hides
+    if(name.empty() || name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != string::npos) return "";
+    if(enumDef* en = languageService.findEnum(wantedType))
+        for(enumValueDef* v : en->namedValues)
+            if(strcasecmp(v->name.c_str(), name.c_str()) == 0)
+                return format("; '{0}' here is the member, write '::{0}' for the {1} value", name, typeDisplayName(wantedType));
+    vector<TypeCandidate> found;
+    collectTypeCandidatesFromGlobals(name, found);
+    for(const TypeCandidate& c : found)
+        if(c.type == wantedType || isTypeCompatible(c.type, wantedType))
+            return format("; '{0}' here is the member, write '::{0}' for the {1}", name, typeDisplayName(wantedType));
+    return "";
+}
+
+// A bare name read as a property's name, where a `#using` further down imports a member of that name:
+// the words that say so, or "".
+string bglParser::laterUsingHint(const string& text, const string& type){
+    if(type != "property" || text.empty()) return "";
+    string name = text;
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
+    if(name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != string::npos) return "";
+    auto has = [&](const vector<typeMember*>& members){
+        for(typeMember* m : members) if(m->name == name) return true;
+        return false;
+    };
+    for(const string& root : preScanUsingRoots){
+        bool active = false;
+        for(objectDef* o : usingObjectImports) if(o->name == root) active = true;
+        for(classDef* c : usingImports) if(c->name == root) active = true;
+        if(active) continue;
+        objectDef* od = languageService.findObjectType(root);
+        classDef* cd = od == nullptr ? languageService.findClass(root) : nullptr;
+        if((od != nullptr && (has(od->members) || (od->objectClass != nullptr && findMemberInHierarchy(od->objectClass, [&](typeMember* m){ return m->name == name; }) != nullptr)))
+           || (cd != nullptr && findMemberInHierarchy(cd, [&](typeMember* m){ return m->name == name; }) != nullptr))
+            return format("\n  '{0}' is a member of '{1}', which a #using further down imports; move the #using above this line.",
+                          text, od != nullptr ? od->dName() : cd->dName());
+    }
+    return "";
+}
+
+// True when an argument names a place a value can be stored back into: a variable, member or element,
+// not null, a literal or a call's result.
+bool bglParser::isStoreLocation(expression* e){
+    if(e == nullptr || e->resolvedType == "nullliteral") return false;
+    string t = e->text();
+    if(t.empty() || t == "nothing" || isdigit((unsigned char)t[0]) || t[0] == '"' || t[0] == '\'' || t[0] == '-'
+       || t.find('?') != string::npos) return false;
+    for(size_t i = 1; i < t.size(); i++)
+        if(t[i] == '(' && (isalnum((unsigned char)t[i-1]) || t[i-1] == '_' || t[i-1] == ')')) return false;
+    return true;
 }
 
 // Unified dotted-method-call binding. Replaces the duplicated resolve-validate-finalize sequences
@@ -5192,6 +5355,7 @@ void bglParser::reportMethodOverloadMismatch(const string& objType, const string
             detail += format("\n    arg {0}: '{1}' is not compatible with parameter '{2} {3}'",
                              i + 1, typeDisplayName(argType),
                              typeDisplayName(paramType), fd->params[i]->dName());
+            detail += hiddenNameHint(args[i], paramType);
             break;  // first mismatch is enough — fixing it reveals any later ones
         }
     }
@@ -5524,6 +5688,22 @@ void bglParser::ensureOwnPrintOverload(const string& typeName){
     blk->i6Body = "$i6Expr($val.print())";
     fd->body = blk;
     languageService.globals.push_back(fd);
+    ownPrintOverloads.push_back(fd);
+}
+
+// A print() made for a type's own print() gives way to one declared for the type further down.
+void bglParser::dropSupersededOwnPrints(){
+    for(size_t i = 0; i < ownPrintOverloads.size(); ){
+        functionDef* made = ownPrintOverloads[i];
+        bool declared = false;
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd != made && fd->name == "print" && fd->params.size() == 1
+               && fd->params[0]->type.name == made->params[0]->type.name){ declared = true; break; }
+        if(!declared){ i++; continue; }
+        auto& gl = languageService.globals;
+        gl.erase(std::remove(gl.begin(), gl.end(), static_cast<typeDef*>(made)), gl.end());
+        ownPrintOverloads.erase(ownPrintOverloads.begin() + i);
+    }
 }
 
 bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vector<expression*>& args,
@@ -5532,6 +5712,7 @@ bglParser::GlobalCallBinding bglParser::bindGlobalCall(const string& name, vecto
                                                          functionDef* func, statementBlock* body){
     GlobalCallBinding out;
     syncFunctionAliases();
+    if(name == "print") dropSupersededOwnPrints();
     // Mangle the overload set (if this name has one) BEFORE resolving, so the matched overload
     // already carries its i6name — the expression path emits its call text immediately, long
     // before the post-parse safety-net pass runs.

@@ -74,7 +74,7 @@ void main() {
     print($"{up.length} ");
     stringObj tagged = Find(0)?.badge;
     stringObj gone = "ab";
-    gone = null;
+    gone = "";
     print($"{tagged.length} {gone.length} ");
     rack.slots[1] = vb;
     rack.marks[1] = 7;

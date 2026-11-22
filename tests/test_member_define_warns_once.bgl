@@ -1,0 +1,10 @@
+// A member named like a #define warns once, at its declaration; objects that set it don't repeat it.
+// EXPECT_WARNING: test_member_define_warns_once.bgl:7:
+// EXPECT_NO_WARNING: test_member_define_warns_once.bgl:8:
+// EXPECT_NO_WARNING: test_member_define_warns_once.bgl:9:
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#define LIMIT 9
+class Bin { int limit = 1; int room() { return limit; } }
+Bin a { limit = 2; }
+Bin b { limit = 3; }
+void main() { print(a.room() + b.room() + LIMIT); }

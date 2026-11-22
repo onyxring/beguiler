@@ -1,0 +1,31 @@
+// run_try_body_owning_locals — a routine that catches a throw from a routine it called releases the
+// owning locals of its own try block before the catch body runs (§5.16).
+// EXPECT_OUTPUT: caught 40 | live 0 | nested 40 | after 0 | mixed 27 | end 0
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+#include <string>
+int live = 0;
+struct Tally { int n; emitter void init(){ live++; } emitter void deinit(){ live--; } }
+void risky(int n){ throw n; }
+void main(){
+    bglInit();
+    int c = 0;
+    for(int i = 0; i < 40; i++){
+        try { stringObj s = "tmp"; Tally t; array<int> xs[4]; xs += i; risky(i); print("not here"); }
+        catch (int e) { c++; }
+    }
+    print($"caught {c} | live {live} | ");
+    c = 0;
+    for(int j = 0; j < 40; j++){
+        try { stringObj outer = "o"; if(j >= 0){ stringObj inner = "i"; Tally t2; risky(j); } }
+        catch (int e) { c++; }
+    }
+    print($"nested {c} | after {live} | ");
+    // Its own throw, a called routine's throw before a later local is declared, and a pass with no throw.
+    c = 0;
+    for(int k = 0; k < 40; k++){
+        try { stringObj a = "a"; Tally t3; if(k % 3 == 0) throw k; if(k % 3 == 1) risky(k); stringObj b = "b"; Tally t4; }
+        catch (int e) { c++; }
+    }
+    print($"mixed {c} | end {live}");
+}

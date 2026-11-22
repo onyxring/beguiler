@@ -391,6 +391,16 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```
 
+A word the dot form can't spell, such as one that starts with a digit, is written as a string literal
+cast to `dictionaryWord`. The cast is made at compile time and applies only to a string literal holding
+one word.
+
+```bgl
+object key101 { name = {.key, (dictionaryWord)"101"}; }
+```
+
+> **Note.** `.101` is the `float` literal 0.101, not a dictionary word.
+
 ## 1.7 Operators
 
 The following multi-character sequences are single tokens. A longer token always wins: `<=>` is the

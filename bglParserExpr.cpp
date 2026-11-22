@@ -940,9 +940,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
 
     // A verb operand named directly is its action constant (`action == Take` compares with ##Take);
     // a verb-typed variable or member is already an action value.
-    if(rhsType == "verb"){
-        expression r; r.tokens.push_back(rhsText); r.resolvedType = "verb";
-        if(applyActionConstant(&r)) rhsText = r.tokens[0];
+    bool verbCompare = (opName == "==" || opName == "!=") && isVerbSubclass(expr->resolvedType);
+    if(rhsType == "verb" || ((expr->resolvedType == "verb" || verbCompare) && isVerbSubclass(rhsType))){
+        expression r; r.tokens.push_back(rhsText); r.resolvedType = rhsType;
+        if(applyActionConstant(&r)){ rhsText = r.tokens[0]; rhsType = "verb"; }
     }
     // `action == Seal` beside a class Seal: against an action, the name is the verb's (a verb may share a class's name).
     if(expr->resolvedType == "verb")
@@ -950,7 +951,28 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
             for(verbObjectDef* v : languageService.verbs)
                 if(v->name == rc->name){ rhsText = "##" + v->dName(); rhsType = "verb"; break; }
     if(expr->resolvedType == "verb" && expr->tokens.size() == 1) applyActionConstant(expr);
+    // `Step == v` beside `#define STEP`: compared with a verb, the name is the verb's.
+    if((opName == "==" || opName == "!=") && rhsType == "verb" && expr->tokens.size() == 1
+       && expr->resolvedType != "verb" && !isVerbSubclass(expr->resolvedType)
+       && !lastDefineRead.empty() && expr->tokens[0] == lastDefineText)
+        for(verbObjectDef* v : languageService.verbs)
+            if(strcasecmp(v->name.c_str(), lastDefineRead.c_str()) == 0){ expr->tokens[0] = "##" + v->dName(); expr->resolvedType = "verb"; cls = getDispatchClass("verb"); break; }
+    lastDefineRead.clear();
     rhsText = keepValueResult(rhsText, rhsType);
+    // A reference as an operand of `&&` or `||` is its null test, as it is as an `if` condition.
+    // A class with an `&&` or `||` of its own keeps it, for both operands.
+    if((opName == "&&" || opName == "||")
+       && (cls == nullptr || findMemberInHierarchy(cls, [&](typeMember* m){ return dynamic_cast<functionDef*>(m) != nullptr && m->name == opName; }) == nullptr
+           || expr->resolvedType == "bool" || expr->resolvedType == "ebool")){
+        string lt = expr->text(), ltype = expr->resolvedType;
+        if(referenceAsCondition(lt, ltype)){
+            expr->tokens.assign(1, lt);
+            if(getDispatchClass(ltype) == nullptr) ltype = "bool";   // the test's result, as the class that has `&&`
+            expr->resolvedType = ltype;
+            cls = getDispatchClass(ltype);
+        }
+        referenceAsCondition(rhsText, rhsType);
+    }
 
     // Step 2: Find matching operator emitter
     // 'var' is the escape-hatch type — if either side is var, skip param-type checking
@@ -1162,7 +1184,9 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
        && (opName == "+" || opName == "-"))
         parsingError(format("'{0}=' on an array comes from `<array>`: add `#include <array>`.", opName));
     if(!matchedOp && !useRawFallback && !rhsType.empty())
-        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'", opName, cls->dName(), typeDisplayName(rhsType)));
+        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'{3}{4}", opName, cls->dName(), typeDisplayName(rhsType),
+                            laterUsingHint(expr->tokens.size() == 1 ? expr->tokens[0] : string(), expr->resolvedType),
+                            laterUsingHint(rhsText, rhsType)));
 
     if(matchedOp && !matchedOp->returnType.name.empty())
         expr->resolvedType = matchedOp->returnType.name;
@@ -1188,7 +1212,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
             }
         }
     }
-    i6Block* blk = (matchedOp && matchedOp->isEmitter && !matchedOp->isPrePassStub) ? dynamic_cast<i6Block*>(matchedOp->body) : nullptr;
+    i6Block* blk = (matchedOp && matchedOp->isEmitter && (!matchedOp->isPrePassStub || !matchedOp->params.empty())) ? dynamic_cast<i6Block*>(matchedOp->body) : nullptr;
     if(useRawFallback){
         // Comparison operators produce eBool; others preserve the LHS type
         static const vector<string> comparisonOps = {"==","!=","<",">","<=",">=","?=","=~"};
@@ -1287,8 +1311,10 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         expr->tokens.push_back(heldTemps.any() ? wrapHeldCall(heldTemps, call) : call);
     } else {
         // No operator found on this type
-        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'",
-            opName, cls->dName(), typeDisplayName(rhsType.empty() ? "unknown" : rhsType)));
+        parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'{3}{4}",
+            opName, cls->dName(), typeDisplayName(rhsType.empty() ? "unknown" : rhsType),
+            laterUsingHint(expr->tokens.size() == 1 ? expr->tokens[0] : string(), expr->resolvedType),
+            laterUsingHint(rhsText, rhsType)));
     }
     if(derivedFromCompare){
         expr->tokens.back() = "(" + expr->tokens.back() + ") " + opName + " 0";
@@ -2037,8 +2063,8 @@ string bglParser::applyCastConversion(const string& srcText, const string& srcTy
                                       const string& targetType){
     if(targetType.empty() || srcType.empty() || srcType == targetType) return srcText;
     // A verb named directly, as an int, is its action number (`(int)PutOn` is ##PutOn).
-    if(srcType == "verb" && (targetType == "int" || targetType == "uint")){
-        expression v; v.tokens.push_back(srcText); v.resolvedType = "verb";
+    if((srcType == "verb" || isVerbSubclass(srcType)) && (targetType == "int" || targetType == "uint" || targetType == "verb")){
+        expression v; v.tokens.push_back(srcText); v.resolvedType = srcType;
         if(applyActionConstant(&v)) return v.tokens[0];
     }
     classDef* srcCls = getDispatchClass(srcType);
@@ -6096,6 +6122,24 @@ bglParser::ExprStep bglParser::parseExprDotChain(ExprParseState& st){
     return r;
 }
 
+// A reference (an object, a class instance, a string, a function value) standing where a condition is
+// wanted: its text becomes its type's null test. False for a bool, a number or an accessor, which have
+// values of their own.
+bool bglParser::referenceAsCondition(string& text, string& type){
+    if(text.empty() || type.empty() || type == "bool" || type == "ebool" || type == "var") return false;
+    classDef* c = getDispatchClass(type);
+    if(c == nullptr && type.rfind("func<", 0) == 0) c = languageService.findClass("_bglobject");
+    if(c == nullptr || (c->isPrimitive && c->name != "string" && c->name != "stringliteral")) return false;
+    if(languageService.findEnum(type) != nullptr || nativeGetterOf(type) != nullptr) return false;
+    functionDef* q = findQueryOp(c, type);
+    if(q == nullptr) return false;
+    string operand = parenthesizeReceiver(text);
+    emitterBindings qb; qb.self = operand; qb.val = operand; qb.trim = emitterTrim::wsSemi;
+    text = "(" + expandEmitterBody(dynamic_cast<i6Block*>(q->body), qb) + ")";
+    type = q->returnType.name;
+    return true;
+}
+
 // A sub-expression that stopped at `?` where the `?` is a postfix query (what follows can't start a
 // ternary branch: `!v.keeper?`, `x && a?`): the query is applied to it, and the token after the `?`
 // becomes its terminator. False, consuming nothing, when it is a ternary or the type has no query.
@@ -6142,6 +6186,8 @@ bglParser::ExprStep bglParser::parseExprTernaryStart(ExprParseState& st){
        || pk.is(token::braceClose) || pk.is(token::bracketClose) || pk.value == "&&" || pk.value == "||"
        || pk.value == "?"){   // `b.up? ? x : y`: the first `?` is the query, the second the ternary
         classDef* qcls = !expr->resolvedType.empty() && !expr->tokens.empty() ? getDispatchClass(expr->resolvedType) : nullptr;
+        // A function value has no class of its own: it is tested as any reference is.
+        if(qcls == nullptr && expr->resolvedType.rfind("func<", 0) == 0 && !expr->tokens.empty()) qcls = languageService.findClass("_bglobject");
         auto* queryFn = qcls == nullptr ? nullptr : findQueryOp(qcls, expr->resolvedType);
         // One operand: a single token, or one parenthesized group (`(o)?`).
         bool oneGroup = expr->tokens.size() >= 3 && expr->tokens.front() == "(" && expr->tokens.back() == ")";
@@ -6430,6 +6476,19 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
         else if(cur.is(token::parenClose))                step = parseExprParenClose(st);
         else if(cur.is(eTokenType::integer))              step = parseExprIntLiteral(st);
         else if(cur.is(eTokenType::floatLiteral))         step = parseExprFloatLiteral(st);
+        else if(cur.isString() && strcasecmp(st.castType.c_str(), "dictionaryword") == 0){
+            // `(dictionaryWord)"101"`: a word the dot form can't spell, made at compile time.
+            string body = cur.value.size() >= 2 ? cur.value.substr(1, cur.value.size() - 2) : "";
+            string w;
+            for(char ch : body){
+                if(isspace((unsigned char)ch) || ch == '"' || ch == '~' || ch == '^' || ch == '/' || ch == '\\'){ w.clear(); break; }
+                w += (ch == '\'') ? '^' : ch;
+            }
+            if(w.empty()) parsingError("A dictionary word is one word: it can't be empty or hold spaces, quotes, slashes or escapes.");
+            expr->tokens.push_back(w.size() == 1 ? ("'" + w + "//'") : ("'" + w + "'"));
+            expr->resolvedType = st.castType;
+            st.castType = "";
+        }
         else if(cur.isString()){
             if(expr->resolvedType.empty()) expr->resolvedType = "stringliteral";
             expr->tokens.push_back(cur.value);

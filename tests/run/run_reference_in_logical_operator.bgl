@@ -1,0 +1,32 @@
+// A reference as an operand of && or || is its null test, as it is alone in an `if` (§4.8).
+// EXPECT_OUTPUT: 1n 2y 3n 4y 5y 6n 7y 8y | 3
+#beguilerSettings { target = z5; informName = "none"; }
+struct Pt { int x; }
+class Shape { ref Pt anchor; }
+Shape p;
+Pt home;
+object lamp { }
+int calls = 0;
+int twice(int n) { return n * 2; }
+object find(bool hit) { calls++; if (hit) return lamp; return null; }
+void main() {
+    bool ok = true;
+    bool no = false;
+    func<int,int> f = null;
+    string s = null;
+    print(ok && p.anchor ? "1y " : "1n ");
+    p.anchor := home;
+    print(ok && p.anchor ? "2y " : "2n ");
+    print(p.anchor && no ? "3y " : "3n ");
+    print(no || p.anchor ? "4y " : "4n ");
+    print(lamp && ok ? "5y " : "5n ");
+    print(ok && f ? "6y " : "6n ");
+    f = twice;
+    print(f && lamp ? "7y " : "7n ");
+    s = "x";
+    print(ok && s ? "8y " : "8n ");
+    if (no && find(true)) print("x");
+    if (ok && find(true)) calls++;
+    if (ok || find(true)) calls++;
+    print($"| {calls}");
+}

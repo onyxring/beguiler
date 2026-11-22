@@ -1,0 +1,25 @@
+// A struct variable assigned or initialized from an accessor member of its own type is a copy of the
+// member (§9.9.1), not the getter's reading pushed through the setter.
+// EXPECT_OUTPUT: 7 50 | 7 50 | 750 | 70
+#beguilerSettings { target = z5; informName = "none"; }
+struct Meter {
+    int raw = 0;
+    int cap = 9;
+    int  operator ()        { return raw * 10; }
+    void operator = (int v) { raw = v > cap ? cap : v; }
+}
+class Box { Meter core; }
+Box crate;
+int peek(Meter m) { return m.raw * 100 + m.cap; }
+void main() {
+    crate.core.cap = 50;
+    crate.core = 7;
+    Meter m = crate.core;
+    print($"{m.raw} {m.cap} | ");
+    Meter n;
+    n = crate.core;
+    print($"{n.raw} {n.cap} | ");
+    print(peek(crate.core));
+    int i = crate.core;
+    print($" | {i}");
+}

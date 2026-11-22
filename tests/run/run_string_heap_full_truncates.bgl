@@ -1,0 +1,29 @@
+// A full string heap cuts text short rather than stopping the program (§22.3): the string keeps what
+// fits, its neighbors keep theirs, and the program runs on.
+// EXPECT_OUTPUT: guard-a guard-b grew stopped ok guard-a guard-b [] short done
+#beguilerSettings { target = z5; informName = "none"; stringHeapSize = 600; stringCaptureSize = 64; }
+#include <string>
+void main() {
+    bglInit();
+    stringObj a = "guard-a";
+    stringObj big = "0123456789";
+    stringObj b = "guard-b";
+    print($"{a} {b} ");
+    int last = 0;
+    bool stopped = false;
+    for (int i = 0; i < 60; i++) {
+        big += "0123456789";
+        if (big.length == last) { stopped = true; break; }
+        last = big.length;
+    }
+    print(last > 100 ? "grew " : "small ");
+    print(stopped ? "stopped " : "unbounded ");
+    print(big.startsWith("0123456789") ? "ok " : "bad ");
+    print($"{a} {b} ");
+    stringObj c = "short";
+    print($"[{c}] ");
+    big = "";
+    c = "short";
+    print($"{c} ");
+    print("done");
+}

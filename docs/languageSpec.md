@@ -1037,6 +1037,16 @@ A dictionary word literal has the pseudo-type `dictionaryWordLiteral` and is com
 .cloak   ..cloaks   .medium-sized   .monkey's
 ```
 
+A word the dot form can't spell, such as one that starts with a digit, is written as a string literal
+cast to `dictionaryWord`. The cast is made at compile time and applies only to a string literal holding
+one word.
+
+```bgl
+object key101 { name = {.key, (dictionaryWord)"101"}; }
+```
+
+> **Note.** `.101` is the `float` literal 0.101, not a dictionary word.
+
 ## 1.7 Operators
 
 The following multi-character sequences are single tokens. A longer token always wins: `<=>` is the
@@ -1801,7 +1811,8 @@ There are four kinds:
   instance; parameters and returns still share (§8.2.9). Arrays behave the same way: an array with storage
   owns it, `=` copies into it, parameters and returns share, and only a `ref array` re-points (§12.5).
 - **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
-  members are zeroed (a local's at routine entry). Assignment, passing and returning copy, through
+  members are zeroed (a local's at routine entry, and again by its declaration on each pass of a loop
+  it is declared in). Assignment, passing and returning copy, through
   the struct's copy operator, which it gets automatically when it declares none. A struct is never
   null and has no subclasses. A `ref` variable of a struct shares an instance instead (§3.7). A
   routine that calls itself keeps each call's locals and parameters its own across the inner call.
@@ -2481,7 +2492,7 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
 | 1 | `? :` | ternary | right | Conditional (§4.9) |
-| 1 | `??` | infix | — | Null coalescing (§4.10) |
+| 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
 There is no unary bitwise-not operator. Inform 6's `~` and `~~` are not Beguile operators: write `!` for logical not.
@@ -2567,6 +2578,10 @@ print(u :== s);      // true: u refers to s
 
 `&&`, `||` and prefix `!` are tabulated in §4.5.
 
+An operand of `&&` or `||` that is a reference (an object, a class instance, a `ref`, a string or a
+function value) is its null test, as it is when it stands alone as a condition: `if (ready && door.lock)`
+is `if (ready && door.lock?)`.
+
 ## 4.8 Bitwise and Shift Operators
 
 `& | ^ << >>` are tabulated in §4.5; the compound forms `&= |= ^= <<= >>=` are in §5.6.
@@ -2635,10 +2650,10 @@ plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the me
 `null`; the result is undefined.
 
 **`??`** yields the left operand if it is non-null, otherwise the right operand, which is evaluated only
-in that case.
+in that case. A chain groups to the right: `a ?? b ?? c` is `a ?? (b ?? c)`, the first of the three that isn't null.
 
 **Postfix `?`** yields the null test as an `eBool`; `noun?` is `noun != null` for objects, and `!noun?`
-negates it. Where a `?` could begin a ternary, as the right operand of a binary operator, it is the
+negates it. A function value (`func<…>`) is tested the same way. Where a `?` could begin a ternary, as the right operand of a binary operator, it is the
 ternary; the postfix query applies only when the `?` ends the expression.
 
 **Example**
@@ -3290,7 +3305,8 @@ executes with no active `try` on the call stack, the program prints an error and
 
 Before it unwinds, a `throw` releases the owning locals (§8.5) of the blocks it leaves in its own
 routine. A routine that the throw passes through on its way to a `catch` in a caller does not release
-its locals. Where that matters, the routine can wrap the call in its own `try` and re-throw from the
+its locals. The routine that catches it releases the owning locals of its own `try` block before the
+`catch` body runs. Where a routine in between matters, the routine can wrap the call in its own `try` and re-throw from the
 `catch`: the re-throw releases its locals.
 
 **Example**
@@ -3470,6 +3486,10 @@ A call is resolved in two steps:
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
    A declared object is an exact match for its class, as a variable of that class is: for an object
    of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
+
+Two candidates that fit a call equally well and differ only in parameters left to their defaults make
+the call a compile-time error: with `F(int a)` beside `F(int a, int b = 0)`, `F(1)` could be either, and
+`F(1, 0)` says which.
 
 Type compatibility itself is specified in §2.10.1.
 
@@ -4487,7 +4507,8 @@ extend struct ⟨name⟩ { ⟨member⟩ … }
 **Description**
 
 A `struct` declares a **value type** (§2.10.3), as in C#: a global, local, member or parameter of the type
-owns an instance of its own, whose members are zeroed (a local's at routine entry). Assignment copies into
+owns an instance of its own, whose members are zeroed (a local's at routine entry). A struct local declared
+in a loop body is that one instance, zeroed again each time its declaration runs. Assignment copies into
 that instance, a parameter receives a copy of its argument, and a function returns a copy. A struct is never
 `null`.
 
@@ -4889,7 +4910,8 @@ to acquire and release it.
   same thing: the routine's end and every `return` in it. A `throw` releases the variables of the blocks
   it leaves within its own routine, as far as the `try` there that catches it, or all of the routine's
   when nothing in the routine catches it; the routines it passes through on its way out to a `catch`
-  further up don't release theirs (§5.16). Releases run in reverse declaration order.
+  further up don't release theirs, and the routine whose `catch` takes it releases those of its `try`
+  block before the `catch` body runs (§5.16). Releases run in reverse declaration order.
   A reference class has no `init` or `deinit` to fire: a local of one declared with no value has an
   object of its own, reset at routine entry, and one given a value refers to an instance it doesn't
   own, as a parameter does; a pooled instance is created and released with `new` and `delete` (§8.2.6).
@@ -5545,6 +5567,8 @@ second form declares the accessor as an owned member of a host class or object.
   must be declared without an initializer or `ref`, so that it is owned (§8.3.4); otherwise the member
   refers to an instance owned elsewhere and no accessor dispatch occurs. An in-place accessor (§9.9.2)
   is a struct implicitly.
+- A struct variable of the accessor's own type that is assigned or initialized from the member
+  (`heightProxy h = t.height;`) is a copy of the accessor, backing members included; the getter doesn't run.
 - Inside either operator, `self` is the accessor instance and its backing members. A named accessor
   class has no access to its host; `outer` (§9.9.3) is available only to an inline accessor.
 
@@ -7341,12 +7365,14 @@ is a compile-time error; copy it into an array with a capacity of its own first.
 
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
-  instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
-  gives its slot a copy of its initial value.
+  instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`
+  or `T v;`) gives its slot a copy of its initial value.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` release the slot's instance, as `remove` does, and return it. It stays readable
   until the instance is handed out again, so copy what you need before adding to an array of that struct.
+  An element stored by reference (an instance of an ordinary class) is the caller's once it is returned: its
+  `static deinit` doesn't run, as it does for `remove`.
 - Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
   `ref` to an element follows that element to its new place.
 - A view is valid only while its source is unchanged: once the source removes or clears an element, the view may
@@ -7764,6 +7790,28 @@ switch (action) {
     case Take: print("Taken.");
     case Drop: print("Dropped.");
 }
+```
+
+**Verb values.** A variable, parameter or array element of type `verb` holds any verb, native or
+`extern`. One typed as a subclass of `verb` holds a verb declared through that subclass, and reaches its
+members. Both are performed and compared in the same way, and a subclass-typed value converts to `verb`
+wherever one is expected.
+
+A verb may share its name with a `#define` symbol. The name then means the symbol, except where a verb is
+expected: assigned to a `verb`, passed to a `verb` parameter, in an `array<verb>`, as a `case` label on an action, or on either
+side of `==` or `!=` with a verb.
+
+```bgl
+class ChatVerb : verb { string reply; void handler() { print(reply); } }
+ChatVerb Hum     { grammar = {.hum};     reply = "You hum."; }
+ChatVerb Whistle { grammar = {.whistle}; reply = "You whistle."; }
+array<ChatVerb> chats = { Hum, Whistle };
+
+ChatVerb v = chats[1];
+v.perform();                 // runs the Whistle action
+if (v == action) { … }
+verb any = v;                // any verb fits a `verb`
+print(v.reply);
 ```
 
 **See also** §5.12, §23.3.4.
@@ -8702,6 +8750,15 @@ line number, and continues compilation.
 
 Halts compilation with an error carrying the given text, reported in the compiler's standard error
 format with file name and line number.
+
+As the whole body of an emitter, `#error` makes using that emitter the error, reported at the line that
+uses it. An `operator = (nullLiteral)` written this way is how a class refuses `null`:
+
+```bgl
+emitter class Tag {
+    emitter Tag operator = (nullLiteral v) { #error "A Tag can't be null." }
+}
+```
 
 **Example**
 
@@ -10354,8 +10411,10 @@ message and halts the story with `quit`, except where stated.
 | --- | --- | --- |
 | Frame pool full (§18.10) | `[Beguile runtime error: frame pool exhausted]` | Raise `framePoolSize`. |
 | The heap is full (§12.6) — the program stops | `[Beguile run-time error: the heap is full; raise heapSize in #beguilerSettings (it is N words)]` | Raise `heapSize`, or free arrays sooner with `bgl.gc.free` (§21.15). |
-| The string heap is full (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
-| Text printed into a string buffer runs past its room (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
+| The string heap is full (§22.3) — the text is cut short; debug builds only | `[Beguile run-time warning: the string heap is full, so text was cut short; raise the stringHeapSize setting]` | Raise `stringHeapSize`; the `heap` debug verb reports the most a run needed. |
+| The string heap can't hold the string pool at startup, or has no room for a Z-machine capture (§22.3) — the program stops | `[Beguile run-time error: the string heap is full; raise the stringHeapSize setting]` | Raise `stringHeapSize`. |
+| Text printed into a string runs past its room (§22.3, §22.9) — the text is cut short; debug builds only | `[Beguile run-time warning: N characters were printed into room for M, so the text was cut short; raise …]` | Raise the setting it names: `stringCaptureSize` with `<string>`, `bglStringDefaultSize` with `<archive/string>`. |
+| The same on the Z-machine, where the text has overwritten memory in use (§22.3, §22.9) — the program stops | `[Beguile run-time error: N characters were printed into room for M; raise …]` | Raise the setting it names. |
 | `bgl.gc.free` given an array already freed (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array was already freed]` | — |
 | `bgl.gc.free` given a file-scope or member array (§21.15) — the program continues | `[Beguile run-time error: bgl.gc.free(): the array isn't on the heap (…)]` | — |
 | Copying into a `ref array` bound to nothing (§12.5) — the program continues | `[Beguile run-time error: copying into an array that is null; bind it with := first]` | Bind it with `:=`. |
@@ -11694,7 +11753,7 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 | Operator | Description |
 |---|---|
 | `s = "text"` / `s = other` | Assign. On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer. `stringObj` also accepts an interpolated string, capturing its output. |
-| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char`). Returns a new `stringObj`; neither operand is changed. |
+| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char` on either side: `s + '!'`, `'#' + s`). Returns a new `stringObj`; neither operand is changed. |
 | `s += v` | **`stringObj` only.** Append in place. `v` may also be an interpolated string, whose output is appended (`s += $" {n} left";`). |
 | `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
 | `s =~ v` | Content comparison ignoring case. |
@@ -11757,15 +11816,25 @@ void Main() {
 
 **Storage**
 
+A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors. A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function that returns `stringObj` can return null, so `??` gives a fallback for those:
+
+```bgl
+stringObj s = null;                  // error
+ref stringObj r := null;             // fine: r refers to no string
+print(r ?? "none");                  // none
+```
+
 Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
 
-Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room stops the program with a run-time error naming the setting: on the Z-machine it has already been written past the block, and text that runs far past it can run off the end of the Z-machine's memory, where the interpreter itself stops first. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room is cut short to it, and the program runs on. On Glulx the rest is simply not written. On the Z-machine it has already been written past the block: where the heap's free end lay there for the whole capture nothing is lost but that text, and anywhere else (a block with others after it, a temporary buffer, a capture that changed the heap as it ran, text past the heap's end) it has overwritten memory in use, so the program stops with a run-time error naming the setting. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
 
-A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so they stop with the same run-time error. Copy it into a `stringObj` first.
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so on the Z-machine they stop with the run-time error above, and on Glulx they see only its first `stringCaptureSize` characters. Copy it into a `stringObj` first.
 
 Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
 
-When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the program stops with a run-time error. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the string takes what room is left and the rest of the text is dropped; the program runs on, and a string made while the heap is full is empty. A Z-machine capture is the exception: it can't be held to less than `stringCaptureSize` characters, so with no room for one the program stops. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+
+In a debug build (§20.3), text that is cut short prints a run-time warning naming the setting to raise; a release build cuts it short silently.
 
 **Settings**
 
@@ -12358,7 +12427,7 @@ Does not require `bglInit()`. Does not require `generateBlorb`, but without pack
 
 **Description**
 
-Each `stringObj` takes a buffer of `bglStringDefaultSize` bytes (default `500`, §22.2) from a pool of `bglStringPoolReserve` (default `10`), six of which the buffer keeps for itself, so a `stringObj` holds at most `bglStringDefaultSize - 6` characters (494 by default). The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) stops the program with a run-time error, since on the Z-machine printing can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+Each `stringObj` holds at most `bglStringDefaultSize` characters (default `500`, §22.2), in a buffer from a pool of `bglStringPoolReserve` (default `10`); the buffer's own header is allocated on top of that. The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) is cut short on Glulx, and on the Z-machine stops the program with a run-time error, since printing there can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }
@@ -12400,6 +12469,9 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 | `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine. PunyInform uses no classes; objects are distinguished by attributes alone. |
 
 Each binding is `#once`-guarded.
+
+The standard-library binding requires release 6.12 of that library. Against an earlier release, such as
+6/10, the binding stops the build with an error naming the release it needs.
 
 **Include order.** Declarations are emitted in source order (§18.6), so the library's own includes sit
 where Inform 6 expects them. For the standard library:
@@ -12480,7 +12552,7 @@ A binding declares, as `extern`:
 - its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
 - its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1). PunyInform's entry points are not declared (§23.2).
 
-Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's; and a program's own `extern` declaration of a library routine replaces the binding's.
+Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's, except a member reached only through `#using`, which loses to the routine with a warning (§10.4); and a program's own `extern` declaration of a library routine replaces the binding's.
 
 Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4). Both bindings also make the object's name and its `parent` positional, in that order (§8.3.5), so an object can open as an Inform 6 object header does: `object hook { "small brass hook", cloakroom; }`.
 
@@ -12957,7 +13029,7 @@ The table is the one in §4.3; higher precedence binds more tightly.
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
 | 1 | `? :` | ternary | right | Conditional (§4.9) |
-| 1 | `??` | infix | — | Null coalescing (§4.10) |
+| 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
 ## C.2 Overloadable Operators

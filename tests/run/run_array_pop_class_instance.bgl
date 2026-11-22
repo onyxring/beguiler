@@ -1,0 +1,25 @@
+// pop(), dequeue() and popEnd() hand a class instance to the caller: its static deinit doesn't run,
+// though remove() still runs it (§12.10).
+// EXPECT_OUTPUT: 1 3 2 live 3 | removed live 2
+#beguilerSettings { target = z5; informName = "none"; }
+#include <array>
+class Ticket[4] : object {
+    int Num;
+    static int Live = 0;
+    void create(int n) { Num = n; Ticket.Live++; }
+    void destroy()     { Ticket.Live--; }
+    static void deinit(Ticket t) { delete t; }
+}
+array<Ticket> Queue[4];
+void main() {
+    bglInit();
+    for (int i = 1; i <= 4; i++) { Ticket t = new Ticket(i); Queue += t; }
+    Queue.remove(3);
+    Ticket a = Queue.popEnd();
+    Ticket b = Queue.dequeue();
+    Ticket c = Queue.pop();
+    print($"{b.Num} {a.Num} {c.Num} live {Ticket.Live} | ");
+    Queue += a;
+    Queue.remove(0);
+    print($"removed live {Ticket.Live}");
+}

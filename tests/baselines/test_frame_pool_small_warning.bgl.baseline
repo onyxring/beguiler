@@ -161,26 +161,39 @@ object bgl
     print depth(2);
     rtrue;
 ];
-[_bglByteAt arr i w n;
-    n = 0;
-    
-        n = arr-->(-1);
-        if(i >= 0 && i < n) return arr + WORDSIZE + i;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglByteAt arr i isWrite n;
+    n= ((arr))-->-1;
+    if (i >= 0 && i < n) {
+        return arr + WORDSIZE + i;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
 ];
 [_bglUnsignedCompare x y u v;
     if (x == y) {

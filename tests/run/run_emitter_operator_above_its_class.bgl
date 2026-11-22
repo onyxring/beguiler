@@ -1,0 +1,12 @@
+/*  run_emitter_operator_above_its_class — an emitter operator is usable above the class that declares it.  */
+// EXPECT_OUTPUT: 1 0 1
+#beguilerSettings { target = z5; informName = "none"; }
+int differ(tok a, tok b) { if (a != b) return 1; return 0; }
+int below(Late a, Late b) { if (a < b) return 1; return 0; }
+primitive class tok { emitter bool operator != (tok o) { $val ~= $o } }
+class Late { int v; emitter bool operator < (Late o) { $val.v < $o.v } }
+Late one { v = 1; }
+Late two { v = 2; }
+void main() {
+    print($"{differ((tok)1, (tok)2)} {differ((tok)3, (tok)3)} {below(one, two)}");
+}

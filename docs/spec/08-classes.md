@@ -389,7 +389,8 @@ extend struct ⟨name⟩ { ⟨member⟩ … }
 **Description**
 
 A `struct` declares a **value type** (§2.10.3), as in C#: a global, local, member or parameter of the type
-owns an instance of its own, whose members are zeroed (a local's at routine entry). Assignment copies into
+owns an instance of its own, whose members are zeroed (a local's at routine entry). A struct local declared
+in a loop body is that one instance, zeroed again each time its declaration runs. Assignment copies into
 that instance, a parameter receives a copy of its argument, and a function returns a copy. A struct is never
 `null`.
 
@@ -791,7 +792,8 @@ to acquire and release it.
   same thing: the routine's end and every `return` in it. A `throw` releases the variables of the blocks
   it leaves within its own routine, as far as the `try` there that catches it, or all of the routine's
   when nothing in the routine catches it; the routines it passes through on its way out to a `catch`
-  further up don't release theirs (§5.16). Releases run in reverse declaration order.
+  further up don't release theirs, and the routine whose `catch` takes it releases those of its `try`
+  block before the `catch` body runs (§5.16). Releases run in reverse declaration order.
   A reference class has no `init` or `deinit` to fire: a local of one declared with no value has an
   object of its own, reset at routine entry, and one given a value refers to an instance it doesn't
   own, as a parameter does; a pooled instance is created and released with `new` and `delete` (§8.2.6).

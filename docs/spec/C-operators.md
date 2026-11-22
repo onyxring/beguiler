@@ -25,7 +25,7 @@ The table is the one in §4.3; higher precedence binds more tightly.
 | 3 | `&&` | infix | left | Logical and |
 | 2 | `\|\|` | infix | left | Logical or |
 | 1 | `? :` | ternary | right | Conditional (§4.9) |
-| 1 | `??` | infix | — | Null coalescing (§4.10) |
+| 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
 

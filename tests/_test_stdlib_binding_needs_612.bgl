@@ -1,0 +1,8 @@
+// Negative test: the standard-library binding stops the build against a release older than 6.12 (§23.2).
+// EXPECT_ERROR: needs release 6.12 of the Inform 6 Standard Library
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib610"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+void initialise(){ }
+#includeI6 "grammar"

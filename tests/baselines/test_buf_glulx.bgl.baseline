@@ -156,8 +156,8 @@ Array bufsmall -> (WORDSIZE + 16);
     _bglbuf._bglText_capture(bufa, 0);
     _bglbuf._bglText_capture(bufb, 32);
     depth1=_bglbuf._bglText_stackLen();
-    _bglbuf._bglText_release();
-    _bglbuf._bglText_release();
+    _bglbuf._bglText_release(false);
+    _bglbuf._bglText_release(false);
     depth0=_bglbuf._bglText_stackLen();
 ];
 [exercisePrint;
@@ -255,6 +255,10 @@ Array bufsmall -> (WORDSIZE + 16);
 object _bglBuf
   with _stacktop 0,
        _trackedcount 0,
+       _overran 0,
+       _cutwritten 0,
+       _cutroom 0,
+       _heapshort 0,
        _bglText_isTracked [buf p i;
     p=buf;
     if (p == 0) {
@@ -286,7 +290,7 @@ object _bglBuf
   ],
        _bglText_setLength [buf newLength sz;
     sz=self._bglText_size(buf);
-    if (sz > 0 && newlength > sz) {
+    if (sz >= 0 && newlength > sz) {
         newLength=sz;
     }
     buf-->(0) = newLength;
@@ -321,8 +325,8 @@ object _bglBuf
     sz=sz + WORDSIZE;
      stringVal.print_to_array(buf, sz); 
     room=self._bglText_size(buf);
-    if (room > 0 && self._bglText_length(buf) > room) {
-        self._bglbufoverrun(self._bglText_length(buf), room);
+    if (room >= 0 && self._bglText_length(buf) > room) {
+        self._bglbufcutshort(self._bglText_length(buf), room);
     }
     self._bglText_setLength(buf, self._bglText_length(buf));
     return buf;
@@ -345,7 +349,7 @@ object _bglBuf
         numCharsToCopy=srclen - frompos;
     }
     tgtSize=self._bglText_size(toBuf);
-    if (tgtsize > 0 && numcharstocopy + topos > tgtsize) {
+    if (tgtsize >= 0 && numcharstocopy + topos > tgtsize) {
         numCharsToCopy=tgtsize - topos;
     }
     frmPtr=frombuf + frompos + WORDSIZE;
@@ -354,16 +358,26 @@ object _bglBuf
     self._bglText_setLength(toBuf, topos + numcharstocopy);
     return tobuf;
   ],
-       _bglBufOverrun [written room;
-    if (self._stacktop > 0) {
-        __glkHook(71,  _bglAt(_bglbufglulxstreams, 0, 0)-->0 );
-        self._stacktop = 0;
-    }
+       _bglBufCutShort [written room;
+    self._cutwritten=written;
+    self._cutroom=room;
+    self._bglbufwarnflush();
+  ],
+       _bglBufWarnFlush [;
     
-            print "^[Beguile run-time error: ", written, " characters were printed into room for ", room, "; raise ";
-            #Ifdef _bglOverrunSetting; print (string) _bglOverrunSetting; #Ifnot; print "the buffer's size"; #Endif;
-            print "]^";
-            quit;
+            #Ifdef DEBUG;
+                if(self._stackTop > 0) return;
+                if(self._heapShort){
+                    self._heapShort = 0;
+                    print "^[Beguile run-time warning: the string heap is full, so text was cut short; raise the stringHeapSize setting]^";
+                }
+                if(self._cutWritten){
+                    print "^[Beguile run-time warning: ", self._cutWritten, " characters were printed into room for ", self._cutRoom, ", so the text was cut short; raise ";
+                    #Ifdef _bglOverrunSetting; print (string) _bglOverrunSetting; #Ifnot; print "the buffer's size"; #Endif;
+                    print "]^";
+                    self._cutWritten = 0;
+                }
+            #Endif;
         
   ],
        _bglText_capture [buf maxBytes s;
@@ -381,19 +395,21 @@ object _bglBuf
     __glkHook(71, __glkHook(67, buf + WORDSIZE, maxbytes, _bglfilemodewrite, 662));
     self._stacktop++;
   ],
-       _bglText_release [buf room;
+       _bglText_release [lenient buf room;
     if (self._stacktop == 0) {
         return 0;
     }
+    self._overran = 0;
     self._stacktop--;
     buf =  _bglAt(_bglbufstreamstack, self._stacktop, 0)-->0 ;
     __glkHook(68, __glkHook(72), _bglstreamcounts);
     __glkHook(71,  _bglAt(_bglbufglulxstreams, self._stacktop, 0)-->0 );
     room=self._bglText_size(buf);
-    if (room > 0 &&  _bglstreamcounts-->1  > room) {
-        self._bglBufOverrun( _bglstreamcounts-->1 , room);
+    if (room >= 0 &&  _bglstreamcounts-->1  > room) {
+        self._bglBufCutShort( _bglstreamcounts-->1 , room);
     }
     self._bglText_setLength(buf,  _bglstreamcounts-->1 );
+    self._bglBufWarnFlush();
     return buf;
   ],
        _bglText_stackLen [;
@@ -653,13 +669,12 @@ object _bglBuf
     return self._bglText_trimRight(self._bglText_trimLeft(buf));
   ]
 ;
-[_bglByteAt arr i w n;
-    n = 0;
-    
-        n = arr-->(-1);
-        if(i >= 0 && i < n) return arr + WORDSIZE + i;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglByteAt arr i isWrite n;
+    n= ((arr))-->-1;
+    if (i >= 0 && i < n) {
+        return arr + WORDSIZE + i;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
 [_bglCharIsAlpha c;
     return _bglcharislower(c) || _bglcharisupper(c);
@@ -730,32 +745,45 @@ object _bglBuf
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
-[_bglOutOfRange i n w;
-    
-        print "^[Beguile run-time error: array index ", i, " is outside the ", n, " element";
-        if(n ~= 1) print "s";
-        print " it ";
-        if(w) print "can hold"; else print "holds";
-        print "; the ";
-        if(w) print "write"; else print "read";
-        print " is skipped]^";
-        _bglSink-->0 = 0;
-        return _bglSink;
-    
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
 ];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
 ];
 array _bglsink --> 1;
-[_bglAt arr i w n;
-    n = 0;
-    
-        n = _bglArrSize(arr);
-        if(i >= 0 && i < n) return arr + (i + 1) * WORDSIZE;
-        return _bglOutOfRange(i, n, w);
-    
+[_bglAt arr i isWrite n;
+    n=_bglarrsize(arr);
+    if (i >= 0 && i < n) {
+        return arr + (i + 1) * WORDSIZE;
+    }
+    return _bgloutofrange(i,n,iswrite);
 ];
 [_bglArrSize arr;
-     return arr-->0; 
+    return  ((arr))-->0 ;
 ];

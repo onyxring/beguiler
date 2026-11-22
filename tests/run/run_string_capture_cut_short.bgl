@@ -1,0 +1,17 @@
+// Captured text longer than stringCaptureSize is cut short to it and the program runs on (§22.3);
+// a neighboring string keeps its text.
+// EXPECT_OUTPUT: 32 [0123456789 0123456789 0123456789] guard-a [fits 7] 38 [fits 70123456789 0123456789 0123456789] guard-a done
+#beguilerSettings { target = z5; informName = "none"; stringCaptureSize = 32; }
+#include <string>
+void main() {
+    bglInit();
+    stringObj a = "guard-a";
+    stringObj s;
+    int n = 7;
+    s = $"0123456789 0123456789 0123456789 0123456789 {n} tail";
+    print($"{s.length} [{s}] {a} ");
+    s = $"fits {n}";
+    print($"[{s}] ");
+    s += $"0123456789 0123456789 0123456789 0123456789 {n} tail";
+    print($"{s.length} [{s}] {a} done");
+}

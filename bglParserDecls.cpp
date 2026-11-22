@@ -290,7 +290,7 @@ initializerList* bglParser::parseArrayInitializerList(const string& elementType,
         }
         // An enum element type picks its own member over a same-named global (`door`, an attribute).
         string savedExpected = currentExpectedType;
-        if(languageService.findEnum(elementType) != nullptr || elementType.rfind("func", 0) == 0) currentExpectedType = elementType;
+        if(languageService.findEnum(elementType) != nullptr || elementType.rfind("func", 0) == 0 || elementType == "verb") currentExpectedType = elementType;
         expression* elem = parseExpression(t, {",", token::braceClose}, func, body);
         currentExpectedType = savedExpected;
         foldIntLiteralToFloat(elem, elementType);
@@ -1030,7 +1030,8 @@ void bglParser::checkVariableInitializerAssignable(variableDeclaration& varDecl,
                         found = true;
                     }
             }
-            if(!found) parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'", typeDisplayName(valueTypeName), typeDisplayName((string)dataType)));
+            if(!found) parsingError(format("Cannot assign value of type '{0}' to variable of type '{1}'{2}", typeDisplayName(valueTypeName), typeDisplayName((string)dataType),
+                                           laterUsingHint(rhs->tokens.size() == 1 ? rhs->tokens[0] : string(), valueTypeName)));
         }
     }
 }
@@ -1136,7 +1137,15 @@ bool bglParser::parseVariableInitializer(variableDeclaration& varDecl, token& da
             if(!isAuto) currentExpectedType = (string)dataType;
             bool savedForBind = readingForBind;
             readingForBind = symbol.value == token::bindAssignment;
-            expression* rhs = parseExpression(first, {token::endStatement}, func, body);
+            // A struct variable initialized from an accessor member of its own type takes the member itself, by copy.
+            classDef* savedOwnOperand = ownOperatorOperand;
+            if(classDef* dc = !isAuto && !isRef ? getDispatchClass((string)dataType) : nullptr;
+               dc != nullptr && isValueClass(dc) && !dc->isPrimitive && !dc->isEmitterClass)
+                ownOperatorOperand = dc;
+            expression* rhs = nullptr;
+            try { rhs = parseExpression(first, {token::endStatement}, func, body); }
+            catch(...){ ownOperatorOperand = savedOwnOperand; readingForBind = savedForBind; currentExpectedType = savedExpected; throw; }
+            ownOperatorOperand = savedOwnOperand;
             readingForBind = savedForBind;
             currentExpectedType = savedExpected;
             varDecl.declaredExpressionValue = rhs;
@@ -1199,6 +1208,7 @@ void bglParser::synthesizeClassLocalBacking(variableDeclaration& varDecl, bool i
             // On the routine itself: a nested block parses against a functionDef of its own.
             (currentFunc != nullptr ? currentFunc : func)->ownBackings.push_back({backingName, varDecl.type.name});
             varDecl.isClassLocalWithBacking = true;
+            varDecl.resetsEachPass = loopDepth > 0;
         }
     }
 }
@@ -1232,6 +1242,8 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
         if(cls != nullptr && !cls->isPrimitive && !cls->isEmitterClass && !cls->isAlias && !isValueClass(cls))
             cls = nullptr;
         if(cls != nullptr){
+            i6RawNode* tryOwnedInit = nullptr;   // the local's init, when it has one
+            string tryOwnedSet;                  // marks the local live, for a catch to release (see TryOwned)
             for(typeMember* m : cls->members){
                 functionDef* fn = dynamic_cast<functionDef*>(m);
                 if(fn == nullptr || !fn->isEmitter || fn->params.size() != 0) continue;
@@ -1248,6 +1260,7 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
                 if(substituted.empty()) continue;
                 if(fn->name == "init"){
                     i6RawNode& initNode = *(new i6RawNode());
+                    tryOwnedInit = &initNode;
                     initNode.text = substituted;
                     initNode.cooked = true;   // names the local: it follows the local's rename
                     // Before the initializer's own set-up too: a call it hoisted may hand back a pool slot
@@ -1261,10 +1274,36 @@ void bglParser::registerVariableDeclaration(variableDeclaration& varDecl, bool i
                     // `func` in any case: a nested block parses against a throwaway functionDef
                     // whose cleanups are discarded, which is why a `stringObj` declared inside an
                     // `if` was never freed at all.
-                    if(activeBlockStack.size() > 1 && !activeBlockStack.empty() && body == activeBlockStack.back())
+                    if(activeBlockStack.size() > 1 && !activeBlockStack.empty() && body == activeBlockStack.back()){
+                        if(!tryOwnedStack.empty()){
+                            TryOwned& own = tryOwnedStack.back();
+                            if(own.flags.empty() || own.bits == 15){
+                                auto* flag = new variableDeclaration();
+                                flag->name = format("_bgl_tryown{0}_{1}", own.id, (int)own.flags.size());
+                                flag->type = languageService.getType("int");
+                                flag->isSynthetic = true;
+                                own.flags.push_back(flag);
+                                own.bits = 0;
+                            }
+                            const string& flag = own.flags.back()->name;
+                            int bit = 1 << own.bits++;
+                            substituted += format(" {0} = {0} & (~{1});", flag, bit);
+                            own.live.push_back({format("{0} & {1}", flag, bit), substituted});
+                            tryOwnedSet = format("{0} = {0} | {1};", flag, bit);
+                        }
                         blockCleanups[body].push_back(substituted);
+                    }
                     else
                         func->cleanups.push_back({varDecl.name, substituted});
+                }
+            }
+            if(!tryOwnedSet.empty()){
+                if(tryOwnedInit != nullptr) tryOwnedInit->text += " " + tryOwnedSet;
+                else {
+                    i6RawNode* set = new i6RawNode();
+                    set->text = tryOwnedSet;
+                    set->cooked = true;
+                    body->statements.push_back(set);
                 }
             }
         }
@@ -1643,9 +1682,12 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
     // same mangler to look it up. Emitters are inlined and don't need the mangled name.
     if(!isEmitter && !funcDef.name.empty() && !isalpha((unsigned char)funcDef.name[0]) && funcDef.name[0] != '_')
         funcDef.i6name = mangleOperatorName(funcDef.name);
-    // A global routine named like an I6 statement keyword: a call would read as that statement.
+    // A global routine named like an I6 statement keyword, operator word or built-in name: a call would
+    // read as that instead.
+    static const set<string> i6BuiltInNames = {"class", "sender", "sw__var", "nothing"};
     if(!isEmitter && !isExternal && getCurrentCompileContext() == eCompileContext::global
-       && funcDef.i6name.empty() && bglLanguageService::isI6StatementKeyword(funcDef.name)){
+       && funcDef.i6name.empty() && (bglLanguageService::isI6StatementKeyword(funcDef.name) || isI6OperatorWord(funcDef.name)
+                                     || i6BuiltInNames.count(funcDef.name))){
         funcDef.i6name = "_" + funcDef.dName();
         funcDef.i6nameAvoidsKeyword = true;
     }

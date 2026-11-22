@@ -1,0 +1,8 @@
+// Negative test: a member that hides an attribute where one is wanted: the error says how to reach it.
+// EXPECT_ERROR: write '::open' for the attribute
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; outputPath = "tests/output"; }
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <bindings/i6StandardLibrary>
+class Door : object { bool open; void f() { if (has(open)) print("o"); } }
+#includeI6 "grammar"

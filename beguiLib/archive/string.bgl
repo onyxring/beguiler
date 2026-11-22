@@ -1,17 +1,7 @@
 //-----------------------------------------------------------------------------
-// archive/string.bgl - the earlier, pool-based Beguile string runtime (archived 2026-10-21).
+// archive/string.bgl - the earlier, pool-based Beguile string runtime (archived 2026-10-21)
 //
-// <string> replaced it: there each string's buffer grows in a string heap. This one gives every
-// string a fixed-size buffer from a pool. Include it as <archive/string>, instead of <string>.
-//
-// Backed during Phase 0 of the orString→Beguile port by an I6 island
-// (_todostring.bgl) that holds the renamed orLibrary orString + orStringPool
-// + orStr implementation. Later phases will progressively replace those I6
-// routines with Beguile-native equivalents (easiest first, allocation core
-// last) until the I6 island is gone.
-//
-// Usage:
-//   #include <archive/string>      in your .bgl file, instead of <string>.
+// Every string gets a fixed-size buffer from a pool. Include it as <archive/string>, instead of <string>
 //
 // Pool sizing can be overridden before including this file:
 //   #i6 { Default bglStringPoolReserve 20; }            ! number of simultaneous strings
@@ -25,16 +15,7 @@
 #endif
 
 #include <buf>
-// bglAllocated is now auto-loaded in core (no include needed); _bglString inherits it.
-//------------------------------------------------------------------------------
-// String pool & buffer allocation — I6 island (the last un-ported piece of the
-// orString port). Folded in from the former root-level _todostring.bgl so the
-// beguiLib root holds only user-includable extensions. This is string-internal
-// machinery: _bglStringPool (the allocator), _bglDsbuf (the backing mega-buffer),
-// _bglBufferWrapper, the live/free sentinel pools, and _bglInitializeStringBuffers
-// (seeded from #startup above). It will disappear once the pool is ported to
-// Beguile-native (see string.bgl's port note).
-//------------------------------------------------------------------------------
+//-- String pool and buffer allocation ----
 #i6 {
     Constant _bglOverrunSetting "bglStringDefaultSize";        ! what <buf> names when printed text overruns its room
     Default bglStringLockStackSize 32;                          ! temporaries an operator can hold at once (_bglStringLockStack)
@@ -44,30 +25,17 @@
     Global _bglStringLockStackMarkTop = 0;
     Array _bglStrAppendTemps --> 8;                             ! `s += $"…"` captures into one of these, nested
     Global _bglStrAppendTop = 0;
-    ! bglStringDefaultSize is declared in <buf>, already in scope.
 
-    Array _bglDsbuf buffer bglStringDefaultSize * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
+    Constant _bglStrSlotBytes = bglStringDefaultSize + 2 * WORDSIZE + 2;   ! a slot: its header, then bglStringDefaultSize characters
+    Array _bglDsbuf buffer _bglStrSlotBytes * bglBufferPoolReserve;  ! one mega-buffer carved into pool slots at startup
 
     class _bglBufferWrapper(bglBufferPoolReserve) with _bglText_buf 0;   ! buffer-as-object so it can move between sentinel containers
 
     object _bglAllocatedObjects;   ! sentinel — live pool (parent of currently-locked instances)
     object _bglObjectHeap;         ! sentinel — free pool (parent of available instances)
 
-    ! _bglStr was here. Ported to Beguile-native (see string.bgl). I6-side
-    ! callers (e.g. _bglString.set, _bglString.equals) still invoke
-    ! _bglStr.X(...) — same I6 dispatch surface, just the implementation
-    ! moved out.
-
-    ! _bglString class was here. Ported to Beguile-native pooled class (see
-    ! string.bgl). I6-side callers (_bglInitializeStringBuffers,
-    ! _bglStringPool.allocateString, .freeString, etc.) still see _bglString
-    ! as a class with create()/remaining()/.method() dispatch at link time —
-    ! the I6 emission of the Beguile-declared class IS a Class _bglString(N).
-
-    ! _bglStringPool provides a pattern to reuse buffers and _bglString instances, somewhat working around
-    ! the fact memory cannot be dynamically allocated in the Z-machine
     object _bglStringPool
-        private _allocateObj[type  !pick an arbitrary free object, lock it, and return it for use
+        private _allocateObj[type  ! Take a free object and lock it
                 o retval;
             objectloop(o in _bglObjectHeap && o ofclass type) {
                 retval=o;
@@ -75,7 +43,7 @@
             }
             if(retval==0) {
                 #Ifdef TARGET_GLULX;
-                    ! At startup no window is open yet to print the error in.
+                    ! No window is open yet at startup
                     if(glk($0048) == 0) glk($002F, glk($0023, 0, 0, 0, 3, 0));
                 #Endif;
                 print "^[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]^";
@@ -84,27 +52,25 @@
             move retval to _bglAllocatedObjects;
             return retval;
         ]
-    ,	_freeObj[obj; !take specific allocated object, and free it for later allocations
+    ,	_freeObj[obj; ! Free an allocated object
             if(obj==0) return 0;
             move obj to _bglObjectHeap;
             return obj;
         ]
-    ,	_reclaimObj[obj; !take a specific free object, and lock it
+    ,	_reclaimObj[obj; ! Lock a free object
             if(obj==0) return 0;
             move obj to _bglAllocatedObjects;
             return obj;
         ]
-        !find the allocated object wrapper for the given buffer
     ,	_findAllocatedObjFromBuffer[b o;
             objectloop(o in _bglAllocatedObjects && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
-            !find the unallocated object wrapper for the given buffer
     ,	_findAvailableObjFromBuffer[b o;
             objectloop(o in _bglObjectHeap && o ofclass _bglBufferWrapper ) if(o._bglText_buf==b) return o;
             return 0;
         ]
-    ,	_bglText_isManagedBuffer[b; !-is the buffer one of the ones we manage in our allocation/free pool?
+    ,	_bglText_isManagedBuffer[b;
             if(self._findAllocatedObjFromBuffer(b)==0) rfalse;
             rtrue;
         ]
@@ -113,38 +79,36 @@
             if(retval==0) retval=self._findAvailableObjFromBuffer(b);
             return retval;
         ]
-        !find the allocated object wrapper for the given buffer
     ,	_findAllocatedObj[b o;
             objectloop(o in _bglAllocatedObjects) if(o==b) return o;
             return 0;
         ]
-        !find the unallocated object wrapper for the given buffer
     ,	_findAvailableObj[b o;
             objectloop(o in _bglObjectHeap) if(o==b) return o;
             return 0;
         ]
-    with _bglText_allocateString[retval; !pick an arbitrary free string, lockit, then initialize it with an arbitrary free buffer; return the string
+    with _bglText_allocateString[retval; ! Take a free string and give it a buffer
             retval = self._allocateObj(_bglString);
-            retval._bglText_getBuf(); !force initilization
+            retval._bglText_getBuf();
             return retval;
         ]
-    ,	_bglText_freeString[str; !take a specific allocated string, and free it for later use
+    ,	_bglText_freeString[str;
             self._bglText_freeBuffer(self._findAllocatedObj(str));
             self._freeObj(self._findAllocatedObj(str));
 
             return str;
         ]
-    ,	_bglText_reclaimString[b retval; !take a previously freed string and lock it again
+    ,	_bglText_reclaimString[b retval;
             retval = self._reclaimObj(self._findAvailableObj(b));
             if(retval~=0) self._bglText_reclaimBuffer(retval._bglText_getBuf(true));
             return retval;
         ]
-    ,	_bglText_allocateBuffer[retval; !pick an arbitrary buffer, allocate it, and set its length to 0, returning it
+    ,	_bglText_allocateBuffer[retval; ! Take a free buffer, emptied
             retval = self._allocateObj(_bglBufferWrapper)._bglText_buf;
             _bglBuf._bglText_setLength(retval,0);
             return retval;
         ]
-    ,	_bglText_freeBuffer[b; !take a specific buffer and free it for later allocation
+    ,	_bglText_freeBuffer[b;
             self._freeObj(self._findAllocatedObjFromBuffer(b));
             return b;
         ]
@@ -165,22 +129,18 @@
         ]
     ;
 
-    ! _bglConvertToSizedBuffer was here. Ported to Beguile-native in <string>
-    ! (see string.bgl). I6-side callers (currently _bglInitializeStringBuffers)
-    ! invoke it by name as an ordinary I6 routine.
-
     [_bglInitializeStringBuffers
             i obj;
         for(i=0:_bglBufferWrapper.remaining()>0:i++){
             obj=_bglBufferWrapper.create();
-            obj._bglText_buf=_bglDsbuf+(i*bglStringDefaultSize);
-            obj._bglText_buf=_bglConvertToSizedBuffer(obj._bglText_buf,bglStringDefaultSize);
+            obj._bglText_buf=_bglDsbuf+(i*_bglStrSlotBytes);
+            obj._bglText_buf=_bglConvertToSizedBuffer(obj._bglText_buf,_bglStrSlotBytes);
             move obj to _bglObjectHeap;
         }
 
         for(i=0:_bglString.remaining()>0:i++){
             obj=_bglString.create();
-            obj._bglText_getBuf(); !lets make sure that we've associated a buffer to all strings: getBuf will allocate one if not previously allocated
+            obj._bglText_getBuf(); ! Gives every string a buffer
             move obj to _bglObjectHeap;
         }
     ];
@@ -190,77 +150,39 @@
     _bglInitializeStringBuffers();
 }
 
-//------------------------------------------------------------------------------
-// _bglConvertToSizedBuffer — promote a raw buffer chunk to the SizedBuffer
-// layout that <buf> uses everywhere: advance the user pointer by WORDSIZE+2
-// and write the size word at offset -1. Returns the new user-visible pointer.
-//
-// The user pointer is also registered with _bglBuf for `isTracked()` lookups
-// — the registry is the definitive source of truth for tracked-buffer status.
-//
-// DEPRECATED magic-byte slot: the 2 bytes at offsets -WORDSIZE-2 and
-// -WORDSIZE-1 (immediately before the size word) used to hold a $90 $84
-// magic stamp consumed by the old heuristic isTracked(). Phase B (registry +
-// typed dispatch) removed the dependency, so this routine no longer writes
-// the stamp. The slot is intentionally left reserved (allocation size and
-// user-pointer offset unchanged) for the deprecation window — full prefix
-// compaction is captured as pending follow-up.
-//
-// Called from _bglInitializeStringBuffers (still in the I6 island).
-//------------------------------------------------------------------------------
+// Promote a raw buffer chunk to the sized-buffer layout, registering it with _bglBuf
+// The 2 bytes before the size word are reserved and unused
 array<char> _bglConvertToSizedBuffer(array<char> b, int sz) {
     if(_bglBuf.isTracked(b)) return b;
     array<char> result = _bglAsBuf((int)b + bgl.wordsize + 2);
     _bglSetWord(result, -1, sz - bgl.wordsize - bgl.wordsize - 2);
-    _bglBuf._registerTracked(result);   // definitive tracking via registry
+    _bglBuf._registerTracked(result);
     return result;
 }
 
-//==============================================================================
-// _bglStr — utility helpers operating on string-shaped values (literals,
-// raw buffers, _bglString instances) regardless of which they actually are.
-// These are INTERNAL plumbing — users of the string class never call into
-// _bglStr directly. The "ambiguous dance" (ambiguousLock/ambiguousFree)
-// negotiates lock state so callers don't have to know whether a value they
-// got from a string helper is locked or ephemeral.
-//
-// Hybrid port stage: Beguile structure + types, with #i6 blocks for the
-// cross-island dispatch into _bglStringPool and _bglString (still I6-side).
-// When _bglStringPool and _bglString port to Beguile, these #i6 blocks
-// can become typed Beguile expressions.
-//==============================================================================
+//-- _bglStr: helpers for any string-shaped value ----
 object _bglStr {
-    // Allocate a new managed string. If unkStr is provided (non-zero), the
-    // new string is initialized to its value (literal, buf, or _bglString —
-    // ambiguousLock/Free handles all three cases).
-    //
-    // The trailing retval.lock() is load-bearing: allocateString() returns
-    // an unlocked string from the pool. Early orLib testing showed removing
-    // this lock() caused premature deallocation. Left in place pending a
-    // full lifecycle test that proves it's redundant.
+    // Allocate a string, copying unkStr if given
     var new(var unkStr = 0) asI6 _bglText_new {
         var retval; var lck;
         #i6 {
             lck    = self._bglText_ambiguousLock(unkStr);
             retval = _bglStringPool._bglText_allocateString();
             if(unkStr ~= 0) retval._bglText_set(unkStr);
-            else retval._bglText_setLength(0);   ! a pooled buffer still holds its last text
+            else retval._bglText_setLength(0);   ! A pooled buffer still holds its last text
             self._bglText_ambiguousFree(unkStr, lck);
             retval = retval._bglText_lock();
         }
         return retval;
     }
 
-    // An `array<char>` as a string: copied into a pooled string returned freed (ephemeral), like
-    // the other results here. A char array is laid out as a buffer is — a length word, then the
-    // characters — but nothing at run time tells it from a packed literal, so it is converted
-    // where its type is still known.
+    // Copy an array<char> into a freed pooled string
     var fromChars(var chars) asI6 _bglText_fromChars {
         var retval = self.new();
         int n; int i;
         #i6 {
             n = chars-->0;
-            i = _bglBuf._bglText_size(retval._bglText_getBuf());   ! -1 when the buffer carries no capacity
+            i = _bglBuf._bglText_size(retval._bglText_getBuf());   ! -1 when the buffer has no capacity
             if(i >= 0 && n > i) n = i;
             for(i = 0 : i < n : i++) retval._bglText_setChar(i, chars->(i + WORDSIZE));
             retval._bglText_setLength(n);
@@ -269,14 +191,9 @@ object _bglStr {
         return retval;
     }
 
-    // Apply a $0/$1/$2/$3 format pattern to source string `s` (which becomes $0),
-    // returning a freed (ephemeral) result. Mirrors appendChar/trim's contract:
-    // the receiver-facing emitters route here as `_bglStr.format($val, …)` so the
-    // bare `string` value type works, not just `stringObj`. `s` may be a literal,
-    // a `string`, or a `_bglString` — `self.new` canonicalizes it.
+    // Apply a $0..$3 pattern to s, returning a freed result
     var format(var s, var pattern, var p1 = 0, var p2 = 0, var p3 = 0) asI6 _bglText_format {
-        bool lk_pattern = self.ambiguousLock(pattern);   // an ephemeral argument must outlive the copies made below
-        bool lk_p1 = self.ambiguousLock(p1);
+        bool lk_pattern = self.ambiguousLock(pattern);        bool lk_p1 = self.ambiguousLock(p1);
         bool lk_p2 = self.ambiguousLock(p2);
         bool lk_p3 = self.ambiguousLock(p3);
         var str = self.new(s);
@@ -286,29 +203,21 @@ object _bglStr {
         self.ambiguousFree(p2, lk_p2);
         self.ambiguousFree(p1, lk_p1);
         self.ambiguousFree(pattern, lk_pattern);
-        return tmp;   // ephemeral, same contract as trim()
+        return tmp;
     }
 
-    // Cast any string-shaped value into a buffer suitable for _bglBuf operations.
-    // Return value's lock state is "ambiguous": if the input was a _bglString,
-    // the underlying buffer is locked; if a literal/raw, a freshly allocated
-    // (and freed) buffer is returned. Callers MUST use ambiguousLock/Free to
-    // safely operate on the return value.
+    // Cast a string-shaped value to a buffer; callers must wrap the result in ambiguousLock/Free
     var toAmbiguousBuffer(var unkStr) asI6 _bglText_toAmbiguousBuffer {
         var retval;
         #i6 {
             if(unkStr ofclass _bglString) return unkStr._bglText_getBuf();
-            ! A null string reads as the empty one.
+            ! A null string reads as the empty one
             if(unkStr == 0){
                 retval = _bglStringPool._bglText_allocateBuffer();
                 _bglBuf._bglText_setLength(retval, 0);
                 return _bglStringPool._bglText_freeBuffer(retval);
             }
-            ! Phase B safety: at this point we KNOW unkStr is not a _bglString
-            ! (ofclass check failed), so it's a packed string literal in practice.
-            ! Skip _bglBuf.set's isTracked heuristic — go straight to setFromLiteral.
-            ! Eliminates the residual isTracked-collision bug for all callers of
-            ! toAmbiguousBuffer (insert, replace, indexOf, startsWith, etc.).
+            ! Not a _bglString, so a packed literal
             retval = _bglStringPool._bglText_allocateBuffer();
             _bglBuf._bglText_setFromLiteral(retval, unkStr);
             retval = _bglStringPool._bglText_freeBuffer(retval);
@@ -316,9 +225,7 @@ object _bglStr {
         return retval;
     }
 
-    // If buf is currently in the pool's free list (ephemeral), temporarily
-    // lock it. Returns true iff this call performed the lock — caller MUST
-    // pass that bool back to ambiguousFree() to restore the prior state.
+    // Lock buf if it is freed; pass the result to ambiguousFree
     bool ambiguousLock(var buf) asI6 _bglText_ambiguousLock {
         bool retval = false;
         #i6 {
@@ -331,7 +238,7 @@ object _bglStr {
         return retval;
     }
 
-    // Restore prior lock state — only frees if ambiguousLock returned true.
+    // Undo ambiguousLock
     void ambiguousFree(var buf, bool val) asI6 _bglText_ambiguousFree {
         if(val) {
             #i6 {
@@ -341,12 +248,7 @@ object _bglStr {
         }
     }
 
-    // Equality check across any combination of string-shaped values.
-    // Both operands go through toAmbiguousBuffer, which hands back an ephemeral
-    // (already-freed) buffer for a literal. Converting the second operand allocates
-    // again and would otherwise be handed the very buffer the first one is using —
-    // making every literal-vs-literal comparison compare a value with itself. Lock
-    // the first result across the second conversion, per toAmbiguousBuffer's contract.
+    // Compare any two string-shaped values; the first is locked across converting the second
     bool areEqual(var buf1, var buf2, bool caseInsensitive = false) asI6 _bglText_areEqual {
         buf1 = self.toAmbiguousBuffer(buf1);
         bool lck = self.ambiguousLock(buf1);
@@ -356,21 +258,17 @@ object _bglStr {
         return retval;
     }
 
-    // Ordering across any combination of string-shaped values. Returns -1/0/1 in
-    // the qsort tradition, so it can be handed straight to array<T>.sort().
+    // Order any two string-shaped values, returning -1, 0 or 1
     int compareValues(var buf1, var buf2, bool caseInsensitive = false) asI6 _bglText_compareValues {
         buf1 = self.toAmbiguousBuffer(buf1);
-        bool lck = self.ambiguousLock(buf1);       // see areEqual — hold across the 2nd conversion
+        bool lck = self.ambiguousLock(buf1);
         buf2 = self.toAmbiguousBuffer(buf2);
         int retval = _bglBuf.compare(buf1, buf2, caseInsensitive);
         self.ambiguousFree(buf1, lck);
         return retval;
     }
 
-    // Character count of any string-shaped value. Takes the value as a PARAMETER so
-    // new() can detect literal-vs-instance; a `$self.getLength()` message send would
-    // fault on an array element or object property, which hold packed literals.
-    // Allocate/use/free is net-zero on the pool (same shape as trim below).
+    // Character count of any string-shaped value
     int getLength(var s) asI6 _bglText_getLength {
         var str = self.new(s);
         int n;
@@ -378,13 +276,8 @@ object _bglStr {
         return n;
     }
 
-    // ── Value-based surface ───────────────────────────────────────────────────
-    // Each takes the string as a PARAMETER so new() can detect literal-vs-instance.
-    // The emitter surface on `string` routes here rather than sending a message to
-    // the receiver, which would fault whenever the receiver is an array element or
-    // object property (both hold packed literals). allocate/use/free is net-zero on
-    // the pool. Mutating members (operator =, +=, []=, capture/release) are NOT here:
-    // they change the receiver in place and genuinely require a real instance.
+    //-- Value-based surface ----
+    // Mutating members are not here; they need a real instance
     int getChar(var s, int pos) asI6 _bglText_getChar {
         var str = self.new(s);
         int r;
@@ -392,32 +285,28 @@ object _bglStr {
         return r;
     }
     int indexOf(var s, var searchText, int startingIndex) asI6 _bglText_indexOf {
-        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_searchText = self.ambiguousLock(searchText);        var str = self.new(s);
         int r;
         #i6 { r = str._bglText_indexOf(searchText, startingIndex); str._bglText_free(); }
         self.ambiguousFree(searchText, lk_searchText);
         return r;
     }
     bool startsWith(var s, var prefix, bool caseInsensitive) asI6 _bglText_startsWith {
-        bool lk_prefix = self.ambiguousLock(prefix);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_prefix = self.ambiguousLock(prefix);        var str = self.new(s);
         bool r;
         #i6 { r = str._bglText_startsWith(prefix, caseInsensitive); str._bglText_free(); }
         self.ambiguousFree(prefix, lk_prefix);
         return r;
     }
     bool endsWith(var s, var suffix, bool caseInsensitive) asI6 _bglText_endsWith {
-        bool lk_suffix = self.ambiguousLock(suffix);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_suffix = self.ambiguousLock(suffix);        var str = self.new(s);
         bool r;
         #i6 { r = str._bglText_endsWith(suffix, caseInsensitive); str._bglText_free(); }
         self.ambiguousFree(suffix, lk_suffix);
         return r;
     }
     bool contains(var s, var searchText) asI6 _bglText_contains {
-        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_searchText = self.ambiguousLock(searchText);        var str = self.new(s);
         bool r;
         #i6 { r = str._bglText_contains(searchText); str._bglText_free(); }
         self.ambiguousFree(searchText, lk_searchText);
@@ -429,7 +318,7 @@ object _bglStr {
         #i6 { r = str._bglText_isEmpty(); str._bglText_free(); }
         return r;
     }
-    // `s += $"…"`: the interpolation is captured into a temporary, then appended.
+    // Append s += $"…" via a temporary
     var beginAppend(var s) asI6 _bglText_beginAppend {
         var t = self.new();
         #i6 { _bglStrAppendTemps-->_bglStrAppendTop = t; _bglStrAppendTop++; t._bglText_capture(); }
@@ -441,117 +330,96 @@ object _bglStr {
         return s;
     }
     var append(var s, var text) asI6 _bglText_append {
-        bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_text = self.ambiguousLock(text);        var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_append(text); str._bglText_free(); }
         self.ambiguousFree(text, lk_text);
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var appendChar(var s, int c) asI6 _bglText_appendChar {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_appendChar(c); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var prependChar(var s, int c) asI6 _bglText_prependChar {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_prependChar(c); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var prepend(var s, var text) asI6 _bglText_prepend {
-        bool lk_text = self.ambiguousLock(text);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_text = self.ambiguousLock(text);        var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_prepend(text); str._bglText_free(); }
         self.ambiguousFree(text, lk_text);
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var toUpper(var s) asI6 _bglText_toUpper {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_toUpper(); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var toLower(var s) asI6 _bglText_toLower {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_toLower(); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var trimLeft(var s) asI6 _bglText_trimLeft {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_trimLeft(); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var trimRight(var s) asI6 _bglText_trimRight {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_trimRight(); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var reverse(var s) asI6 _bglText_reverse {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_reverse(); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var mid(var s, int start, int count) asI6 _bglText_mid {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_mid(start, count); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var left(var s, int count) asI6 _bglText_left {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_left(count); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var right(var s, int count) asI6 _bglText_right {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_right(count); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var insert(var s, int pos, var source) asI6 _bglText_insert {
-        bool lk_source = self.ambiguousLock(source);   // an ephemeral argument must outlive the copies made below
-        var str = self.new(s);
+        bool lk_source = self.ambiguousLock(source);        var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_insert(pos, source); str._bglText_free(); }
         self.ambiguousFree(source, lk_source);
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var delete(var s, int pos, int count) asI6 _bglText_delete {
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_delete(pos, count); str._bglText_free(); }
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var replace(var s, var searchText, var replaceText) asI6 _bglText_replace {
-        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
-        bool lk_replaceText = self.ambiguousLock(replaceText);
+        bool lk_searchText = self.ambiguousLock(searchText);        bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_replace(searchText, replaceText); str._bglText_free(); }
         self.ambiguousFree(replaceText, lk_replaceText);
         self.ambiguousFree(searchText, lk_searchText);
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
     var replaceAll(var s, var searchText, var replaceText) asI6 _bglText_replaceAll {
-        bool lk_searchText = self.ambiguousLock(searchText);   // an ephemeral argument must outlive the copies made below
-        bool lk_replaceText = self.ambiguousLock(replaceText);
+        bool lk_searchText = self.ambiguousLock(searchText);        bool lk_replaceText = self.ambiguousLock(replaceText);
         var str = self.new(s);
         var tmp;
         #i6 { tmp = str._bglText_replaceAll(searchText, replaceText); str._bglText_free(); }
         self.ambiguousFree(replaceText, lk_replaceText);
         self.ambiguousFree(searchText, lk_searchText);
-        return tmp;   // ephemeral, same contract as trim()
-    }
+        return tmp;    }
 
-    // Trim leading/trailing whitespace, returning an ephemeral result.
+    // Trim leading and trailing whitespace
     var trim(var buf) asI6 _bglText_trim {
         var str = self.new(buf);
         var tmpStr;
@@ -562,16 +430,14 @@ object _bglStr {
         return tmpStr;
     }
 
-    // Print whatever was passed: literal, buffer, _bglString, or a routine
-    // address (which is invoked). If prop is supplied, buf is first resolved
-    // through that property (dynamic property access — hence the #i6 block).
+    // Print a literal, buffer, _bglString or routine; resolve buf through prop if given
     void print(var buf, var prop = 0) {
         #i6 {
             if(prop ~= 0){
-                if(metaclass(buf.prop) == Routine){ buf.prop(); return; }   ! run as the object's own method
+                if(metaclass(buf.prop) == Routine){ buf.prop(); return; }   ! Run as the object's own method
                 buf = buf.prop;
             }
-            if(buf == 0) return;   ! null prints nothing
+            if(buf == 0) return;   ! Null prints nothing
             if(buf provides print) {
                 buf.print();
                 return;
@@ -582,15 +448,9 @@ object _bglStr {
     }
 }
 
-//==============================================================================
-// _bglStringLockStack — holds the temporaries (already-freed results) a call's
-// arguments produce, so evaluating one can't reallocate another's. A mark is opened
-// before the arguments (Inform 6 evaluates the last argument first, so the compiler
-// puts it there), each temporary is locked and pushed, and the drain after the call
-// frees back to that mark and closes it. Marks nest with the calls.
-//==============================================================================
+//-- _bglStringLockStack: holds a call's temporary strings until the call returns ----
 superposed _bglObject _bglStringLockStack {
-    // Lock `s` if it is a freed pool string and remember it; any other value passes through.
+    // Lock s if it is a freed pool string and push it
     var stackLock(var s) asI6 _bglText_stackLock {
         if(_bglStr.ambiguousLock(s)) {
             #i6 {
@@ -604,7 +464,7 @@ superposed _bglObject _bglStringLockStack {
         }
         return s;
     }
-    // Open a mark at the current height; the matching stackDrain releases back to it.
+    // Open a mark at the current height
     int stackMark() asI6 _bglText_stackMark {
         #i6 {
             if(_bglStringLockStackMarkTop >= bglStringLockStackSize){
@@ -616,7 +476,7 @@ superposed _bglObject _bglStringLockStack {
         }
         return 0;
     }
-    // Free what was locked since the most recent mark, close that mark, and pass `result` through.
+    // Free back to the latest mark and close it, returning result
     var stackDrain(var result, int unused) asI6 _bglText_stackDrain {
         #i6 {
             if(_bglStringLockStackMarkTop == 0) return result;
@@ -630,26 +490,11 @@ superposed _bglObject _bglStringLockStack {
     }
 }
 
-//==============================================================================
-// _bglString — pooled-instance class. Wraps a sized buffer (lazily allocated
-// from _bglStringPool) and exposes the orString surface: lifecycle (lock/free),
-// search (equals/indexOf/startsWith/...), mutation (insert/delete/replace),
-// transforms (toUpper/toLower/reverse/trim), substring extraction (mid/left/
-// right), and format.
-//
-// Phase 3a port: class declaration and method shapes are Beguile-native; method
-// bodies remain verbatim I6 inside #i6 blocks. Phase 3b+ will convert bodies
-// one at a time to Beguile-native expressions.
-//
-// I6 idiom note: `rtrue` / `rfalse` inside #i6 short-circuit the routine
-// with `return true` / `return false`. The fall-through Beguile-level return
-// after each #i6 is satisfies Beguile's non-void return analysis (the compiler
-// can't see through #i6 to know the early-return covered all paths).
-//==============================================================================
+//-- _bglString: a pooled string instance wrapping a sized buffer ----
 class _bglString[bglStringPoolReserve] : bglAllocated {
     int _underlyingBuffer = 0;
 
-    // ── Introspection ────────────────────────────────────────────────────────
+    //-- Introspection ----
     int getLength() asI6 _bglText_getLength {
         int retval;
         #i6 { retval = _bglBuf._bglText_length(self._bglText_getBuf()); }
@@ -684,7 +529,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return retval;
     }
 
-    // ── Lifecycle / pool state ───────────────────────────────────────────────
+    //-- Lifecycle and pool state ----
     var clone() asI6 _bglText_clone {
         var retval;
         #i6 { retval = _bglStr._bglText_new(self); }
@@ -713,18 +558,13 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return self;
     }
 
-    // ── Mutation (set / setChar / setLength) ─────────────────────────────────
+    //-- Mutation ----
     var set(var unkStr) asI6 _bglText_set {
         var ab;
         bool lckBuf;
         bool lckSelf;
         #i6 {
-            ! Order matches orLib exactly: lckSelf first, then ab, then lckBuf.
-            ! Reordering surfaced pool-state corruption in stringRuntime.bgl
-            ! — the lock order is load-bearing for an edge case Jack hasn't
-            ! fully pinned down yet (likely interacts with reclaimString's
-            ! object-walk when the string and its underlying buffer are
-            ! both ambiguously locked).
+            ! Keep this order: lckSelf, ab, lckBuf
             lckSelf = _bglStr._bglText_ambiguousLock(self);
             ab      = _bglStr._bglText_toAmbiguousBuffer(unkStr);
             lckBuf  = _bglStr._bglText_ambiguousLock(ab);
@@ -735,26 +575,20 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return self;
     }
 
-    // ── Phase B: type-specific setters ───────────────────────────────────────
-    // Phase B eliminates the isTracked() heuristic that can false-positive when
-    // a Z-machine packed-string address numerically equals a tracked buffer's
-    // user-pointer. The caller knows whether they hold a literal or a string
-    // (Beguile's operator overloads discriminate at compile time); this passes
-    // that knowledge through to the right _bglBuf primitive directly.
+    //-- Type-specific setters ----
     var setFromLit(var lit) asI6 _bglText_setFromLit {
         #i6 {
-            ! A null string (a `?.` chain that stopped) is the empty one.
+            ! A null string is the empty one
             if(lit == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
-            ! Direct setFromLiteral — caller knows lit is a packed string.
             _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), lit);
         }
         return self;
     }
     var setFromStr(var src) asI6 _bglText_setFromStr {
         #i6 {
-            ! A null string (a `?.` chain that stopped) is the empty one.
+            ! A null string is the empty one
             if(src == 0){ _bglBuf._bglText_setLength(self._bglText_getBuf(), 0); return self; }
-            ! A literal or string passed where a stringObj is expected arrives as packed text.
+            ! Packed text arrives where a stringObj is expected
             if(metaclass(src) == String){ _bglBuf._bglText_setFromLiteral(self._bglText_getBuf(), src); return self; }
             _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), src._bglText_getBuf());
         }
@@ -768,13 +602,13 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     var setChar(int pos, int val) asI6 _bglText_setChar {
         #i6 {
-            if(val > 255) val = '?';   ! one byte per character: beyond Latin-1 reads as '?', as captured text does
+            if(val > 255) val = '?';   ! One byte per character
             self._bglText_getBuf()->(pos + WORDSIZE) = val;
         }
         return self;
     }
 
-    // ── Output stream redirection ────────────────────────────────────────────
+    //-- Output stream redirection ----
     var capture() asI6 _bglText_capture {
         #i6 { _bglBuf._bglText_capture(self._bglText_getBuf()); }
         return self;
@@ -797,16 +631,14 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return self;
     }
 
-    // ── Equality (single + 4-way "oneOf" + CI variants) ──────────────────────
+    //-- Equality ----
     bool equals(var altBuf, bool caseInsensitive = false) asI6 _bglText_equals {
         bool retval;
         #i6 { retval = _bglBuf._bglText_equals(_bglStr._bglText_toAmbiguousBuffer(altBuf), self._bglText_getBuf(), caseInsensitive); }
         return retval;
     }
 
-    // ── Phase B: type-specific equality ──────────────────────────────────────
-    // Caller knows whether the argument is a literal or a string instance;
-    // we skip the isTracked-based dispatch in toAmbiguousBuffer entirely.
+    //-- Type-specific equality ----
     bool equalsLit(var lit) asI6 _bglText_equalsLit {
         var ephemeral;
         bool retval;
@@ -826,9 +658,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     bool equalsOneOf(var buf1, var buf2 = 0, var buf3 = 0, var buf4 = 0, bool caseInsensitive = false) asI6 _bglText_equalsOneOf {
         #i6 {
-            ! Hidden orLib idiom: if the last positional arg is a boolean,
-            ! treat it as the caseInsensitive flag and the slot is empty.
-            ! (Lets equalsOneOf("a","b",true) read as a 2-string CI compare.)
+            ! A trailing boolean argument is the caseInsensitive flag
             if(buf4 == true or false) caseInsensitive = buf4;
             if(buf3 == true or false) caseInsensitive = buf3;
             if(buf2 == true or false) caseInsensitive = buf2;
@@ -844,17 +674,15 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return self.equalsOneOf(buf1, buf2, buf3, buf4, true);
     }
 
-    // ── Ordering ─────────────────────────────────────────────────────────────
-    // Negative when self sorts before `other`, 0 when equal, positive when after.
-    // Note the operand order: self is the LEFT side, so `a.compareTo(b) < 0`
-    // reads as "a before b" — the same sense the `<` operator gives you.
+    //-- Ordering ----
+    // Negative when self sorts before other
     int compareTo(var other, bool caseInsensitive = false) asI6 _bglText_compareTo {
         int retval;
         #i6 { retval = _bglBuf._bglText_compare(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(other), caseInsensitive); }
         return retval;
     }
 
-    // ── Search ───────────────────────────────────────────────────────────────
+    //-- Search ----
     int indexOf(var searchText, int startingIndex = 0) asI6 _bglText_indexOf {
         int retval;
         #i6 { retval = _bglBuf._bglText_indexOf(self._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(searchText), startingIndex); }
@@ -931,11 +759,8 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         return retval;
     }
 
-    // ── Modifications, returning "free" strings ──────────────────────────────
-    // The clone-mutate-free pattern: clone self into a freshly allocated
-    // string, mutate the clone in place via _bglBuf, free the clone (making
-    // it ephemeral so the caller doesn't need to dispose it explicitly), and
-    // return it. The ephemeral remains valid until the next pool reuse.
+    //-- Modifications, returning freed strings ----
+    // Each clones self, mutates the clone, and returns it freed; it stays valid until the pool reuses it
     var insert(int pos, var source, int count = 0) asI6 _bglText_insert {
         var retval;
         #i6 {
@@ -998,8 +823,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     var append(var text) asI6 _bglText_append {
         var retval;
-        bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
-        #i6 {
+        bool lk = _bglStr.ambiguousLock(text);        #i6 {
             retval = self._bglText_clone();
             _bglBuf._bglText_appendBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
             retval = retval._bglText_free();
@@ -1034,8 +858,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 
     var prepend(var text) asI6 _bglText_prepend {
         var retval;
-        bool lk = _bglStr.ambiguousLock(text);   // an ephemeral argument must outlive the copy made below
-        #i6 {
+        bool lk = _bglStr.ambiguousLock(text);        #i6 {
             retval = self._bglText_clone();
             _bglBuf._bglText_prependBuffer(retval._bglText_getBuf(), _bglStr._bglText_toAmbiguousBuffer(text));
             retval = retval._bglText_free();
@@ -1129,7 +952,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
         #i6 {
             retval = _bglStr._bglText_new();
             if(pattern == 0) pattern = "$0";
-            pattern = _bglStr._bglText_new(pattern);  ! convert literal-or-otherwise to _bglString
+            pattern = _bglStr._bglText_new(pattern);
             pattern._bglText_set(pattern._bglText_replaceAll("$0", self));
 
             if(p1 ~= 0) pattern._bglText_set(pattern._bglText_replaceAll("$1", p1));
@@ -1144,43 +967,20 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
     }
 }
 
-//------------------------------------------------------------------------------
-// Beguile string class extension. The instance methods dispatch via $self into
-// the _bglString class methods defined in the I6 island (one-line .X() calls).
-// Helpers that operate on bare literals/raw buffers route through _bglStr.
-//------------------------------------------------------------------------------
+//-- string class extension ----
 
-
-/// `<string>` upgrades `string` from I6's address semantics: `==` now compares TEXT, and the query
-/// and transform methods below become available. A `string` still owns no storage — every method
-/// that changes text returns a new `stringObj`.
+/// Pointer to fixed text; `==` compares the text, and every method that changes it returns a new `stringObj`.
 extend class string {
-    // NO lifecycle. A `string` is a slot holding a pointer to static text: it allocates
-    // nothing and frees nothing. `stringObj` is the slot that owns a pool buffer.
-
-    // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
-    // false-positive risk that could surface when a packed-string address
-    // numerically collided with a tracked-buffer user pointer.
-    // Assignment REPOINTS the slot — a plain word write; there is no buffer to copy into.
-    // An interpolated literal must be built at runtime, so it needs a stringObj.
+    // Repoint the slot
     replace emitter string operator = (stringLiteral v)         { $target = $v }
     emitter string operator = (string v)                        { $target = $v }
 
-    // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
-    // str3 = str1 + str2  =>  str3.set(str1.append(str2))
+    // Concatenate into a new string
     emitter stringObj operator + (stringLiteral v) { _bglStr._bglText_append($val, $v) }
     emitter stringObj operator + (string v)        { _bglStr._bglText_append($val, $v) }
     emitter stringObj operator + (stringObj v)     { _bglStr._bglText_append($val, $v) }
 
-    // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
-    // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
-    // copies it back into self.
-    // No `+=` and no `[]=` — mutation needs a buffer this type does not own. Use stringObj.
-
-    // Equality — Phase B typed dispatch
-    // `replace` — core declares these as address equality; <string> upgrades them to
-    // content comparison. `!=` must be replaced alongside `==`, or the two would
-    // disagree (content vs address) on the same pair of values.
+    // Replace == and != together, or content and address comparison would disagree
     replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
     replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
     replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }
@@ -1191,26 +991,15 @@ extend class string {
     emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
-    // Switch comparison — Phase B typed dispatch
+    // Switch comparison
     emitter eBool operator switch(stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
     emitter eBool operator switch(string v)        { _bglStr._bglText_areEqual($val, $v, false) }
 
-    // Comparison published for generic containers. `static` means no receiver, so these
-    // emit as free routines whose address array<T> can be handed — the only shape that can
-    // serve a PACKED LITERAL element, which has no properties to dispatch on. Both operands
-    // arrive as parameters, so toAmbiguousBuffer can sort out literal-vs-instance for each.
-    // `static` = no receiver, so this emits as a free routine whose address array<T> can be
-    // handed — the only shape that can serve a PACKED LITERAL element, which has no properties
-    // to dispatch on. Taking both operands is what makes that possible. A static operator is
-    // never selected at an ordinary `a == b` site; the instance operators above own those.
+    // Receiver-free forms that array<T> can call on packed literals
     static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
     static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
 
-    // Ordering — lexicographic by content, NOT by the packed address. Each
-    // yields a bool, so `a < b` reads the way it does for numbers.
-    //
-    // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
-    // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
+    // Order by content; use compareTo() for a sort comparator
     emitter eBool operator <  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
     emitter eBool operator <  (string v)        { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
     emitter eBool operator >  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
@@ -1220,16 +1009,14 @@ extend class string {
     emitter eBool operator >= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
     emitter eBool operator >= (string v)        { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
 
-    // Indexed character access
     emitter char operator[](int pos)                  { _bglStr._bglText_getChar($val, $pos) }
 
-    // Query — enables ?., ??, and postfix ? for null (unallocated) checks
+    // Null check for ?., ?? and postfix ?
     replace emitter eBool operator ?() { $self ~= 0 }
 
-    // Methods
-    replace emitter void  print()                          { _bglStr.print($val) }
+    replace emitter void  print()                        { _bglStr.print($val) }
 
-    /// Return a NEW string with `v` joined on. This one does not change the original — `stringObj` is the type that can be mutated.
+    /// Return a new string with `v` joined on.
     emitter stringObj  append(string v)                      { _bglStr._bglText_append($val, $v) }
     /// Return a new string with one character joined on.
     emitter stringObj  append(char v)                        { _bglStr._bglText_appendChar($val, $v) }
@@ -1308,85 +1095,47 @@ extend class string {
     /// True when the text is not the one character `c`.
     emitter eBool   operator != (char c)                  { (~~_bglStringLockStack._bglText_stackDrain(_bglStr._bglText_areEqual($val, _bglStringLockStack._bglText_stackLock(_bglStr._bglText_appendChar("", $c)), false), _bglStringLockStack._bglText_stackMark())) }
     emitter eBool   isEmpty()                             { _bglStr._bglText_isEmpty($val) }
-    // capture/release/captureOutput redirect output INTO a buffer — stringObj only.
 }
 
-
-//-----------------------------------------------------------------------------
-// stringObj — a slot that OWNS a pool buffer.
-//
-// The counterpart to `string`, which is a slot holding a pointer to static text.
-// The distinction exists because one type covering both representations is what
-// let a slot silently change representation: assigning a pool instance into a
-// literal-holding slot aliased a buffer the slot did not own, and the referent
-// was freed out from under it by its real owner.
-//
-//   stringLiteral   the text itself; an rvalue
-//   string          a slot pointing at text
-//   stringObj       a slot owning a pool buffer   <- this
-//
-// Widening (stringLiteral/string -> stringObj) allocates and copies the text in.
-// Narrowing (stringObj -> string) is rejected: it would alias an owned buffer.
-// `stringObj a = b` copies b's VALUE into a's own buffer; `ref stringObj a := b`
-// copies the address and owns nothing.
-//
-// Members mirror `string`'s surface and delegate to the same var-taking _bglStr
-// utilities — the single implementation both types share.
-//-----------------------------------------------------------------------------
-/// Text you build at run time. Unlike `string`, which points at fixed text in the story file, a
-/// `stringObj` owns a buffer from the string pool: it is taken when the variable is declared and
-/// given back when its block ends. Assigning copies the TEXT in.
+//-- stringObj: a slot that owns a pool buffer ----
+/// Text built at run time, held in a buffer from the string pool that is returned when the block ends.
 emitter class stringObj {
-    // Lifecycle
     /// Take a buffer from the pool. Runs automatically at the declaration.
     emitter void init()   { $self = _bglStr._bglText_new(); }
     /// Take a buffer from the pool holding a copy of `v`. Runs automatically for a parameter.
     emitter void init(stringObj v) { $self = _bglStr._bglText_new($v); }
 
-    // Temporaries in a call: a released (temporary) result is held from when it is produced until the
-    // call returns, so evaluating another argument can't take its buffer. The compiler places these.
     /// Open a mark to release held temporaries back to. Used by the compiler before a call's arguments.
     emitter int temporaryMark() { _bglStringLockStack._bglText_stackMark() }
     /// Hold `v` if it is a temporary; a live string passes through. Used by the compiler on an argument.
     emitter stringObj holdTemporary(stringObj v) { _bglStringLockStack._bglText_stackLock($v) }
-    /// Release what was held since the open mark and close it, passing `result` through; `marked` only orders the mark first. Used by the compiler around a call.
+    /// Release what was held since the open mark and return `result`. Used by the compiler around a call.
     emitter var releaseTemporaries(var result, int marked) { _bglStringLockStack._bglText_stackDrain($result, $marked) }
     /// Give the buffer back. Runs automatically when the declaring block ends.
     emitter void deinit() { if ($self) $self._bglText_free(); }
 
-    // Assignment — Phase B: type-discriminated dispatch eliminates isTracked()
-    // false-positive risk that could surface when a packed-string address
-    // numerically collided with a tracked-buffer user pointer.
+    // Copy the text into the object's own buffer
     emitter stringObj operator = (stringLiteral v)         { $self._bglText_setFromLit($v); }
     emitter stringObj operator = (stringObj v)                  { $self._bglText_setFromStr($v); }
-    // Widening: a `string` is a pointer to static text, so copy that text INTO this
-    // object's own buffer. setFromLit handles a bare text pointer; setFromStr would
-    // assume an instance.
     emitter stringObj operator = (string v)                     { $self._bglText_setFromLit($v); }
     emitter stringObj operator = (interpolatedStringLiteral v)     { $self._bglText_capture(); $v; $self._bglText_release(); }
+    emitter stringObj operator = (nullLiteral v)                { #error "A stringObj always holds a string and can't be null." }
 
-    // Concatenation: returns ephemeral copy with rhs appended; lhs is not mutated.
-    // str3 = str1 + str2  =>  str3.set(str1.append(str2))
+    // Concatenate into a new string
     emitter stringObj operator + (stringLiteral v) { _bglStr._bglText_append($val, $v) }
     emitter stringObj operator + (stringObj v)        { _bglStr._bglText_append($val, $v) }
     emitter stringObj operator + (string v)           { _bglStr._bglText_append($val, $v) }
     emitter stringObj operator + (char c)             { _bglStr._bglText_appendChar($val, $c) }
 
-    // Compound concatenation: s += v  ≡  s = s + v. Unlike `+`, this mutates the
-    // lhs in place — append() produces the joined (ephemeral) copy and setFromStr
-    // copies it back into self.
+    // Append in place
     emitter stringObj operator += (stringLiteral v) { $self._bglText_setFromStr($self._bglText_append($v)) }
     emitter stringObj operator += (stringObj v)        { $self._bglText_setFromStr($self._bglText_append($v)) }
     emitter stringObj operator += (string v)           { $self._bglText_setFromStr(_bglStr._bglText_append($self, $v)) }
     emitter stringObj operator += (char c)             { $self._bglText_setFromStr(_bglStr._bglText_appendChar($self, $c)) }
     emitter stringObj operator += (interpolatedStringLiteral v) { _bglStr._bglText_beginAppend($self); $v; _bglStr._bglText_endAppend($self); }
 
-    // Equality — Phase B typed dispatch
-    // `replace` — core declares these as address equality; <string> upgrades them to
-    // content comparison. `!=` must be replaced alongside `==`, or the two would
-    // disagree (content vs address) on the same pair of values.
     emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
-    emitter eBool operator == (stringObj v)        { _bglStr._bglText_areEqual($val, $v, false) }
+    emitter eBool operator == (stringObj v)      { _bglStr._bglText_areEqual($val, $v, false) }
     emitter eBool operator == (string v)           { _bglStr._bglText_areEqual($val, $v, false) }
     emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
     emitter eBool operator != (stringObj v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
@@ -1395,54 +1144,35 @@ emitter class stringObj {
     emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
 
-    // Switch comparison — Phase B typed dispatch
+    // Switch comparison
     emitter eBool operator switch(stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
     emitter eBool operator switch(stringObj v)        { _bglStr._bglText_areEqual($val, $v, false) }
 
-    // Comparison published for generic containers. `static` means no receiver, so these
-    // emit as free routines whose address array<T> can be handed — the only shape that can
-    // serve a PACKED LITERAL element, which has no properties to dispatch on. Both operands
-    // arrive as parameters, so toAmbiguousBuffer can sort out literal-vs-instance for each.
-    // `static` = no receiver, so this emits as a free routine whose address array<T> can be
-    // handed — the only shape that can serve a PACKED LITERAL element, which has no properties
-    // to dispatch on. Taking both operands is what makes that possible. A static operator is
-    // never selected at an ordinary `a == b` site; the instance operators above own those.
+    // Receiver-free forms that array<T> can call on packed literals
     static bool operator == (var a, var b) { return _bglStr.areEqual(a, b, false); }
     static int  operator <=> (var a, var b) { return _bglStr.compareValues(a, b, false); }
 
-    // Destruction published for generic containers — the value form of deinit(). The
-    // emitter deinit() above frees a receiver at scope exit; this takes the value as a
-    // parameter, so it emits as a free routine whose address array<T> can hold and call
-    // on a slot it has no receiver for. Guarded: a slot may hold 0 (never written) or a
-    // packed literal (not pool-owned), and neither is ours to free.
+    // Free a slot's string; skip 0 and packed literals
     static void deinit(var s) {
         #i6 { if(s ~= 0 && s ofclass _bglString) s._bglText_free(); }
     }
 
-    // Assignment published for generic containers — the value form of operator =. setOwned
-    // hands it the slot's CURRENT value and the incoming one, and stores what it returns.
-    // That is what lets `slots[i] = "jim"` allocate: the slot owns a pooled buffer, so the
-    // first write allocates one and later writes copy into the buffer already there, rather
-    // than churning the pool. Assigning 0 releases the slot.
+    // Store into a slot, allocating on first write and releasing on 0
     static var operator = (var cur, var v) {
         #i6 {
             if(cur ~= 0 && cur ofclass _bglString) {
                 if(v == 0) { cur._bglText_free(); return 0; }
-                cur._bglText_set(v);                  ! reuse the allocation this slot already owns
+                cur._bglText_set(v);                  ! Reuse the slot's allocation
                 return cur;
             }
             if(v == 0) return 0;
         }
-        return _bglStr.new(v);               // first write into this slot — allocate
+        return _bglStr.new(v);
     }
 
-    // Ordering — lexicographic by content, NOT by the packed address. Each
-    // yields a bool, so `a < b` reads the way it does for numbers.
-    //
-    // A sort comparator needs a signed -1/0/+1 ordering rather than a bool, so
-    // reach for compareTo() there:  arr.sort((string a, string b) => a.compareTo(b));
+    // Order by content; use compareTo() for a sort comparator
     emitter eBool operator <  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
-    emitter eBool operator <  (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
+    emitter eBool operator <  (stringObj v)      { (_bglStr._bglText_compareValues($val, $v, false) < 0) }
     emitter eBool operator >  (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
     emitter eBool operator >  (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) > 0) }
     emitter eBool operator <= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) <= 0) }
@@ -1450,16 +1180,14 @@ emitter class stringObj {
     emitter eBool operator >= (stringLiteral v) { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
     emitter eBool operator >= (stringObj v)        { (_bglStr._bglText_compareValues($val, $v, false) >= 0) }
 
-    // Indexed character access
     emitter char operator[](int pos)                  { _bglStr._bglText_getChar($val, $pos) }
-    emitter char operator[]=(int pos, char c)         { $val._bglText_setChar($pos,$c) }
+    emitter char operator[]=(int pos, char c)        { $val._bglText_setChar($pos,$c) }
     emitter char operator[]=(int pos, charLiteral c)  { $val._bglText_setChar($pos,$c) }
 
-    // Query — enables ?., ??, and postfix ? for null (unallocated) checks
+    // Null check for ?., ?? and postfix ?
     emitter eBool operator ?() { $self ~= 0 }
 
-    // Methods
-    emitter void  print()                          { _bglStr.print($val) }
+    emitter void  print()                         { _bglStr.print($val) }
 
     emitter stringObj  append(stringObj v)                      { _bglStr._bglText_append($val, $v) }
     emitter stringObj  append(char v)                        { _bglStr._bglText_appendChar($val, $v) }
@@ -1519,30 +1247,15 @@ emitter class stringObj {
     emitter void    capture()                             { $self._bglText_capture() }
     emitter void    release()                             { $self._bglText_release() }
     emitter void    captureOutput(object obj, property prop)   { $self._bglText_captureOutput($obj, $prop) }
-
-    // NOTE: no `static operator =` is published yet, so array<stringObj> slot writes
-    // take core's raw word store and the developer owns the lifecycle explicitly:
-    //     slots[9] = _bglStr.new("jim");   // caller allocates
-    //     ... _bglStr.free(slots[9]);      // and frees on removal
-    // Both halves are now automatic. stringObj publishes `static operator =` and
-    // `static deinit`, which the compiler hands array<T> via $opref(=) and $opref(deinit):
-    // every store (subscript, append, prepend, insert) allocates or copies into the slot's
-    // own buffer, and every drop (remove, removeValue, -=, clear, local scope exit)
-    // releases it. `slots[i] = "jim"` is the idiom; _bglStr.new() is no longer required
-    // and, because assignment is a copy, passing one now allocates twice.
 }
 
-/// The `"…"` literal gains `<string>`'s content comparison and query methods, so a literal can be
-/// compared and searched without first being copied into a `stringObj`.
+/// A literal gains content comparison and concatenation.
 extend class stringLiteral {
     emitter stringObj operator + (string v)      { _bglStr._bglText_append($self, $v) }
     emitter stringObj operator + (stringObj v)   { _bglStr._bglText_append($self, $v) }
     emitter stringObj operator + (charLiteral c) { _bglStr._bglText_appendChar($self, $c) }
 
-    // Upgrade the literal's own comparison too. Core declares these as address
-    // equality; without replacing them here a literal-on-the-left comparison
-    // (`"a" == "a"`) would keep core semantics even with <string> included, while
-    // the same test with a string on the left compared by content.
+    // Compare literals by content too
     replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
     replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
     replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }

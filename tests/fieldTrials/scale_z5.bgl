@@ -22,6 +22,7 @@
 #beguilerSettings {
     target = z5;
     includePaths = "../../../inform6/stdlib";
+    stringHeapSize = 4608;   // the default 5120 leaves the Z-machine no room for this program
 }
 
 #includeI6 "parser"

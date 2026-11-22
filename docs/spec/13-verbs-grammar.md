@@ -356,6 +356,28 @@ switch (action) {
 }
 ```
 
+**Verb values.** A variable, parameter or array element of type `verb` holds any verb, native or
+`extern`. One typed as a subclass of `verb` holds a verb declared through that subclass, and reaches its
+members. Both are performed and compared in the same way, and a subclass-typed value converts to `verb`
+wherever one is expected.
+
+A verb may share its name with a `#define` symbol. The name then means the symbol, except where a verb is
+expected: assigned to a `verb`, passed to a `verb` parameter, in an `array<verb>`, as a `case` label on an action, or on either
+side of `==` or `!=` with a verb.
+
+```bgl
+class ChatVerb : verb { string reply; void handler() { print(reply); } }
+ChatVerb Hum     { grammar = {.hum};     reply = "You hum."; }
+ChatVerb Whistle { grammar = {.whistle}; reply = "You whistle."; }
+array<ChatVerb> chats = { Hum, Whistle };
+
+ChatVerb v = chats[1];
+v.perform();                 // runs the Whistle action
+if (v == action) { … }
+verb any = v;                // any verb fits a `verb`
+print(v.reply);
+```
+
 **See also** §5.12, §23.3.4.
 
 ## 13.4 Grammar

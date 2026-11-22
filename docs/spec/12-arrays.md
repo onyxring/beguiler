@@ -555,12 +555,14 @@ is a compile-time error; copy it into an array with a capacity of its own first.
 
 - The initial elements of a file-scope or object member array are the slots' instances, as static
   data names an instance (§3.7). An inline object `T{ … }` is an instance of its own; a named
-  instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`)
-  gives its slot a copy of its initial value.
+  instance (`T named { … }`) is shared with the array; a global variable of the class (`T v = T{ … };`
+  or `T v;`) gives its slot a copy of its initial value.
 - A member array of a struct declared in a class can't have initial elements, since every
   instance of the class would share them; that is a compile-time error.
 - `pop()`, `popEnd()` and `dequeue()` release the slot's instance, as `remove` does, and return it. It stays readable
   until the instance is handed out again, so copy what you need before adding to an array of that struct.
+  An element stored by reference (an instance of an ordinary class) is the caller's once it is returned: its
+  `static deinit` doesn't run, as it does for `remove`.
 - Reordering an array of structs into itself (`trail = trail.orderBy(…);`) moves the instances between slots: a
   `ref` to an element follows that element to its new place.
 - A view is valid only while its source is unchanged: once the source removes or clears an element, the view may

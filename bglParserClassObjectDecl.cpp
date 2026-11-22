@@ -1669,6 +1669,9 @@ void bglParser::rejectValueClassInitializer(expression* e, const string& typeNam
 void bglParser::warnMemberHidesDefine(const string& name, const string& shown){
     rejectValueWordName(name);   // `int self;` can't be a member either
     if(currentClass != nullptr && currentClass->isExternal) return;
+    // An object setting a member its class declares: the class's declaration has said so already.
+    if(currentClass == nullptr && currentObject != nullptr && currentObject->objectClass != nullptr && !currentObject->objectClass->isExternal
+       && findMemberInHierarchy(currentObject->objectClass, [&](typeMember* m){ return m->name == name; }) != nullptr) return;
     if(definedSymbols.count(name))
         parsingWarning(format("Member '{0}' has the name of a #define symbol; in its methods the name means the member.", shown));
 }
@@ -3919,6 +3922,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
             if(clauseStr == ";") pos = (int)init->elements.size();  // append
             else { pos = resolvePosition(clauseStr); file.getToken(token::endStatement); }
             init->elements.insert(init->elements.begin() + pos, elem);
+            injectedAt[elem] = elemTok.src.line > 0 ? elemTok.src : file.currentLocation();
         } else if(verb.is("remove")){
             // remove <name | [N]>;
             int idx = resolveElemRef();

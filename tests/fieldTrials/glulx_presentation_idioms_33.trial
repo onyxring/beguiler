@@ -288,7 +288,7 @@ The bus: gain 9, trim 0, tag none, full.
 [grid 2]
 |small desk | focus C | master 2                   |
 > counts
-Level sets 52, copies 1; caption edits 3; focus switches 9; pan sets 3; mute flips 1.
+Level sets 51, copies 2; caption edits 3; focus switches 9; pan sets 3; mute flips 1.
 [grid 1]
 |A ##....... 2                                     |
 |B>==....... 2                                     |
@@ -312,7 +312,7 @@ Unmuted.
 [grid 2]
 |small desk | focus C | master 2                   |
 > counts
-Level sets 52, copies 1; caption edits 3; focus switches 9; pan sets 3; mute flips 2.
+Level sets 51, copies 2; caption edits 3; focus switches 9; pan sets 3; mute flips 2.
 [grid 1]
 |A ##....... 2                                     |
 |B>==....... 2                                     |

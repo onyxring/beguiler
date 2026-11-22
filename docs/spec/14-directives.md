@@ -621,6 +621,15 @@ line number, and continues compilation.
 Halts compilation with an error carrying the given text, reported in the compiler's standard error
 format with file name and line number.
 
+As the whole body of an emitter, `#error` makes using that emitter the error, reported at the line that
+uses it. An `operator = (nullLiteral)` written this way is how a class refuses `null`:
+
+```bgl
+emitter class Tag {
+    emitter Tag operator = (nullLiteral v) { #error "A Tag can't be null." }
+}
+```
+
 **Example**
 
 <!-- doctest: error -->

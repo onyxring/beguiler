@@ -1,0 +1,18 @@
+// A ref parameter of an owning type copies back only into an argument that is a variable:
+// null and a call's result are passed without a store.
+// EXPECT_OUTPUT: none none x y
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+stringObj kept = "x";
+stringObj find(int n) { if (n == 0) return null; return kept; }
+void show(ref stringObj p) { print(p ?? "none"); print(" "); }
+void grow(ref stringObj p) { p = "y"; }
+void main() {
+    bglInit();
+    show(null);
+    show(find(0));
+    show(find(1));
+    stringObj s = "s";
+    grow(s);
+    print(s);
+}

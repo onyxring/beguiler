@@ -1,0 +1,9 @@
+// Negative test: `#error` as an emitter's body reports where the emitter is used (§14.3.3).
+// EXPECT_ERROR: A Tag can't be null
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+emitter class Tag {
+    emitter Tag operator = (nullLiteral v) { #error "A Tag can't be null." }
+}
+void main(){
+    Tag t = null;
+}
