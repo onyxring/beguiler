@@ -84,6 +84,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the version is read from the tags
+
+      - name: Read the version from the tags
+        shell: bash
+        run: sh gitDescribe.sh build/gitDescribe.h
 
       - uses: actions/download-artifact@v4
         with:

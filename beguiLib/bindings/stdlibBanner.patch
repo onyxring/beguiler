@@ -1,0 +1,54 @@
+# stdlibBanner.patch: the banner of <bindings/i6StandardLibrary> in the standard library.
+# The routine chunk takes the place of Banner: the title, the release and serial number, then lines
+# for Beguile and for Inform and the library, and any text the extensions add.
+
+--- a/verblib.h
++++ b/verblib.h
+@@ routine Banner @@
+[ Banner i;
+    #Ifdef LanguageBanner;
+    LanguageBanner();
+    i = 0;  ! suppress warning
+    #Ifnot;
+    new_line;
+    if (Story) {
+        style bold;
+        print (string) Story;
+        style roman;
+    }
+
+    if (Headline) print (string) Headline;
+    else
+        new_line;
+
+    #Ifdef TARGET_ZCODE;
+    print (string) RELEASE__TX, (HDR_GAMERELEASE-->0) & $03ff, " / ", (string) SERNUM__TX;
+    for (i=0 : i<6 : i++) print (char) HDR_GAMESERIAL->i;
+    #Ifnot; ! TARGET_GLULX;
+    print (string) RELEASE__TX;
+    @aloads ROM_GAMERELEASE 0 i;
+    print i;
+    print " / ", (string) SERNUM__TX;
+    for (i=0 : i<6 : i++) print (char) ROM_GAMESERIAL->i;
+    #Endif; ! TARGET_
+    new_line;
+    style underline; print "Written in"; style roman;
+    print " Beguile v", beguiler / 1000, ".", (beguiler % 1000) / 10, ".", beguiler % 10;
+    new_line;
+    style underline; print "Compiled with"; style roman;
+    print " Inform v"; inversion;
+    print " / Library v", (string) LibRelease, " ";
+    #Ifdef STRICT_MODE;
+    print "S";
+    #Endif; ! STRICT_MODE
+    #Ifdef INFIX;
+    print "X";
+    #Ifnot;
+    #Ifdef DEBUG;
+    print "D";
+    #Endif; ! DEBUG
+    #Endif; ! INFIX
+    new_line;
+    _bglBannerExtras();
+    #Endif; ! LanguageBanner
+];

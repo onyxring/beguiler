@@ -36,7 +36,17 @@ jobs:
             cflags: ''
 
     steps:
+      # The sample's baselines are compared byte for byte, so Windows must not rewrite line endings.
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the version is read from the tags
+
+      - name: Read the version from the tags
+        shell: bash
+        run: sh gitDescribe.sh build/gitDescribe.h
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
@@ -66,3 +76,9 @@ jobs:
             exit 1
           fi
           echo "✓ ${{ matrix.target }}: examples/hello.bgl transpiled"
+
+      # The full suite runs on the developer's machine. Here each platform's build transpiles a
+      # sample of programs, and the output must match the baselines captured there.
+      - name: Sample matches the baselines
+        shell: bash
+        run: tests/ci_sample.sh

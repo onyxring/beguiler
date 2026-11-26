@@ -1,0 +1,17 @@
+// The banner is merged into the library's Banner, so a game replaces Banner like any library routine.
+// EXPECT_OUTPUT: Written in Beguile v
+// EXPECT_OUTPUT: Compiled with Inform v
+// EXPECT_OUTPUT: A line of the game's own.
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; title = "BANNER TEST"; headline = "\nA test.\n"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+replace void Banner(){
+    replaced();
+    printLine("A line of the game's own.");
+}
+int Initialise(){ location = roomA; return 0; }
+#includeI6 "grammar"

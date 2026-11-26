@@ -22,6 +22,10 @@ $(BUILDDIR)/%.o: %.cpp | $(BUILDDIR)
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)
 
+# The version comes from the release tag. The header is rewritten only when the description
+# changes, so only version.o rebuilds.
+$(shell sh gitDescribe.sh $(BUILDDIR)/gitDescribe.h)
+
 # The .d files are generated as a side effect of compiling, so they are absent on a
 # clean tree — hence -include rather than include.
 -include $(DEPS)

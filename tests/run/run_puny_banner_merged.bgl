@@ -1,0 +1,16 @@
+/*  run_puny_banner_merged — the binding merges Beguile's banner into PunyInform's Banner.  */
+// EXPECT_OUTPUT: Written in Beguile v
+// EXPECT_OUTPUT: Compiled with Inform v
+// EXPECT_OUTPUT: / PunyInform v
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/puny/lib"; title = "PUNY BANNER"; headline = "\nA test.\n"; }
+
+const object INITIAL_LOCATION_VALUE = roomA;
+
+#includeI6 "globals"
+#includeI6 "puny"
+#include <bindings/punyInform>
+
+object roomA { "Room A"; attributes = {light}; }
+void Initialise(){ Banner(); }

@@ -1,0 +1,20 @@
+# The programs every platform's build transpiles in CI; each must match its baseline.
+# Chosen for breadth, and to need nothing outside this repository.
+test_string.bgl
+test_string_glulx.bgl
+test_buf.bgl
+test_switch_advanced.bgl
+test_expressions.bgl
+test_control_flow.bgl
+test_classes.bgl
+test_inline_object.bgl
+test_value_emitter.bgl
+test_enum_int_cast.bgl
+test_optional_chain.bgl
+test_array_assignment.bgl
+test_member_arrays.bgl
+test_linq_basics.bgl
+test_float_basics.bgl
+test_uint.bgl
+test_trycatch.bgl
+test_inf_mode_basic.inf

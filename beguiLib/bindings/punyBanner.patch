@@ -1,0 +1,50 @@
+# punyBanner.patch: the banner of <bindings/punyInform> in PunyInform.
+# The routine chunk takes the place of Banner: the title, the release and serial number, then lines
+# for Beguile and for Inform and PunyInform.
+
+--- a/grammar.h
++++ b/grammar.h
+@@ routine Banner @@
+[ Banner _i;
+	new_line;
+#IfDef Story;
+	style bold;
+	print (string) Story;
+	style roman;
+	#IfDef Headline;
+		print (string) Headline;
+	#IfNot;
+		new_line;
+	#EndIf;
+#EndIf;
+	print "Release ", (0-->1) & $03ff, " / Serial number ";
+	for (_i = 18:_i < 24: _i++) print (char) 0->_i;
+	new_line;
+	style underline;
+	print "Written in";
+	style roman;
+	print " Beguile v", beguiler / 1000, (char) '.', (beguiler % 1000) / 10, (char) '.', beguiler % 10;
+	new_line;
+	style underline;
+	print "Compiled with";
+	style roman;
+	print " Inform v";
+	inversion;
+	print " / PunyInform v", PUNYINFORM_MAJOR_VERSION, (char) '.', PUNYINFORM_MINOR_VERSION;
+	if(PUNYINFORM_PATCH_VERSION)
+		print (char) '.', PUNYINFORM_PATCH_VERSION;
+#Ifdef PUNYINFORM_VERSION_SUFFIX;
+	print (string) PUNYINFORM_VERSION_SUFFIX;
+#EndIf;
+	print (char) ' ';
+#IfDef STRICT_MODE;
+	print (char) 'S';
+#EndIf;
+#IfDef DEBUG;
+	print (char) 'D';
+#EndIf;
+#IfTrue RUNTIME_ERRORS > 0;
+	print (char) 'R';
+#EndIf;
+	new_line;
+];
