@@ -13,5 +13,5 @@ void main() {
     float radius = (float)5;
     float pi     = (float)314 / (float)100;      // 3.14
     float area   = pi * radius * radius;         // ~78.5
-    print(area); print("^");
+    print(area, "^");
 }

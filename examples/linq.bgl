@@ -16,10 +16,9 @@ void main() {
 
     // Keep the even values and sort them ascending.
     array<int> evens = nums.filter((int x) => x % 2 == 0).orderBy();
-    for(int v in evens) { print(v); print(" "); }
+    for(int v in evens) print(v, " ");
     print("^");
 
     // A terminal collapses a chain to a single value.
-    print(nums.filter((int x) => x > 5).count());   // how many exceed 5
-    print("^");
+    print(nums.filter((int x) => x > 5).count(), "^");   // how many exceed 5
 }

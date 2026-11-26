@@ -15,6 +15,7 @@ superposed _bglObject _bglOutput {
     emitter void printLine(var val){ $i6Expr(print($val)); print "^"; }                                  /// Print `val` the way `print(val)` would, then a newline.
     emitter void printLine(interpolatedStringLiteral val){ $val; print "^"; }                            /// Print an interpolated string, then a newline.
     emitter void printLine(){ print "^"; }                                                               /// Print a newline.
+    distributor print;
     emitter void printName(object o){ print (name)$o; }                                                  /// Print an object's name, with no article.
 
     //-- Spacing ---------------------------------------------------------------
@@ -36,3 +37,6 @@ extend bgl {
 alias print     = _bglOutput.print;
 alias printLine = _bglOutput.printLine;
 alias printName = _bglOutput.printName;
+
+/// Print each argument in turn.
+distributor print;

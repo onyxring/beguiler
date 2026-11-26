@@ -145,6 +145,8 @@ void bglLanguageService::reset(){
     objectTypes.clear();
     objectInstances.clear();
     globals.clear();
+    distributors.clear();
+    memberDistributors.clear();
     globalInits.clear();
     startupBlocks.clear();
     emitFirstBlocks.clear();

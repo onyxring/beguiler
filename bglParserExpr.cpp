@@ -571,7 +571,24 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
                 break;
             }
         }
-        if(hasInterpolation){
+        // `=> print("a", b)`: a distributed call is a statement too.
+        bool distributedBody = false;
+        if(!hasInterpolation && bodyStart.is(eTokenType::name) && file.peekToken(1).is(token::parenOpen)){
+            string last = bodyStart.value.substr(bodyStart.value.rfind('.') + 1);
+            bool dotted = bodyStart.value.find('.') != string::npos;
+            if(dotted ? languageService.memberDistributors.count(last) > 0 : languageService.distributors.count(last) > 0
+                        || (languageService.memberDistributors.count(last) > 0 && (currentObject != nullptr || currentClass != nullptr))){
+                int depth = 0;
+                for(int k = 2; ; k++){
+                    token pk = file.peekToken(k);
+                    if(pk.is(eTokenType::eof) || pk.is(token::endStatement)) break;
+                    if(pk.is(token::parenOpen) || pk.is(token::braceOpen) || pk.is(token::bracketOpen)) depth++;
+                    else if(pk.is(token::parenClose) || pk.is(token::braceClose) || pk.is(token::bracketClose)){ if(depth == 0) break; depth--; }
+                    else if(depth == 0 && pk.is(token::comma)){ distributedBody = true; break; }
+                }
+            }
+        }
+        if(hasInterpolation || distributedBody){
             vector<statement*> savedPending = pendingInjections, savedPost = postInjections;
             pendingInjections.clear(); postInjections.clear();
             bool savedBodyStmt = lambdaBodyStatement;
@@ -583,6 +600,8 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
             pendingInjections = savedPending; postInjections = savedPost;
             currentFunc = savedFunc;
             fd.returnType.name = "void";
+            if(!stashedToken && distributedBody)
+                parsingError("A lambda whose body is a distributed call must be that call alone; use a block body `=> { … }` otherwise.");
             if(!stashedToken)
                 parsingError("A lambda whose body passes an interpolated string must be a single call, "
                              "such as `=> print($\"…\")`; use a block body `=> { … }` otherwise.");

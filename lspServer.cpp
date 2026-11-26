@@ -32,6 +32,15 @@ using namespace std;
 // External references to the compiler's global state
 extern bglParser parser;
 extern bglLanguageService languageService;
+
+static const char* const kDistributorNote = "*distributor: called with several arguments, it is called once for each.*";
+// A global function is a distributor by its own name; a method by a class's or an object's declaration.
+static bool isDistributor(functionDef* fd){
+    if(fd == nullptr) return false;
+    for(typeDef* g : languageService.globals)
+        if(g == fd) return languageService.distributors.count(fd->name) > 0;
+    return languageService.memberDistributors.count(fd->name) > 0;
+}
 extern beguilerSettingsDef beguilerSettings;
 
 LspServer::LspServer() {}
@@ -1711,6 +1720,7 @@ bool LspServer::resolveTierGlobal(const string& loweredName, bool isCall, LspSym
             out.typeName = fd->returnType.name;
             out.displayName = fd->dName();
             out.docComment = fd->docComment;
+            if(isDistributor(fd)) out.docComment += string(out.docComment.empty() ? "" : "\n\n") + kDistributorNote;
             out.declSrc = fd->src;
             out.isFunction = true;
         } else if(auto* od = dynamic_cast<objectDef*>(g)) {
@@ -2196,6 +2206,7 @@ string LspServer::hoverDottedMember(const string& uri, int line, int col, const 
         }
         if(fd->isEmitter) sig = "emitter " + sig;
         docComment = fd->docComment;
+        if(isDistributor(fd)) docComment += string(docComment.empty() ? "" : "\n\n") + kDistributorNote;
         return sig;
     }
     if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) {
@@ -4308,6 +4319,7 @@ json LspServer::handleSignatureHelp(const json& params) {
     if(candidates.empty()) return nullptr;
 
     json signatures = json::array();
+    bool distributedSlot = false;
     for(functionDef* fd : candidates) {
         string label = typeDisplay(fd->returnType.name) + " " +
                        (fd->displayName.empty() ? fd->name : fd->displayName) + "(";
@@ -4330,6 +4342,11 @@ json LspServer::handleSignatureHelp(const json& params) {
         };
         string doc = fd->docComment;
         if(fd->isEmitter) doc = doc.empty() ? "emitter function" : doc + "\n\n*emitter function*";
+        if(isDistributor(fd)){
+            doc += string(doc.empty() ? "" : "\n\n") + kDistributorNote;
+            // Past the routine's own parameters, each argument is a first argument again.
+            if(commaCount >= (int)fd->params.size()) distributedSlot = true;
+        }
         if(!doc.empty()) sig["documentation"] = {{"kind", "markdown"}, {"value", doc}};
         signatures.push_back(sig);
     }
@@ -4337,7 +4354,7 @@ json LspServer::handleSignatureHelp(const json& params) {
     return {
         {"signatures", signatures},
         {"activeSignature", 0},
-        {"activeParameter", commaCount}
+        {"activeParameter", distributedSlot ? 0 : commaCount}
     };
 }
 
@@ -4527,7 +4544,7 @@ static const set<string> bglModifiers = {
     // The rest of Appendix A's qualifier set, which this list had drifted behind.
     // `asI6`/`asBgl` are stored folded, as every keyword comparison here is.
     "additive", "alias", "asbgl", "asi6", "hide", "primitive", "ref", "required",
-    "struct", "superposed", "synonyms", "typesealed"
+    "struct", "superposed", "synonyms", "typesealed", "distributor"
 };
 // No `#ifdef` / `#ifndef`, in either hash form: `#if SYMBOL` and `#if !SYMBOL` test definedness
 // (appendix A, 14.2.5). Colouring them as directives told the author they existed. `readonly` is

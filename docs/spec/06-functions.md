@@ -8,6 +8,7 @@
 - [6.5 `replace` and `replaced()`](#65-replace-and-replaced)
 - [6.6 `self`](#66-self)
 - [6.7 `Main`](#67-main)
+- [6.8 Distributors](#68-distributors)
 <!-- /toc -->
 
 
@@ -281,3 +282,85 @@ void Main() {
 ```
 
 **See also** §23.3.1 (entry point under a binding).
+
+## 6.8 Distributors
+
+**Syntax**
+
+```syntax
+distributor ⟨name⟩ ;
+```
+
+**Description**
+
+A **distributor** is a function that may be called with several arguments, each of which becomes a
+call of its own, in the order written. The declaration names a function that already exists; it
+declares no parameters and no return type, because every call it produces is an ordinary call with
+one argument:
+
+```bgl
+void say(string line) { print(line); print("^"); }
+distributor say;
+
+say("One.", "Two.", "Three.");     // say("One."); say("Two."); say("Three.");
+```
+
+Each argument is resolved against the function's overloads separately (§6.4), so the arguments of one
+call may differ in type, and each reaches the overload for its own type. An argument is evaluated
+when its call is reached: the first call has returned before the second argument is read.
+
+A **distributed call** is a statement and has no value. It may be the whole body of a lambda
+(`() => print("a", n)`), which then returns nothing. Using one where a value is wanted is a
+compile-time error, as is naming an argument (§6.3). The function itself may return a value; each
+call's result is discarded, as for any call written as a statement. A call with one argument, or with none, is an
+ordinary call.
+
+A call with several arguments is the call as written when an overload accepts those arguments,
+and a distributed call otherwise. With `show(string)` and `show(string, int)` declared,
+`show("x", 4)` is one call of the second, and `show("p", "q", "r")` is three calls of the first. The
+same holds for parameters with defaults (§6.3): with `echo(string line, int times = 1)`,
+`echo("twice", 2)` is one call, and `echo("a", "b")` is two, each taking the default.
+
+Only one of the two readings can ever apply, because a distributor's overloads are restricted: no
+overload's second parameter may take a value that any overload's first parameter takes. Otherwise a
+call with two arguments could be one call or two, and the declaration is a compile-time error:
+
+```bgl
+void say(string line, string end = "^") { print(line, end); }
+distributor say;      // ERROR: 'end' takes what a first argument takes
+
+void echo(string line, int times = 1) { … }
+void echo(int n) { … }
+distributor echo;     // ERROR: 'times' takes an int, and echo(int) takes one first
+```
+
+A second parameter of type `var` takes every value, so a function with one cannot be a distributor.
+The check covers every overload of the name, including one declared after the `distributor` line.
+
+> **Note.** A mistyped call may be a distributed call. `echo("twice", "2")`, where `2` was meant, is
+> two calls, since each argument is acceptable as a first argument.
+
+A distributor is declared at global scope, for a global function, or in the body of a class or an
+object, for a method of it; a class's distributors are inherited. Naming something that is not a function there is a
+compile-time error. The declaration may precede or follow the function, and the calls.
+
+```bgl
+class journal : object {
+    void add(string line) { print(line, "^"); }
+    void add(int n)       { print(n, "^"); }
+    distributor add;
+}
+journal log { }
+
+log.add("Entered the cave.", 3, "bats.");
+```
+
+The receiver of a distributed method call is written once and used for every call, so it must not
+itself contain a call: `nextJournal().add("one", "two")` is a compile-time error. Store the call's
+result in a variable and distribute over that.
+
+`distributor` is a keyword only directly before a name and its `;`; elsewhere it is an ordinary name.
+
+> **Note.** `print` is a distributor (§21.4): `print("You have ", count, " coins.^");`.
+
+**See also** §6.4 (overload resolution), §21.4 (`print`).

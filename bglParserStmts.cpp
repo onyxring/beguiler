@@ -4955,6 +4955,101 @@ void bglParser::parseCallArgsWithHints(functionCallStatement& callStmt, Statemen
     callStmt.args = pal.args;
     callStmt.namedArgNames = pal.namedArgNames;
     callStmt.interpSegmentsPerArg = pal.interpSegmentsPerArg;
+    lastArgInjectionMarks = pal.injectionMarks;
+}
+
+bool bglParser::hasDistributor(classDef* cls, const string& method){
+    if(cls == nullptr) return false;
+    if(cls->distributors.count(method)) return true;
+    for(classDef* base : cls->baseClasses) if(hasDistributor(base, method)) return true;
+    return false;
+}
+
+void bglParser::checkDistributorOverloads(const string& shown, const vector<functionDef*>& overloads){
+    for(functionDef* two : overloads){
+        if(two->params.size() < 2) continue;
+        const string& second = two->params[1]->type.name;
+        for(functionDef* one : overloads){
+            if(one->params.empty()) continue;
+            const string& first = one->params[0]->type.name;
+            if(second == "var" || first == "var" || isTypeCompatible(first, second) || isTypeCompatible(second, first))
+                parsingError(format("'{0}' can't be a distributor: its second parameter '{1}' takes what a first argument "
+                                    "takes, so a call with two arguments could be one call or two.", shown, two->params[1]->dName()));
+        }
+    }
+}
+
+// The stream is just past the call's `(`.
+bglParser::DistributorCall bglParser::distributorCall(const string& qualifiedName, StatementContext& sc){
+    DistributorCall dc;
+    size_t argc = 0;
+    {
+        int depth = 1;
+        vector<token> ahead = file.peekTokens(4000, [&](token& t){
+            if(t.is(token::parenOpen) || t.is(token::braceOpen) || t.is(token::bracketOpen)) depth++;
+            else if((t.is(token::parenClose) || t.is(token::braceClose) || t.is(token::bracketClose)) && --depth == 0) return true;
+            return t.is(eTokenType::eof);
+        });
+        int d = 1;
+        if(ahead.size() > 1) argc = 1;
+        for(token& t : ahead){
+            if(t.is(token::parenOpen) || t.is(token::braceOpen) || t.is(token::bracketOpen)) d++;
+            else if(t.is(token::parenClose) || t.is(token::braceClose) || t.is(token::bracketClose)) d--;
+            else if(t.is(token::comma) && d == 1) argc++;
+        }
+    }
+    if(argc < 2) return dc;
+    auto takes = [&](const vector<functionDef*>& candidates){
+        for(functionDef* fd : candidates){
+            size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+            if(argc >= req && argc <= fd->params.size()) return true;
+        }
+        return false;
+    };
+    string name = qualifiedName;
+    if(name.rfind(kGlobalEscapeMarker, 0) == 0) name = name.substr(strlen(kGlobalEscapeMarker));
+    size_t dp = name.rfind('.');
+    if(dp == string::npos){
+        dc.global = true;
+        dc.method = name;
+        dc.candidate = languageService.distributors.count(name) > 0;
+        if(dc.candidate){
+            checkDistributorOverloads(file.asWritten(name), collectGlobalCandidates(name));
+            dc.arityTaken = takes(collectGlobalCandidates(name));
+        }
+        return dc;
+    }
+    dc.objectPath = name.substr(0, dp);
+    dc.method = name.substr(dp + 1);
+    if(dc.objectPath.find('(') != string::npos) return dc;
+    dc.receiverType = (dc.objectPath == "self")
+        ? (currentObject ? currentObject->name : (currentClass ? currentClass->name : string()))
+        : dc.objectPath.find('.') != string::npos ? resolvePathType(dc.objectPath, sc.func, sc.body, dc.method)
+                                                  : resolveIdentifierType(dc.objectPath, sc.func, sc.body);
+    vector<functionDef*> candidates;
+    if(!dc.receiverType.empty()) candidates = collectMethodCandidates(dc.receiverType, dc.method);
+    classDef* cls = dc.receiverType.empty() ? nullptr : languageService.classOf(dc.receiverType);
+    if(cls == nullptr && !dc.receiverType.empty()) cls = getDispatchClass(dc.receiverType);
+    dc.candidate = hasDistributor(cls, dc.method);
+    // A declared object's own distributor (`bgl.output.print`).
+    if(!dc.candidate && languageService.memberDistributors.count(dc.method)){
+        string recvObj = dc.objectPath == "self" ? (currentObject ? currentObject->name : string())
+                                                 : qualifyIdentifier(dc.objectPath, sc.func, sc.body);
+        if(objectDef* od = recvObj.empty() ? nullptr : languageService.findObjectType(recvObj);
+           od != nullptr && (od->distributors.count(dc.method) || hasDistributor(od->objectClass, dc.method))){
+            dc.candidate = true;
+            if(candidates.empty()){ candidates = collectMethodCandidates(recvObj, dc.method); dc.receiverType = recvObj; }
+        }
+    }
+    dc.arityTaken = takes(candidates);
+    if(dc.candidate) checkDistributorOverloads(file.asWritten(dc.method), candidates);
+    // `print("a", 3);` in a class that has a print() of its own.
+    if(!dc.candidate && dc.objectPath == "self" && languageService.distributors.count(dc.method)){
+        dc.candidate = true;
+        checkDistributorOverloads(file.asWritten(dc.method), collectGlobalCandidates(dc.method));
+        dc.arityTaken = dc.arityTaken || takes(collectGlobalCandidates(dc.method));
+    }
+    return dc;
 }
 
 // `recv.method(args);` — binds a method call statement (receiver type, `hide` enforcement,
@@ -5374,6 +5469,14 @@ bool bglParser::parseMethodChain(functionCallStatement& callStmt, string& chainR
         ParsedArgList chainPal = parseCallArgList(func, body);
         vector<expression*> chainArgs = chainPal.args;
         classDef* chainCls = languageService.classOf(chainReturnType);
+        bool chainTakes = false;
+        for(functionDef* fd : chainCls != nullptr ? collectMethodCandidates(chainCls->name, chainMember.value) : vector<functionDef*>()){
+            size_t req = 0; for(paramDef* p : fd->params) if(p->defaultValue.empty()) req++;
+            if(chainArgs.size() >= req && chainArgs.size() <= fd->params.size()) chainTakes = true;
+        }
+        if(chainArgs.size() > 1 && !chainTakes && hasDistributor(chainCls, chainMember.value))
+            parsingError(format("'{0}' is a distributor, and here it follows a call; put that call's result in a variable first.",
+                                chainMember.originalValue.empty() ? chainMember.value : chainMember.originalValue));
         // `descend(3).clear();`: an array a call returned is addressed as a value, as in an expression.
         if(chainCls == nullptr && isWordArrayType(chainReturnType) && getDispatchClass(chainReturnType) != nullptr){
             string recv = callStmt.emitterBody.empty() ? string() : resolveEmitterText(callStmt);
@@ -5550,8 +5653,55 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
     // parse argument list. Compute brace-argument hints so a bare `{ … }` arg infers its object
     // type from the callee's parameter (§6.2.1): a bare name → global candidates; a dotted path →
     // method candidates on the receiver's type.
-    parseCallArgsWithHints(callStmt, sc);
+    const DistributorCall dc = distributorCall(callStmt.functionName, sc);
+    distributingArgs = dc.candidate && !dc.arityTaken;
+    markingArgs = dc.candidate;
+    try { parseCallArgsWithHints(callStmt, sc); } catch(...){ distributingArgs = markingArgs = false; throw; }
+    distributingArgs = markingArgs = false;
+    // The call as written comes first: it is distributed when no overload accepts these arguments.
+    bool distribute = dc.candidate;
+    bool named = false;
+    for(const string& n : callStmt.namedArgNames) if(!n.empty()) named = true;
+    if(distribute && dc.arityTaken && !named){
+        if(dc.global) distribute = resolveGlobalCall(dc.method, callStmt.args, func, body).match == nullptr;
+        else {
+            distribute = dc.receiverType.empty() || resolveMethod(dc.receiverType, dc.objectPath, dc.method, callStmt.args).method == nullptr;
+            if(distribute && dc.objectPath == "self" && languageService.distributors.count(dc.method))
+                distribute = resolveGlobalCall(dc.method, callStmt.args, func, body).match == nullptr;
+        }
+    } else if(named && dc.arityTaken) distribute = false;
+    if(!distribute) return finishCallStatement(callStmt, tok, sc, true);
 
+    // A distributed call: one call for each argument, each with the statements its own argument set up.
+    if(named) parsingError(format("'{0}' is a distributor, so its arguments can't be named.", (tok.originalValue.empty() ? tok.value : tok.originalValue)));
+    vector<statement*> pre = pendingInjections, post = postInjections;
+    vector<pair<size_t, size_t>> marks = lastArgInjectionMarks;
+    pendingInjections.clear();
+    postInjections.clear();
+    size_t preFrom = 0, postFrom = 0;
+    for(size_t i = 0; i < callStmt.args.size(); i++){
+        functionCallStatement& piece = *(new functionCallStatement());
+        piece.src = stmtLoc;
+        piece.functionName = callStmt.functionName;
+        piece.args = {callStmt.args[i]};
+        piece.namedArgNames = {string()};
+        piece.interpSegmentsPerArg = {i < callStmt.interpSegmentsPerArg.size() ? callStmt.interpSegmentsPerArg[i] : vector<interpolatedSegment>()};
+        bool last = i + 1 == callStmt.args.size();
+        size_t preTo = last || i >= marks.size() ? pre.size() : marks[i].first;
+        size_t postTo = last || i >= marks.size() ? post.size() : marks[i].second;
+        pendingInjections.assign(pre.begin() + preFrom, pre.begin() + preTo);
+        postInjections.assign(post.begin() + postFrom, post.begin() + postTo);
+        preFrom = preTo; postFrom = postTo;
+        finishCallStatement(piece, tok, sc, last);
+    }
+    return false;
+}
+
+// Binds a call statement whose arguments are read and adds it to the body. `last` is false for
+// every call of a distributed call but its last, which is the one the statement's `;` follows.
+bool bglParser::finishCallStatement(functionCallStatement& callStmt, token tok, StatementContext& sc, bool last){
+    functionDef* func = sc.func;
+    statementBlock* body = sc.body;
     string chainReturnType;
     // `print($"…")` in a class with `print()` and `print(int)`: when no overload of the member takes the
     // arguments, a global function of the name does, as it would beside a single overload.
@@ -5568,7 +5718,7 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
         bindGlobalCallStatement(callStmt, tok, chainReturnType, sc);
     }
 
-    if(parseMethodChain(callStmt, chainReturnType, sc)) return false;   // it was a write through the result
+    if(last && parseMethodChain(callStmt, chainReturnType, sc)) return false;   // it was a write through the result
 
     // $target substitution for a DISCARDED emitter-call statement. A value-returning opcode
     // emitter (e.g. `bgl.asm.read_char(1)` → `@read_char $dev -> $target`) has no destination

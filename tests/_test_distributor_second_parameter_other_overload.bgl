@@ -1,0 +1,6 @@
+// EXPECT_ERROR: 'echo' can't be a distributor: its second parameter 'times' takes what a first argument takes, so a call with two arguments could be one call or two.
+#beguilerSettings { target = z5; }
+distributor echo;
+void echo(string line, int times = 1) { print(line); }
+void echo(int n) { print(n); }
+void main(){ bglInit(); echo("a", "b"); }

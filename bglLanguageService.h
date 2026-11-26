@@ -16,6 +16,8 @@ class bglLanguageService{
     vector<typeDef*> objectTypes;  //used to store class/type definitions (classDef, enumDef, typeDef)
     vector<typeDef*> objectInstances;  //used to store object instance definitions (objectDef)
     vector<typeDef*> globals;
+    set<string> distributors;      // `distributor name;`: a call with several arguments is one call for each
+    set<string> memberDistributors;   // every name a class or an object declares a distributor
     vector<pair<string,string>> globalInits;  // {varName, initBody} — populated for globals with init emitters
     vector<string> startupBlocks;             // raw I6 bodies from #startup { } directives; emitted inside bglInit()
     vector<string> emitFirstBlocks;           // raw I6 bodies from #emitfirst { } directives; emitted after ICL headers, before bglInit

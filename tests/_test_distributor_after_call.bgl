@@ -1,0 +1,6 @@
+// EXPECT_ERROR: 'add' is a distributor, and here it follows a call; put that call's result in a variable first.
+#beguilerSettings { target = z5; }
+class journal : object { void add(string s){ print(s); } distributor add; }
+journal log { }
+journal nextJournal(){ return log; }
+void main(){ bglInit(); nextJournal().add("one", "two"); }

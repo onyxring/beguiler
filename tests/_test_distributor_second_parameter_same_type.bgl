@@ -1,0 +1,5 @@
+// EXPECT_ERROR: 'say' can't be a distributor: its second parameter 'end' takes what a first argument takes, so a call with two arguments could be one call or two.
+#beguilerSettings { target = z5; }
+void say(string line, string end = "^") { print(line); print(end); }
+distributor say;
+void main(){ bglInit(); }

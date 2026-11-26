@@ -131,7 +131,8 @@ words alphabetically, with the section that defines each.
 `operator` `primitive` `ref` `replace` `required` `static` `struct` `superposed` `typesealed`
 
 `primitive` is a keyword only directly before `class`, `struct` only directly before a name, and `required`
-only directly before a member's type; elsewhere they are ordinary names (`int struct;`).
+only directly before a member's type; elsewhere they are ordinary names (`int struct;`). `distributor`
+(§6.8) is likewise a keyword only directly before a name and its `;`.
 
 **Type-forming words** build a type rather than name one.
 

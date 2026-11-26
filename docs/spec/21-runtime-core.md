@@ -117,7 +117,7 @@ int roll = bgl.util.random.get(6);       // 1..6
 **Syntax**
 
 ```syntax
-print( ⟨value⟩ ) ;
+print( ⟨value⟩ [ , ⟨value⟩ … ] ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
 printLine( [ ⟨value⟩ ] ) ;
 bgl.output.spaces( ⟨n⟩ ) ;
@@ -130,6 +130,8 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 **Description**
 
 The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
+
+The global `print` is a distributor (§6.8): given several arguments it prints each in turn, by the overload for that argument's type, so `print("You have ", count, " coins.^");` is three calls.
 
 `print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(iString)` and `print(iStringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
@@ -1107,7 +1109,7 @@ void Main() {
     bglInit();
     for (int n = 1; n <= 20; n++) {
         array<int> r = row(n);
-        print(r[3]); print(" ");
+        print(r[3], " ");
         bgl.gc.free(r);         // released now, not at the next prompt
     }
 }

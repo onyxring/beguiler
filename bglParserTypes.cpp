@@ -1522,6 +1522,9 @@ bglParser::BraceArgHints bglParser::braceArgHints(const vector<functionDef*>& ca
 // ===============================================================================
 bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statementBlock* body, const BraceArgHints& braceHints){
     ParsedArgList result;
+    const bool distributed = distributingArgs, marking = markingArgs;   // an argument's own calls are read as usual
+    distributingArgs = false;
+    markingArgs = false;
     // Function arguments are a fresh expression context — clear the outer expected-type so it
     // doesn't bleed into arg resolution. A BARE inline-object aggregate `{ … }` in argument
     // position IS inferred, though: `braceHints` (computed up-front from the callee's candidate
@@ -1599,9 +1602,10 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
             token sep = file.getToken();   // ',' or ')'
             arg->terminator = sep.value;
             result.args.push_back(arg);
+            if(marking) result.injectionMarks.push_back({pendingInjections.size(), postInjections.size()});
             result.namedArgNames.push_back(namedArgName);
             while(result.interpSegmentsPerArg.size() < result.args.size()) result.interpSegmentsPerArg.push_back({});
-            if(namedArgName.empty()) posIdx++;
+            if(namedArgName.empty() && !distributed) posIdx++;
             if(sep.is(token::parenClose)){ currentExpectedType = savedExpectedArgs; return result; }
             firstArgTok = file.getToken();
             continue;
@@ -1618,11 +1622,12 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                              "that prints it. Assign it to a stringObj (`stringObj s = $\"…\";`) for its text now.");
             arg->terminator = sep.value;
             result.args.push_back(arg);
+            if(marking) result.injectionMarks.push_back({pendingInjections.size(), postInjections.size()});
             result.namedArgNames.push_back(namedArgName);
             while(result.interpSegmentsPerArg.size() < result.args.size() - 1)
                 result.interpSegmentsPerArg.push_back({});
             result.interpSegmentsPerArg.push_back(segs);
-            if(namedArgName.empty()) posIdx++;
+            if(namedArgName.empty() && !distributed) posIdx++;
             if(sep.is(token::parenClose)) break;
             firstArgTok = file.getToken();
         } else {
@@ -1660,8 +1665,9 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                 parsingError(format("'{0}' has no value to pass; a print rule goes in interpolated text "
                     "($\"{{{0}}}\") or stands as a statement.", firstArgTok.originalValue.empty() ? firstArgTok.value : firstArgTok.originalValue));
             result.args.push_back(arg);
+            if(marking) result.injectionMarks.push_back({pendingInjections.size(), postInjections.size()});
             result.namedArgNames.push_back(namedArgName);
-            if(namedArgName.empty()) posIdx++;
+            if(namedArgName.empty() && !distributed) posIdx++;
             if(arg->terminator == token::parenClose) { currentExpectedType = savedExpectedArgs; return result; }
             firstArgTok = file.getToken();
         }
@@ -1861,6 +1867,8 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
     }
     string dispName = gcm.nameMatch ? gcm.nameMatch->dName() : funcName;
     if(gcm.arityMatch == nullptr){
+        if(args.size() > 1 && languageService.distributors.count(funcName))
+            parsingError(format("'{0}' is a distributor: with several arguments it is a statement, and has no value.", dispName));
         size_t req = 0; for(paramDef* p : gcm.nameMatch->params) if(p->defaultValue.empty()) req++;
         size_t tot = gcm.nameMatch->params.size();
         parsingError(format("Function '{0}' expects {1} argument(s), but {2} were supplied.\n  Expected: {3}",
@@ -1892,6 +1900,8 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
                 break;
             }
         }
+        if(args.size() > 1 && languageService.distributors.count(funcName))
+            parsingError(format("'{0}' is a distributor: with several arguments it is a statement, and has no value.", dispName));
         parsingError(format("No overload of function '{0}' accepts these argument types.\n  provided: ({1}){2}",
                             dispName, provided, detail));
     }

@@ -65,7 +65,18 @@ CASES = [
     # A routine-typed parameter offers routines of a fitting signature by name.
     dict(name='routine argument completion', doc='tests/lsp/arg_routine_completion.bgl', at=(4, 19),
          has=['react'], lacks=['score']),
+    # A type named like a local in scope (`Growth` beside `growth`) still lists its values.
+    dict(name='type beside a local of its name', doc='tests/lsp/path_candidates.bgl', at=(8, 31), has=['seed', 'sprout']),
+    # A `::` path is read from file scope: the object, not the member that hides it.
+    dict(name='global path completion', doc='tests/lsp/path_candidates.bgl', at=(9, 24), has=['level']),
+    # A chain of object-tree properties completes at each step.
+    dict(name='object-tree chain completion', doc='tests/lsp/path_candidates.bgl', at=(10, 30), has=['sibling', 'child']),
     dict(name='unknown int setting', doc='tests/lsp/ext_settings_unknown.bgl', at=(1, 0), diagnostics=1),
+    # Hover and signature help say a routine is a distributor; past its parameters the slot is the first again.
+    dict(name='distributor hover', doc='tests/lsp/distributor_hover.bgl', at=(5, 5), request='textDocument/hover',
+         result_has=['void say(string line)', 'distributor: called with several arguments']),
+    dict(name='distributor signature help', doc='tests/lsp/distributor_hover.bgl', at=(5, 14), request='textDocument/signatureHelp',
+         result_has=['distributor: called with several arguments', '"activeParameter": 0']),
 ]
 
 def run_case(case):
@@ -99,7 +110,10 @@ def run_case(case):
               'uri': uri, 'languageId': 'beguile', 'version': 1, 'text': open(path).read()}}})
         line, col = case['at']
         if 'request' in case:
-            send({'jsonrpc': '2.0', 'id': 2, 'method': case['request'], 'params': {'uri': uri, 'line': line - 1}})
+            params = {'uri': uri, 'line': line - 1}
+            if case['request'].startswith('textDocument/'):
+                params = {'textDocument': {'uri': uri}, 'position': {'line': line - 1, 'character': col}}
+            send({'jsonrpc': '2.0', 'id': 2, 'method': case['request'], 'params': params})
         else:
             send({'jsonrpc': '2.0', 'id': 2, 'method': 'textDocument/completion', 'params': {
                   'textDocument': {'uri': uri}, 'position': {'line': line - 1, 'character': col}}})

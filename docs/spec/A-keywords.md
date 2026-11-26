@@ -32,6 +32,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `default` | qualifier; control (`switch`) | §5.12, §8.7.3, §15.4.1 |
 | `delete` | control | §5.15 |
 | `dictionaryWord` | type | §13.1, §21.5.3 |
+| `distributor` | declaration (soft: before a name and its `;`) | §6.8 |
 | `dictionaryWordLiteral` | type | §2.4 |
 | `do` | control | §5.11 |
 | `else` | control | §5.8 |

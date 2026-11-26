@@ -867,6 +867,20 @@ class bglParser {
         bool processPostfixIncDec(token tok, token symbol, StatementContext& sc);
         // `name(args);` / `recv.method(args);` — a call used as a statement, with method chaining.
         bool processCallStatement(token tok, StatementContext& sc);
+        bool finishCallStatement(functionCallStatement& callStmt, token tok, StatementContext& sc, bool last);
+        // What is known of `name(a, b)` before its arguments are read, when `name` is a distributor.
+        struct DistributorCall {
+            bool candidate = false;    // a distributor called with several arguments
+            bool arityTaken = false;   // an overload takes that many arguments, so the call is tried as written first
+            bool global = false;       // a global function, not a method
+            string receiverType, objectPath, method;
+        };
+        DistributorCall distributorCall(const string& qualifiedName, StatementContext& sc);
+        bool hasDistributor(classDef* cls, const string& method);
+        // A distributor's overloads: no second parameter may take what a first parameter takes.
+        void checkDistributorOverloads(const string& shown, const vector<functionDef*>& overloads);
+        bool distributingArgs = false;   // the argument list being read is a distributed call's: every argument is a first argument
+        bool markingArgs = false;        // the argument list being read may be distributed: note what each argument queues
         // Computes the called name of a call statement (`replaced()` rewrite, bare-name qualification).
         string qualifyCallName(token tok, StatementContext& sc);
         // Parses a call statement's argument list, with brace-argument hints from the callee.
@@ -1388,6 +1402,7 @@ class bglParser {
             vector<expression*> args;
             vector<string> namedArgNames;
             vector<vector<interpolatedSegment>> interpSegmentsPerArg;
+            vector<pair<size_t, size_t>> injectionMarks;   // a distributed call: the pre- and post-statements queued once each argument was read
         };
         // Per-argument type hints for inferring a BARE inline-object aggregate `foo({ … })`: the
         // object-backed class each argument position (or named param) resolves to, when all viable
@@ -1645,7 +1660,8 @@ class bglParser {
         void adoptInitialElements(const string& arrName, const string& elementType, initializerList* list);
 
         vector<statement*> pendingInjections;  // pre-statements to emit before next main statement (e.g. from ternary lowering)
-        vector<statement*> postInjections;     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)
+        vector<statement*> postInjections;
+        vector<pair<size_t, size_t>> lastArgInjectionMarks;   // from the last parseCallArgsWithHints     // post-statements to emit after next main statement (e.g. closing braces for ?. guards)
 
 };
 

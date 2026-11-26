@@ -1059,6 +1059,19 @@ bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token n
 void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal, bool isExtend){
     markMemberStart(tok);
     rejectAccessModifier(tok);
+    // `distributor name;`: a call of the method with several arguments is one call for each of them.
+    if(tok.is("distributor") && file.peekToken(2).is(token::endStatement)){
+        token named = file.getToken();
+        file.getToken();
+        if(collectMethodCandidates(newClass.name, named.value).empty())
+            parsingError(format("'{0}' is not a routine of class '{1}', so it can't be a distributor.",
+                                file.asWritten(named.value), newClass.dName()));
+        newClass.distributors.insert(named.value);
+        languageService.memberDistributors.insert(named.value);
+        checkDistributorOverloads(file.asWritten(named.value), collectMethodCandidates(newClass.name, named.value));
+        tok = file.getToken();
+        return;
+    }
     if(tok.is(eTokenType::eof))
         parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
     // Conditional compilation between members. Needed for inline accessor objects — an
@@ -3510,6 +3523,20 @@ void bglParser::parseExternObjectBody(objectDef& newObj, verbObjectDef* vod){
 void bglParser::parseObjectMember(objectDef& newObj, token& tok){
     markMemberStart(tok);
     rejectAccessModifier(tok);
+    // `distributor name;`: a call of the method with several arguments is one call for each of them.
+    if(tok.is("distributor") && file.peekToken(2).is(token::endStatement)){
+        token named = file.getToken();
+        file.getToken();
+        vector<functionDef*> own = collectMethodCandidates(newObj.name, named.value);
+        if(own.empty())
+            parsingError(format("'{0}' is not a routine of object '{1}', so it can't be a distributor.",
+                                file.asWritten(named.value), newObj.dName()));
+        newObj.distributors.insert(named.value);
+        languageService.memberDistributors.insert(named.value);
+        checkDistributorOverloads(file.asWritten(named.value), own);
+        tok = file.getToken();
+        return;
+    }
     if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}' — missing closing '}}'", newObj.dName()));
     if(tok.is(eTokenType::directive)){
         if(tok.is("#i6")) processI6InlineMember(newObj);

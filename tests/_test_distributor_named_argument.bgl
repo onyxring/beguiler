@@ -1,0 +1,5 @@
+// EXPECT_ERROR: 'say' is a distributor, so its arguments can't be named.
+#beguilerSettings { target = z5; }
+void say(string s){ print(s); }
+distributor say;
+void main(){ bglInit(); say(s: "a", "b"); }

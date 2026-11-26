@@ -1319,6 +1319,14 @@ void bglParser::preScanClassBody(classDef* cls){
               bt = file.getToken();
               continue;
           }
+          if(bt.is("distributor") && file.peekToken(2).is(token::endStatement)){
+              token named = file.getToken();
+              if(cls != nullptr) cls->distributors.insert(named.value);
+              languageService.memberDistributors.insert(named.value);
+              file.getToken();
+              bt = file.getToken();
+              continue;
+          }
           if(bt.is("superposed") && file.peekToken().is("static") && cls != nullptr) bt = file.getToken();
           if(bt.is("static") && cls != nullptr){
               // static TYPE NAME [= expr] ;
@@ -1869,6 +1877,14 @@ void bglParser::preScanObject(token& tok, bool isExtern){
             token t = file.getToken();
             while(!t.is(token::braceClose) && !t.is(eTokenType::eof)){
                 bool memberIsEmitter = false;
+                if(t.is("distributor") && file.peekToken(2).is(token::endStatement)){
+                    token named = file.getToken();
+                    objStub->distributors.insert(named.value);
+                    languageService.memberDistributors.insert(named.value);
+                    file.getToken();
+                    t = file.getToken();
+                    continue;
+                }
                 if(t.is("superposed")) t = file.getToken();
                 if(t.is("replace")) t = file.getToken();   // `replace void report()`: a member like any other here
                 if(t.is("superposed")) t = file.getToken();
@@ -2557,6 +2573,12 @@ void bglParser::preScanGlobalLoop(){
         // which would leak a stray `global name;`). Skip the `= members` and any `{ … }` body — the
         // main pass parses them.
         if(tok.is("union") && !tok.isDataType()){ preScanUnion(); continue; }
+        // `distributor name;`
+        if(tok.is("distributor") && file.peekToken(2).is(token::endStatement)){
+            languageService.distributors.insert(file.getToken().value);
+            file.getToken();
+            continue;
+        }
 
         // Data type declaration: function, typed object, or global variable
         if(tok.is(eTokenType::dataType) || tok.is(eTokenType::identifier)){ preScanTypedDecl(tok, isExtern, isEmitter); continue; }

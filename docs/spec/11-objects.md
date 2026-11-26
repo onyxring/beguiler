@@ -265,7 +265,7 @@ single instance, so after the inner call returns the outer activation sees the i
 
 ```bgl
 class dims : object { inline int width; inline int height; }
-void report(dims d) { print(d.width); print(d.height); }
+void report(dims d) { print(d.width, d.height); }
 
 void Main() {
     report({ 3, 4 });            // constant: one constant instance
@@ -843,7 +843,7 @@ same rule; operator emitters may likewise be overloaded by parameter type.
 class Logger {
     void log(int n)        { print(n); }
     void log(string s)     { print(s); }
-    void log(int n, int m) { print(n); print(":"); print(m); }
+    void log(int n, int m) { print(n, ":", m); }
 }
 
 Logger lg { }

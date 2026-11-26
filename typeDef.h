@@ -93,6 +93,7 @@ class classDef:public typeDef{
         }
         vector<typeMember*> members;
         vector<classDef*> baseClasses;
+        set<string> distributors;   // `distributor name;`: a call of the method with several arguments is one call for each
         // This class's positional members, in order: its own `inline` members and the inherited ones it
         // re-lists (`inline name;`). The full order is this list, then each base's (positionalMembers).
         vector<string> inlineOrder;
@@ -157,6 +158,7 @@ class objectDef: public typeDef{
         sourceLocation src;
         vector<typeDef*> baseClasses;
         vector<typeMember*> members;
+        set<string> distributors;   // `distributor name;` in the object's body
         classDef* objectClass = nullptr; // the Beguile class this object is an instance of (if known)
         // World-model child placement: `children = { a, b, c }` in this object's body lists objects to
         // place INTO this object (i.e. set their `parent` to it). Desugared to parent-sets in a pre-emit

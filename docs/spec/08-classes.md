@@ -86,7 +86,7 @@ naming a moved global by its bare name there is a compile-time error.
 class Point {
     int x = 0;
     int y = 0;
-    void describe(){ print(x); print(y); }
+    void describe(){ print(x, y); }
 }
 ```
 
@@ -879,7 +879,7 @@ To dispatch to a specific ancestor's version of a member, cast the receiver: `((
 class Flyer   : object { int altitude = 0; }
 class Swimmer : object { int depth = 0; }
 class FlyingFish : Flyer, Swimmer {
-    void status(){ print(altitude); print(depth); }     // from Flyer, from Swimmer
+    void status(){ print(altitude, depth); }            // from Flyer, from Swimmer
 }
 ```
 
@@ -1083,6 +1083,6 @@ extend class Animal {
 
 class Dog : Animal {
     replace void speak(){ print("Woof!"); }         // found in the base hierarchy: no warning
-    void speak(int times){ print("Woof x"); print(times); }   // new signature: an added overload
+    void speak(int times){ print("Woof x", times); }         // new signature: an added overload
 }
 ```

@@ -777,7 +777,8 @@ words alphabetically, with the section that defines each.
 `operator` `primitive` `ref` `replace` `required` `static` `struct` `superposed` `typesealed`
 
 `primitive` is a keyword only directly before `class`, `struct` only directly before a name, and `required`
-only directly before a member's type; elsewhere they are ordinary names (`int struct;`).
+only directly before a member's type; elsewhere they are ordinary names (`int struct;`). `distributor`
+(§6.8) is likewise a keyword only directly before a name and its `;`.
 
 **Type-forming words** build a type rather than name one.
 
@@ -1193,7 +1194,7 @@ A pseudo-type converts to its corresponding type only through operators that the
 declares: a conversion operator on the pseudo-type (`intLiteral` declares one to `int`), or an
 `operator =` on the target type that accepts it (`float` declares `operator = (intLiteral)`). These
 rules are not built into the compiler (§2.10.1). Pseudo-types are first-class types, declared as
-`extern class` (§8.2.2) in the core and extensible with `extend` (§8.7.1), so a method defined
+`primitive class` (§8.2.5) in the core and extensible with `extend` (§8.7.1), so a method defined
 against one may be called directly on a literal.
 
 **Example**
@@ -1949,8 +1950,7 @@ The following combinations are compile-time errors: `explicit` on anything but `
 with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;
 `alias` with `emitter`; `default` in an object or verb body.
 
-`global` is not a qualifier. A variable is global by being declared at file scope (§3.3); the compiler
-does not recognize `global` before a declaration.
+`global` is not a qualifier. A variable is global by being declared at file scope (§3.3); writing `global` before a declaration is a compile-time error.
 
 ## 3.3 Global Variables
 
@@ -2943,6 +2943,9 @@ The left-hand side is a declared variable or a dotted member path. The assignmen
 the right-hand type is compatible with the left-hand type; the compatibility rules, tested in order,
 are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
+An assignment is a statement and has no value: chaining one, `a = b = c;`, or using one as a
+condition, `if(a = 3)`, is a compile-time error.
+
 **Example**
 
 <!-- doctest: skip -->
@@ -3316,10 +3319,6 @@ void deep() { throw 7; }
 try { deep(); } catch (int e) { print(e); }    // → 7
 ```
 
-**Notes**
-
-> **[Z-machine]** Requires version 5 or later.
-
 ---
 
 # 6 Functions
@@ -3484,6 +3483,9 @@ A call is resolved in two steps:
    parameter counts.
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
+   A parameter of a value type (a struct, or a primitive class such as `float`) also takes an argument
+   that the type's `operator =` accepts, converted by it. A reference class's `operator =` converts no
+   argument: there is no instance to assign into.
    A declared object is an exact match for its class, as a variable of that class is: for an object
    of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
 
@@ -3577,8 +3579,8 @@ void Main() { … }
 **Description**
 
 `Main` is the program's entry point. The compiler does not check for it: a program built without an
-IF library binding defines `Main` itself, and a missing or duplicated `Main` is reported by the
-Inform 6 stage. A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
+IF library binding defines `Main` itself, and a missing `Main` is reported when Inform 6 runs. A
+second `Main` is a compile-time error, as for any function declared twice (§6.4). A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
 and calls a library-specific entry point, such as `Initialise`, that the program supplies instead
 (§23.3.1).
 
@@ -3591,6 +3593,88 @@ void Main() {
 ```
 
 **See also** §23.3.1 (entry point under a binding).
+
+## 6.8 Distributors
+
+**Syntax**
+
+```syntax
+distributor ⟨name⟩ ;
+```
+
+**Description**
+
+A **distributor** is a function that may be called with several arguments, each of which becomes a
+call of its own, in the order written. The declaration names a function that already exists; it
+declares no parameters and no return type, because every call it produces is an ordinary call with
+one argument:
+
+```bgl
+void say(string line) { print(line); print("^"); }
+distributor say;
+
+say("One.", "Two.", "Three.");     // say("One."); say("Two."); say("Three.");
+```
+
+Each argument is resolved against the function's overloads separately (§6.4), so the arguments of one
+call may differ in type, and each reaches the overload for its own type. An argument is evaluated
+when its call is reached: the first call has returned before the second argument is read.
+
+A **distributed call** is a statement and has no value. It may be the whole body of a lambda
+(`() => print("a", n)`), which then returns nothing. Using one where a value is wanted is a
+compile-time error, as is naming an argument (§6.3). The function itself may return a value; each
+call's result is discarded, as for any call written as a statement. A call with one argument, or with none, is an
+ordinary call.
+
+A call with several arguments is the call as written when an overload accepts those arguments,
+and a distributed call otherwise. With `show(string)` and `show(string, int)` declared,
+`show("x", 4)` is one call of the second, and `show("p", "q", "r")` is three calls of the first. The
+same holds for parameters with defaults (§6.3): with `echo(string line, int times = 1)`,
+`echo("twice", 2)` is one call, and `echo("a", "b")` is two, each taking the default.
+
+Only one of the two readings can ever apply, because a distributor's overloads are restricted: no
+overload's second parameter may take a value that any overload's first parameter takes. Otherwise a
+call with two arguments could be one call or two, and the declaration is a compile-time error:
+
+```bgl
+void say(string line, string end = "^") { print(line, end); }
+distributor say;      // ERROR: 'end' takes what a first argument takes
+
+void echo(string line, int times = 1) { … }
+void echo(int n) { … }
+distributor echo;     // ERROR: 'times' takes an int, and echo(int) takes one first
+```
+
+A second parameter of type `var` takes every value, so a function with one cannot be a distributor.
+The check covers every overload of the name, including one declared after the `distributor` line.
+
+> **Note.** A mistyped call may be a distributed call. `echo("twice", "2")`, where `2` was meant, is
+> two calls, since each argument is acceptable as a first argument.
+
+A distributor is declared at global scope, for a global function, or in the body of a class or an
+object, for a method of it; a class's distributors are inherited. Naming something that is not a function there is a
+compile-time error. The declaration may precede or follow the function, and the calls.
+
+```bgl
+class journal : object {
+    void add(string line) { print(line, "^"); }
+    void add(int n)       { print(n, "^"); }
+    distributor add;
+}
+journal log { }
+
+log.add("Entered the cave.", 3, "bats.");
+```
+
+The receiver of a distributed method call is written once and used for every call, so it must not
+itself contain a call: `nextJournal().add("one", "two")` is a compile-time error. Store the call's
+result in a variable and distribute over that.
+
+`distributor` is a keyword only directly before a name and its `;`; elsewhere it is an ordinary name.
+
+> **Note.** `print` is a distributor (§21.4): `print("You have ", count, " coins.^");`.
+
+**See also** §6.4 (overload resolution), §21.4 (`print`).
 
 ---
 
@@ -3667,7 +3751,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 | `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
 | `$target` | The assignment target as a full lvalue path (`obj.prop`, or `x`); see below. |
-| `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. |
+| `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. Using it in any other emitter is a compile-time error. |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (§7.3.1). |
 | `$oprefReq(op[, T])` | As `$opref`, but a missing operator is a compile-time warning (§7.3.1). |
 | `$i6Name(path)` | The identifier Inform 6 knows the named declaration by (§7.3.3). |
@@ -4204,7 +4288,7 @@ naming a moved global by its bare name there is a compile-time error.
 class Point {
     int x = 0;
     int y = 0;
-    void describe(){ print(x); print(y); }
+    void describe(){ print(x, y); }
 }
 ```
 
@@ -4997,7 +5081,7 @@ To dispatch to a specific ancestor's version of a member, cast the receiver: `((
 class Flyer   : object { int altitude = 0; }
 class Swimmer : object { int depth = 0; }
 class FlyingFish : Flyer, Swimmer {
-    void status(){ print(altitude); print(depth); }     // from Flyer, from Swimmer
+    void status(){ print(altitude, depth); }            // from Flyer, from Swimmer
 }
 ```
 
@@ -5201,7 +5285,7 @@ extend class Animal {
 
 class Dog : Animal {
     replace void speak(){ print("Woof!"); }         // found in the base hierarchy: no warning
-    void speak(int times){ print("Woof x"); print(times); }   // new signature: an added overload
+    void speak(int times){ print("Woof x", times); }         // new signature: an added overload
 }
 ```
 
@@ -5831,7 +5915,7 @@ later file declares the target (§18.3). What an import contributes depends on t
 |---|---|---|
 | Emitter class | Value emitters, emitter functions | Expanded at the use site |
 | Object | Methods, properties, type aliases | Through the object path |
-| Static members | Static variables | As a static member reference |
+| Class with static members | Static variables and static methods | As a static member reference |
 
 `#using` a regular class that has only non-static instance members is a compile-time error; instance
 methods require a receiver.
@@ -6143,7 +6227,7 @@ single instance, so after the inner call returns the outer activation sees the i
 
 ```bgl
 class dims : object { inline int width; inline int height; }
-void report(dims d) { print(d.width); print(d.height); }
+void report(dims d) { print(d.width, d.height); }
 
 void Main() {
     report({ 3, 4 });            // constant: one constant instance
@@ -6290,6 +6374,8 @@ object cloak {
     object parent = selfobj;     // the player carries it at game start
 }
 ```
+
+**See also** §8.2.8 — `typesealed` members; §21.5.7 — `parentProp`, the type of `parent`.
 
 ### 11.5.2 `children`
 
@@ -6719,7 +6805,7 @@ same rule; operator emitters may likewise be overloaded by parameter type.
 class Logger {
     void log(int n)        { print(n); }
     void log(string s)     { print(s); }
-    void log(int n, int m) { print(n); print(":"); print(m); }
+    void log(int n, int m) { print(n, ":", m); }
 }
 
 Logger lg { }
@@ -7267,7 +7353,9 @@ element of `⟨type⟩`.
 The element type of an array may itself be an array type, two deep at most: `array<array<T>>`. A third level is
 a compile-time error; keep it in a class member instead. A struct can't hold an array of arrays either (its
 instances are copied and pooled member by member); a struct member may be a `ref` to one kept elsewhere. A nested initializer supplies
-one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
+one braced list per inner array, and the inner arrays may differ in length.
+The inner arrays of an `array<array<char>>` are byte arrays (§12.4); each row is written as a braced
+list (`{'o','n','e'}`), since a string literal is not accepted as a row. `name[i]` is an
 `array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
 the outer array with `row` typed `array<T>`. A nested array may be declared as a local; its inner
@@ -7828,7 +7916,7 @@ on a verb (§13.4.5) or in a grammar object, and both forms have the same effect
 | Type | Purpose |
 |---|---|
 | `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, …. Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position. `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
-| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. |
+| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. A program writes patterns in a verb's `grammar`; declaring a variable or member of this type is a compile-time error. |
 | `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
 
@@ -8173,6 +8261,10 @@ and is consumed by the compiler: nothing of it reaches the generated I6 except t
 placement directives in §14.4 and the island directives in §14.5. An unrecognized directive is a
 compile-time error.
 
+Inside a function body only the conditionals (§14.2.5), `#message`, `#warning`, `#error` and the
+island directives (§14.5) are written. Any other directive there is a compile-time error: it would
+read as local to the function, and none is.
+
 The entries are grouped by purpose; Appendix B lists every directive alphabetically.
 
 ## 14.1 Source Organization
@@ -8368,13 +8460,31 @@ exception is a class that uses an `extern attribute`, which must follow that att
 Applies a patch to the Inform 6 files of the build. The patch is a unified diff, as `diff -u` or
 `git diff` writes it. It is found like `#includeI6` (§14.1.5), trying *name* as written, then
 *name*`.patch`, then *name*`.diff`. A patch that is not found is a compile-time error; `?"name"`
-silently skips it.
+silently skips it, and skips any file the patch names that is not found, as `#include ?` does.
 
 Each file the patch changes is found through the same search, by its `+++` path without a leading
 `a/` or `b/`, then by its file name alone. Its **merge chunks**, the sections that each start with
 `@@`, are applied in order. A merge chunk must match its lines exactly, ignoring trailing whitespace,
 at the line it states or the nearest place they match. A merge chunk that matches nowhere, a file that is not found, or a malformed patch is a compile-time error at the
 directive. A patch cannot create or delete a file.
+
+A **routine chunk** replaces a whole routine without quoting its old text. It starts with
+`@@ routine ⟨name⟩ @@`, and the lines after it, up to the next chunk or file header, are the routine
+that takes the old one's place:
+
+```
+--- a/verblib.h
++++ b/verblib.h
+@@ routine Banner @@
+[ Banner;
+    print "My banner.^";
+];
+```
+
+The routine is found by name, wherever it is in the file; where the file does not hold it, the files
+it includes are searched. A routine that is not found, or that the file defines more than once, is a
+compile-time error. A routine chunk does not depend on the text of the routine it replaces, so it
+applies to any release of the file that has the routine.
 
 A merge applies to the whole build, not at its position: a patch may come before or after the
 `#includeI6` of the file it changes. Patches apply in source order, each to the file as the earlier
@@ -8384,7 +8494,8 @@ once applies once.
 
 The patched files are written to the `i6patched` folder of the output directory, which the I6
 compiler searches before every other include directory. Every include of an original reads the patched
-copy, including one made inside another I6 file.
+copy, including one made inside another I6 file. When the source file is a `.inf`, merges are not
+applied: its Inform 6 files are read as they are.
 
 **Example**
 
@@ -8476,7 +8587,8 @@ all do.
 
 **Description**
 
-Defines a compilation symbol. Without a value the symbol has the boolean value `true`. A symbol with
+Defines a compilation symbol. Without a value the symbol has the boolean value `true`. That value is what `#if` tests; a symbol defined without a value is not a name in a Beguile
+expression, where using it is a compile-time error. A symbol with
 a value is also usable in a Beguile expression, where the name is replaced by its value at compile
 time: an integer value is an integer literal, a decimal number (`0.5`) a float literal, and a quoted
 string that string. Any other word is a string literal of that word, so after `#define SHOP corner`,
@@ -8921,9 +9033,9 @@ is applied (§18.9). When emitted, the block takes the position of the correspon
 the top of the program for `#storedEmitFirst`, the end for `#storedEmitLast`. A program in which no
 template needs the block pays nothing for it.
 
-Several stored blocks may share one name, and one template may need several names. Registering a
-name that is already registered replaces the earlier block (latest wins); `#once` on the declaring
-file is the normal guard. The body may use `##beguilerSettings.<key>` (§14.4.5).
+A `#storedEmitFirst` block and a `#storedEmitLast` block may share one name, and one template may
+need several names. Registering a second block of the same kind under a name replaces the earlier
+one; `#once` on the declaring file is the normal guard. The body may use `##beguilerSettings.<key>` (§14.4.5).
 
 **Example**
 
@@ -9180,10 +9292,8 @@ precompiler-mode file. The body is a sequence of Beguile statements in code-bloc
 translated in place. Permitted: assignments, expressions, method and function calls, control flow,
 and any construct that translates to inline statements. Not permitted: variable declarations (locals
 belong in the enclosing I6 routine's local list) and function, class, enum or other declarations.
-
-Argument type checking is relaxed for calls resolved inside a Beguile island: when a name resolves
-to exactly one Beguile function or method by name and arity, the call binds even if the argument
-types do not match, and the arguments are passed as written.
+`#bglDecl` inside a routine is a compile-time error; `#bglStmt` is the explicit form of a statement
+island there.
 
 **Example**
 
@@ -9248,6 +9358,10 @@ Beguile is passed through verbatim to the I6 program and resolved by the I6 comp
 bare identifiers, dotted method calls and function calls, and it propagates into every sub-parse of
 the island, including the bodies of methods declared in a file-scope island. Identifiers in loose
 mode are not checked; a typo surfaces as an I6 error.
+
+Argument type checking is relaxed in the same places: when a call's name resolves to exactly one
+Beguile function or method by name and arity, the call binds even if the argument types do not
+match, and the arguments are passed as written.
 
 **Example**
 
@@ -9477,7 +9591,8 @@ class ⟨name⟩ : object {
 
 `_bglGlobalDeclaration` is an emitter hook (§7): a class may define an emitter of that name, and its
 body is injected as a top-level I6 declaration once for every object instance of the class, so a
-class can generate a companion routine, array or other I6 construct that accompanies each instance.
+class can generate a companion routine, array or other I6 construct that accompanies each instance. The emitter is inherited: an instance of a subclass gets the declaration too, and a subclass that
+defines its own `_bglGlobalDeclaration` uses that one for its instances instead.
 The body is raw I6 and takes the standard substitution tokens (§7.3, Appendix G); one additional
 token is available here:
 
@@ -9661,7 +9776,7 @@ and `.inf` is precompiler mode, as specified in §15.1.
 
 In precompiler mode the compiler synthesizes no ICL header: the `!%` lines at the top of the `.inf`
 file are the sole authority, and the target is read from them (`-G` selects Glulx; `-z` selects the
-Z-machine, version 5; `-v3`, `-v5` or `-v8` select an explicit Z-machine version). A `-G` or
+Z-machine, version 5; `-v5` or `-v8` select an explicit Z-machine version). A `-G` or
 `-z5`/`-z8` option on the command line, or a `target` in a `#beguilerSettings` block, is still
 accepted but the `!%` value is what Inform 6 sees.
 
@@ -10037,9 +10152,9 @@ name before the main parse begins, so a name may be used before the file positio
 declared, and an included file may refer to declarations in a file included after it. The pre-scan
 registers:
 
-- classes (including `extern` and generic ones) and their members;
+- classes (including `extern`, `alias` and generic ones) and structs, with their members;
 - enums, bnums and unions, with their members;
-- objects, verbs and global variables, with the members declared in an object body;
+- objects, verbs, global variables and constants, with the members declared in an object body;
 - global functions;
 - members added by `extend` bodies of objects, whether the object is declared before or after the
   `extend` (a class or an array must be declared before it is extended);
@@ -10427,8 +10542,8 @@ message and halts the story with `quit`, except where stated.
 | `<string>` pool full (§22.3) — the program stops | `[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]` | Raise `bglStringPoolReserve`. |
 | `<buf>` registry full (§22.2) | `[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]` | Raise `bglTrackedBufferReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
-| `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |
-| `throw` with no enclosing `try` (§5.16) | the interpreter's own error; the story halts | — |
+| `bgl.world` result buffer full (§21.9) | none: the walk stops at `worldBufSize` objects | Narrow the query, or raise `worldBufSize` (§17.4). |
+| `throw` with no enclosing `try` (§5.16): the program stops | `[Unhandled exception]` | Throw only where a `try` is on the call stack. |
 
 ---
 
@@ -10601,7 +10716,7 @@ int roll = bgl.util.random.get(6);       // 1..6
 **Syntax**
 
 ```syntax
-print( ⟨value⟩ ) ;
+print( ⟨value⟩ [ , ⟨value⟩ … ] ) ;
 print( $"⟨text⟩ {⟨expr⟩} ⟨text⟩" ) ;
 printLine( [ ⟨value⟩ ] ) ;
 bgl.output.spaces( ⟨n⟩ ) ;
@@ -10614,6 +10729,8 @@ bgl.printRules.the( ⟨obj⟩ ) ; bgl.printRules.cThe( ⟨obj⟩ ) ;
 **Description**
 
 The output routines are emitters on `bgl.output`. `print`, `printLine` and `printName` are also global names, through aliases (§10.5), so they are written without the path; `spaces` and `log` are written with it.
+
+The global `print` is a distributor (§6.8): given several arguments it prints each in turn, by the overload for that argument's type, so `print("You have ", count, " coins.^");` is three calls.
 
 `print()` writes a value to the current output stream immediately. It is overloaded on the argument's type; the core supplies overloads for every primitive type and the IF-domain types, and extensions and bindings add or replace overloads for the types they introduce with `extend _bglOutput` (`<string>` replaces `print(string)`; a binding adds `print(iString)` and `print(iStringOrRoutine)`). A program may also declare a global `print(T)` of its own; it joins the same overload set. An interpolated string (§1.6.5) prints each segment with the overload for that segment's type.
 
@@ -11510,12 +11627,6 @@ name in camel case without the `glk_` prefix (`windowOpen` is `glk_window_open`)
 | `quit` / `restart` | `void ⟨op⟩()` | E | `@quit`, `@restart` |
 | `verify` | `int verify()` | E | `@verify` |
 | `soundEffect` | `void soundEffect(int num, int effect, int vol)` | E | `@sound_effect` |
-
-The following members do not exist on a Z3 target — that is, when the `target` setting is anything
-but `z3` (§17.7).
-
-| Member | Signature | Kind | Meaning |
-|---|---|---|---|
 | `eraseWindow` | `void eraseWindow(int win)` | E | `@erase_window` |
 | `eraseLine` | `void eraseLine(int v)` | E | `@erase_line` |
 | `setCursor` | `void setCursor(int line, int col)` | E | `@set_cursor` |
@@ -11597,7 +11708,7 @@ void Main() {
     bglInit();
     for (int n = 1; n <= 20; n++) {
         array<int> r = row(n);
-        print(r[3]); print(" ");
+        print(r[3], " ");
         bgl.gc.free(r);         // released now, not at the next prompt
     }
 }
@@ -11818,6 +11929,7 @@ void Main() {
 
 A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors. A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function that returns `stringObj` can return null, so `??` gives a fallback for those:
 
+<!-- doctest: skip -->
 ```bgl
 stringObj s = null;                  // error
 ref stringObj r := null;             // fine: r refers to no string
@@ -12596,7 +12708,7 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 
 ### 23.3.9 Banner Texts
 
-The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and replaces the library's banner with one that also names the Beguile version. It reads the release number and serial code through `bgl.header` (§21.14).
+The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and merges its own banner into the library's `Banner` routine (§14.1.6), one that also names the Beguile version. A game changes the banner by replacing `Banner` (§6.5). The `punyInform` binding does the same for PunyInform.
 
 ### 23.3.10 Library Options and Debug Builds
 
@@ -12656,6 +12768,9 @@ returns what the library expects of it, which the table gives as the method's re
 | `list_together` | group similar objects in a list | `int list_together` (a group number) or `string list_together`; the library groups objects whose values are the same word, so a string is declared once, on their class, rather than repeated on each object |
 | `articles` | articles for a name in a language without inflection | `rawArray<string> articles` |
 
+The binding gives `found_in`, `add_to_scope` and `articles` their array types, so an object fills one
+without naming a type (`found_in = {study, attic};`) and declares a type only to use a different one.
+
 The additive properties `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` are
 declared by the binding (§23.3.5) and written as methods: `bool before()` returns true to stop the
 action, and the others follow the same table.
@@ -12698,7 +12813,7 @@ Room study { "Study"; description = "A study."; object s_to = hall; object u_to 
 Room attic { "Attic"; description = "An attic."; object d_to = hatch; }
 object hatch {
     "hatch"; attributes = {door, openable, static, scenery};
-    rawArray<object> found_in = {study, attic};
+    found_in = {study, attic};
     object door_to(){ if (location == study) return attic; return study; }
     property door_dir = u_to;
 }
@@ -12877,6 +12992,7 @@ reusing it as a name can produce Inform 6 that the Inform 6 compiler rejects).
 | `default` | qualifier; control (`switch`) | §5.12, §8.7.3, §15.4.1 |
 | `delete` | control | §5.15 |
 | `dictionaryWord` | type | §13.1, §21.5.3 |
+| `distributor` | declaration (soft: before a name and its `;`) | §6.8 |
 | `dictionaryWordLiteral` | type | §2.4 |
 | `do` | control | §5.11 |
 | `else` | control | §5.8 |
@@ -13170,7 +13286,7 @@ be one of the ZSCII extended characters (codes 155 to 224):
 | ring and slash | å Å ø Ø |
 | tilde | ã ñ õ Ã Ñ Õ |
 | ligatures and letters | æ Æ ç Ç þ Þ ð Ð œ Œ ß |
-| punctuation | £ ¡ ¿ |
+| punctuation | £ ¡ ¿ « » |
 
 Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
 Glulx, the characters described below.

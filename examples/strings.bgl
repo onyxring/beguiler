@@ -26,16 +26,16 @@ void main() {
 
     // A `string` names static text. No allocation, nothing to release.
     string title = "cloak";
-    print(title); print("^");
+    print(title, "^");
 
     // A `stringObj` owns a buffer, so it can be built up and changed in place.
     stringObj s;
     s = title;                                  // copies the text INTO s's own buffer
     s = s + " of darkness";                     // concatenation
     s = s.toUpper();                            // "CLOAK OF DARKNESS"
-    print(s); print("^");
+    print(s, "^");
 
-    print(s.length); print("^");           // 17
+    print(s.length, "^");                  // 17
     print(s.contains("DARK") ? "found^" : "missing^");
 
     // Comparison is by content across both types.
@@ -48,7 +48,7 @@ void main() {
     names += "apple";
     names += "fig";
     names.sort();                               // uses stringObj's <=> (by content)
-    for(int i = 0; i < 3; i++){ print(names[i]); print(" "); }
+    for(int i = 0; i < 3; i++) print(names[i], " ");
     print("^");
-    print("indexOf(fig) = "); print(names.indexOf("fig")); print("^");
+    print("indexOf(fig) = ", names.indexOf("fig"), "^");
 }

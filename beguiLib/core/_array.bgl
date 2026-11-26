@@ -50,7 +50,7 @@ extern emitter class byteArrayLength {
 // Check subscripts: out of range prints an error and uses a scratch word
 superposed rawArray<int> _bglSink[1];
 superposed int _bglOutOfRange(int i, int n, bool isWrite){
-    print("\n[Beguile run-time error: array index "); print(i); print(" is outside the "); print(n); print(" element");
+    print("\n[Beguile run-time error: array index ", i, " is outside the ", n, " element");
     if(n != 1) print("s");
     print(" it ");
     if(isWrite) print("can hold"); else print("holds");

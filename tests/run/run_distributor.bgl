@@ -1,0 +1,87 @@
+// run_distributor — `distributor name;`: a call with several arguments is one call for each, in order,
+// each by the overload for its own type; an overload that takes that many arguments is preferred;
+// a class's distributor, inherited; an argument is evaluated when its call is reached; unbraced
+// bodies; `print` is one; a routine that returns a value; defaults: the call as written is tried first,
+// and distributed when no overload accepts its arguments; an object's distributor, and `bgl.output.print`
+// by its path; a distributed call as a lambda's whole body.
+// EXPECT_OUTPUT: hello 3 times over
+// EXPECT_OUTPUT: One.
+// EXPECT_OUTPUT: Two.
+// EXPECT_OUTPUT: [Entered the cave.]
+// EXPECT_OUTPUT: #3
+// EXPECT_OUTPUT: [bats.]
+// EXPECT_OUTPUT: x4pqr
+// EXPECT_OUTPUT: 1 2 many
+// EXPECT_OUTPUT: abcd
+// EXPECT_OUTPUT: name 7
+// EXPECT_OUTPUT: total 6 16
+// EXPECT_OUTPUT: twicetwice.
+// EXPECT_OUTPUT: a.b.
+// EXPECT_OUTPUT: p.q.r.s.
+// EXPECT_OUTPUT: (m)(m)(n)(o)
+// EXPECT_OUTPUT: full path 9
+// EXPECT_OUTPUT: <a>#2<b>
+// EXPECT_OUTPUT: <in>#1<lam>#2
+// EXPECT_OUTPUT: lambda3
+// EXPECT_OUTPUT: assigned
+#beguilerSettings { target = z5; }
+string symbolString = "over";
+class journal : object {
+    void add(string line) { print("[", line, "]^"); }
+    void add(int n)       { print("#", n, "^"); }
+    distributor add;
+}
+class diary : journal { }
+diary log { }
+distributor say;
+void say(string line) { print(line); print("^"); }
+void show(string a, int b) { print(a); print(b); }
+void show(string a) { print(a); }
+distributor show;
+int total = 0;
+int sum(int n) { total += n; return total; }
+distributor sum;
+void echo(string line, int times = 1, string end = ".") { for(int i = 0; i < times; i++) print(line); print(end); }
+distributor echo;
+class crier : object {
+    void cry(string line, int times = 1) { for(int i = 0; i < times; i++) print("(", line, ")"); }
+    distributor cry;
+}
+crier town { }
+object herald {
+    void cry(string line) { print("<", line, ">"); }
+    void cry(int n) { print("#", n); }
+    distributor cry;
+    void all() { cry("in", 1); run(() => cry("lam", 2)); }
+}
+void run(func<void> f) { f(); }
+int bump = 0;
+int next() { bump++; return bump; }
+void main() {
+    bglInit();
+    print("hello ", 3, $" {"times"} ", symbolString, "^");
+    say("One.", "Two.");
+    log.add("Entered the cave.", 3, "bats.");
+    show("x", 4); show("p", "q", "r"); print("^");
+    print(next(), " ", next(), bump > 1 ? " many" : " one", "^");
+    bool c = true;
+    if(c) print("a", "b"); else print("c", "d");
+    if(!c) print("a", "b"); else print("c", "d");
+    print("^");
+    int distributor = 7;
+    print("name ", distributor, "^");
+    sum(1, 2, 3);
+    int six = total;
+    int after = sum(10);
+    print("total ", six, " ", after, "^");
+    echo("twice", 2); print("^");
+    echo("a", "b"); print("^");
+    echo("p", "q", "r", "s"); print("^");
+    town.cry("m", 2); town.cry("n", "o"); print("^");
+    bgl.output.print("full ", "path ", 9, "^");
+    herald.cry("a", 2, "b"); print("^");
+    herald.all(); print("^");
+    run(() => print("lam", "bda", 3, "^"));
+    func<void> g = () => print("as", "signed^");
+    g();
+}

@@ -1,0 +1,4 @@
+// EXPECT_ERROR: 'nothingHere' is not a routine, so it can't be a distributor.
+#beguilerSettings { target = z5; }
+distributor nothingHere;
+void main(){ bglInit(); }

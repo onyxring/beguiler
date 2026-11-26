@@ -1,0 +1,3 @@
+// EXPECT_ERROR: 'print' is a distributor: with several arguments it is a statement, and has no value.
+#beguilerSettings { target = z5; }
+void main(){ bglInit(); int n = print("a", "b"); }

@@ -2701,6 +2701,23 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
     // `extend <unionName> { … }` is routed via the extend path below.
     if(!q.anySet() && tok.is("union")) return processUnionDeclaration(q);
 
+    // `distributor name;`: a call of `name` with several arguments is one call for each of them.
+    if(tok.is("distributor") && file.peekToken(2).is(token::endStatement)){
+        if(q.anySet()) parsingError("A distributor declaration takes no qualifiers.");
+        if(getCurrentCompileContext() != eCompileContext::global)
+            parsingError("A distributor is declared at global scope or in a class.");
+        token named = file.getToken();
+        file.getToken();
+        bool found = false;
+        for(typeDef* g : languageService.globals)
+            if(auto* fd = dynamic_cast<functionDef*>(g); fd && fd->name == named.value) found = true;
+        if(!found && collectGlobalCandidates(named.value).empty())
+            parsingError(format("'{0}' is not a routine, so it can't be a distributor.", file.asWritten(named.value)));
+        languageService.distributors.insert(named.value);
+        checkDistributorOverloads(file.asWritten(named.value), collectGlobalCandidates(named.value));
+        return false;
+    }
+
     // Namespace-scoped type path: identifier.identifier...identifier resolving to a type.
     // Consume the dotted path, resolve to a flat type, then re-dispatch with the synthetic token.
     if(tok.is(eTokenType::identifier) && file.peekToken().is(token::period) && isNamespacedTypePath(tok)){

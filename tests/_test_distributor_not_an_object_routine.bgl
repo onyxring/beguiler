@@ -1,0 +1,4 @@
+// EXPECT_ERROR: 'missing' is not a routine of object 'herald', so it can't be a distributor.
+#beguilerSettings { target = z5; }
+object herald { distributor missing; }
+void main(){ bglInit(); }

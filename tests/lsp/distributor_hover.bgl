@@ -1,0 +1,6 @@
+#beguilerSettings { target = z5; }
+void say(string line) { print(line); }
+distributor say;
+void main() {
+    say("a", "b");
+}
