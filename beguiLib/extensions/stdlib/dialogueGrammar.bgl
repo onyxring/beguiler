@@ -1,0 +1,101 @@
+//===================================================================================================
+// dialogueGrammar.bgl — the grammar for dialogue.bgl. Include it right after the library's grammar.
+//===================================================================================================
+#once
+#i6 {
+    extend 'ask' replace
+    * 											-> askTopic
+    * talkable 'about' scope=topicKnownByTarget -> askTopic
+    * talkable scope=topicKnownByTarget			-> askTopic
+    * creature 'about' scope=topicKnownByTarget -> askTopic
+    * creature scope=topicKnownByTarget			-> askTopic
+    * 'about' scope=topicInVagueTarget			-> vagueAskTopic
+    * scope=topicInVagueTarget					-> vagueAskTopic
+    * creature topic  							-> unrecognizedTopicWords
+    * talkable topic  							-> unrecognizedTopicWords
+    * topic 			 						-> unrecognizedTopicWords
+    ;
+
+    verb 'a' ='ask';
+
+    Extend 'tell' replace
+    * 											-> tellTopic
+    * talkable 'about' scope=topicKnownByActor 	-> tellTopic
+    * talkable scope=topicKnownByActor			-> tellTopic
+    * creature 'about' scope=topicKnownByActor 	-> tellTopic
+    * creature scope=topicKnownByActor			-> tellTopic
+    * 'about' scope=topicKnownByActor 			-> vagueTellTopic
+    * scope=topicKnownByActor 'to' talkable 	-> sayTopic
+    * scope=topicKnownByActor 'to' animate  	-> sayTopic
+    * scope=topicKnownByActor 					-> vagueSayTopic
+    * creature topic 							-> unrecognizedTopicWords
+    * talkable topic 							-> unrecognizedTopicWords
+    * topic 			 						-> unrecognizedTopicWords
+    ;
+    Extend only 'speak' replace
+    * 											-> vagueTalk
+    * 'to'/'with' talkable 						->Talk
+    * 'to'/'with' creature 						->Talk
+    * talkable 									->Talk
+    * creature 									->Talk
+    ;
+    Extend only 'shout' replace
+    * 											-> vagueTalk
+    * 'to'/'at' talkable 						->Talk
+    * 'to'/'at' creature 						->Talk
+    * talkable 									->Talk
+    * creature 									->Talk
+    ;
+    verb 'yell'
+    * 											-> vagueTalk
+    * 'to'/'at' talkable 						->Talk
+    * 'to'/'at' creature 						->Talk
+    * talkable 									->Talk
+    * creature 									->Talk
+    ;
+    Verb 'talk'
+    * 											-> vagueTalk
+    * 'to'/'with' talkable 						->Talk
+    * 'to'/'with' creature 						->Talk
+    * talkable 									->Talk
+    * creature 									->Talk
+    ;
+    Verb 't'
+    * 											-> vagueTalk
+    * 'to' creature 							->Talk
+    * 'to' talkable 							->Talk
+    * creature 									->Talk
+    * talkable 									->Talk
+    * creature 'about' scope=topicKnownByActor 	-> tellTopic
+    * creature scope=topicKnownByActor			-> tellTopic
+    * talkable 'about' scope=topicKnownByActor 	-> tellTopic
+    * talkable scope=topicKnownByActor			-> tellTopic
+    * scope=topicKnownByActor 					-> vagueTellTopic
+    * 'about' scope=topicKnownByActor 			-> vagueTellTopic
+    * scope=topicKnownByActor 'to' talkable 	-> sayTopic
+    * scope=topicKnownByActor 'to' animate  	-> sayTopic
+    * scope=topicKnownByActor 					-> vagueSayTopic
+    * creature topic 							-> unrecognizedTopicWords
+    * talkable topic 							-> unrecognizedTopicWords
+    * topic 			 						-> unrecognizedTopicWords
+    ;
+    extend 'say' replace
+    * 											-> sayTopic
+    * scope=topicKnownByActor 					-> vagueSayTopic
+    * scope=topicKnownByActor 'to'/'in'/'into'/'at' talkable  	-> sayTopic
+    * scope=topicKnownByActor 'to'/'at' creature 	-> sayTopic
+    * topic 'to'/'in'/'into'/'at' talkable 					-> unrecognizedTopicWords
+    * topic 'to'/'at' creature 						-> unrecognizedTopicWords
+    * topic 			 						-> unrecognizedTopicWords
+    ;
+
+    verb 's'
+    *  											-> GoSouth
+    * scope=topicKnownByActor 					-> vagueSayTopic
+    * scope=topicKnownByActor 'to'/'in'/'into'/'at' talkable  	-> sayTopic
+    * scope=topicKnownByActor 'to'/'at' creature 	-> sayTopic
+    * topic 'to'/'in'/'into'/'at' talkable 					-> unrecognizedTopicWords
+    * topic 'to'/'at' creature 						-> unrecognizedTopicWords
+    * topic 			 						-> unrecognizedTopicWords
+    ;
+}

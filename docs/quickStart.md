@@ -20,11 +20,11 @@ Three pieces:
 - **Visual Studio Code** ([code.visualstudio.com](https://code.visualstudio.com)).
 - **The Inform 6 compiler.** 
 ## Step 0: Install Inform 6
-Assuming you don't already have it installed, you can get it from [it's official repository](https://github.com/DavidKinder/Inform6). Download a pre-built executable, or build it from source, and note the path to the resulting `inform6` binary. Beguiler invokes it to produce story files. 
+Assuming you don't already have it installed, you can get it from [its official repository](https://github.com/DavidKinder/Inform6). Download a pre-built executable, or build it from source, and note the path to the resulting `inform6` binary. Beguiler invokes it to produce story files. 
 
 If you build from source, read this...
 
-> **Build Inform 6 with a real target platform.** Do NOT use the first set of instructions from the Inform 6 repository ( `cc -O2 -o inform *.c`).  Inform 6 keeps each `#include` path in a fixed-size buffer, and a default build falls back to a **128-character** limit.  Beguile's resolved include paths routinely exceed this.  If you are building it yourself, be sure and specify the platform (one of the following lines, assuming you have a cpp compiler installed locally):
+> **Build Inform 6 with a real target platform.** Do NOT use the first set of instructions from the Inform 6 repository ( `cc -O2 -o inform *.c`).  Inform 6 keeps each `#include` path in a fixed-size buffer, and a default build falls back to a **128-character** limit.  Beguile's resolved include paths routinely exceed this.  If you are building it yourself, be sure and specify the platform (one of the following lines, assuming you have a C compiler installed locally):
 > 
 > macOS...
 > 
@@ -73,8 +73,10 @@ The extension comes with Beguiler: the archive you unpacked in Step 1 has a `beg
 
 The extension needs to know where Beguiler and Inform 6 live. Open VS Code **Settings** and set:
 
-- **the Inform 6 path** to the `inform6` executable from Step 0, and
-- **the Beguiler path** to the `beguiler` executable from Step 1
+- **Inform 6 › Inform6 Path** (`i6.inform6Path`) to the `inform6` executable from Step 0, and
+- **Beguiler › Path** (`beguiler.path`) to the `beguiler` executable from Step 1
+
+Both are absolute paths.
 
 
 That is the whole configuration. The extension passes these to Beguiler on every build, so you never touch command-line switches.
@@ -85,14 +87,14 @@ Everything should now be configured to work.  Just verify...
 
 ## Verify you can build a complete game
 
-`hello.bgl` proves the transpiler runs, but it emits only a bare routine (it sets `informName = "none"` to skip the Inform 6 handoff). To build a real, playable story you need Inform 6 configured (Steps 1 to 3) and an IF library.
+`hello.bgl` proves the transpiler runs, but it emits only a bare routine (it sets `informName = "none"` to skip the Inform 6 handoff). To build a real, playable story you need Inform 6 configured (Steps 0 to 3) and an IF library.
 
 - **In VS Code:** open `examples/cloakOfDarknessPuny.bgl` 
-	The bundled **Cloak of Darkness** example uses [PunyInform](https://github.com/johanberntsson/PunyInform).  Add its folder to the example's include path (`#beguilerSettings { includePaths = "..."; }` in the `.bgl`. 
+	The bundled **Cloak of Darkness** example uses [PunyInform](https://github.com/johanberntsson/PunyInform).  Add its folder to the example's include path (`#beguilerSettings { includePaths = "..."; }` in the `.bgl`).  The path the example ships with is a placeholder: change it to where PunyInform's `lib` folder sits on your own machine.
 
-- Run the build or debug command from the extension.
+- Run **Beguile: Rebuild and Play** or **Beguile: Rebuild and Debug** from the extension.
 
-## Verify you that debugging works
+## Verify that debugging works
 
 With the extension, set a breakpoint in your `.bgl` and start debugging to step through your code as it runs. Step-through debugging works for both **Z-machine** and **Glulx** targets.
 ## Troubleshooting

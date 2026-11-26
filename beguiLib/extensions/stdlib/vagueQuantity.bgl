@@ -1,0 +1,69 @@
+//===================================================================================================
+// vagueQuantity.bgl — name a pile of like objects vaguely: "several gold coins", not "22 gold coins".
+//---------------------------------------------------------------------------------------------------
+//     rawArray<var> vagueQuantity = {2, "a couple of", 3, "a few", 5, "a pile of", true};
+// Each number is the count a phrase starts at; a `true` entry makes the phrases from there on singular
+// ("a pile of rocks is here"). An object without the property uses the default list. An object, or a
+// parent, with `specificQuantity` keeps exact counts.
+//
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/writeAfterEntry>
+#include <extensions/stdlib/hooks/writeList>
+
+attribute specificQuantity;   /// Keep exact counts for this object, or for everything in it.
+property vagueQuantity;       /// The list of counts and phrases.
+
+object vagueQuantityController {
+    parent = LibraryExtensions;
+    bool forcedSingular = false;
+    rawArray<var> vagueQuantity = {2, "a couple of", 3, "a few", 5, "several", 10, "numerous", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    bool ext_sdIsOrAre(var obj, int quantity) {
+        if(self.findEntry(obj, quantity) < 0) return false;
+        if(self.forcedSingular) {
+            #i6 { if(_WAE_recurse_flag && (c_style & ENGLISH_BIT)) Tense(IS2__TX, WAS2__TX); }
+            return true;
+        }
+        return false;
+    }
+
+    bool ext_forceSingular(var obj, int quantity) {
+        if(self.findEntry(obj, quantity) < 0) return false;
+        return self.forcedSingular;
+    }
+
+    bool ext_wlrPluralMany(var obj, int quantity) {
+        int idx = self.findEntry(obj, quantity);
+        if(idx < 0) return false;
+        obj = self.listFor(obj);
+        #i6 { print (string) obj.&vagueQuantity-->(idx + 1); }
+        return true;
+    }
+
+    var listFor(var obj) {
+        #i6 { if(obj provides vagueQuantity) return obj; }
+        return self;
+    }
+
+    int findEntry(var obj, int quantity) {
+        #i6 { if(parent(obj) has specificQuantity || obj has specificQuantity) return -1; }
+        obj = self.listFor(obj);
+        int found = -1;
+        int entries = 0;
+        int q = 0;
+        #i6 { entries = obj.#vagueQuantity / WORDSIZE; }
+        for(int t = 0; t < entries; t += 2) {
+            #i6 { q = obj.&vagueQuantity-->t; }
+            if(q == 1) {
+                self.forcedSingular = true;
+                t--;   // a flag takes one slot, not two
+                continue;
+            }
+            if(q > quantity || q == 0) break;
+            self.forcedSingular = false;
+            found = t;
+        }
+        return found;
+    }
+}

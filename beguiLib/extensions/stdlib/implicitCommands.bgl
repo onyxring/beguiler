@@ -1,0 +1,85 @@
+//===================================================================================================
+// implicitCommands.bgl — what a command needs first happens as commands of its own, in game time.
+//---------------------------------------------------------------------------------------------------
+// Where the library would quietly take the thing a command needs, this queues TAKE and then the
+// original command, each through the prompt and each taking a turn. Closing before locking, unlocking
+// before opening and taking off before dropping work the same way.
+//
+// A library extension can add its own with `ext_generateImplicitCommands`: return `tempAction(…)` for
+// what's needed first, true to stop the action, or false to say nothing.
+// Set `no_implicit_actions` to turn this off.
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/parser>
+#include <extensions/stdlib/hooks/standardLibrary>
+#include <extensions/stdlib/playerCommandQueue>
+
+#i6 { Property individual ext_generateImplicitCommands; }
+
+const int isRootOfImplicitCommands = 2;   /// A custom flag: the command that led to the implied ones.
+
+replace int CheckImplicitAction() { return 2; }   // the library's own implicit actions stay off
+
+queuedAction _tempAction { }
+
+/// An action to return from `ext_generateImplicitCommands`.
+queuedAction tempAction(verb a, var n = 0, var s = 0) { return _tempAction.initializeAction(a, n, s); }
+
+// The front of the queue runs first: what this action needs, then this action again.
+superposed bool queueImplicitPrerequisite(verb act, var n, var s) {
+    queuedAction retry = playerCommands.preemptAction(action, noun, second);
+    retry.setCustomFlagOn(isRootOfImplicitCommands);
+    retry.setCustomFlagOn(noInferMessage);
+    queuedAction needed = playerCommands.preemptAction(act, n, s);
+    needed.setCustomFlagOn(noInferMessage);
+    ::meta = true;
+    rtrue;
+}
+
+object _implicitCommandHooks {
+    parent = LibraryExtensions;
+    bool ext_suppressparsingimplicittake() { rtrue; }
+    bool ext_beforeaction() {
+        if(no_implicit_actions) rfalse;
+        if(action == Drop && noun.parent != actor) rtrue($"You aren't holding {bgl.printRules.the(noun)}.^");
+        var needed;
+        #i6 { needed = LibraryExtensions.RunWhile(ext_generateImplicitCommands, false); }
+        if(needed == true) rtrue;
+        if(needed == 0) rfalse;
+        queuedAction chosen = (queuedAction)needed;
+        return queueImplicitPrerequisite(chosen.getAction(), chosen.getNoun(), chosen.getSecond());
+    }
+    var ext_generateimplicitcommands() {
+        if(typeof(noun) != eType.object || noun == null) rfalse;
+        if(actionFlags != 0 || action == Empty || action == Transfer) rfalse;
+        if((action == PutOn || action == Insert) && (second == null || second == noun)) rfalse;
+        if(noun != actor && noun.parent != actor && !noun.has(static) && !noun.has(scenery)
+           && (not_holding != null || action == ThrowAt || action == Wear || action == PutOn || action == Insert
+               || action == Give || action == Show || action == Wave)) {
+            L__M(Miscellany, 26, noun);
+            return tempAction(Take, noun);
+        }
+        if(action == Lock && noun.has(open)) {
+            L__M(Close, 4, noun);
+            return tempAction(Close, noun);
+        }
+        if(action == Open && noun.has(locked)) {
+            L__M(Unlock, 5, noun);
+            if(ObjectIsUntouchable(noun, true)) rfalse;
+            return tempAction(Unlock, noun);
+        }
+        if(noun.has(worn) && (action == Drop || action == PutOn || action == Insert || action == Give || action == Eat || action == ThrowAt)) {
+            L__M(Disrobe, 3, noun);
+            return tempAction(Disrobe, noun);
+        }
+        rfalse;
+    }
+}
+
+// Waving something is about holding it.
+#emitlast {
+    Extend 'wave' first
+        * -> WaveHands
+        * held -> Wave
+        * held 'at' noun -> Wave;
+}

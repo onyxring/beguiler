@@ -1,0 +1,530 @@
+//===================================================================================================
+// dialogue.bgl — conversations through ASK, TELL and SAY, about topics the characters know.
+//---------------------------------------------------------------------------------------------------
+//     dialogueTopic aboutKeys {
+//         knownBy = selfObj;   // who can say it; omit it to use the parent topic's
+//         context = guard;     // who it means something to; omit it for the parent's, or anyone
+//         name = {.keys, .car};
+//         quip = "“Have you seen my keys?” you ask.";   // text, or a routine told the actor and listener
+//     }
+//
+// `knownBy` and `context` may be a character, true for everyone, a routine told the character, or a
+// list: `rawArray<object> knownBy = {guard, cook};`. `rawArray<var> quip = {asked, told};` gives a question
+// and its answer separately; `ORDIA_RESPONSE_ONLY` as the second makes the first a reply only.
+// `dissemTrack` remembers who told whom; give a topic a longer `rawArray<char>` of it to remember more.
+//
+// A character's `iDunno` answers what it doesn't respond to, and `interactingWith` holds who it's talking to.
+// A topic with `learnable` is passed to the listener's `learnTopic`. On a library extension,
+// `ext_topicAsk`, `ext_topicTell` can stop a topic, and `ext_topicAsked`, `ext_topicTold` follow one.
+// "guard, hello" means SAY HELLO TO GUARD.
+//
+// Include it after the library's verblib, and <extensions/stdlib/dialogueGrammar> after its grammar.
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/informLibrary>
+#include <extensions/stdlib/hooks/keyboard>
+#include <extensions/stdlib/hooks/parser>
+#include <extensions/stdlib/betterChoice>
+#include <languages/english>
+
+extern int     advance_warning;   // the object the parser saw further along the command
+extern bool    dont_infer;        // keeps the parser from inferring the matched object
+extern const int SCORE__IFGOOD;
+
+object playerInteractingWith = null;   /// Who the player is talking to.
+
+const int ORDIA_ALL = 1;               /// In `knownBy` or `context`: everyone.
+const int ORDIA_RESPONSE_ONLY = -1;    /// As a quip's second part: the first is only ever a reply.
+
+attribute learnable;                   /// A listener told this topic learns it, through `learnTopic`.
+property learnTopic;                   /// A character's routine for a topic it has been told.
+property interactingWith;              /// Who a character is talking to: an object or a routine.
+
+#i6 {
+    Property individual ext_topicAsk;
+    Property individual ext_topicAsked;
+    Property individual ext_topicTell;
+    Property individual ext_topicTold;
+}
+
+// The value of `knownBy` and `context` on a topic that takes its parent's.
+object _dialogueInherited { }
+#i6 {
+    Global _dialogueT;
+    Global _dialogueSelf;
+}
+
+property iDunno;   /// What a character says to a topic it doesn't respond to: text or a routine.
+
+/// Something that can be said in a conversation.
+class dialogueTopic : object {
+    var knownBy = _dialogueInherited;      /// Who can say this; see the file's header.
+    var context = _dialogueInherited;      /// Who this means something to; see the file's header.
+    iStringOrRoutine quip;                 /// The conversation itself; see the file's header.
+    int dissemTrack = 0;                   /// Who told whom, a pair of bytes each.
+
+    int _characterId(object person) {
+        #i6 {
+            #Ifdef orNpc_STAGE;
+                if(person ofclass orNPC) return person.npcId;
+            #Endif;
+        }
+        if(person == player) return 0;
+        return -1;
+    }
+    /// Whether `npc` can say this.
+    bool isKnownBy(object npc) {
+        var v;
+        #i6 {
+            if(self.#knownBy == WORDSIZE) {
+                v = self.knownBy;
+                if(v == _dialogueInherited) {
+                    if(parent(self) ofclass _bglClass_dialogueTopic) return parent(self).isKnownBy(npc);
+                    rfalse;
+                }
+                if(v == true) rtrue;
+                if(metaclass(v) == Routine) return v(npc);
+            }
+            if(WordInProperty(npc, self, knownBy)) rtrue;
+        }
+        rfalse;
+    }
+    /// Whether this means something to `npc`.
+    bool isInContextFor(object npc) {
+        var v;
+        #i6 {
+            if(self.#context == WORDSIZE) {
+                v = self.context;
+                if(v == _dialogueInherited) {
+                    if(parent(self) ofclass _bglClass_dialogueTopic) return parent(self).isInContextFor(npc);
+                    rtrue;
+                }
+                if(v == true) rtrue;
+                if(metaclass(v) == Routine) return v(npc);
+            }
+            if(WordInProperty(npc, self, context)) rtrue;
+        }
+        rfalse;
+    }
+    int _quipParts() {
+        int parts;
+        #i6 { parts = self.#quip / WORDSIZE; if(parts == 1 && self.quip == 0) parts = 0; }
+        return parts;
+    }
+    var _quipPart(int part) {
+        var v;
+        #i6 { v = self.&quip-->part; }
+        return v;
+    }
+    /// Whether this one can be asked about.
+    bool isAskable() { return _quipParts() > 1; }
+    /// Whether this one can be said.
+    bool isTellable() { return _quipParts() > 0 && !isResponseOnly(); }
+    /// Whether this is only ever a reply.
+    bool isResponseOnly() { return _quipParts() > 1 && _quipPart(1) == ORDIA_RESPONSE_ONLY; }
+    /// Whether one of these two characters still has this to say to the other.
+    emitter bool isAppropriateFor(object c1, object c2) { _dialogueAppropriate($self, $c1, $c2) }
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code != chooseCode.askingForHint || isInContextFor((object)advance_warning)) return chooseAnswer.defer;
+        return excludeFromChoice(self);
+    }
+    /// Remember that `p1` told this to `p2`.
+    void recordTell(object p1, object p2) {
+        if(hasBeenToldTo(p2, p1, true)) return;
+        int id1 = _characterId(p1);
+        int id2 = _characterId(p2);
+        // A character without an id is stored as $FF, which hasBeenToldTo can't match, so look for the stored bytes.
+        #i6 {
+            for(_dialogueT = 0 : _dialogueT < self.#dissemTrack : _dialogueT = _dialogueT + 2)
+                if(self.&dissemTrack->_dialogueT == (id1 & $FF) && self.&dissemTrack->(_dialogueT + 1) == (id2 & $FF)) return;
+        }
+        int t = getTracePos();
+        if(t == -1) return;
+        #i6 {
+            self.&dissemTrack->t = id1;
+            self.&dissemTrack->(t + 1) = id2;
+        }
+    }
+    /// The next free place in `dissemTrack`, or -1.
+    int getTracePos() {
+        #i6 {
+            for(_dialogueT = 0 : _dialogueT < self.#dissemTrack : _dialogueT = _dialogueT + 2)
+                if(self.&dissemTrack->_dialogueT == 0 && self.&dissemTrack->(_dialogueT + 1) == 0) return _dialogueT;
+            #Ifdef DEBUG;
+                print "WARNING! dissemTrack array is full in topic ", (name) self, " (currently sized at ", self.#dissemTrack, ")";
+            #Endif;
+        }
+        return -1;
+    }
+    /// Whether anyone has said this.
+    bool hasBeenTold() {
+        #i6 { if(self.&dissemTrack-->0 == 0) rfalse; }
+        rtrue;
+    }
+    /// Whether this has been told to `toldTo`, by `toldBy` if given.
+    bool hasBeenToldTo(object toldTo, object toldBy = null, bool suppressNpcError = false) {
+        if(toldBy != null) return hasBeenToldBy(toldBy, toldTo, suppressNpcError);
+        int to = _characterId(toldTo);
+        if(to == -1) {
+            if(!suppressNpcError) print("ERROR: hasBeenToldTo() takes the player object or an orNpc instance as a parameter.^");
+            rfalse;
+        }
+        #i6 {
+            for(_dialogueT = 0 : _dialogueT < self.#dissemTrack : _dialogueT = _dialogueT + 2) {
+                if(self.&dissemTrack->_dialogueT == 0 && self.&dissemTrack->(_dialogueT + 1) == 0) break;
+                if(self.&dissemTrack->(_dialogueT + 1) == to) rtrue;
+            }
+        }
+        rfalse;
+    }
+    /// Whether this has been told by `toldBy`, to `toldTo` if given.
+    bool hasBeenToldBy(object toldBy, object toldTo = null, bool suppressNpcError = false) {
+        int by = _characterId(toldBy);
+        bool testBoth = toldTo != null;
+        int to = testBoth ? _characterId(toldTo) : 0;
+        if(to == -1 || by == -1) {
+            if(!suppressNpcError) print("ERROR: hasBeenToldBy() takes the player object or an orNpc instance as a parameter.^");
+            rfalse;
+        }
+        #i6 {
+            for(_dialogueT = 0 : _dialogueT < self.#dissemTrack : _dialogueT = _dialogueT + 2) {
+                if(self.&dissemTrack->_dialogueT == 0 && self.&dissemTrack->(_dialogueT + 1) == 0) break;
+                if(self.&dissemTrack->_dialogueT == by) {
+                    if(testBoth == false) rtrue;
+                    if(self.&dissemTrack->(_dialogueT + 1) == to) rtrue;
+                }
+            }
+        }
+        rfalse;
+    }
+}
+
+superposed bool _dialogueAppropriate(dialogueTopic topic, object c1, object c2) {
+    if(topic.isTellable() && topic.isKnownBy(c1) && topic.isInContextFor(c2) && !topic.hasBeenToldTo(c2, c1, true)) rtrue;
+    if(topic.isAskable() && topic.isKnownBy(c2) && topic.isInContextFor(c1) && !topic.hasBeenToldTo(c1, c2, true)) rtrue;
+    rfalse;
+}
+
+/// Whether `act` is a conversation action.
+superposed bool isDialogueAction(verb act) {
+    return act == askTopic || act == tellTopic || act == sayTopic || act == talk || act == vagueTalk
+        || act == vagueAskTopic || act == vagueTellTopic || act == vagueSayTopic || act == unrecognizedTopicWords;
+}
+
+void _dialogueDunno(object npc) {
+    if(npc.provides(iDunno)) { PrintOrRun(npc, iDunno); return; }
+    print($"{bgl.printRules.cThe(npc, "do", "does", "did")} not appear to know the answer to that.^");
+}
+
+// Scope routines for the grammar.
+bool topicInVagueTarget() {
+    object npc = resolveActorTalkingTo();
+    var top = 0;
+    switch(scope_stage) {
+        case 1: rfalse;
+        case 2:
+            #i6 { if(npc) objectloop(top ofclass _bglClass_dialogueTopic && top.isKnownBy(npc)) PlaceInScope(top); }
+            rtrue;
+        case 3:
+            if(npc != null) _dialogueDunno(npc);
+            else print("I’m not sure who you want to talk to.^");
+    }
+    rfalse;
+}
+
+bool topicKnownByTarget() {
+    object npc = (object)inputobjs[2];
+    var top = 0;
+    switch(scope_stage) {
+        case 1: rfalse;
+        case 2:
+            #i6 { objectloop(top ofclass _bglClass_dialogueTopic && top.isKnownBy(npc)) PlaceInScope(top); }
+            rtrue;
+        case 3: _dialogueDunno(npc);
+    }
+    rfalse;
+}
+
+bool topicKnownByActor() {
+    object npc = (object)inputobjs[2];
+    var top = 0;
+    switch(scope_stage) {
+        case 1: rfalse;
+        case 2:
+            #i6 {
+                if(action_to_be == ##sayTopic or ##vagueSayTopic) {
+                    objectloop(top ofclass _bglClass_dialogueTopic && top.isTellable() && top.isKnownBy(actor)) PlaceInScope(top);
+                }
+                else objectloop(top ofclass _bglClass_dialogueTopic && top.isTellable() && top.isKnownBy(actor) && top.isInContextFor(npc)) PlaceInScope(top);
+                etype = 0;
+            }
+            rtrue;
+        case 3: print("I’m not sure what you want to say.^");
+    }
+    rfalse;
+}
+
+bool _dialogueNoResponse(dialogueTopic topic, object talkingTo) {
+    if(topic.isInContextFor(talkingTo)) rfalse;
+    if(talkingTo.provides(iDunno)) PrintOrRun(talkingTo, iDunno);
+    else print($"{bgl.printRules.cThe(talkingTo)} {talkingTo.has(pluralname) ? "don’t" : "doesn’t"} respond to that.^");
+    rtrue;
+}
+
+void _dialogueUsage(string before, string first, string middle, string last) {
+    print(before);
+    bgl.printRules.underline;
+    print(first);
+    bgl.printRules.roman;
+    print(middle);
+    bgl.printRules.underline;
+    print(last);
+    bgl.printRules.roman;
+    print(".]^");
+    ::meta = true;
+}
+
+void _dialogueSetInteracting(object talkingTo) {
+    #i6 { if(actor provides interactingWith && metaclass(actor.interactingWith) ~= Routine) actor.interactingWith = talkingTo; }
+}
+
+// A quip part: a routine runs with self as its topic and is told who is talking; text prints.
+bool _dialogueRunQuip(dialogueTopic topic, var part, object talkingTo) {
+    bool ran = typeof(part) == eType.routine;
+    #i6 {
+        if(ran) {
+            _dialogueSelf = self;
+            self = topic;
+            part(actor, talkingTo);
+            self = _dialogueSelf;
+        }
+        else print (string) part;
+    }
+    return ran;
+}
+
+verb askTopic {
+    void handler() {
+        if(noun == null && second == null) { _dialogueUsage("[To ask something of someone, use: ASK ", "character ", "ABOUT ", "topic"); return; }
+        if(RunLife(actor, askTopic) != 0) return;
+        if(second == null || ((dialogueTopic)second)._quipParts() == 0) { print("You'll need to be more specific. What do you want to ask?^"); return; }
+        if(noun == actor) { L__M(Tell, 1); return; }
+        dialogueTopic topic = (dialogueTopic)second;
+        #i6 { if(LibraryExtensions.RunUntil(ext_topicAsk, true, topic, actor, noun) == true) return; }
+        _dialogueSetInteracting(noun);
+        if(actor == player) playerInteractingWith = noun;
+        if(topic.isAskable()) {
+            _dialogueRunQuip(topic, topic._quipPart(0), noun);
+            print("^^");
+        }
+        #i6 {
+            if(LibraryExtensions.RunUntil(ext_topicAsked, true, topic, actor, noun) == true) return;
+            <tellTopic actor topic, noun>;
+        }
+    }
+}
+
+verb tellTopic {
+    void handler() {
+        if(noun == null && second == null) { _dialogueUsage("[To tell something to someone, use: TELL ", "topic ", "TO ", "character"); return; }
+        if(RunLife(actor, tellTopic) != 0) return;
+        if(second == null || ((dialogueTopic)second)._quipParts() == 0) { print("You'll need to be more specific. What do you want to say?^"); return; }
+        dialogueTopic topic = (dialogueTopic)second;
+        object talkingTo = noun;
+        if(_dialogueNoResponse(topic, talkingTo)) return;
+        #i6 { if(LibraryExtensions.RunUntil(ext_topicTell, true, topic, actor, talkingTo) == true) return; }
+        _dialogueSetInteracting(talkingTo);
+        var part = 0;
+        if(topic._quipParts() > 1) part = topic._quipPart(1);
+        if(part == 0 || part == ORDIA_RESPONSE_ONLY) part = topic._quipPart(0);
+        if(!_dialogueRunQuip(topic, part, talkingTo)) print("^");
+        topic.recordTell(actor, talkingTo);
+        #i6 {
+            if(topic has learnable && talkingTo provides learnTopic) talkingTo.learnTopic(topic);
+            LibraryExtensions.RunAll(ext_topicTold, topic, actor, talkingTo);
+        }
+    }
+}
+
+verb sayTopic {
+    void handler() {
+        if(noun == null && second == null) { _dialogueUsage("[To say something to someone, use: SAY ", "topic ", "TO ", "character"); return; }
+        if(_dialogueNoResponse((dialogueTopic)noun, second)) return;
+        #i6 { <tellTopic second noun>; }
+    }
+}
+
+verb talk      { void handler() { print("You fumble for words but find nothing to say.^"); } }
+verb vagueTalk { void handler() { print("You mumble a few words to no one in particular.^"); } }
+
+// Who the actor is talking to: the current conversation, or else the first who could listen.
+object resolveActorTalkingTo(bool currentOnly = false) {
+    object found = null;
+    if(actor == player) found = playerInteractingWith;
+    #i6 { if(found == 0 && actor provides interactingWith) found = ValueOrRun(actor, interactingWith); }
+    if(found != null && ScopeCeiling(found) == ScopeCeiling(actor)) return found;
+    if(!currentOnly)
+        for(object o in location.children)
+            if(o != actor && (o.has(animate) || o.has(talkable))) return o;
+    return null;
+}
+
+object _dialogueVagueTarget() {
+    object found = resolveActorTalkingTo();
+    if(found == null) print($"There {bgl.english.byTense("is", "was")} nothing to speak with.^");
+    return found;
+}
+
+verb vagueAskTopic {
+    void handler() {
+        object talkingTo = _dialogueVagueTarget();
+        if(talkingTo == null) return;
+        second = noun;
+        noun = talkingTo;
+        if(!no_infer_message) print($"(Asking {bgl.printRules.the(talkingTo)})^");
+        #i6 { <<askTopic noun second>>; }
+    }
+}
+
+verb vagueTellTopic {
+    void handler() {
+        object talkingTo = _dialogueVagueTarget();
+        if(talkingTo == null) return;
+        second = noun;
+        noun = talkingTo;
+        if(!no_infer_message) print($"(Telling {bgl.printRules.the(talkingTo)})^");
+        #i6 { <<tellTopic noun second>>; }
+    }
+}
+
+verb vagueSayTopic {
+    void handler() {
+        object talkingTo = _dialogueVagueTarget();
+        if(talkingTo == null) return;
+        if(!no_infer_message) print($"(Speaking with {bgl.printRules.the(talkingTo)})^");
+        #i6 { <<sayTopic noun talkingTo>>; }
+    }
+}
+
+verb unrecognizedTopicWords {
+    void handler() {
+        wn = consult_from;
+        dictionaryWord first = NextWord();
+        if(first == .who || first == .what || first == .when || first == .where || first == .why || first == .how) {
+            print("[It looks like you are trying to ask ");
+            if(noun != null) print($"{bgl.printRules.the(noun)} ");
+            print($"a question. Try ASK {bgl.printRules.italics}character{bgl.printRules.roman} ABOUT {bgl.printRules.italics}topic{bgl.printRules.roman} instead.]^");
+            ::meta = true;
+            return;
+        }
+        if(noun == null) { print("I’m not sure who you want to talk to.^"); return; }
+        if(noun == actor && actor == player) { print("You talk to yourself but don’t answer.^"); return; }
+        if(noun.provides(iDunno)) PrintOrRun(noun, iDunno);
+        else print($"That elicits no response from {bgl.printRules.the(noun)}.^");
+    }
+}
+
+// `s` is short for SAY, so a bare `s` needs its own way south.
+verb GoSouth { void handler() { Go.perform(s_obj); } }
+
+object _dialogueHooks {
+    parent = LibraryExtensions;
+    object _targetNpc = null;   // from "person, words", which stands for SAY words TO person
+
+    bool ext_forcelookahead() { return action_to_be == sayTopic || action_to_be == unrecognizedTopicWords; }
+    void ext_beforeparsing() { consult_from = 0; }
+
+    dictionaryWord ext_unknownverb() {
+        if(actor == player) return null;
+        _targetNpc = actor;
+        actor = player;
+        verb_wordnum--;
+        return .say;
+    }
+
+    object _matchTopic(object candidate, object npc) {
+        if(!npc.has(animate) && !npc.has(talkable)) return null;
+        if(!candidate.is(dialogueTopic) || !((dialogueTopic)candidate).isInContextFor(npc)) return null;
+        for(int j = 0; j < number_matched; j++) match_scores[j] = 0;
+        number_matched = 1;
+        match_list[0] = (int)candidate;
+        dont_infer = true;
+        _targetNpc = npc;
+        return candidate;
+    }
+
+    // Topics can share their words, so choose the one that means something to who is being spoken to.
+    var ext_adjudicate() {
+        if(action_to_be != sayTopic && action_to_be != vagueSayTopic) rfalse;
+        object npc = _targetNpc;
+        if(npc == null && advance_warning != -1) npc = (object)advance_warning;
+        if(npc == null) npc = resolveActorTalkingTo(true);
+        object matched = null;
+        int matches = number_matched;
+        for(int i = 0; i < matches; i++) {
+            object candidate = (object)match_list[i];
+            if(npc != null) {
+                if(candidate == npc) return candidate;
+                matched = _matchTopic(candidate, npc);
+                if(matched != null) return matched;
+                continue;
+            }
+            #i6 {
+                objectloop(npc near actor) {
+                    if(npc == actor) continue;
+                    if(npc has animate or talkable) {
+                        matched = self._matchTopic(candidate, npc);
+                        if(matched) { match_scores-->0 = SCORE__IFGOOD; return matched; }
+                    }
+                    if(npc provides add_to_scope) {
+                        for(_dialogueT = 0 : _dialogueT < npc.#add_to_scope / WORDSIZE : _dialogueT++) {
+                            if(metaclass(npc.&add_to_scope-->_dialogueT) == Object) matched = self._matchTopic(candidate, npc.&add_to_scope-->_dialogueT);
+                            if(matched) { match_scores-->0 = SCORE__IFGOOD; return matched; }
+                        }
+                    }
+                }
+                npc = 0;
+            }
+        }
+        rfalse;
+    }
+
+    bool ext_playlooprewriteparsedcommands() {
+        if(_targetNpc == null) rfalse;
+        if(consult_from != 0) {
+            action = unrecognizedTopicWords;
+            inputobjs[0] = (int)unrecognizedTopicWords;
+            inputobjs[1] = 1;
+            inputobjs[2] = (int)_targetNpc;
+        }
+        else {
+            action = sayTopic;
+            inputobjs[0] = (int)sayTopic;
+            inputobjs[1] = 2;
+        }
+        inputobjs[3] = (int)_targetNpc;
+        _targetNpc = null;
+        rtrue;
+    }
+
+    // Quotes, exclamation points and question marks mean nothing here, and a comma only counts
+    // in "person, words".
+    void ext_keyboardprepinput(var inputBuffer) {
+        bool dropCommas = false;
+        int t;
+        #i6 {
+            if((WordValue(1)->#dict_par1) & DICT_VERB) dropCommas = true;
+            for(t = WORDSIZE : t <= (inputBuffer-->1) + WORDSIZE : t++) {
+                if(inputBuffer->t == 0) break;
+                if(inputBuffer->t == 34 or 33 or 63 or 13) {
+                    inputBuffer->t = 32;
+                    dropCommas = true;
+                }
+                if(inputBuffer->t == 44) {
+                    if(dropCommas) inputBuffer->t = 32;
+                    else dropCommas = true;
+                }
+            }
+        }
+    }
+}

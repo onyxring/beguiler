@@ -1,0 +1,60 @@
+//===================================================================================================
+// loopArray.bgl — cycle through a list of values, in order or at random.
+//---------------------------------------------------------------------------------------------------
+// A loop array is an `array<var>` whose first element is a tracker, left 0, followed by the entries:
+//     array<var> hints = {0, "Try the door.", "Try the window.", "Try the chimney."};
+//     print((string)bgl.util.loopArray.getNext(self, (property)hints));   // a member array
+//     print((string)bgl.util.loopArray.getNext(globalHints));             // a global or local array
+// Each entry is returned once; what happens after the last is up to `loopEnd`. `getAny` reorders the
+// entries as it picks them.
+//===================================================================================================
+#once
+#include <array>
+
+/// What a loop array does once every entry has been used.
+enum loopEnd { restart, stop, repeatLast }
+
+/// Cycling through a loop array: a member array (its owner and the member as a property) or an array.
+emitter class _loopArray {
+    /// Return the next unused entry, in order.
+    emitter var  getNext(array<var> a)                           { _loopArrayTake($a, 0, 1, false) }
+    emitter var  getNext(array<var> a, loopEnd atEnd)            { _loopArrayTake($a, 0, $atEnd, false) }
+    emitter var  getNext(object o, property p)                   { _loopArrayTake($o, $p, 1, false) }
+    emitter var  getNext(object o, property p, loopEnd atEnd)    { _loopArrayTake($o, $p, $atEnd, false) }
+    /// Return an unused entry chosen at random.
+    emitter var  getAny(array<var> a)                            { _loopArrayTake($a, 0, 1, true) }
+    emitter var  getAny(array<var> a, loopEnd atEnd)             { _loopArrayTake($a, 0, $atEnd, true) }
+    emitter var  getAny(object o, property p)                    { _loopArrayTake($o, $p, 1, true) }
+    emitter var  getAny(object o, property p, loopEnd atEnd)     { _loopArrayTake($o, $p, $atEnd, true) }
+    /// Whether every entry has been used.
+    emitter bool isComplete(array<var> a)                        { _loopArrayComplete($a, 0) }
+    emitter bool isComplete(object o, property p)                { _loopArrayComplete($o, $p) }
+}
+
+extend _bglUtil {
+    emitter auto loopArray = _loopArray;   /// Cycling through a loop array.
+}
+
+// The tracker in slot 0 counts the entries handed out this cycle: slots 1 to the count.
+superposed bool _loopArrayComplete(var o, var p) {
+    return _bglArray.get(o, p, 0) >= _bglArray.length(o, p) - 1;
+}
+
+superposed var _loopArrayTake(var o, var p, loopEnd atEnd, bool atRandom) {
+    int last = _bglArray.length(o, p) - 1;
+    if(_loopArrayComplete(o, p)) {
+        if(atEnd == loopEnd.repeatLast) return _bglArray.get(o, p, last);
+        if(atEnd == loopEnd.stop) return null;
+        _bglArray.set(o, p, 0, 0);
+    }
+    int used = _bglArray.get(o, p, 0);
+    if(atRandom) {
+        // Move a random unused entry to the front of the unused ones.
+        int pick = used + bgl.util.random.get(last - used);
+        var held = _bglArray.get(o, p, pick);
+        _bglArray.set(o, p, pick, _bglArray.get(o, p, used + 1));
+        _bglArray.set(o, p, used + 1, held);
+    }
+    _bglArray.set(o, p, 0, used + 1);
+    return _bglArray.get(o, p, used + 1);
+}

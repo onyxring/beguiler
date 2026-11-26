@@ -1,0 +1,34 @@
+// run_stdlib_command_queue — <extensions/stdlib/playerCommandQueue> and <extensions/stdlib/implicitCommands>: queued
+// commands run one per prompt as though typed; a silent one doesn't show; a command that needs its
+// noun held queues TAKE and then itself.
+// EXPECT_OUTPUT: >>take apple
+// EXPECT_OUTPUT: You put the apple on the table.
+// EXPECT_OUTPUT: >>eat apple
+// EXPECT_OUTPUT: You eat the apple. Not bad.
+// EXPECT_OUTPUT: You switch the lamp on.
+// EXPECT_OUTPUT: waiting: 0
+// INPUT: put apple on table
+// INPUT: hop
+// INPUT: quiet
+// INPUT: count
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/implicitCommands>
+
+object kitchen { short_name = "Kitchen"; string description = "A kitchen."; attributes = {light}; }
+object apple { "apple"; name = {.apple}; parent = kitchen; attributes = {edible}; }
+object table { "table"; name = {.table}; parent = kitchen; attributes = {supporter, static}; }
+object lamp { "lamp"; name = {.lamp}; parent = kitchen; attributes = {switchable, static}; }
+verb Hop { grammar = { {.hop} }; void handler() {
+    playerCommands.pushCommand("take apple");
+    playerCommands.pushCommand("eat apple");
+    print("You hop.^");
+} }
+verb Quiet { grammar = { {.quiet} }; void handler() { playerCommands.pushCommand("switch lamp on", false, true); print("Quiet.^"); } }
+verb Count { meta = true; grammar = { {.count} }; void handler() { print($"waiting: {playerCommands.getLength()}^"); } }
+bool Initialise() { location = kitchen; rfalse; }
+#includeI6 "grammar"

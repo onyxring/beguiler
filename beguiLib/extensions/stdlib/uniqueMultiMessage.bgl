@@ -1,0 +1,90 @@
+//===================================================================================================
+// uniqueMultiMessage.bgl — consolidate identical replies to a command on many objects, when they come
+// in sequence: "6 marbles : Removed." instead of six lines.
+//---------------------------------------------------------------------------------------------------
+// `orUniqueMultiMessageBufferSize` sets the longest reply consolidated, in characters.
+//
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/informLibrary>
+#include <buf>
+
+#if !orUniqueMultiMessageBufferSize
+    #define orUniqueMultiMessageBufferSize 500
+#endif
+
+array<char> _ummCurrent[orUniqueMultiMessageBufferSize];    // what the current object's action printed
+array<char> _ummPrevious[orUniqueMultiMessageBufferSize];   // what the previous object's action printed
+
+void _ummPrint(var obj, int count) {
+    if(count > 1) print($"{count} ");
+    #i6 {
+        if(count > 1 && obj provides plural) print (string) obj.plural;
+        else print (name) obj;
+    }
+    print(" : ");
+    _ummPrevious.print();
+}
+
+object uniqueMultiMessage {
+    parent = LibraryExtensions;
+
+    int ext_playLoopPerformMultiObjectAction() {
+        int total = 0;
+        #i6 { total = multiple_object-->0; }
+        if(total == 0) return 0;
+
+        _ummCurrent = 0;
+        _ummPrevious = 0;
+
+        var previousObj = 0;
+        var startRoom = 0;
+        var obj = 0;
+        int count = 0;
+        int result = 0;
+        bool leftTheRoom = false;
+        bool first = false;
+        bool same = false;
+
+        #i6 {
+            multiflag = true;
+            if(toomany_flag) {
+                toomany_flag = false;
+                L__M(##Miscellany, 1);
+            }
+            startRoom = location;
+        }
+        for(int k = 1; k <= total; k++) {
+            #i6 {
+                if(deadflag) break;
+                if(location ~= startRoom) { leftTheRoom = true; break; }
+                obj = multiple_object-->k;
+                PronounNotice(obj);
+                first = (inp1 == 0);
+                if(first) inp1 = obj; else inp2 = obj;
+            }
+            bgl.util.buf.capture(_ummCurrent, orUniqueMultiMessageBufferSize);
+            #i6 {
+                if(first) result = InformLibrary.actor_act(actor, action, obj, second);
+                else      result = InformLibrary.actor_act(actor, action, noun, obj);
+            }
+            bgl.util.buf.release();
+            #i6 {
+                if(result == ACTOR_ACT_ABORT_NOTUNDERSTOOD) return 1;
+                if(first && result == ACTOR_ACT_ABORT_ORDER) return 2;
+                if(first) inp1 = 0; else inp2 = 0;
+                same = (Identical(previousObj, obj) ~= false);
+            }
+            if(!same || !bgl.util.buf.equals(_ummCurrent, _ummPrevious)) {
+                if(previousObj != 0) _ummPrint(previousObj, count);
+                bgl.util.buf.setFromBuffer(_ummPrevious, _ummCurrent);
+                previousObj = obj;
+                count = 1;
+            }
+            else count++;
+        }
+        _ummPrint(previousObj, count);
+        #i6 { if(leftTheRoom) L__M(##Miscellany, 51); }
+        return 2;
+    }
+}

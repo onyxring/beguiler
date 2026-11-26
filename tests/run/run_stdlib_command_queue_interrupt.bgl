@@ -1,0 +1,27 @@
+// run_stdlib_command_queue_interrupt — <extensions/stdlib/playerCommandQueue>: an interrupt stops the queue, drops what
+// was waiting, and the player is asked for the next command; the command before it isn't run again.
+// EXPECT_OUTPUT: Halting.
+// EXPECT_OUTPUT: [Queued actions interrupted by an event.]
+// EXPECT_OUTPUT: halts: 1, waiting: 0
+// INPUT: halt
+// INPUT: count
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/playerCommandQueue>
+
+object kitchen { short_name = "Kitchen"; string description = "A kitchen."; attributes = {light}; }
+int halts = 0;
+verb Halt { grammar = { {.halt} }; void handler() {
+    halts++;
+    playerCommands.pushCommand("jump");
+    playerCommands.pushCommand("jump");
+    playerCommands.interrupt = true;
+    print("Halting.^");
+} }
+verb Count { meta = true; grammar = { {.count} }; void handler() { print($"halts: {halts}, waiting: {playerCommands.getLength()}^"); } }
+bool Initialise() { location = kitchen; rfalse; }
+#includeI6 "grammar"

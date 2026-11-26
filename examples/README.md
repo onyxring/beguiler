@@ -2,7 +2,7 @@
 
 | Example | Requires | Builds standalone? |
 |---|---|---|
-| [`hello.bgl`](hello.bgl) | nothing | Yes: transpiles and compiles with no IF library |
+| [`hello.bgl`](hello.bgl) | nothing | Yes: transpiles with no IF library or Inform 6 |
 | [`strings.bgl`](strings.bgl) | nothing | Yes: transpile-only (`informName = "none"`) |
 | [`linq.bgl`](linq.bgl) | nothing | Yes: transpile-only |
 | [`operators.bgl`](operators.bgl) | nothing | Yes: transpile-only |

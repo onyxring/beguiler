@@ -1,0 +1,362 @@
+//===================================================================================================
+// playerCommandQueue.bgl — commands that run as though the player typed them, one per prompt.
+//---------------------------------------------------------------------------------------------------
+// A hook into the player's input, so actions for several turns can be set out in advance:
+//     playerCommands.pushCommand("ask statue about car keys");   // after anything already queued
+//     playerCommands.preemptCommand("x canopy", false, true);    // next, without showing the command
+//     playerCommands.pushAction(Take, lamp);                     // written out as a command
+//     return redirectCommand("x canopy");                        // run this in place of the current action
+//
+// `playerCommands.interrupt`, a flag or a routine, stops the queue: true reports an interruption,
+// anything else non-false that the commands are no longer possible. A command can have a routine
+// print its text, and `queuedAction` answers whether an action can be attempted or is already done;
+// `ext_canAttemptAction` and `ext_isCompletedAction` on a library extension have their say first.
+//
+// `actionQueueBuffer` sets how many commands can wait at once, and `queuedCommandPrompt` what shows
+// before a visible one; define either as an I6 constant first to change it.
+//===================================================================================================
+#once
+#include <extensions/stdlib/hooks/keyboard>
+#include <extensions/stdlib/hooks/verbs>
+#include <array>
+#include <buf>
+
+
+#i6 {
+    Default actionQueueBuffer 10;
+    Default queuedCommandPrompt "^>>";
+    Property individual ext_canAttemptAction;
+    Property individual ext_isCompletedAction;
+}
+extern const int actionQueueBuffer;       /// How many commands can wait at once.
+extern const string queuedCommandPrompt;  /// What is printed before a visible queued command.
+const int noInferMessage = 1;             /// A custom flag: the parser notes no inference for this command.
+
+/// The custom flags of the command being parsed.
+int actionFlags = 0;
+
+superposed void _printActionName(int act) {
+    #i6 {
+        switch(act) {
+            ##Disrobe: print "take off"; return;
+            ##ThrowAt: print "throw";    return;
+            ##PutOn:   print "put";      return;
+        }
+        #Ifdef TARGET_GLULX;
+            print (string) (#identifiers_table-->6)-->act;
+        #Ifnot;
+            print (string) (#identifiers_table + 2 * (#identifiers_table-->0) + 2 * 48)-->act;
+        #Endif;
+    }
+}
+
+/// An action or a command that can wait in a queue.
+class queuedAction[actionQueueBuffer] : object {
+    verb _action;
+    var _noun = 0;
+    var _second = 0;
+    var _cmd = 0;
+    int _flags = 0;
+    var _displayText = 0;
+    var _performer = 0;                   /// Who acts, or a routine that says; 0 for the current actor.
+    bool keepSilent = false;              /// Don't show the command.
+    bool isMeta = false;                  /// Whether this was queued as a meta command.
+
+    void _reset() {
+        _cmd = 0; _displayText = 0; _noun = 0; _second = 0; _flags = 0; _performer = 0;
+        isMeta = false;
+        keepSilent = false;
+    }
+    /// Set this up as an action, with a routine to print its text if given.
+    queuedAction initializeAction(verb act, var n = 0, var s = 0, var displayText = 0, bool meta = false) {
+        _reset();
+        _action = act; _noun = n; _second = s; _displayText = displayText; isMeta = meta;
+        return self;
+    }
+    /// Set this up as a command, with a routine to print its text if given.
+    queuedAction initializeCommand(var cmd, var displayText = 0, bool meta = false) {
+        _reset();
+        _cmd = cmd; _displayText = displayText; isMeta = meta;
+        return self;
+    }
+    verb getAction() { return _action; }
+    var getNoun() { return _noun; }
+    var getSecond() { return _second; }
+    int getCustomFlags() { return _flags; }
+    bool getCustomFlag(int bit) { return (_flags & (1 << bit)) != 0; }
+    void setCustomFlagOn(int bit) { _flags = _flags | (1 << bit); }
+    void setCustomFlagOff(int bit) { _flags = _flags & (-1 - (1 << bit)); }
+
+    /// Print the command this stands for.
+    void printCommand() {
+        if(_displayText != 0) {
+            #i6 { self._displayText(self); }
+            return;
+        }
+        formatCommand();
+    }
+    /// Print the command from what this holds.
+    void formatCommand() {
+        if(_cmd != 0) {
+            #i6 { PrintOrRun(self, _cmd, true); }
+            return;
+        }
+        var n;
+        var s;
+        #i6 {
+            n = ValueOrRun(self, _noun);
+            s = ValueOrRun(self, _second);
+            _printActionName(ValueOrRun(self, _action));
+            if(n) print " ", (name) n;
+            if(s) {
+                self.printPreposition();
+                print " ", (name) s;
+            }
+        }
+    }
+    /// Whether what this action does is already so; -1 for a command, which can't be told.
+    emitter int isDone() { _queuedIsDone($self) }
+    /// Whether this can be tried now. A command is assumed possible.
+    emitter bool canAttempt() { _queuedCanAttempt($self) }
+    /// Carry this action out now.
+    emitter void execute() { _queuedExecute($self) }
+    /// Print what joins the action's two objects.
+    void printPreposition() {
+        var s;
+        #i6 {
+            s = ValueOrRun(self, _second);
+            if(s == 0) return;
+            switch(self._action) {
+                ##PutOn:                       print " on";
+                ##Insert:                      print " into";
+                ##Give, ##Show:                print " to";
+                ##ThrowAt, ##Wave:             print " at";
+                ##Unlock, ##Lock, ##Open, ##Close: print " with";
+            }
+        }
+    }
+}
+
+superposed int _queuedIsDone(queuedAction a_) {
+    if(a_._cmd != 0) return -1;
+    var a; var n; var s; var actn;
+    #i6 {
+        if(LibraryExtensions.RunUntil(ext_isCompletedAction, true, a_) ~= true) {
+            a = _queuedPerformer(a_);
+            n = ValueOrRun(a_, _noun);
+            s = ValueOrRun(a_, _second);
+            actn = ValueOrRun(a_, _action);
+            switch(actn) {
+                ##Take: if(n in a) rtrue;
+                ##Drop: if(~~(n in a)) rtrue;
+                ##Open: if(n has open) rtrue;
+                ##Close: if(n hasnt open) rtrue;
+                ##Wear: if(n in a && n has worn) rtrue;
+                ##Disrobe: if(~~(n in a) || n hasnt worn) rtrue;
+                ##Eat: if(parent(n) == 0) rtrue;
+                ##Enter: if(a in n) rtrue;
+                ##SwitchOn: if(n has switchable && n has on) rtrue;
+                ##SwitchOff: if(n has switchable && n hasnt on) rtrue;
+                ##PutOn: if(n in a && s has supporter) rtrue;
+                ##Give: if(n in a && s has animate) rtrue;
+                ##Insert: if(n in a && s has container) rtrue;
+                ##Unlock: if(n hasnt locked) rtrue;
+                ##Lock: if(n has locked) rtrue;
+            }
+        }
+    }
+    return 0;
+}
+
+superposed bool _queuedCanAttempt(queuedAction a_) {
+    if(a_._cmd != 0) rtrue;
+    var a; var n; var s; var actn; bool inScope = true; bool touchN = true; bool touchS = true;
+    #i6 {
+        if(LibraryExtensions.RunUntil(ext_canAttemptAction, false, a_) ~= false) {
+            a = _queuedPerformer(a_);
+            n = ValueOrRun(a_, _noun);
+            s = ValueOrRun(a_, _second);
+            actn = ValueOrRun(a_, _action);
+            if(n == 0 || TestScope(a, n) == false) { touchN = false; inScope = false; }
+            else touchN = (ObjectIsUntouchable(n, true) == false);
+            switch(actn) {
+                ##Examine: if(~~inScope) rfalse;
+                ##Take: if(~~(touchN && n hasnt scenery or static && parent(n) hasnt animate && parent(n) ~= player)) rfalse;
+                ##Drop: if(~~(n in a)) rfalse;
+                ##Open: if(~~(touchN && n has openable && n hasnt open && n hasnt locked)) rfalse;
+                ##Close: if(~~(touchN && n has openable && n has open)) rfalse;
+                ##Wear: if(~~(n in a && n has clothing && n hasnt worn)) rfalse;
+                ##Disrobe: if(~~(n in a && n has worn)) rfalse;
+                ##Eat: if(~~(touchN && n has edible)) rfalse;
+                ##Enter: if(~~(touchN && n has enterable or door && (n hasnt openable || n has open))) rfalse;
+                ##SwitchOn: if(~~(touchN && n has switchable && n hasnt on)) rfalse;
+                ##SwitchOff: if(~~(touchN && n has switchable && n has on)) rfalse;
+            }
+            if(s == 0 || TestScope(a, s) == false) { touchS = false; inScope = false; }
+            else touchS = (ObjectIsUntouchable(s, true) == false);
+            switch(actn) {
+                ##PutOn: if(~~(touchS && n in a && s has supporter)) rfalse;
+                ##Give: if(~~(touchS && n in a && s has animate)) rfalse;
+                ##Insert: if(~~(touchS && n in a && s has container)) rfalse;
+                ##Unlock: if(~~(touchN && n has locked && s in a)) rfalse;
+                ##Lock: if(~~(touchN && n hasnt locked && n has lockable && s in a)) rfalse;
+            }
+        }
+    }
+    rtrue;
+}
+
+superposed var _queuedPerformer(queuedAction a_) {
+    var who;
+    #i6 { who = ValueOrRun(a_, _performer); if(who == 0) who = actor; }
+    return who;
+}
+
+superposed void _queuedExecute(queuedAction a_) {
+    var saved;
+    #i6 {
+        saved = actor;
+        actor = _queuedPerformer(a_);
+        action = ValueOrRun(a_, _action);
+        noun = ValueOrRun(a_, _noun);
+        second = ValueOrRun(a_, _second);
+        actionFlags = ValueOrRun(a_, _flags);
+        ActionPrimitive();
+        actionFlags = 0;
+        actor = saved;
+    }
+}
+
+/// A queue of actions and commands; the front runs first.
+class actionQueue : object {
+    array<queuedAction> _queuedActions[32];
+    var interrupt = false;      /// True or a routine to stop the queue at its next command.
+
+    /// Add an action before those already waiting. A `silent` one doesn't show.
+    emitter queuedAction preemptAction(verb v, var n = 0, var s = 0, var displayText = 0, bool meta = false, bool silent = false) { _queuePlace($self, true, _queueNewAction($v, $n, $s, $displayText, $meta), $silent) }
+    /// Add an action after those already waiting. A `silent` one doesn't show.
+    emitter queuedAction pushAction(verb v, var n = 0, var s = 0, var displayText = 0, bool meta = false, bool silent = false) { _queuePlace($self, false, _queueNewAction($v, $n, $s, $displayText, $meta), $silent) }
+    /// Add a command before those already waiting. A `silent` one doesn't show.
+    emitter queuedAction preemptCommand(var cmd, bool meta = false, bool silent = false) { _queuePlace($self, true, _queueNewCommand($cmd, 0, $meta), $silent) }
+    /// Add a command after those already waiting. A `silent` one doesn't show.
+    emitter queuedAction pushCommand(var cmd, bool meta = false, bool silent = false) { _queuePlace($self, false, _queueNewCommand($cmd, 0, $meta), $silent) }
+    /// Add a command before those already waiting, with a routine to print its text.
+    emitter queuedAction preQueueCommand(var cmd, var displayText, bool meta = false, bool silent = false) { _queuePlace($self, true, _queueNewCommand($cmd, $displayText, $meta), $silent) }
+    /// Add a command after those already waiting, with a routine to print its text.
+    emitter queuedAction enqueueCommand(var cmd, var displayText, bool meta = false, bool silent = false) { _queuePlace($self, false, _queueNewCommand($cmd, $displayText, $meta), $silent) }
+    /// Take the next one off the queue.
+    queuedAction dequeue() { return _queuedActions.dequeue(); }
+    /// Forget everything waiting.
+    void clear() {
+        while(_queuedActions.length > 0) {
+            queuedAction waiting = _queuedActions.pop();
+            delete waiting;
+        }
+    }
+    /// How many are waiting.
+    int getLength() { return _queuedActions.length; }
+}
+
+superposed queuedAction _queueNewAction(verb v, var n, var s, var displayText, bool meta) {
+    return (new queuedAction()).initializeAction(v, n, s, displayText, meta);
+}
+
+superposed queuedAction _queueNewCommand(var cmd, var displayText, bool meta) {
+    return (new queuedAction()).initializeCommand(cmd, displayText, meta);
+}
+
+superposed queuedAction _queuePlace(actionQueue q, bool atFront, queuedAction actn, bool silent) {
+    actn.keepSilent = silent;
+    if(atFront) q._queuedActions.push(actn);
+    else q._queuedActions.enqueue(actn);
+    return actn;
+}
+
+/// The commands waiting to run as the player's.
+actionQueue playerCommands { }
+
+/// Run this command in place of the current action, showing nothing of it.
+bool redirectCommand(var cmd) {
+    playerCommands.preemptCommand(cmd, false, true);
+    ::meta = true;
+    orSuppressNewlineAfterDescription = true;
+    rtrue;
+}
+
+#if TARGET_GLULX
+    rawArray<int> _queuedCommandCounts[2];   // a closed stream's counts: read, written
+#endif
+
+// Put the next queued command in the input buffer, as if it had been typed: 1 when it did, 0 when
+// nothing is queued, -1 when the queue was stopped and the player is to be asked afresh.
+superposed int _runQueuedCommand(var inputBuffer) {
+    if(playerCommands.getLength() == 0 || just_undone != 0) {
+        playerCommands.clear();
+        return 0;
+    }
+    queuedAction a = playerCommands.dequeue();
+    var stop;
+    #i6 { stop = ValueOrRun(playerCommands, interrupt); }
+    if(stop != false) {
+        L__M(Miscellany, stop == true ? 99 : 98);
+        playerCommands.clear();
+        delete a;
+        #i6 { if(metaclass(playerCommands.interrupt) ~= Routine) playerCommands.interrupt = false; }
+        return -1;
+    }
+    if(a.getCustomFlag(noInferMessage)) no_infer_message = true;
+    int i;
+    #i6 { for(i = WORDSIZE : i < INPUT_BUFFER_LEN - WORDSIZE : i++) inputBuffer->i = 0; }
+    ref array<char> typed := _bglAsBuf(inputBuffer);
+    // The library's buffer has no size word, so it is written through the VM's streams, not captured
+    #if TARGET_ZCODE
+        bgl.asm.outputStream(3, (int)inputBuffer);
+        a.printCommand();
+        bgl.asm.outputStream(-1 * 3);
+    #else
+        int room = INPUT_BUFFER_LEN - bgl.wordsize;
+        int screen = bgl.asm.streamGetCurrent();
+        bgl.asm.streamSetCurrent(bgl.asm.streamOpenMemory((int)inputBuffer + bgl.wordsize, room, 1, 0));
+        a.printCommand();
+        bgl.asm.streamClose(bgl.asm.streamGetCurrent(), (int)_queuedCommandCounts);
+        bgl.asm.streamSetCurrent(screen);
+        int typedLength = _queuedCommandCounts[1] > room ? room : _queuedCommandCounts[1];
+        #i6 { inputBuffer-->0 = typedLength; }
+    #endif
+    #i6 { for(i = WORDSIZE : i < INPUT_BUFFER_LEN : i++) if(inputBuffer->i == 13 or 10) inputBuffer->i = 32; }
+    bgl.util.buf.toLower(typed);
+    if(!a.keepSilent) {
+        print(queuedCommandPrompt);
+        bgl.printRules.bold;
+        bgl.util.buf.print(typed);
+        bgl.printRules.roman;
+        print("^");
+    }
+    #if TARGET_ZCODE
+        #i6 { inputBuffer->0 = INPUT_BUFFER_LEN - WORDSIZE; }
+    #endif
+    actionFlags = a.getCustomFlags();
+    delete a;
+    return 1;
+}
+
+object _playerCommandHooks {
+    parent = LibraryExtensions;
+    bool ext_messages(int n, int x1, int x2) {
+        if(action != Miscellany) rfalse;
+        switch(lm_n) {
+            case 99: rtrue("[Queued actions interrupted by an event.]^");
+            case 98: rtrue("[Queued actions are no longer possible.]^");
+        }
+        rfalse;
+    }
+    bool ext_beforeprompt() {
+        actionFlags = 0;
+        return playerCommands.getLength() > 0;   // a queued command prints its own prompt
+    }
+    int ext_keyboardprimitive(var inputBuffer, var wordTable) {
+        int ran = _runQueuedCommand(inputBuffer);
+        if(ran == 1) Tokenise__(inputBuffer, wordTable);
+        return ran;
+    }
+}
