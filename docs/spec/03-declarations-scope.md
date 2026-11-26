@@ -77,8 +77,7 @@ The following combinations are compile-time errors: `explicit` on anything but `
 with `static`; `static` with `emitter`; `explicit` with `const` or `static`; `alias` with `extern`;
 `alias` with `emitter`; `default` in an object or verb body.
 
-`global` is not a qualifier. A variable is global by being declared at file scope (§3.3); the compiler
-does not recognize `global` before a declaration.
+`global` is not a qualifier. A variable is global by being declared at file scope (§3.3); writing `global` before a declaration is a compile-time error.
 
 ## 3.3 Global Variables
 

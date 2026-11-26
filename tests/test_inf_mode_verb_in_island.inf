@@ -11,6 +11,7 @@
 !       stub, so even when parsing succeeded the verb never reached emit.
 
 #bgl{
+    #beguilerSettings { includePaths = "../../inform6/stdlib"; }
     #include <bindings/i6StandardLibrary>
 
     verb HelloVerb {

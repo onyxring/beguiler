@@ -7,7 +7,7 @@
 // as the element type when the templated typeName was truncated to bare `array`).
 // EXPECT_ERROR: expected 'dictionaryword'
 
-#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <bindings/i6StandardLibrary>
 
 emitter class thing {

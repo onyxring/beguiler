@@ -84,6 +84,9 @@ The left-hand side is a declared variable or a dotted member path. The assignmen
 the right-hand type is compatible with the left-hand type; the compatibility rules, tested in order,
 are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
 
+An assignment is a statement and has no value: chaining one, `a = b = c;`, or using one as a
+condition, `if(a = 3)`, is a compile-time error.
+
 **Example**
 
 <!-- doctest: skip -->
@@ -457,6 +460,4 @@ void deep() { throw 7; }
 try { deep(); } catch (int e) { print(e); }    // → 7
 ```
 
-**Notes**
 
-> **[Z-machine]** Requires version 5 or later.

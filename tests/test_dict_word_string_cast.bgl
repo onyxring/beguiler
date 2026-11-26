@@ -1,7 +1,7 @@
 // A string literal cast to dictionaryWord is a dictionary word made at compile time (§1.6.7):
 // the way to write a word the dot form can't spell, such as one that starts with a digit.
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

@@ -10,7 +10,7 @@
 // `self.parent = X` moves before this landed). See also test_operator_equals_dispatch (the upcast
 // operator= dispatch that makes `.parent = <subclass>` reach parentProp's `move`).
 
-#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; outputPath = "tests/output"; }
 
 #include <bindings/i6StandardLibrary>
 

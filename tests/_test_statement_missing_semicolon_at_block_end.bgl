@@ -1,0 +1,7 @@
+/* The last statement of a routine with no ';' */
+// EXPECT_ERROR: The file ended inside a block: a ';' or '}' is missing.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int n;
+void main(){
+    n = 1
+}

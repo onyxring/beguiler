@@ -5,7 +5,7 @@
     prefix is optional — <i6StandardLibrary> finds bindings/i6StandardLibrary.bgl just like the
     full <bindings/i6StandardLibrary> does.
 */
-#beguilerSettings { informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; informName = "none"; }
 
 #include <i6StandardLibrary>   // resolved recursively, without the bindings/ prefix
 

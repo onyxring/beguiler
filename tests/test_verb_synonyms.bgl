@@ -8,7 +8,7 @@
 
     Covered here (native verbs, so the .inf is self-contained and I6-compiles standalone):
       - synonyms on a Beguile-native verb (anchor directive emits first, then the alias)
-      - multiple synonym words in one directive (`.sip, .swig`)
+      - multiple synonym words in one directive (`.slurp, .swig`)
       - single-character trigger word (`.g` → I6 `'g//'`) alongside a normal word
 
     The same form works on an EXTERN (stdlib) verb — `extend Take { synonyms = {.steal, .grab}; }`
@@ -17,14 +17,15 @@
     game). The emission path is identical — only the anchor's own `Verb` directive differs in origin.
 */
 
+#beguilerSettings { includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
-// Beguile-native verb: `verb 'quaff'` emits first, then `verb 'sip' 'swig' = 'quaff';`.
+// Beguile-native verb: `verb 'quaff'` emits first, then `verb 'slurp' 'swig' = 'quaff';`.
 verb Quaff {
     grammar = { {.quaff, noun} };
     void handler() { print("You quaff it."); }
 }
-extend Quaff { synonyms = {.sip, .swig}; }
+extend Quaff { synonyms = {.slurp, .swig}; }
 
 // Single-character word: `.g` → `'g//'` (I6's one-letter dict-word form). Anchor is the verb's
 // primary trigger word (`gaze`), resolved at emit time.

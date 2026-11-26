@@ -457,7 +457,9 @@ element of `⟨type⟩`.
 The element type of an array may itself be an array type, two deep at most: `array<array<T>>`. A third level is
 a compile-time error; keep it in a class member instead. A struct can't hold an array of arrays either (its
 instances are copied and pooled member by member); a struct member may be a `ref` to one kept elsewhere. A nested initializer supplies
-one braced list per inner array, and the inner arrays may differ in length. `name[i]` is an
+one braced list per inner array, and the inner arrays may differ in length.
+The inner arrays of an `array<array<char>>` are byte arrays (§12.4); each row is written as a braced
+list (`{'o','n','e'}`), since a string literal is not accepted as a row. `name[i]` is an
 `array<T>` and supports `length` and the array surface; `name[i][j]` reads or writes an element,
 and `name[i][j].member = v` writes through an object element. `for (array<T> row in name)` iterates
 the outer array with `row` typed `array<T>`. A nested array may be declared as a local; its inner

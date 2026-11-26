@@ -1,0 +1,4 @@
+// Z-machine version 3 is not a target.
+// EXPECT_ERROR: Invalid target 'z3'
+#beguilerSettings { target = z3; }
+void main(){ }

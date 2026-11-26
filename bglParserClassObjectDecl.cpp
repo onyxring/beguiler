@@ -196,6 +196,10 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
                 newClass.poolSize = stoi(v);
                 newClass.poolSizeExpr.clear();
             } else {
+                variableDeclaration* countVar = languageService.findGlobalAs<variableDeclaration>(inner.value);
+                if(countVar != nullptr && !countVar->isConst && !countVar->isExternal)
+                    parsingError(format("The instance count of class '{0}' must be a constant.",
+                        nameTok.originalValue.empty() ? nameTok.value : nameTok.originalValue));
                 newClass.poolSize    = 1;  // positive sentinel — "is pooled" downstream checks
                 newClass.poolSizeExpr = inner.value;
             }
@@ -291,6 +295,9 @@ void bglParser::parseOperatorMemberName(token& tok, token& name){
     } else if(opTok.is(eTokenType::identifier)){
         // qualified operator: e.g. "prefix++" — read qualifier then oper symbol
         token opSym = file.getToken(eTokenType::oper);
+        if(!opTok.is("prefix") || (opSym.value != "++" && opSym.value != "--"))
+            parsingError(format("'{0}{1}' is not an operator; the qualified operators are prefix++ and prefix--.",
+                opTok.originalValue.empty() ? opTok.value : opTok.originalValue, opSym.value));
         name.value = opTok.value + opSym.value;  // e.g. "prefix++"
         tok = file.getToken(eTokenType::symbol);
     } else if(opTok.is("?")){
@@ -767,6 +774,7 @@ variableDeclaration* bglParser::asInheritedArrayOverride(variableDeclaration& va
 }
 
 bool bglParser::parseClassVariableMember(classDef& newClass, token& tok, token name, token returnType, Qualifiers& q, bool isEmitter, bool isExtend, const string& i6alias){
+    rejectPatternElementDeclaration(returnType.value);
     rejectMemberBindingMismatch(q.isRef, tok, returnType, name);
     if(tok.is(token::bindAssignment)) tok.value = token::assignment;   // a `ref` member's value, bound
     bool isReplace = q.isReplace;
@@ -1811,6 +1819,7 @@ bool bglParser::processArrayMember(vector<typeMember*>& members, const string& o
     // library reads directly; `array<T>` keeps Beguile's semantics.
     file.getToken("<");
     string elemType = readArrayElementType();
+    rejectPatternElementDeclaration(elemType);
     bool literalElements = pendingLiteralElements;
     pendingLiteralElements = false;
     file.getToken(">");
@@ -2293,6 +2302,7 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
 
 
 void bglParser::processMemberVariable(objectDef& obj, string typeName, string name, bool hasValue, bool isReplace, string i6alias, bool isRef, string docComment){
+    rejectPatternElementDeclaration(typeName);
     if(objectMemberIsSuperposed){
         objectMemberIsSuperposed = false;
         parsingError(format("'superposed' on '{0}': in an object body it applies to a method, which is dropped unless something calls it.", name));
@@ -4195,6 +4205,18 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             if(!file.peekToken().is(token::braceClose)){
                 while(true){
                     token w = file.getToken(eTokenType::dictionaryWord);
+                    // A word one verb already has can't be made another's alias.
+                    for(verbObjectDef* other : languageService.verbs){
+                        bool claims = false, anyOwn = false;
+                        for(const grammarLine& gl : other->grammarLines){
+                            if(gl.isOwnLine) anyOwn = true;
+                            if(gl.verbWord == w.value || find(gl.additionalVerbWords.begin(), gl.additionalVerbWords.end(), w.value) != gl.additionalVerbWords.end())
+                                claims = true;
+                        }
+                        if(!anyOwn && other->isExternal && !other->claimsNoWords && other->name == w.value) claims = true;
+                        if(claims)
+                            parsingError(format("'{0}' is already a word of verb '{1}'.", w.value, other->writtenName.empty() ? other->dName() : other->writtenName));
+                    }
                     string e; for(char ch : w.value) e += (ch == '\'') ? '^' : ch;
                     string i6word;
                     if(w.isPlural)         i6word = "'" + e + "//p'";

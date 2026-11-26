@@ -1,0 +1,12 @@
+// A member keeps its name beside an extern verb of that name.
+// EXPECT_OUTPUT: 7 tally
+#beguilerSettings { target = z5; }
+extern verb Tally { }
+object box {
+    int tally = 7;
+}
+void main(){
+    print(box.tally);
+    #i6 { print " ", (property) tally; }
+    print("^");
+}

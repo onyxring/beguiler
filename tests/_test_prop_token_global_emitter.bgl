@@ -1,0 +1,4 @@
+// EXPECT_ERROR: emitter 'twice' uses $prop, which is only available in an array<T> emitter.
+#beguilerSettings { target = z5; }
+emitter int twice(int n){ ($n * 2 + $prop) }
+void main(){ print(twice(4)); }

@@ -3,6 +3,7 @@
 //
 // EXPECT_ERROR: requires at least one trigger word
 
+#beguilerSettings { includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
 extend Take { synonyms = { }; }

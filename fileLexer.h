@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <stack>
+#include <unordered_map>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
@@ -40,6 +41,19 @@ class fileLexer{
         // raw I6 contexts). Memory: deleting the istream* invokes the derived destructor
         // (virtual), which closes the file for ifstream / frees the buffer for istringstream.
         std::stack<std::tuple<std::istream*, std::string, int, int>> files;
+        std::unordered_map<std::string, std::string> writtenAs;   // a lowercased name -> its latest spelling in the source
+        // A dotted path of lowercased names, as the source last spelled each one.
+        std::string asWritten(const std::string& path) const {
+            std::string out, part;
+            for(size_t i = 0; i <= path.size(); i++){
+                if(i < path.size() && path[i] != '.'){ part += path[i]; continue; }
+                auto it = writtenAs.find(part);
+                out += it != writtenAs.end() ? it->second : part;
+                if(i < path.size()) out += '.';
+                part.clear();
+            }
+            return out;
+        }
         eTokenType prevTokenType = eTokenType::unknown; // tracks last token returned by getToken()
         std::string prevTokenValue;                      // tracks last token's value (for symbol disambiguation)
         // Split-">>" support: when the type parser meets a ">>" that closes two generic
@@ -137,6 +151,8 @@ class fileLexer{
         // region. outRemainingDepth is set to 0 on EOF in that mode.
         string getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& outRemainingDepth, int startDepth = 1, bool eofTerminates = false);
         sourceLocation currentLocation();
+        // Where the nearest file outside `dir` stands, when the current file is inside it.
+        sourceLocation includerOutside(const std::string& dir);
         //token getRunTokenEol();
         //token getRunTokenBraceClose();
 };

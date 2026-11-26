@@ -5,7 +5,7 @@
 #once
 // Default capture buffer size; override early with #emitfirst
 #emitfirst{
-    Default bglStringDefaultSize 500;
+    Default bglStringDefaultSize 500; #Ifdef bglStringDefaultSize; #Endif;
 }
 extern int bglStringDefaultSize;
 
@@ -150,7 +150,7 @@ superposed object _bglBuf {
     }
 
     // ── Copy / write ──────────────────────────────────────────────────────────
-    superposed array<char> set(array<char> buf, string stringVal) asI6 _bglText_set { return setAny(buf, stringVal); }
+    superposed array<char> set(array<char> buf, string stringVal) asI6 _bglText_set { return setFromLiteral(buf, stringVal); }
     superposed array<char> set(array<char> buf, array<char> src) asI6 _bglText_set { return setFromBuffer(buf, src); }
 
     // Copy from a tracked buffer or a packed string

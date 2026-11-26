@@ -4,7 +4,7 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 
-    Default bglStringDefaultSize 500;
+    Default bglStringDefaultSize 500; #Ifdef bglStringDefaultSize; #Endif;
 
 constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
@@ -286,19 +286,10 @@ object _bglBuf
     }
   ],
        _bglText_set_2_bytearray_string [buf stringVal;
-    return self._bgltext_setany(buf,stringval);
+    return self._bgltext_setfromliteral(buf,stringval);
   ],
        _bglText_set_2_bytearray_bytearray [buf src;
     return self._bgltext_setfrombuffer(buf,src);
-  ],
-       _bglText_setAny [buf stringVal;
-    if (self._bglText_isTracked(stringVal)) {
-        self._bgltext_setfrombuffer(buf, stringVal);
-    }
-    else {
-        self._bgltext_setfromliteral(buf, stringVal);
-    }
-    return buf;
   ],
        _bglText_setFromLiteral [buf stringVal sz room;
     sz=self._bglText_size(buf);

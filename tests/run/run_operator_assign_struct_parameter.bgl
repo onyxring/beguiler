@@ -1,0 +1,6 @@
+// A struct's `operator =` converts an argument passed for a parameter of its type.
+// EXPECT_OUTPUT: 500
+#beguilerSettings { target = z5; }
+struct Money { int cents = 0; void operator = (int n){ cents = n * 100; } }
+void showM(Money m){ print(m.cents); print("^"); }
+void main(){ bglInit(); showM(5); }

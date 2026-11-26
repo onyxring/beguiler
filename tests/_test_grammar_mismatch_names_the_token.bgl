@@ -1,0 +1,5 @@
+/* A declaration that fails part-way names the token it stopped at */
+// EXPECT_ERROR: Near 'number': expected type name
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int x: number = 3;
+void main(){}

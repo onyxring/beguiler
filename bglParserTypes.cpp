@@ -1855,7 +1855,9 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
         if(!gcm.varType.empty())
             parsingError(format("'{0}' is a variable of type '{1}', not a function, so it can't be called.{2}",
                                 funcName, typeDisplayName(gcm.varType), laterUsingHint(funcName, gcm.varType)));
-        parsingError(format("Undeclared function '{0}'", funcName));
+        string shown = callDisplayName;
+        transform(shown.begin(), shown.end(), shown.begin(), ::tolower);
+        parsingError(format("Undeclared function '{0}'", shown == funcName ? callDisplayName : funcName));
     }
     string dispName = gcm.nameMatch ? gcm.nameMatch->dName() : funcName;
     if(gcm.arityMatch == nullptr){
@@ -2747,7 +2749,6 @@ string bglParser::clashRenamedMember(const string& name){
         }
     }
     if(namesFixedGlobal(name)) return "_m_" + name;
-    for(verbObjectDef* v : languageService.verbs) if(v->name == name && v->isExternal) return "_m_" + name;
     return "";
 }
 
@@ -4317,6 +4318,8 @@ bool bglParser::isPlainAssignOperator(classDef* cls, functionDef* fn){
 bool bglParser::compatibleViaAssignmentOperator(const string& argType, const string& paramType){
     classDef* cls = getDispatchClass(paramType);
     if(cls == nullptr) return false;
+    // A reference class has no instance for the value to be assigned into.
+    if(!cls->isValue && !cls->isPrimitive && !cls->isExternal && !cls->isEmitterClass) return false;
     return findAssignOperator(cls, argType, [](functionDef*){ return true; }, /*allowInherited*/false) != nullptr;
 }
 

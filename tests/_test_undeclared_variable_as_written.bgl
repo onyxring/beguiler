@@ -1,0 +1,3 @@
+// EXPECT_ERROR: Undeclared variable 'NoSuch.v'
+#beguilerSettings { target = z5; }
+void main(){ NoSuch.v = 1; }

@@ -55,9 +55,9 @@ name before the main parse begins, so a name may be used before the file positio
 declared, and an included file may refer to declarations in a file included after it. The pre-scan
 registers:
 
-- classes (including `extern` and generic ones) and their members;
+- classes (including `extern`, `alias` and generic ones) and structs, with their members;
 - enums, bnums and unions, with their members;
-- objects, verbs and global variables, with the members declared in an object body;
+- objects, verbs, global variables and constants, with the members declared in an object body;
 - global functions;
 - members added by `extend` bodies of objects, whether the object is declared before or after the
   `extend` (a class or an array must be declared before it is extended);

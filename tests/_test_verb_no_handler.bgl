@@ -3,7 +3,7 @@
 // extern verb; a native verb falling back to it would call itself.
 // EXPECT_ERROR: must give 'handler', which 'verb' requires.
 
-#beguilerSettings { informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; informName = "none"; }
 #include <bindings/i6StandardLibrary>
 
 verb Frob {

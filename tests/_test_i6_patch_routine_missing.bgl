@@ -1,0 +1,4 @@
+// A routine chunk whose routine is in neither the file nor the files it includes.
+// EXPECT_ERROR: routine 'NoSuchRoutine' isn't in the file 'verblib.h'
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; }
+#mergeI6 "run/patches/noSuchRoutine"

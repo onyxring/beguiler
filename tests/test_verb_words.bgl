@@ -18,7 +18,7 @@
 //     verb definitions" error). The `withI6Synonyms` modifier opts back into whole-group `Extend`.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

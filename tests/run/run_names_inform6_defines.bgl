@@ -1,0 +1,12 @@
+/*  run_names_inform6_defines — an object, variable or routine may take a name Inform 6 defines before
+    the program starts (`nothing`, `routine`, `sender`, `wordsize`).  */
+// EXPECT_OUTPUT: 3 4 5 6 7
+#beguilerSettings { target = z5; informName = "none"; }
+object nothing { int v = 3; }
+object routine { int v = 4; }
+object class   { int v = 5; }
+int sender = 6;
+int wordsize() { return 7; }
+void main() {
+    print($"{nothing.v} {routine.v} {class.v} {sender} {wordsize()}");
+}

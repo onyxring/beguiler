@@ -171,7 +171,7 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 
 ### 23.3.9 Banner Texts
 
-The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and replaces the library's banner with one that also names the Beguile version. It reads the release number and serial code through `bgl.header` (§21.14).
+The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and merges its own banner into the library's `Banner` routine (§14.1.6), one that also names the Beguile version. A game changes the banner by replacing `Banner` (§6.5). The `punyInform` binding does the same for PunyInform.
 
 ### 23.3.10 Library Options and Debug Builds
 
@@ -231,6 +231,9 @@ returns what the library expects of it, which the table gives as the method's re
 | `list_together` | group similar objects in a list | `int list_together` (a group number) or `string list_together`; the library groups objects whose values are the same word, so a string is declared once, on their class, rather than repeated on each object |
 | `articles` | articles for a name in a language without inflection | `rawArray<string> articles` |
 
+The binding gives `found_in`, `add_to_scope` and `articles` their array types, so an object fills one
+without naming a type (`found_in = {study, attic};`) and declares a type only to use a different one.
+
 The additive properties `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` are
 declared by the binding (§23.3.5) and written as methods: `bool before()` returns true to stop the
 action, and the others follow the same table.
@@ -273,7 +276,7 @@ Room study { "Study"; description = "A study."; object s_to = hall; object u_to 
 Room attic { "Attic"; description = "An attic."; object d_to = hatch; }
 object hatch {
     "hatch"; attributes = {door, openable, static, scenery};
-    rawArray<object> found_in = {study, attic};
+    found_in = {study, attic};
     object door_to(){ if (location == study) return attic; return study; }
     property door_dir = u_to;
 }

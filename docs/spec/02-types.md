@@ -129,7 +129,7 @@ A pseudo-type converts to its corresponding type only through operators that the
 declares: a conversion operator on the pseudo-type (`intLiteral` declares one to `int`), or an
 `operator =` on the target type that accepts it (`float` declares `operator = (intLiteral)`). These
 rules are not built into the compiler (§2.10.1). Pseudo-types are first-class types, declared as
-`extern class` (§8.2.2) in the core and extensible with `extend` (§8.7.1), so a method defined
+`primitive class` (§8.2.5) in the core and extensible with `extend` (§8.7.1), so a method defined
 against one may be called directly on a literal.
 
 **Example**

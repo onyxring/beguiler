@@ -1,0 +1,5 @@
+// EXPECT_ERROR: The instance count of class 'Q' must be a constant.
+#beguilerSettings { target = z5; }
+int pool = 4;
+class Q[pool] : object { int v = 0; }
+void main(){ }

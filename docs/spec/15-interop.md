@@ -190,10 +190,8 @@ precompiler-mode file. The body is a sequence of Beguile statements in code-bloc
 translated in place. Permitted: assignments, expressions, method and function calls, control flow,
 and any construct that translates to inline statements. Not permitted: variable declarations (locals
 belong in the enclosing I6 routine's local list) and function, class, enum or other declarations.
-
-Argument type checking is relaxed for calls resolved inside a Beguile island: when a name resolves
-to exactly one Beguile function or method by name and arity, the call binds even if the argument
-types do not match, and the arguments are passed as written.
+`#bglDecl` inside a routine is a compile-time error; `#bglStmt` is the explicit form of a statement
+island there.
 
 **Example**
 
@@ -258,6 +256,10 @@ Beguile is passed through verbatim to the I6 program and resolved by the I6 comp
 bare identifiers, dotted method calls and function calls, and it propagates into every sub-parse of
 the island, including the bodies of methods declared in a file-scope island. Identifiers in loose
 mode are not checked; a typo surfaces as an I6 error.
+
+Argument type checking is relaxed in the same places: when a call's name resolves to exactly one
+Beguile function or method by name and arity, the call binds even if the argument types do not
+match, and the arguments are passed as written.
 
 **Example**
 
@@ -487,7 +489,8 @@ class ⟨name⟩ : object {
 
 `_bglGlobalDeclaration` is an emitter hook (§7): a class may define an emitter of that name, and its
 body is injected as a top-level I6 declaration once for every object instance of the class, so a
-class can generate a companion routine, array or other I6 construct that accompanies each instance.
+class can generate a companion routine, array or other I6 construct that accompanies each instance. The emitter is inherited: an instance of a subclass gets the declaration too, and a subclass that
+defines its own `_bglGlobalDeclaration` uses that one for its instances instead.
 The body is raw I6 and takes the standard substitution tokens (§7.3, Appendix G); one additional
 token is available here:
 

@@ -1,0 +1,5 @@
+// `patternElement` is the type of a verb's grammar; a program declares none.
+// EXPECT_ERROR: 'patternElement' is the type of a verb's grammar
+#beguilerSettings { target = z5; }
+object holder { array<patternElement> pat; }
+void main(){ }

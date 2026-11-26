@@ -1,0 +1,5 @@
+/* A call no overload takes is reported at the call, in an expression and as a statement */
+// EXPECT_ERROR: :5:28: ERROR: No overload of function 'f'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int f(int a, int b){ return 1; }
+void main(){ int v = 2 + f(1, "two") + 3; }

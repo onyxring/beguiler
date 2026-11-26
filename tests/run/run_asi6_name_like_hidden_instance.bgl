@@ -1,0 +1,16 @@
+/*  run_asi6_name_like_hidden_instance — an `asI6` name spelled like the compiler's own name for an
+    accessor's instance stays the author's.  */
+// EXPECT_OUTPUT: 7 9
+#beguilerSettings { target = z5; informName = "none"; }
+object meter {
+    int count asI6 _meter_level = 7;
+    auto level = {
+        int stored = 2;
+        int operator () { return stored; }
+        void operator = (int v) { stored = v; }
+    };
+}
+void main() {
+    meter.level = 9;
+    print($"{meter.count} {meter.level}");
+}

@@ -1,0 +1,13 @@
+/*  run_interpolation_string_across_lines — a string inside an interpolation's {…} may break across lines.  */
+// EXPECT_OUTPUT: one two|x|a b
+#beguilerSettings { target = z5; informName = "none"; }
+void main() {
+    bool c = true;
+    print($"{c ? "one
+             two" : "x"}|");
+    c = false;
+    print($"{c ? "one
+             two" : "x"}|");
+    print("a
+           b");
+}

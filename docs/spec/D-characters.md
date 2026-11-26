@@ -110,7 +110,7 @@ be one of the ZSCII extended characters (codes 155 to 224):
 | ring and slash | å Å ø Ø |
 | tilde | ã ñ õ Ã Ñ Õ |
 | ligatures and letters | æ Æ ç Ç þ Þ ð Ð œ Œ ß |
-| punctuation | £ ¡ ¿ |
+| punctuation | £ ¡ ¿ « » |
 
 Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
 Glulx, the characters described below.

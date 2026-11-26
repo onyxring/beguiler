@@ -647,6 +647,7 @@ struct grammarLine {
 // a verb declaration — an objectDef of class 'verb'; holds optional action body and inline grammar
 class verbObjectDef : public objectDef {
     public:
+        string writtenName;                 // the name as declared, for messages
         bool isMeta = false;                // I6 meta verb (declared via `meta = true;` or `extern meta verb …`)
         int priority = 0;                   // anchor priority. Resolved in emitVerbObject from BLR's `class verb`
                                             // default, then overridden by any `priority = N;` in the verb body.
@@ -713,7 +714,7 @@ class beguilerSettingsDef : public typeDef {
         string outputPath;             // overrides the output directory (CLI -o wins)
 
         // ICL directives (!% lines)
-        string target;                 // !% -G (Glulx), !% -v3, !% -v5, !% -v8
+        string target;                 // !% -G (Glulx), !% -v5, !% -v8
         int release = 0;               // !% Release N;  (0 = not set)
         string serial;                 // Serial "YYMMDD"; (empty = not set; must be exactly 6 digits)
         string errorFormat;            // !% -EN  (e.g. "1" → -E1)

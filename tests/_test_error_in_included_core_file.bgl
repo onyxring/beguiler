@@ -1,0 +1,5 @@
+/* An #error in a core file is reported at the #include that brought it in */
+// EXPECT_ERROR: _test_error_in_included_core_file.bgl:4:18: ERROR: float needs a Glulx target
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#include <_float>
+void main(){}

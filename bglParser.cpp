@@ -355,12 +355,11 @@ filesystem::path findLibIncludeRecursive(const filesystem::path& root, const str
 
 bglParser::bglParser(){
     openCompileContext(eCompileContext::global);
-    // Pre-defined compiler symbols (read-only; calculated from BEGUILER_VERSION in settings.h)
-    // beguiler encodes major*1000 + minor*10 + patch (e.g. 1.0.0 = 1000, 1.1.0 = 1010)
-    definedSymbols["beguiler"] = to_string(BEGUILER_VERSION);
-    definedSymbols["beguilermajor"]   = to_string(BEGUILER_VERSION / 1000);
-    definedSymbols["beguilerminor"]   = to_string((BEGUILER_VERSION % 1000) / 10);
-    definedSymbols["beguilerpatch"]   = to_string(BEGUILER_VERSION % 10);
+    // Pre-defined compiler symbols (read-only)
+    definedSymbols["beguiler"] = to_string(compilerVersion().number());
+    definedSymbols["beguilermajor"]   = to_string(compilerVersion().major);
+    definedSymbols["beguilerminor"]   = to_string(compilerVersion().minor);
+    definedSymbols["beguilerpatch"]   = to_string(compilerVersion().patch);
     //emit.to(cout);  //write the result to the terminal window for now
 }
 void bglParser::reset(){
@@ -388,10 +387,10 @@ void bglParser::reset(){
     // Reset definedSymbols to only the built-in version symbols
     definedSymbols.clear();
     i6DefinedSymbols.clear();
-    definedSymbols["beguiler"] = to_string(BEGUILER_VERSION);
-    definedSymbols["beguilermajor"]   = to_string(BEGUILER_VERSION / 1000);
-    definedSymbols["beguilerminor"]   = to_string((BEGUILER_VERSION % 1000) / 10);
-    definedSymbols["beguilerpatch"]   = to_string(BEGUILER_VERSION % 10);
+    definedSymbols["beguiler"] = to_string(compilerVersion().number());
+    definedSymbols["beguilermajor"]   = to_string(compilerVersion().major);
+    definedSymbols["beguilerminor"]   = to_string(compilerVersion().minor);
+    definedSymbols["beguilerpatch"]   = to_string(compilerVersion().patch);
     definedSymbolsPreScanSeed.clear();
     hasPreScanSeed = false;
     declaredSymbols.clear();   // #declare set — repopulated by the pre-scan across the whole include graph
@@ -1814,11 +1813,31 @@ bool bglParser::parseInfFileBody(abstractObject& contextObj){
         compositeNode = new i6RawNode();
     };
 
+    // Whether the Inform 6 text read so far has left a routine open: `[` to its `]`.
+    bool insideI6Routine = false;
+    auto followRoutines = [&](const string& text){
+        bool inString = false;
+        for(size_t k = 0; k < text.size(); k++){
+            char ch = text[k];
+            if(inString){ if(ch == '"') inString = false; continue; }
+            if(ch == '"') inString = true;
+            else if(ch == '!'){ while(k < text.size() && text[k] != '\n') k++; }
+            else if(ch == '\'' && k + 2 < text.size() && text[k + 2] == '\'') k += 2;
+            else if(ch == '[') insideI6Routine = true;
+            else if(ch == ']') insideI6Routine = false;
+        }
+    };
+
     int depth = 1;  // pseudo-depth: stays > 0 until EOF (forced to 0 by getRawText…'s eofTerminates)
     while(depth > 0){
         eBglDirective directive = eBglDirective::NotFound;
         sourceLocation segStart = file.currentLocation();
         string segment = file.getRawTextUntilCloseOrBgl(directive, depth, depth, /*eofTerminates=*/true);
+        followRoutines(segment);
+        if(directive == eBglDirective::BglDecl && insideI6Routine){
+            ErrorAt here(*this, file.currentLocation());
+            parsingError("#bglDecl can't be used inside a routine: a declaration belongs at file level.");
+        }
         if(firstSegment){
             // Extract the user's `!%` ICL block from the very top of the file. I6 only honors
             // `!%` when it occupies the first line(s); we hoist it to the top of the emitted
@@ -2822,7 +2841,11 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
                 for(auto& rule : grammarRules) {
                     if(rule.name == best->ruleName && best->matchedUpTo < (int)rule.pattern.size()) {
                         string expected = describeExpected(rule.pattern[best->matchedUpTo]);
-                        parsingError(format("Near '{0}': expected {1} (in {2})", (string)tok, expected, best->ruleName));
+                        token offender = best->matchedUpTo > 0 ? file.peekToken(best->matchedUpTo) : tok;
+                        if(offender.is(eTokenType::eof)) offender = tok;
+                        ErrorAt atOffender(*this, offender.src);
+                        parsingError(format("Near '{0}': expected {1} (in {2})",
+                            offender.originalValue.empty() ? (string)offender : offender.originalValue, expected, best->ruleName));
                     }
                 }
             }
@@ -3508,7 +3531,11 @@ bool bglParser::parsingError(string msg){
         // Prefer the statement-start location if set; fall back to current stream position.
         string fileName;
         int curLine, curCol;
-        if(currentStatementSrc.line > 0){
+        if(errorAt.line > 0){
+            fileName = errorAt.file;
+            curLine  = errorAt.line;
+            curCol   = max(1, errorAt.col);
+        } else if(currentStatementSrc.line > 0){
             // Still on the statement's line: the stream stands just past the offending part.
             auto detail = file.getCurrentFileDetail();
             fileName = currentStatementSrc.file;

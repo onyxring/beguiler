@@ -1,0 +1,5 @@
+/* A type named by a reserved word */
+// EXPECT_ERROR: 'class' is a reserved word: it can't name a type.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+class class class
+void main(){}

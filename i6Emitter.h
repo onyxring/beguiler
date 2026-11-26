@@ -59,6 +59,7 @@ class i6Emitter{
         void emitAllStaticClassRoutines();
         map<string,string> superposedBlocks;
         map<string,vector<tuple<int,string,int>>> superposedBlockMaps;
+        vector<pair<string, string>> superposedScalars;   // name and declaration of each superposed scalar or constant declared early
         // For superposed CLASS blocks (keyed like superposedBlocks): the I6 names of their superposed
         // base classes. Unlike objects, an I6 `Class` directive must physically precede any class that
         // derives from it, so resolvedOutput() revives a referenced class's superposed bases FIRST.
@@ -79,6 +80,7 @@ class i6Emitter{
         }
         void emitDeferredBackingClass(classDef*);  // emit a superposed accessor class before its baked backing instance (once)
         string deferredLibraryGrammar;              // grammar extending the library's, written after it
+        map<string, vector<string>> verbEmittedWords;  // per verb, the trigger words its grammar was emitted under
         set<string> declaredVerbWords;             // tracks which I6 trigger words have been Verb-declared
         set<string> evictedEmitted;                // evicted library words already emitted as `Extend only 'w' replace`
         void emitEvictions();                      // emit empty `Extend only 'w' replace;` for evicted words no verb reclaimed
@@ -100,7 +102,7 @@ class i6Emitter{
         string resolvedOutput();
 
         // Z-machine local variable spill state — active during a single function's emission
-        string currentTarget;                              // lowercase: "glulx","z3","z5","z8"
+        string currentTarget;                              // lowercase: "glulx","z5","z8"
         map<string,string> currentSpillAliases;            // varName → "_bglFrm-->N" or "_bglXPn"
         // Original-case display names for params/locals of the function being emitted, keyed by
         // canonical (lowercased) name. Populated by buildSpillMap, consulted by spillName.
@@ -143,6 +145,8 @@ class i6Emitter{
         // routine has the synthetic `_bglFrm` frame pointer, which the debugger should hide.
         map<string, map<string,string>> routineSpillAliases;   // routineI6Name → localName → "_bglFrm-->N"/"_bglXPn"
         map<string, int>                routineSpillCounts;    // routineI6Name → frame-pool slot count
+        vector<pair<string,string>> currentExcessParamCopies;   // local or frame slot <- _bglXPn, on entry
+        set<string> spilledParamRoutines;                  // lowercase I6 names of routines with params in _bglXPn
         int xpGlobalsNeeded = 0;                           // how many _bglXPn globals were emitted
         int framePoolSize = 64;                            // configurable via beguilerSettings framePoolSize
 
@@ -265,6 +269,7 @@ class i6Emitter{
         void emitObjectByteArrayMembers(objectDef* obj, map<string, string>& externalArrayNames);
         vector<arrayDeclaration*> inheritedByteArrays(objectDef* obj);
         // Bakes one backing instance per owned value-helper member (own and inherited), recording name + decl.
+        set<string> authorI6Names;   // every asI6 name given, lowercase; built on first use
         void emitObjectOwnedMemberInstances(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl);
         // Collects `with` wirings for owned/promoted members inherited from the class chain, not redeclared here.
         void collectInheritedOwnedMembers(objectDef* obj, map<string, string>& ownedInstanceNames, map<string, variableDeclaration*>& ownedMemberDecl, vector<pair<string,string>>& inheritedOwned);

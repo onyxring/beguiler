@@ -74,11 +74,11 @@ superposed class bglOpCodes {
     emitter void printPaddr(int addr)   { @print_paddr $addr; }  /// Print the string at packed address `addr` (`@print_paddr`).
     emitter void newLine()              { @new_line; }           /// Print a new line (`@new_line`).
 
-    //-- Window / Display (Z3+) ------------------------------------------------
+    //-- Window / Display ------------------------------------------------------
     emitter void splitWindow(int lines) { @split_window $lines; }  /// Make the upper window `lines` lines tall (`@split_window`).
     emitter void setWindow(int win)     { @set_window $win; }      /// Send output to window `win`: 0 lower, 1 upper (`@set_window`).
 
-    //-- Streams (Z3+) ---------------------------------------------------------
+    //-- Streams ---------------------------------------------------------------
     /// Turn output stream `n` on, or off when `n` is negative (`@output_stream`).
     emitter void outputStream(int n)              { @output_stream $n; }
     /// Redirect output into a table in memory (`@output_stream`).
@@ -95,85 +95,82 @@ superposed class bglOpCodes {
     /// Check the story file against its header checksum (`@verify`). True when it is intact.
     emitter int verify()                 { @verify; }
 
-    //-- Sound (Z3+) -----------------------------------------------------------
+    //-- Sound -----------------------------------------------------------------
     /// Play a sound resource. `effect` is 1 prepare, 2 start, 3 stop, 4 finish (`@sound_effect`).
     emitter void soundEffect(int num, int effect, int vol) {
         @sound_effect $num $effect $vol;
     }
 }
 
-//-- Z4 and later (not Z3) ---------------------------------------------------
-#if #beguilerSettings.target != "z3"
-    extend class bglOpCodes {
+extend class bglOpCodes {
 
-        //-- Window / Display (Z4+) ------------------------------------------------
-        emitter void eraseWindow(int win)   { @erase_window $win; }  /// Clear window `win`; -1 clears the screen and unsplits it (`@erase_window`).
-        /// Erase from the cursor to the end of the line when `v` is 1 (`@erase_line`).
-        emitter void eraseLine(int v)       { @erase_line $v; }
-        /// Move the cursor in the upper window. Line and column count from 1 (`@set_cursor`).
-        emitter void setCursor(int line, int col) { @set_cursor $line $col; }
-        /// Write the cursor's line and column into the first two words of `arr` (`@get_cursor`).
-        emitter void getCursor(int arr)     { @get_cursor $arr; }
-        emitter void setTextStyle(int style) { @set_text_style $style; }  /// Set the text style: 0 roman, 1 reverse, 2 bold, 4 italic, 8 fixed (`@set_text_style`).
-        /// Turn word wrapping on (1) or off (0) in the lower window (`@buffer_mode`).
-        emitter void bufferMode(int flag)   { @buffer_mode $flag; }
+    //-- Window / Display (Z4+) ------------------------------------------------
+    emitter void eraseWindow(int win)   { @erase_window $win; }  /// Clear window `win`; -1 clears the screen and unsplits it (`@erase_window`).
+    /// Erase from the cursor to the end of the line when `v` is 1 (`@erase_line`).
+    emitter void eraseLine(int v)       { @erase_line $v; }
+    /// Move the cursor in the upper window. Line and column count from 1 (`@set_cursor`).
+    emitter void setCursor(int line, int col) { @set_cursor $line $col; }
+    /// Write the cursor's line and column into the first two words of `arr` (`@get_cursor`).
+    emitter void getCursor(int arr)     { @get_cursor $arr; }
+    emitter void setTextStyle(int style) { @set_text_style $style; }  /// Set the text style: 0 roman, 1 reverse, 2 bold, 4 italic, 8 fixed (`@set_text_style`).
+    /// Turn word wrapping on (1) or off (0) in the lower window (`@buffer_mode`).
+    emitter void bufferMode(int flag)   { @buffer_mode $flag; }
 
-        //-- Input (Z4+) -----------------------------------------------------------
-        /// Wait for one key press and return its ZSCII code (`@read_char`); `dev` must be 1.
-        static superposed int readChar(int dev = 1){
-            int c;
-            #i6 { @read_char dev -> c; }
-            return c;
-        }
-        /// Search `table` for `x`, returning its address or 0 (`@scan_table`); add $80 to `len` to search bytes.
-        static superposed int scanTable(int x, int table, int len){ int result; #i6 { @scan_table x table len -> result ?~st; .st; } return result; }
-
-        //-- Function Calls (Z4+) --------------------------------------------------
-        static superposed int call1s(int routine){ int result; #i6 { @call_1s routine -> result; } return result; }           /// Call `routine` with no arguments and return its result (`@call_1s`).
-        static superposed int call2s(int routine, int a){ int result; #i6 { @call_2s routine a -> result; } return result; }  /// Call `routine` with `a` and return its result (`@call_2s`).
-
-        //-- Bitwise (Z5+ EXT) -----------------------------------------------------
-        /// Shift `a` left by `places`, or right when negative, filling with ZEROS (`@log_shift`).
-        static superposed int logShift(int a, int places){ int result; #i6 { @log_shift a places -> result; } return result; }
-        /// Shift `a` left by `places`, or right when negative, keeping the sign (`@art_shift`).
-        static superposed int artShift(int a, int places){ int result; #i6 { @art_shift a places -> result; } return result; }
-
-        //-- Memory (Z5+) ----------------------------------------------------------
-        /// Copy `size` bytes between tables (`@copy_table`); a `dst` of 0 zeroes `src`.
-        emitter void copyTable(int src, int dst, int size) { @copy_table $src $dst $size; }
-
-        //-- I/O (Z5+) -------------------------------------------------------------
-        emitter void printUnicode(int ch)   { @print_unicode $ch; }       /// Print the Unicode character `ch` (`@print_unicode`).
-        emitter void setColour(int fg, int bg)  { @set_colour $fg $bg; }  /// Set the foreground and background colors (`@set_colour`).
-        /// Switch fonts, returning the previous one or 0 when unavailable (`@set_font`).
-        static superposed int setFont(int font){ int result; #i6 { @set_font font -> result; } return result; }
-
-        //-- Text Processing (Z5+) -------------------------------------------------
-        /// Split the text buffer into words against the dictionary, writing the result to `parse` (`@tokenise`).
-        emitter void tokenise(int text, int parse) { @tokenise $text $parse; }
-        /// Encode text into the packed form a dictionary entry uses (`@encode_text`).
-        emitter void encodeText(int zscii, int len, int from, int coded) {
-            @encode_text $zscii $len $from $coded;
-        }
-        /// Print a rectangle of text `width` characters across (`@print_table`).
-        emitter void printTable(int zscii, int width) { @print_table $zscii $width; }
-
-        //-- Game State (Z5+ EXT) --------------------------------------------------
-        /// Save `bytes` of `table` to a named auxiliary file (`@save`). Non-zero on success.
-        static superposed int save(int table, int bytes, int name){ int result; #i6 { @save table bytes name -> result; } return result; }
-        /// Read a named auxiliary file back into `table` (`@restore`).
-        static superposed int restore(int table, int bytes, int name){ int result; #i6 { @restore table bytes name -> result; } return result; }
-        /// Take an undo snapshot (`@save_undo`).
-        static superposed int saveUndo(){ int result; #i6 { @save_undo -> result; } return result; }
-        /// Go back to the last `saveUndo()` snapshot (`@restore_undo`).
-        static superposed int restoreUndo(){ int result; #i6 { @restore_undo -> result; } return result; }
-
-        //-- Function Calls (Z5+) --------------------------------------------------
-        emitter void call1n(int routine)             { @call_1n $routine; }     /// Call `routine` with no arguments, discarding its result (`@call_1n`).
-        emitter void call2n(int routine, int a)      { @call_2n $routine $a; }  /// Call `routine` with `a`, discarding its result (`@call_2n`).
-
-        //-- Unicode (Z5+ EXT) -----------------------------------------------------
-        /// Ask whether the interpreter can print or read this Unicode character (`@check_unicode`).
-        static superposed int checkUnicode(int ch){ int result; #i6 { @check_unicode ch -> result; } return result; }
+    //-- Input (Z4+) -----------------------------------------------------------
+    /// Wait for one key press and return its ZSCII code (`@read_char`); `dev` must be 1.
+    static superposed int readChar(int dev = 1){
+        int c;
+        #i6 { @read_char dev -> c; }
+        return c;
     }
-#endif
+    /// Search `table` for `x`, returning its address or 0 (`@scan_table`); add $80 to `len` to search bytes.
+    static superposed int scanTable(int x, int table, int len){ int result; #i6 { @scan_table x table len -> result ?~st; .st; } return result; }
+
+    //-- Function Calls (Z4+) --------------------------------------------------
+    static superposed int call1s(int routine){ int result; #i6 { @call_1s routine -> result; } return result; }           /// Call `routine` with no arguments and return its result (`@call_1s`).
+    static superposed int call2s(int routine, int a){ int result; #i6 { @call_2s routine a -> result; } return result; }  /// Call `routine` with `a` and return its result (`@call_2s`).
+
+    //-- Bitwise (Z5+ EXT) -----------------------------------------------------
+    /// Shift `a` left by `places`, or right when negative, filling with ZEROS (`@log_shift`).
+    static superposed int logShift(int a, int places){ int result; #i6 { @log_shift a places -> result; } return result; }
+    /// Shift `a` left by `places`, or right when negative, keeping the sign (`@art_shift`).
+    static superposed int artShift(int a, int places){ int result; #i6 { @art_shift a places -> result; } return result; }
+
+    //-- Memory (Z5+) ----------------------------------------------------------
+    /// Copy `size` bytes between tables (`@copy_table`); a `dst` of 0 zeroes `src`.
+    emitter void copyTable(int src, int dst, int size) { @copy_table $src $dst $size; }
+
+    //-- I/O (Z5+) -------------------------------------------------------------
+    emitter void printUnicode(int ch)   { @print_unicode $ch; }       /// Print the Unicode character `ch` (`@print_unicode`).
+    emitter void setColour(int fg, int bg)  { @set_colour $fg $bg; }  /// Set the foreground and background colors (`@set_colour`).
+    /// Switch fonts, returning the previous one or 0 when unavailable (`@set_font`).
+    static superposed int setFont(int font){ int result; #i6 { @set_font font -> result; } return result; }
+
+    //-- Text Processing (Z5+) -------------------------------------------------
+    /// Split the text buffer into words against the dictionary, writing the result to `parse` (`@tokenise`).
+    emitter void tokenise(int text, int parse) { @tokenise $text $parse; }
+    /// Encode text into the packed form a dictionary entry uses (`@encode_text`).
+    emitter void encodeText(int zscii, int len, int from, int coded) {
+        @encode_text $zscii $len $from $coded;
+    }
+    /// Print a rectangle of text `width` characters across (`@print_table`).
+    emitter void printTable(int zscii, int width) { @print_table $zscii $width; }
+
+    //-- Game State (Z5+ EXT) --------------------------------------------------
+    /// Save `bytes` of `table` to a named auxiliary file (`@save`). Non-zero on success.
+    static superposed int save(int table, int bytes, int name){ int result; #i6 { @save table bytes name -> result; } return result; }
+    /// Read a named auxiliary file back into `table` (`@restore`).
+    static superposed int restore(int table, int bytes, int name){ int result; #i6 { @restore table bytes name -> result; } return result; }
+    /// Take an undo snapshot (`@save_undo`).
+    static superposed int saveUndo(){ int result; #i6 { @save_undo -> result; } return result; }
+    /// Go back to the last `saveUndo()` snapshot (`@restore_undo`).
+    static superposed int restoreUndo(){ int result; #i6 { @restore_undo -> result; } return result; }
+
+    //-- Function Calls (Z5+) --------------------------------------------------
+    emitter void call1n(int routine)             { @call_1n $routine; }     /// Call `routine` with no arguments, discarding its result (`@call_1n`).
+    emitter void call2n(int routine, int a)      { @call_2n $routine $a; }  /// Call `routine` with `a`, discarding its result (`@call_2n`).
+
+    //-- Unicode (Z5+ EXT) -----------------------------------------------------
+    /// Ask whether the interpreter can print or read this Unicode character (`@check_unicode`).
+    static superposed int checkUnicode(int ch){ int result; #i6 { @check_unicode ch -> result; } return result; }
+}

@@ -1,0 +1,16 @@
+/*  run_command_line_target_no_settings — a target given only on the command line.
+
+    With no settings block in the source, `-z5` left TARGET_ZCODE undefined, so the library took its
+    Glulx branches and `<buf>` failed to compile.  */
+// BEGUILER_FLAGS: -z5
+// EXPECT_OUTPUT: copied=HELLO
+#include <buf>
+array<char> line[64];
+array<char> word[16];
+void main(){
+    bglInit();
+    bgl.util.buf.set(word, "hello");
+    bgl.util.buf.copy(line, word, -1);
+    bgl.util.buf.toUpper(line);
+    print("copied="); print(line);
+}

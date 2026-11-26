@@ -1,0 +1,4 @@
+/* An undeclared name is reported where it stands, not at the end of its statement */
+// EXPECT_ERROR: :4:33: ERROR: Undeclared identifier 'missing'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int v = 1 + missing + 2; }

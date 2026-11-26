@@ -30,6 +30,7 @@ GLULX_RUN = os.path.join(HERE, 'glulx-run.js')
 GLULX_CONSOLE = os.path.join(ROOT, 'tests', 'run', 'glulxConsole.bgl')
 WHY = False
 STDLIB = os.path.normpath(os.path.join(ROOT, '..', 'inform6', 'stdlib'))
+PUNY = os.path.normpath(os.path.join(ROOT, '..', 'inform6', 'puny', 'lib'))
 
 DECL_START = re.compile(
     r'^\s*(#|class\b|object\b|enum\b|bnum\b|extern\b|emitter\b|verb\b|attribute\b|property\b|const\b|extend\b|'
@@ -206,8 +207,10 @@ def programs_for(code):
     return uniq
 
 
-def settings(target):
-    return f'#beguilerSettings {{ target = {target}; informName = "none"; }}\n'
+def settings(target, src=''):
+    # A binding merges into its library's files, so that library is on the include path.
+    lib = PUNY if 'punyInform' in src else STDLIB
+    return f'#beguilerSettings {{ target = {target}; informName = "none"; includePaths = "{lib}"; }}\n'
 
 
 def stdlib_game(src):
@@ -249,7 +252,7 @@ def try_program(src, target, work, run_it=True):
         # a block that names no target gets the language default, Glulx
         target = 'z5' if re.search(r'target\s*=\s*"?z', own.group(0), re.I) else 'glulx'
         src = src.replace(own.group(0), own.group(0)[:-1] + ' informName = "none"; }', 1)
-    prog = settings(target) if target != 'stdlib' and not own else ''
+    prog = settings(target, src) if target != 'stdlib' and not own else ''
     if target == 'stdlib':
         src = stdlib_game(src)
     if target == 'glulx':

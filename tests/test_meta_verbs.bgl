@@ -7,7 +7,7 @@
 // stdlib's existing extern verbs — otherwise the new trigger word would be treated
 // as an Extend on an already-declared verb (no meta directive emitted there).
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

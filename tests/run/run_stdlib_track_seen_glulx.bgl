@@ -1,0 +1,36 @@
+// run_stdlib_track_seen_glulx — <extensions/stdlib/trackSeen>: beenSeen marks what the player has examined
+// and the rooms the player has been shown.
+// EXPECT_OUTPUT: [start: roomA yes, roomB no, lamp no, coin no]
+// EXPECT_OUTPUT: [examined: roomA yes, roomB no, lamp yes, coin no]
+// EXPECT_OUTPUT: [moved: roomA yes, roomB yes, lamp yes, coin no]
+// INPUT: seen start
+// INPUT: examine lamp
+// INPUT: take coin
+// INPUT: seen examined
+// INPUT: north
+// INPUT: seen moved
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = glulx; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/trackSeen>
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; object n_to = roomB; }
+object roomB { short_name = "Room B"; string description = "Room B."; attributes = {light}; }
+object lamp { short_name = "lamp"; rawArray<dictionaryWord> name = {.lamp}; parent = roomA; string description = "A lamp."; }
+object coin { short_name = "coin"; rawArray<dictionaryWord> name = {.coin}; parent = roomA; }
+string yesNo(object o) { return o.has(beenSeen) ? "yes" : "no"; }
+void report(string when) {
+    print($"[{when}: roomA {yesNo(roomA)}, roomB {yesNo(roomB)}, lamp {yesNo(lamp)}, coin {yesNo(coin)}]^");
+}
+verb Seen {
+    grammar = { {.seen, .start}, {.seen, .examined}, {.seen, .moved} };
+    void handler() {
+        if(turns == 0) report("start");
+        else if(location == roomB) report("moved");
+        else report("examined");
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

@@ -17,7 +17,7 @@
 // (single-bucket) implementation would have collapsed into one directive each.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

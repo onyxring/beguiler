@@ -5,6 +5,7 @@
            action comparisons, verb as function argument
 */
 
+#beguilerSettings { includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
 // --- Custom verbs with inline grammar ---

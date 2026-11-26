@@ -1,10 +1,7 @@
 #include <string>
 using namespace std;
 
-// Beguile compiler version — single source of truth for both the preprocessor
-// symbols (#if beguiler / beguilerMajor / beguilerMinor / beguilerPatch) and the emitted I6 Constant.
-// Encoding: major*1000 + minor*10 + patch  (1.0.0 = 1000, 1.1.0 = 1010)
-constexpr int BEGUILER_VERSION = 5;      // 0.0.5
+#include "version.h"
 
 struct settingsStruct{
     std::string inFile;

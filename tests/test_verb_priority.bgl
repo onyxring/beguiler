@@ -12,7 +12,7 @@
 // avoid conflicts with pre-declared extern verbs.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

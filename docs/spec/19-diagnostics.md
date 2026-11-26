@@ -204,5 +204,5 @@ message and halts the story with `quit`, except where stated.
 | `<string>` pool full (§22.3) — the program stops | `[Beguile runtime error: the <string> pool is out of strings; raise bglStringPoolReserve]` | Raise `bglStringPoolReserve`. |
 | `<buf>` registry full (§22.2) | `[Beguile runtime: tracked buffer registry full; raise bglTrackedBufferReserve]` | Raise `bglTrackedBufferReserve`. |
 | Pooled class full (§8.2.6) | none: `new` returns `nothing` | Test the result of `new`, or size the pool larger. |
-| `bgl.world` result buffer full (§21.9) | none: the walk stops at 128 objects | Narrow the query. |
-| `throw` with no enclosing `try` (§5.16) | the interpreter's own error; the story halts | — |
+| `bgl.world` result buffer full (§21.9) | none: the walk stops at `worldBufSize` objects | Narrow the query, or raise `worldBufSize` (§17.4). |
+| `throw` with no enclosing `try` (§5.16): the program stops | `[Unhandled exception]` | Throw only where a `try` is on the call stack. |

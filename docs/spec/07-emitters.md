@@ -88,7 +88,7 @@ documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page in
 | `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
 | `$target` | The assignment target as a full lvalue path (`obj.prop`, or `x`); see below. |
-| `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. |
+| `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. Using it in any other emitter is a compile-time error. |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (§7.3.1). |
 | `$oprefReq(op[, T])` | As `$opref`, but a missing operator is a compile-time warning (§7.3.1). |
 | `$i6Name(path)` | The identifier Inform 6 knows the named declaration by (§7.3.3). |

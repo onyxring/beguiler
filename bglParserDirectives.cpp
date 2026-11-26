@@ -329,6 +329,9 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     if(b.val  && !shadowed("val"))   out = i6Emitter::replaceOperand(out, "$val",   *b.val);
     if(b.host && !shadowed("host"))  out = i6Emitter::replaceWord(out, "$host",  *b.host);
     // A property passed by name is kept out of the routine's local renames (a local may share its name).
+    if(b.prop && *b.prop == "<$prop undefined>" && !shadowed("prop") && i6Emitter::replaceWord(out, "$prop", "") != out)
+        parsingError(format("emitter '{0}' uses $prop, which is only available in an array<T> emitter.",
+            b.fn != nullptr ? b.fn->dName() : string("")));
     if(b.prop && !shadowed("prop"))  out = i6Emitter::replaceWord(out, "$prop",  escapePropertyName(propertyI6Name(*b.prop)));
     if(b.cls  && !shadowed("class")) out = i6Emitter::replaceWord(out, "$class", *b.cls);
     // Lookup tokens last: their payloads are Beguile paths and operator names, never $tokens, so
@@ -915,7 +918,7 @@ bool bglParser::directiveMergeI6(token directive, abstractObject& contextObj){
     i6PatchSet::merge& rec = languageService.i6Patches.merges.emplace_back();
     rec.sourceFile = file.currentLocation().file;
     rec.line = directive.src.line;
-    string err = languageService.i6Patches.applyPatchFile(resolved, curDir.string(), beguilerSettings.includePaths, &rec);
+    string err = languageService.i6Patches.applyPatchFile(resolved, curDir.string(), beguilerSettings.includePaths, &rec, optional);
     if(!err.empty()) parsingError("#mergeI6: " + err);
     return false;
 }
@@ -1287,6 +1290,16 @@ bool bglParser::directiveI6(token directive, abstractObject& contextObj){
 
 bool bglParser::processDirective(token directive, abstractObject& contextObj){
 
+    // In a function body a directive would read as local, and none is: only the conditionals, the
+    // messages and raw Inform 6 are written there.
+    if(getCurrentCompileContext() == eCompileContext::codeBlock && !languageService.isInfMode){
+        static const set<string> fileLevelOnly = {"#include", "#once", "#startup", "#using", "#emitfirst", "#emitlast",
+            "#storedemitfirst", "#storedemitlast", "#includei6", "#mergei6", "#define", "#definei6", "#redef",
+            "#declare", "#undef"};
+        if(fileLevelOnly.count(directive.value))
+            return parsingError(format("'{0}' can't be used inside a function; write it at file level.", directive.value));
+    }
+
     token tok;
     switch(directive.chk()){
         case chk("#include"): return directiveInclude(directive, contextObj);
@@ -1370,6 +1383,8 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
             token msg = file.getToken({eTokenType::quote, eTokenType::rawQuote});
             string text = msg.literalText();
             if(text.size()>=2 && text.front()=='"' && text.back()=='"') text = text.substr(1,text.size()-2);
+            std::error_code ec;
+            ErrorAt atInclude(*this, file.includerOutside(filesystem::weakly_canonical(settings.libPath, ec).string()));   // a file of beguiLib speaks for the line that included it
             return parsingError(text);
         }
         case chk("#warning"):{

@@ -1,0 +1,8 @@
+! Negative test: #bglDecl inside a routine. A declaration belongs at file level.
+!
+! EXPECT_ERROR: #bglDecl can't be used inside a routine
+
+[ Main x;
+    x = 2;
+    #bglDecl{ int q = 3; }
+];

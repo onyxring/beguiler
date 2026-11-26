@@ -1030,7 +1030,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
             lckBuf  = _bglStr._bglText_ambiguousLock(ab);
             _bglStrEnsure(self, _bglBuf._bglText_length(ab));
             if(_bglStrIs(unkStr)) ab = unkStr._bglText_getBuf();   ! growing may have moved it
-            _bglBuf._bglText_setAny(self._bglText_getBuf(), ab);
+            _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), ab);
             _bglStr._bglText_ambiguousFree(ab, lckBuf);
             _bglStr._bglText_ambiguousFree(self, lckSelf);
         }

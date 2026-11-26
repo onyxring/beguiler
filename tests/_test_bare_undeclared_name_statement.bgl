@@ -1,0 +1,3 @@
+// EXPECT_ERROR: Undeclared identifier
+#beguilerSettings { target = z5; }
+void main(){ nosuch; }

@@ -7,7 +7,7 @@
 // parse site now runs the same element-type check as the instance path.
 // EXPECT_ERROR: expected 'dictionaryword'
 
-#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; outputPath = "tests/output"; }
 #include <bindings/i6StandardLibrary>
 
 emitter class thing {

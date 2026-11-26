@@ -171,6 +171,61 @@ static string mergeLiteralPrints(const string& in){
     return out;
 }
 
+// A Z-machine call passes five arguments; a routine with more reads the rest from `_bglXPn`. Every call
+// to such a routine, wherever its text came from, sets them inside its fifth argument.
+static string spillCallArguments(const string& text, const set<string>& routines){
+    auto isWord = [](char c){ return isalnum((unsigned char)c) || c == '_'; };
+    // The end of the literal or comment starting at i, or i when none starts there.
+    auto skipQuiet = [&](const string& t, size_t i){
+        if(t[i] == '"' || t[i] == '\''){
+            size_t e = t.find(t[i], i + 1);
+            return e == string::npos ? t.size() : e + 1;
+        }
+        if(t[i] == '!'){
+            size_t e = t.find('\n', i);
+            return e == string::npos ? t.size() : e;
+        }
+        return i;
+    };
+    string result;
+    size_t i = 0;
+    while(i < text.size()){
+        size_t q = skipQuiet(text, i);
+        if(q != i){ result.append(text, i, q - i); i = q; continue; }
+        if(!isWord(text[i]) || (i > 0 && isWord(text[i - 1]))){ result += text[i++]; continue; }
+        size_t e = i; while(e < text.size() && isWord(text[e])) e++;
+        string name = text.substr(i, e - i);
+        size_t open = e; while(open < text.size() && text[open] == ' ') open++;
+        string lower = name; transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if(open >= text.size() || text[open] != '(' || !routines.count(lower)){ result += name; i = e; continue; }
+        vector<string> args;
+        int depth = 1;
+        size_t p = open + 1, argStart = p;
+        for(; p < text.size() && depth > 0; ){
+            size_t s = skipQuiet(text, p);
+            if(s != p){ p = s; continue; }
+            char c = text[p];
+            if(c == '(' || c == '[' || c == '{') depth++;
+            else if(c == ')' || c == ']' || c == '}'){ if(--depth == 0) break; }
+            else if(c == ',' && depth == 1){ args.push_back(text.substr(argStart, p - argStart)); argStart = p + 1; }
+            p++;
+        }
+        if(depth != 0 || args.size() < 5){ result += name; i = e; continue; }
+        args.push_back(text.substr(argStart, p - argStart));
+        result += name + text.substr(e, open + 1 - e);
+        for(size_t k = 0; k < 5; k++){
+            string arg = spillCallArguments(args[k], routines);
+            if(k < 4){ result += arg + ","; continue; }
+            result += "(" + arg + ")";
+            for(size_t x = 5; x < args.size(); x++)
+                result += format(" + 0*(_bglXP{0} = ({1}))", x - 5, spillCallArguments(args[x], routines));
+        }
+        result += ")";
+        i = p + 1;
+    }
+    return result;
+}
+
 string i6Emitter::resolvedOutput(){
     string buf = out.str();
     // A pooled class with owned members copies through its own routine (synthesizePooledOwnedMembers).
@@ -270,6 +325,21 @@ string i6Emitter::resolvedOutput(){
         }
     }
 
+    // A superposed scalar or constant is declared ahead of its uses, so it is taken back out when
+    // nothing names it. Its lines stay, empty, so the lines after it keep their numbers.
+    for(bool removed = true; removed; ){
+        removed = false;
+        for(auto it = superposedScalars.begin(); it != superposedScalars.end(); ){
+            size_t at = buf.find(it->second);
+            if(at == string::npos){ it = superposedScalars.erase(it); continue; }
+            string blank(std::count(it->second.begin(), it->second.end(), '\n'), '\n');
+            buf.replace(at, it->second.size(), blank);
+            if(referenced(it->first)){ buf.replace(at, blank.size(), it->second); ++it; continue; }
+            it = superposedScalars.erase(it);
+            removed = true;
+        }
+    }
+
     pruneSuperposedObjectMethods(buf);
     // The collector's roots: written once the output is known, naming only what it holds.
     if(referenced("_bglGcRoots") && buf.find("[_bglGcRoots") == string::npos) buf += gcRootsRoutine(referenced);
@@ -329,6 +399,7 @@ string i6Emitter::resolvedOutput(){
                "#Ifndef workflag;\nAttribute workflag;\n#Endif;\n"
                "#Ifndef DebugAttribute;\n[ DebugAttribute a; print \"(attribute \", a, \")\"; ];\n#Endif;\n";
     buf = mergeLiteralPrints(fixPrintedParenValues(buf));
+    if(!spilledParamRoutines.empty()) buf = spillCallArguments(buf, spilledParamRoutines);
     return buf;
 }
 
@@ -737,7 +808,7 @@ string i6Emitter::renameLocal(const string& str, const string& from, const strin
 }
 
 // Resolve whether the named target is a Z-machine variant
-static bool isZTarget(const string& t){ return t=="z3"||t=="z5"||t=="z8"; }
+static bool isZTarget(const string& t){ return t=="z5"||t=="z8"; }
 
 // Recursively walk a statementBlock, collecting every variableDeclaration reachable through
 // nested control-flow sub-blocks. Deduped by name — I6 allows only one declaration per routine
@@ -1065,11 +1136,10 @@ bool isHeaderMember(const string& name){
 
 // Check if a function would overflow Z-machine's 15-local limit (needs _bglFrm slot too → 14)
 // Returns true if the function needs the frame pool (body locals overflow I6's 14-slot limit).
-// Param overflow (>5 params) is handled separately via _bglXPn globals.
 bool i6Emitter::funcNeedsSpill(functionDef* fd){
     if(!isZTarget(currentTarget)) return false;
     if(funcHasZTry(fd)) return true;
-    int effectiveParams = min((int)fd->params.size(), 5);
+    int effectiveParams = (int)fd->params.size();
     statementBlock* body = dynamic_cast<statementBlock*>(fd->body);
     vector<variableDeclaration*> locals;
     set<string> seen;
@@ -1210,9 +1280,21 @@ void i6Emitter::buildSpillMap(functionDef* fd){
 
     if(!isZTarget(currentTarget)) return;
     const int maxParams = 5;
-    // Map excess params to _bglXPn globals
-    for(int i = maxParams; i < (int)fd->params.size(); i++)
-        currentSpillAliases[fd->params[i]->name] = format("_bglXP{0}", i - maxParams);
+    // A parameter past the fifth arrives in a _bglXPn global, which the next such call overwrites: the
+    // routine copies it on entry into a local of its own, or into its frame when the locals are full.
+    statementBlock* fb = dynamic_cast<statementBlock*>(fd->body);
+    bool hasBody = fb != nullptr && !fb->statements.empty();
+    bool excessInFrame = funcHasZTry(fd) || (int)fd->params.size() + (int)locals.size() > 14;
+    for(int i = maxParams; hasBody && i < (int)fd->params.size(); i++){
+        const string& name = fd->params[i]->name;
+        if(excessInFrame) currentSpillAliases[name] = format("_bglFrm-->{0}", currentSpillCount++);
+        currentExcessParamCopies.push_back({spillName(name), format("_bglXP{0}", i - maxParams)});
+    }
+    if((int)fd->params.size() > maxParams && !fd->isExternal){
+        string rn = fd->i6name.empty() ? fd->dName() : fd->i6name;
+        transform(rn.begin(), rn.end(), rn.begin(), ::tolower);
+        spilledParamRoutines.insert(rn);
+    }
     if(funcHasZTry(fd)){
         for(int i = 0; i < min((int)fd->params.size(), maxParams); i++){
             const string& name = fd->params[i]->name;
@@ -1248,6 +1330,7 @@ void i6Emitter::clearSpillMap(){
     currentLocalRenames.clear();
     currentCallEscapes.clear();
     currentTryParamRaw.clear();
+    currentExcessParamCopies.clear();
     currentTrySlots.clear();
     currentTryLinqSlots.clear();
     currentTrySelfSlots.clear();
@@ -2207,8 +2290,10 @@ for(typeDef* g : languageService.globals){
         string value = staticText(vd->declaredExpressionValue);
         if(value.empty() || !plain(value)) continue;
         const string& cname = vd->i6name.empty() ? vd->dName() : vd->i6name;   // as its uses name it
-        out << format("constant {0} = {1};\n", cname, value);
-        if(vd->foldedAtCompile) out << format("#Ifdef {0};#Endif;\n", cname);   // used, though folded away
+        string declared = format("constant {0} = {1};\n", cname, value);
+        if(vd->foldedAtCompile) declared += format("#Ifdef {0};#Endif;\n", cname);   // used, though folded away
+        out << declared;
+        if(vd->isSuperposed && !vd->foldedAtCompile) superposedScalars.push_back({cname, declared});
         earlyDeclaredGlobals.insert(vd->name);
         known.insert(lower(cname));
     }
@@ -2224,7 +2309,9 @@ for(typeDef* g : languageService.globals){
         if(!scalar) continue;
         string value = vd->declaredExpressionValue != nullptr ? staticText(vd->declaredExpressionValue) : "";
         if(!value.empty() && !plain(value)) continue;
-        out << "global " << vd->dName() << (value.empty() ? "" : " = " + value) << ";\n";
+        string declared = "global " + vd->dName() + (value.empty() ? "" : " = " + value) + ";\n";
+        out << declared;
+        if(vd->isSuperposed) superposedScalars.push_back({vd->dName(), declared});
         earlyDeclaredGlobals.insert(vd->name);
     }
     for(typeDef* g : languageService.globals){
@@ -2535,9 +2622,13 @@ void i6Emitter::emit(vector<typeDef*>& nodeList){
     // extracted from the .inf body during parsing and is splice in here so it appears as
     // the last content of the file, after all generated I6.
 }
+// A path in an ICL line: quoted when it holds a space.
+static string iclWord(const string& path){
+    return path.find(' ') == string::npos ? path : "\"" + path + "\"";
+}
+
 void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     if(cfg->target == "glulx")     out << "!% -G\n";
-    else if(cfg->target == "z3")   out << "!% -v3\n";
     else if(cfg->target == "z5")   out << "!% -v5\n";
     else if(cfg->target == "z8")   out << "!% -v8\n";
     if(!cfg->errorFormat.empty())  out << format("!% -E{0}\n", cfg->errorFormat);
@@ -2554,19 +2645,19 @@ void i6Emitter::emitICL(beguilerSettingsDef* cfg){
     // (A single comma-separated line would also work, but I6 has a PATHLEN cap
     // that one consolidated line can blow past — so we keep one line per path.)
     for(auto it = cfg->includePaths.rbegin(); it != cfg->includePaths.rend(); ++it)
-        out << "!% ++include_path=" << *it << "\n";
+        out << "!% ++include_path=" << iclWord(*it) << "\n";
     // Patched Inform 6 copies come last, so they are searched first and hide their originals.
     if(!languageService.i6Patches.patchedDir.empty())
-        out << "!% ++include_path=" << rewritePathSeps(languageService.i6Patches.patchedDir) << "\n";
+        out << "!% ++include_path=" << iclWord(rewritePathSeps(languageService.i6Patches.patchedDir)) << "\n";
 }
 void i6Emitter::emitSettingsConstants(beguilerSettingsDef* cfg){
     // Beguiler-presence marker for raw-I6 libraries (e.g. orLibrary) to detect a Beguile
     // compile and version-check, via `#ifdef beguiler` / `#iftrue (beguiler >= NNNN)`. Mirrors
-    // the Beguile-side `#if beguiler` symbol (= BEGUILER_VERSION, major*1000+minor*10+patch).
+    // the Beguile-side `#if beguiler` symbol (major*1000+minor*10+patch).
     // The empty self-reference `#Ifdef beguiler;#Endif;` marks the constant "used" so I6 won't
     // warn when a game consumes none of it.
     // beguilerMajor/Minor/Patch stay #define-only — derivable from this one when needed.
-    out << "Constant beguiler = " << BEGUILER_VERSION << ";\n";
+    out << "Constant beguiler = " << compilerVersion().number() << ";\n";
     out << "#Ifdef beguiler;#Endif;\n";
 
     if(!cfg->serial.empty())
@@ -2916,6 +3007,7 @@ void i6Emitter::emitClassWithClause(vector<typeMember*>& emittable, map<string, 
             out << ";\n";
             if(currentSpillCount > 0)
                 out << format("        _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
+            for(auto& [to, from] : currentExcessParamCopies) out << format("        {0} = {1};\n", to, from);
             if(!fd->entrySetUp.empty())
                 out << "        " << spillWord(fd->entrySetUp) << "\n";
             if(!fd->runCounter.empty()) out << "        " << fd->runCounter << "++;\n";
@@ -3071,6 +3163,7 @@ void i6Emitter::emitFunction(functionDef* funcNode){
     out << ";\n";
     if(currentSpillCount > 0)
         out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
+    for(auto& [to, from] : currentExcessParamCopies) out << format("    {0} = {1};\n", to, from);
     if(!funcNode->entrySetUp.empty())
         out << "    " << spillWord(funcNode->entrySetUp) << "\n";
     if(!funcNode->runCounter.empty()) out << "    " << funcNode->runCounter << "++;\n";
@@ -4776,6 +4869,28 @@ auto consider = [&](variableDeclaration* vd){
     if(!needsInstance) return;
     // One backing PER OBJECT (per class instance), so every instance owns independent state.
     string backing = "_" + obj->name + "_" + vd->name;
+    // An `asI6` name of that spelling is the author's: the backing takes another.
+    if(authorI6Names.empty()){
+        auto note = [&](abstractObject* a){
+            if(a == nullptr || a->i6name.empty()) return;
+            string n = a->i6name;
+            transform(n.begin(), n.end(), n.begin(), ::tolower);
+            authorI6Names.insert(n);
+        };
+        for(typeDef* g : languageService.globals){
+            note(dynamic_cast<abstractObject*>(g));
+            const vector<typeMember*>* members = nullptr;
+            if(auto* o = dynamic_cast<objectDef*>(g)) members = &o->members;
+            else if(auto* c = dynamic_cast<classDef*>(g)) members = &c->members;
+            if(members != nullptr) for(typeMember* m : *members) note(dynamic_cast<abstractObject*>(m));
+        }
+        authorI6Names.insert("");   // built, even when no name was given
+    }
+    auto takenByAuthor = [&](string n){
+        transform(n.begin(), n.end(), n.begin(), ::tolower);
+        return authorI6Names.count(n) > 0;
+    };
+    while(takenByAuthor(backing)) backing += "_";
     emitDeferredBackingClass(cls);   // materialize a withheld superposed accessor class first
     // The member's own class-typed fields need instances too, or `host.slot.inner` is
     // 0 and anything reached through it writes to nothing. File-scope variables already
@@ -4947,6 +5062,7 @@ for(typeMember* m : obj->members){
         out << ";\n";
         if(currentSpillCount > 0)
             out << format("    _bglFrm = _bglFrameAllocZ({0});\n", currentSpillCount);
+        for(auto& [to, from] : currentExcessParamCopies) out << format("    {0} = {1};\n", to, from);
         if(!fd->entrySetUp.empty())
             out << "    " << spillWord(fd->entrySetUp) << "\n";
         if(!fd->runCounter.empty()) out << "    " << fd->runCounter << "++;\n";
@@ -6111,6 +6227,7 @@ bool i6Emitter::emitVerbGrammarResolved(const string& verbName, int anchor, bool
             if(i) head += " ";
             head += toI6Word(g.triggerWords[i]);
             declaredVerbWords.insert(g.triggerWords[i]);
+            { string v = verbName; transform(v.begin(), v.end(), v.begin(), ::tolower); verbEmittedWords[v].push_back(g.triggerWords[i]); }
         }
         out << (isMeta ? format("verb meta {0}\n", head) : format("verb {0}\n", head));
         for(size_t i = 0; i < finalLines.size(); i++){
@@ -6276,6 +6393,9 @@ void i6Emitter::emitVerbSynonym(verbSynonymDecl* vsd){
     string anchor = vsd->anchorVerb;
     for(verbObjectDef* v : languageService.verbs)
         if(v->name == vsd->anchorVerb){ if(!v->verbWords.empty()) anchor = v->verbWords[0]; break; }
+    // A `replace grammar` may have dropped that word: the alias then attaches to one the verb still has.
+    if(auto it = verbEmittedWords.find(vsd->anchorVerb); it != verbEmittedWords.end())
+        if(find(it->second.begin(), it->second.end(), anchor) == it->second.end()) anchor = it->second.front();
 
     string line = "verb";
     for(const string& w : vsd->synonymWords)
@@ -6350,6 +6470,7 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
     };
 
     auto emitDirectiveHead = [&](const string& word, bool isFirst, bool withSynonymsWord){
+        verbEmittedWords[verbNameLower].push_back(word);
         if(isFirst){
             declaredVerbWords.insert(word);
             if(isMeta) out << format("verb meta {0}\n", toI6Word(word));
@@ -6431,6 +6552,7 @@ void i6Emitter::emitGrammarLines(const string& verbName, const vector<grammarLin
             for(size_t i = 0; i < triggerSet.size(); i++){
                 if(i > 0) heads += " ";
                 heads += toI6Word(triggerSet[i]);
+                verbEmittedWords[verbNameLower].push_back(triggerSet[i]);
                 declaredVerbWords.insert(triggerSet[i]);
             }
             if(isMeta) out << format("verb meta {0}\n", heads);

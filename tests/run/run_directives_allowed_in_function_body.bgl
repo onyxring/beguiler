@@ -1,0 +1,13 @@
+// The conditionals, #message and raw Inform 6 are written inside a function.
+// EXPECT_OUTPUT: z raw
+#beguilerSettings { target = z5; }
+void main(){
+    bglInit();
+    #if TARGET_ZCODE
+        print("z ");
+    #else
+        print("g ");
+    #endif
+    #message "in a body"
+    #i6 { print "raw^"; }
+}

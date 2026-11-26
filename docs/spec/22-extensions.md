@@ -232,6 +232,7 @@ void Main() {
 
 A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors. A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function that returns `stringObj` can return null, so `??` gives a fallback for those:
 
+<!-- doctest: skip -->
 ```bgl
 stringObj s = null;                  // error
 ref stringObj r := null;             // fine: r refers to no string

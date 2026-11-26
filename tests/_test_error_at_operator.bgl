@@ -1,0 +1,4 @@
+/* An operator no type takes is reported at the operator */
+// EXPECT_ERROR: :4:25: ERROR: No operator '+'
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void main(){ int v = 1 + "text"; }

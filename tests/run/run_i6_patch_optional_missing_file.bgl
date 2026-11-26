@@ -1,0 +1,7 @@
+// An optional merge skips a file its patch names that isn't found.
+// EXPECT_OUTPUT: still runs
+#beguilerSettings { target = z5; }
+#mergeI6 ?"patches/noSuchTarget"
+void main(){
+    print("still runs^");
+}

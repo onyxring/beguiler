@@ -392,7 +392,7 @@ on a verb (§13.4.5) or in a grammar object, and both forms have the same effect
 | Type | Purpose |
 |---|---|
 | `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, …. Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position. `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
-| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. |
+| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. A program writes patterns in a verb's `grammar`; declaring a variable or member of this type is a compile-time error. |
 | `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
 

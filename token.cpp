@@ -119,7 +119,7 @@ token token::assertOneOf(std::initializer_list<string> vals, string context){
     }        
 
     string token::assertFailedMessage(vector<eTokenType> types){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", originalValue.empty() ? value : originalValue);
 
         types.erase(std::remove(types.begin(), types.end(), eTokenType::eof), types.end()); 
         types.erase(std::remove(types.begin(), types.end(), eTokenType::unknown), types.end()); 
@@ -140,7 +140,7 @@ token token::assertOneOf(std::initializer_list<string> vals, string context){
         return retval;
     }
     string token::assertFailedMessage(vector<string> vals){
-        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", value);
+        string retval=format("Unexpected {0} '{1}'.  Expected ",isString()?"literal string":"token", originalValue.empty() ? value : originalValue);
 
         for(int t=0;t<vals.size();t++){
             if(t>0) {

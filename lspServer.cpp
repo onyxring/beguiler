@@ -1728,9 +1728,7 @@ bool LspServer::resolveTierUsing(const string& uri, int cursorLine, int cursorCo
     auto docIt = openDocuments.find(uri);
     if(docIt == openDocuments.end()) return false;
     for(const string& path : activeUsingPaths(docIt->second, cursorLine)) {
-        LspTarget target;
-        if(!resolveTarget(uri, cursorLine, cursorCol, path, target)) continue;
-        LspMember m = findMemberOn(target, loweredName);
+        LspMember m = findMemberOnAny(resolveTargets(uri, cursorLine, cursorCol, path, true), loweredName);
         if(m.member) { fillFromMember(out, m.member, nullptr); return true; }
     }
     return false;
@@ -1829,6 +1827,14 @@ bool LspServer::resolveTierGrammarKeyword(const string& loweredName, LspSymbolRe
     if(!m) return false;
     fillFromMember(out, m, verbClass->declaringClassOf(m));
     return true;
+}
+
+LspSymbolRef LspServer::resolveGlobalSymbol(const string& uri, const string& loweredName, bool isCall) {
+    LspSymbolRef out;
+    if(resolveTierGlobal(loweredName, isCall, out)) return out;
+    if(resolveTierEnumValue(loweredName, out)) return out;
+    resolveTierDefine(uri, loweredName, out);
+    return out;
 }
 
 LspSymbolRef LspServer::resolveSymbol(const string& uri, int cursorLine, int cursorCol, const string& loweredName, bool isCall) {
@@ -1941,6 +1947,17 @@ bool LspServer::resolveTargetHead(const string& uri, int line, int col, const st
     return false;
 }
 
+bool LspServer::stepTarget(const LspTarget& t, const string& segLower, LspTarget& out) {
+    LspMember m = findMemberOn(t, segLower);
+    LspTarget step;
+    if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) step = targetOfVariable(vd);
+    else if(auto* fd = dynamic_cast<functionDef*>(m.member)) { if(fd->isValueEmitter) step = targetOfType(fd->returnType.name, true); }
+    else if(m.enumValue && m.enumType) step.cls = m.enumType->companion;
+    if(!step.valid()) return false;
+    out = step;
+    return true;
+}
+
 bool LspServer::resolveTarget(const string& uri, int line, int col, const string& pathLower, LspTarget& out) {
     size_t dot = pathLower.find('.');
     if(!resolveTargetHead(uri, line, col, pathLower.substr(0, dot), out)) return false;
@@ -1948,14 +1965,66 @@ bool LspServer::resolveTarget(const string& uri, int line, int col, const string
         size_t next = pathLower.find('.', dot + 1);
         string seg = pathLower.substr(dot + 1, next == string::npos ? string::npos : next - dot - 1);
         dot = next;
-        LspMember m = findMemberOn(out, seg);
-        LspTarget step;
-        if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) step = targetOfVariable(vd);
-        else if(m.enumValue && m.enumType) step.cls = m.enumType->companion;
-        if(!step.valid()) return false;
-        out = step;
+        if(!stepTarget(out, seg, out)) return false;
     }
     return true;
+}
+
+vector<LspServer::LspTarget> LspServer::headTargets(const string& uri, int line, int col, const string& nameLower, bool globalOnly) {
+    vector<LspTarget> found;
+    auto add = [&](const LspTarget& t) {
+        if(!t.valid()) return;
+        for(const LspTarget& x : found)
+            if(x.cls == t.cls && x.obj == t.obj && x.enumType == t.enumType && x.isType == t.isType) return;
+        found.push_back(t);
+    };
+    LspTarget scoped;
+    if(!globalOnly && resolveTargetHead(uri, line, col, nameLower, scoped)) add(scoped);
+    if(nameLower == "self" || nameLower == "outer") return found;
+    typeDef& td = languageService.getType(nameLower);
+    if(dynamic_cast<classDef*>(&td) || dynamic_cast<enumDef*>(&td)) add(targetOfType(nameLower, false));
+    if(auto* od = languageService.findGlobalAs<objectDef>(nameLower)) { LspTarget t; t.obj = od; t.cls = od->objectClass; add(t); }
+    if(auto* vd = languageService.findGlobalAs<variableDeclaration>(nameLower)) add(targetOfVariable(vd));
+    auto docIt = openDocuments.find(uri);
+    if(!globalOnly && docIt != openDocuments.end())
+        for(const string& path : activeUsingPaths(docIt->second, line)) {
+            LspTarget step;   // a #using path is read from file scope
+            for(const LspTarget& ns : resolveTargets(uri, line, col, path, true))
+                if(stepTarget(ns, nameLower, step)) { add(step); break; }
+        }
+    for(verbObjectDef* v : languageService.verbs)
+        if(v->name == nameLower) { LspTarget t; t.obj = v; t.cls = v->objectClass; add(t); }
+    return found;
+}
+
+vector<LspServer::LspTarget> LspServer::resolveTargets(const string& uri, int line, int col, const string& pathLower, bool globalOnly) {
+    size_t firstDot = pathLower.find('.');
+    vector<LspTarget> found;
+    for(LspTarget t : headTargets(uri, line, col, pathLower.substr(0, firstDot), globalOnly)) {
+        size_t dot = firstDot;
+        bool ok = true;
+        while(ok && dot != string::npos) {
+            size_t next = pathLower.find('.', dot + 1);
+            string seg = pathLower.substr(dot + 1, next == string::npos ? string::npos : next - dot - 1);
+            dot = next;
+            ok = stepTarget(t, seg, t);
+        }
+        if(ok) found.push_back(t);
+    }
+    return found;
+}
+
+LspServer::LspMember LspServer::findMemberOnAny(const vector<LspTarget>& targets, const string& nameLower) {
+    for(const LspTarget& t : targets) {
+        LspMember m = findMemberOn(t, nameLower);
+        if(m.member || m.enumValue) return m;
+    }
+    return LspMember();
+}
+
+// An object, or a value of an object class: not a type, a struct, an emitter class or a namespace.
+static bool answersProperties(classDef* cls, bool isType) {
+    return !isType && cls && !cls->isValue && !cls->isEmitterClass;
 }
 
 LspServer::LspMember LspServer::findMemberOn(const LspTarget& t, const string& nameLower) {
@@ -1965,7 +2034,13 @@ LspServer::LspMember LspServer::findMemberOn(const LspTarget& t, const string& n
             if(ev->name == nameLower) { r.enumType = t.enumType; r.enumValue = ev; return r; }
     if(t.obj)
         for(typeMember* m : t.obj->members)
-            if(isNamedValueOrRoutine(m, nameLower) && !m->isPrePassStub) { r.member = m; r.object = t.obj; return r; }
+            if(isNamedValueOrRoutine(m, nameLower) && !m->isPrePassStub) {
+                // A value the object gives a class member positionally has no line of its own: the class's is its declaration.
+                auto lineOf = [](typeMember* c) { auto* vd = dynamic_cast<variableDeclaration*>(c); auto* fd = dynamic_cast<functionDef*>(c); return vd ? vd->src.line : fd ? fd->src.line : 0; };
+                typeMember* declared = lineOf(m) == 0 && t.cls ? t.cls->findMember([&](typeMember* c) { return isNamedValueOrRoutine(c, nameLower) && lineOf(c) > 0; }) : nullptr;
+                if(declared) { r.member = declared; r.owner = t.cls->declaringClassOf(declared); return r; }
+                r.member = m; r.object = t.obj; return r;
+            }
     if(t.cls) {
         typeMember* hit = t.cls->findMember([&](typeMember* m) { return isNamedValueOrRoutine(m, nameLower) && !m->isPrePassStub; });
         if(!hit) hit = t.cls->findMember([&](typeMember* m) { return isNamedValueOrRoutine(m, nameLower); });
@@ -1974,6 +2049,9 @@ LspServer::LspMember LspServer::findMemberOn(const LspTarget& t, const string& n
         LspTarget converted = conversionTarget(t.cls);
         if(converted.cls && converted.cls != t.cls) return findMemberOn(converted, nameLower);
     }
+    // An object answers any declared property (`extern property orders;`).
+    if(answersProperties(t.cls, t.isType))
+        if(auto* pd = languageService.findGlobalAs<variableDeclaration>(nameLower); pd && pd->type.name == "property") r.member = pd;
     return r;
 }
 
@@ -2075,15 +2153,33 @@ static string paramDisplay(const paramDef* p){
     return out;
 }
 
+// The dotted path that ends at the '.' before the word at `start` (`bgl.glulx` for `bgl.glulx.window`);
+// `global` when it opens with `::`.
+static string ownerPathBefore(const string& lineText, int start, bool& global) {
+    global = false;
+    string path;
+    int i = start - 1;
+    if(i < 0 || lineText[i] != '.') return path;
+    while(i >= 0 && lineText[i] == '.'){
+        i--;
+        int segEnd = i + 1;
+        while(i >= 0 && isWordChar(lineText[i])) i--;
+        int segStart = i + 1;
+        if(segStart >= segEnd) break;
+        string seg = lineText.substr(segStart, segEnd - segStart);
+        path = path.empty() ? seg : seg + "." + path;
+    }
+    global = !path.empty() && i >= 1 && lineText[i] == ':' && lineText[i - 1] == ':';
+    return path;
+}
+
 // Hover case: `owner.member` — resolve the owner chain, then the member on it.
 string LspServer::hoverDottedMember(const string& uri, int line, int col, const string& lower,
-                                    const string& ownerName, string& docComment) {
+                                    const string& ownerName, string& docComment, bool globalPath) {
     if(ownerName.empty()) return "";
     string ownerLower = ownerName;
     transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
-    LspTarget target;
-    if(!resolveTarget(uri, line, col, ownerLower, target)) return "";
-    LspMember m = findMemberOn(target, lower);
+    LspMember m = findMemberOnAny(resolveTargets(uri, line, col, ownerLower, globalPath), lower);
     if(m.enumValue) {
         docComment = m.enumValue->docComment;
         return typeDisplay(m.enumType->name) + "." + m.enumValue->dName();
@@ -2112,10 +2208,14 @@ string LspServer::hoverDottedMember(const string& uri, int line, int col, const 
 
 // Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
 string LspServer::hoverIdentifier(const string& uri, int line, int col, bool isCall, const string& lower,
-                                  const string& ownerName, string& docComment) {
+                                  const string& ownerName, string& docComment, bool globalName) {
     string typeInfo;
     if(!ownerName.empty()) return typeInfo;
-    LspSymbolRef ref = resolveSymbol(uri, line, col, lower, isCall);
+    if(lower == "selftype")
+        if(classDef* cd = selfTypeAt(uri, line, col)) { docComment = cd->docComment; return "type alias → " + cd->dName(); }
+    LspSymbolRef ref;
+    if(globalName) ref = resolveGlobalSymbol(uri, lower, isCall);
+    else ref = resolveSymbol(uri, line, col, lower, isCall);
     if(!ref.docComment.empty()) docComment = ref.docComment;
     if(ref.kind == LspSymbolRef::Local) {
         typeInfo = "local: " + typeDisplay(ref.typeName) + " " + ref.displayName;
@@ -2169,6 +2269,13 @@ string LspServer::hoverIdentifier(const string& uri, int line, int col, bool isC
     return typeInfo;
 }
 
+classDef* LspServer::selfTypeAt(const string& uri, int line, int col) {
+    FunctionContext ctx = functionContext(uri, line, col);
+    if(ctx.ownerClass) return ctx.ownerClass;
+    if(ctx.ownerObject) return ctx.ownerObject->objectClass;
+    return nullptr;
+}
+
 // True when the word starting at `start` follows the `operator` keyword (`operator prefix++ ()`).
 static bool followsOperatorKeyword(const string& lineText, int start) {
     int e = start;
@@ -2212,21 +2319,9 @@ json LspServer::handleHover(const json& params) {
     if(json r = hoverVerbExtendKeyword(word, docIt->second, line, col, handled); handled) return r;
 
     // Check for dotted path: walk back through full owner chain (bgl.glulx.window → owner = "bgl.glulx")
-    string ownerName;
-    if(start > 0 && lineText[start - 1] == '.') {
-        int i = start - 1; // at the '.'
-        string path;
-        while(i >= 0 && lineText[i] == '.'){
-            i--;
-            int segEnd = i + 1;
-            while(i >= 0 && (isalnum(lineText[i]) || lineText[i] == '_')) i--;
-            int segStart = i + 1;
-            if(segStart >= segEnd) break;
-            string seg = lineText.substr(segStart, segEnd - segStart);
-            path = path.empty() ? seg : seg + "." + path;
-        }
-        ownerName = path;
-    }
+    bool globalPath = false;
+    string ownerName = ownerPathBefore(lineText, start, globalPath);
+    bool globalName = ownerName.empty() && start >= 2 && lineText[start - 1] == ':' && lineText[start - 2] == ':';
 
     // Resolve the type
     string lower = word;
@@ -2241,14 +2336,13 @@ json LspServer::handleHover(const json& params) {
     string docComment;
 
     // Hover cases, tried in order; each returns the signature line it resolved, or empty.
-    if((lower == "prefix" || lower == "postfix") && followsOperatorKeyword(lineText, start)) {
+    if(lower == "prefix" && followsOperatorKeyword(lineText, start)) {
         typeInfo = "operator " + lower;
-        docComment = lower == "prefix" ? "Declares the prefix form of `++` or `--`: `operator prefix++ ()`."
-                                       : "Declares the postfix form of `++` or `--`: `operator postfix++ ()`.";
+        docComment = "Declares the prefix form of `++` or `--`: `operator prefix++ ()`.";
     }
     if(typeInfo.empty()) typeInfo = hoverBeguilerSettingsMember(uri, line, col, lower, ownerName);
-    if(typeInfo.empty()) typeInfo = hoverDottedMember(uri, line, col, lower, ownerName, docComment);
-    if(typeInfo.empty()) typeInfo = hoverIdentifier(uri, line, col, isCall, lower, ownerName, docComment);
+    if(typeInfo.empty()) typeInfo = hoverDottedMember(uri, line, col, lower, ownerName, docComment, globalPath);
+    if(typeInfo.empty()) typeInfo = hoverIdentifier(uri, line, col, isCall, lower, ownerName, docComment, globalName);
 
     if(typeInfo.empty()) return nullptr;
 
@@ -3157,6 +3251,7 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
     // Detect `identifier.|` — if the char immediately before the cursor (skipping a partial
     // identifier in progress) is '.', we're completing a member of the prefix. This runs
     // regardless of whether we're inside a bs-block.
+    bool globalPath = false;
     auto findDotPrefix = [&](string& outPrefix) -> bool {
         int i = col - 1;
         if(i >= (int)lineText.size()) i = (int)lineText.size() - 1;
@@ -3176,6 +3271,7 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
         }
         if(path.empty()) return false;
         outPrefix = path;
+        globalPath = i >= 1 && lineText[i] == ':' && lineText[i - 1] == ':';
         return true;
     };
 
@@ -3184,8 +3280,8 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
         string lower = dotPrefix;
         transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
-        LspTarget target;
-        if(!resolveTarget(uri, line, col, lower, target)) { handled = true; return json::array(); }
+        vector<LspTarget> targets = resolveTargets(uri, line, col, lower, globalPath);
+        if(targets.empty()) { handled = true; return json::array(); }
 
         json items = json::array();
         std::set<string> seenLabels;
@@ -3196,12 +3292,14 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
             item["label"] = label;
             items.push_back(item);
         };
+        // A name that may mean several things (a member `kind` beside a type `kind`) offers each one's members.
+        for(const LspTarget& target : targets) {
         // The enum type itself lists its values.
         if(target.enumType) {
             string enumLabel = target.enumType->dName();
             for(enumValueDef* ev : target.enumType->namedValues)
                 push(ev->dName(), {{"kind", 20}, {"detail", enumLabel}});   // EnumMember
-            handled = true; return items;
+            continue;
         }
         // An object's own members: aliases, auto aliases, methods and properties.
         if(target.obj) {
@@ -3241,6 +3339,12 @@ json LspServer::completeDottedMember(const string& uri, int line, int col, const
                     push(vd->dName(), {{"kind", 6}, {"detail", vd->type.name}});
                 }
             });
+        }
+        // An object answers any declared property.
+        if(answersProperties(target.cls, target.isType))
+            for(typeDef* g : languageService.globals)
+                if(auto* pd = dynamic_cast<variableDeclaration*>(g); pd && pd->type.name == "property")
+                    push(pd->dName(), {{"kind", 10}, {"detail", "property"}});
         }
         handled = true; return items;
     }
@@ -3855,7 +3959,7 @@ json LspServer::handleCompletion(const json& params) {
     //   (and a typed call-argument slot `f(|` → in-scope symbols assignable to the parameter type)
     //   4.   Fallthrough                     — return nullptr (let client do word completion)
     // Dotted-access wins over bs-block member completion so `target = eTarget.` correctly
-    // offers Glulx/Z3/Z5/Z8 instead of the 24 property names.
+    // offers Glulx/Z5/Z8 instead of the 24 property names.
 
     bool insideBsBlock = isInBeguilerSettingsBlock(uri, line, col);
 
@@ -3921,35 +4025,22 @@ json LspServer::handleDefinition(const json& params) {
 
     // Check for dotted member access: walk the FULL dotted prefix so namespace paths
     // (bgl.glulx.window) resolve, not just one-level owners.
-    string ownerName;
-    if(start > 0 && lineText[start - 1] == '.') {
-        int i = start - 1;
-        string path;
-        while(i >= 0 && lineText[i] == '.'){
-            i--;
-            int segEnd = i + 1;
-            while(i >= 0 && (isalnum((unsigned char)lineText[i]) || lineText[i] == '_')) i--;
-            int segStart = i + 1;
-            if(segStart >= segEnd) break;
-            string seg = lineText.substr(segStart, segEnd - segStart);
-            path = path.empty() ? seg : seg + "." + path;
-        }
-        ownerName = path;
-    }
+    bool globalPath = false;
+    string ownerName = ownerPathBefore(lineText, start, globalPath);
+    bool globalName = ownerName.empty() && start >= 2 && lineText[start - 1] == ':' && lineText[start - 2] == ':';
 
     sourceLocation src;
     string settleName = lower;
 
-    if((lower == "prefix" || lower == "postfix") && ownerName.empty() && followsOperatorKeyword(lineText, start)) {
+    if(lower == "prefix" && ownerName.empty() && followsOperatorKeyword(lineText, start)) {
         src.file = documentParsePaths.count(uri) ? documentParsePaths[uri] : uriToPath(uri);
         src.line = line + 1;
     } else if(!ownerName.empty()) {
         // Dotted member: resolve the owner chain to its target, then look the member up on it.
         string ownerLower = ownerName;
         transform(ownerLower.begin(), ownerLower.end(), ownerLower.begin(), ::tolower);
-        LspTarget target;
-        if(resolveTarget(uri, line, col, ownerLower, target)) {
-            LspMember m = findMemberOn(target, lower);
+        {
+            LspMember m = findMemberOnAny(resolveTargets(uri, line, col, ownerLower, globalPath), lower);
             if(m.enumValue) {
                 src = enumValueSource(m.enumType, lower);
             } else if(auto* vd = dynamic_cast<variableDeclaration*>(m.member)) {
@@ -3965,7 +4056,12 @@ json LspServer::handleDefinition(const json& params) {
     } else {
         // Non-dotted: use the scoped resolver
         size_t after = lineText.find_first_not_of(" \t", end);
-        LspSymbolRef ref = resolveSymbol(uri, line, col, lower, after != string::npos && lineText[after] == '(');
+        bool isCall = after != string::npos && lineText[after] == '(';
+        LspSymbolRef ref;
+        classDef* selfClass = lower == "selftype" ? selfTypeAt(uri, line, col) : nullptr;
+        if(selfClass) { ref.declSrc = selfClass->src; settleName = selfClass->name; }
+        else if(globalName) ref = resolveGlobalSymbol(uri, lower, isCall);
+        else ref = resolveSymbol(uri, line, col, lower, isCall);
         if(ref.declSrc.line > 0) src = ref.declSrc;
         // Verbs fallback
         if(src.file.empty()) {

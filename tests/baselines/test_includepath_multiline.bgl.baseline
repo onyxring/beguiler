@@ -1,8 +1,8 @@
 !% -v5
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
-!% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub2
-!% ++include_path=/Users/jim/projects/IF-Projects/beguiler/tests/incsub
+!% ++include_path=<root>/beguiler/tests/incsub2
+!% ++include_path=<root>/beguiler/tests/incsub
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 constant _bglWorldBufSize = 128;

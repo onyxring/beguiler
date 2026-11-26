@@ -9,7 +9,7 @@
 // Verifies both, in a verb `grammar` property AND a grammar object.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

@@ -11,6 +11,7 @@
 !       inline it (without a body, dispatch falls back to verbatim emission).
 
 #bgl{
+    #beguilerSettings { includePaths = "../../inform6/stdlib"; }
     #include <bindings/i6StandardLibrary>
 
     object myObj { }

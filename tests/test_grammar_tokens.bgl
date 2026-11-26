@@ -9,6 +9,7 @@
         - Error cases are noted in comments (cannot be tested inline)
 */
 
+#beguilerSettings { includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
 //-----------------------------------------------------------------------------

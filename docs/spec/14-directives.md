@@ -43,6 +43,10 @@ and is consumed by the compiler: nothing of it reaches the generated I6 except t
 placement directives in §14.4 and the island directives in §14.5. An unrecognized directive is a
 compile-time error.
 
+Inside a function body only the conditionals (§14.2.5), `#message`, `#warning`, `#error` and the
+island directives (§14.5) are written. Any other directive there is a compile-time error: it would
+read as local to the function, and none is.
+
 The entries are grouped by purpose; Appendix B lists every directive alphabetically.
 
 ## 14.1 Source Organization
@@ -238,13 +242,31 @@ exception is a class that uses an `extern attribute`, which must follow that att
 Applies a patch to the Inform 6 files of the build. The patch is a unified diff, as `diff -u` or
 `git diff` writes it. It is found like `#includeI6` (§14.1.5), trying *name* as written, then
 *name*`.patch`, then *name*`.diff`. A patch that is not found is a compile-time error; `?"name"`
-silently skips it.
+silently skips it, and skips any file the patch names that is not found, as `#include ?` does.
 
 Each file the patch changes is found through the same search, by its `+++` path without a leading
 `a/` or `b/`, then by its file name alone. Its **merge chunks**, the sections that each start with
 `@@`, are applied in order. A merge chunk must match its lines exactly, ignoring trailing whitespace,
 at the line it states or the nearest place they match. A merge chunk that matches nowhere, a file that is not found, or a malformed patch is a compile-time error at the
 directive. A patch cannot create or delete a file.
+
+A **routine chunk** replaces a whole routine without quoting its old text. It starts with
+`@@ routine ⟨name⟩ @@`, and the lines after it, up to the next chunk or file header, are the routine
+that takes the old one's place:
+
+```
+--- a/verblib.h
++++ b/verblib.h
+@@ routine Banner @@
+[ Banner;
+    print "My banner.^";
+];
+```
+
+The routine is found by name, wherever it is in the file; where the file does not hold it, the files
+it includes are searched. A routine that is not found, or that the file defines more than once, is a
+compile-time error. A routine chunk does not depend on the text of the routine it replaces, so it
+applies to any release of the file that has the routine.
 
 A merge applies to the whole build, not at its position: a patch may come before or after the
 `#includeI6` of the file it changes. Patches apply in source order, each to the file as the earlier
@@ -254,7 +276,8 @@ once applies once.
 
 The patched files are written to the `i6patched` folder of the output directory, which the I6
 compiler searches before every other include directory. Every include of an original reads the patched
-copy, including one made inside another I6 file.
+copy, including one made inside another I6 file. When the source file is a `.inf`, merges are not
+applied: its Inform 6 files are read as they are.
 
 **Example**
 
@@ -346,7 +369,8 @@ all do.
 
 **Description**
 
-Defines a compilation symbol. Without a value the symbol has the boolean value `true`. A symbol with
+Defines a compilation symbol. Without a value the symbol has the boolean value `true`. That value is what `#if` tests; a symbol defined without a value is not a name in a Beguile
+expression, where using it is a compile-time error. A symbol with
 a value is also usable in a Beguile expression, where the name is replaced by its value at compile
 time: an integer value is an integer literal, a decimal number (`0.5`) a float literal, and a quoted
 string that string. Any other word is a string literal of that word, so after `#define SHOP corner`,
@@ -791,9 +815,9 @@ is applied (§18.9). When emitted, the block takes the position of the correspon
 the top of the program for `#storedEmitFirst`, the end for `#storedEmitLast`. A program in which no
 template needs the block pays nothing for it.
 
-Several stored blocks may share one name, and one template may need several names. Registering a
-name that is already registered replaces the earlier block (latest wins); `#once` on the declaring
-file is the normal guard. The body may use `##beguilerSettings.<key>` (§14.4.5).
+A `#storedEmitFirst` block and a `#storedEmitLast` block may share one name, and one template may
+need several names. Registering a second block of the same kind under a name replaces the earlier
+one; `#once` on the declaring file is the normal guard. The body may use `##beguilerSettings.<key>` (§14.4.5).
 
 **Example**
 

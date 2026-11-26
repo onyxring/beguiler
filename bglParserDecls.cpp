@@ -391,7 +391,19 @@ void bglParser::noteValueElementArray(arrayDeclaration& arr, classDef* hostClass
     }
 }
 
+// `patternElement` is what a verb's grammar is made of; a program writes grammar, and declares none.
+void bglParser::rejectPatternElementDeclaration(const string& typeName){
+    string t = typeName; transform(t.begin(), t.end(), t.begin(), ::tolower);
+    if(t.find("patternelement") == string::npos) return;
+    std::error_code ec;
+    const string lib = filesystem::weakly_canonical(settings.libPath, ec).string();
+    const string here = filesystem::weakly_canonical(file.currentLocation().file, ec).string();
+    if(!lib.empty() && here.rfind(lib, 0) == 0) return;
+    parsingError("'patternElement' is the type of a verb's grammar; a program can't declare one.");
+}
+
 bool bglParser::processArrayDeclaration(token dataType, token name, string elementType, token symbol, abstractObject& contextObj, bool isExternal, bool isSuperposed, bool isConst) {
+    rejectPatternElementDeclaration(elementType);
     arrayDeclaration& arrDecl = *(new arrayDeclaration());
     // An array's name is already a fixed address and assigning to it copies its contents, so `const`
     // has no binding to fix here (§3.4).
@@ -1440,6 +1452,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // reach here as a plain variable declaration.
     if(dataType.value == "array")
         parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
+    rejectPatternElementDeclaration(dataType.value);
     // A plain file-scope declaration of a reference class with no value is that class's object, as with `{ }`.
     if(symbol.is(token::endStatement) && !isRef && !isExternal && !isConst && !isSuperposed && !isAdditive
        && getCurrentCompileContext() == eCompileContext::global && plainSlotOwnsReferenceInstance(getDispatchClass((string)dataType)))
@@ -1780,10 +1793,12 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
             if(auto* vd = dynamic_cast<variableDeclaration*>(g); vd && vd->isExternal && vd->name == funcDef.name
                && vd->type.name != "property" && vd->i6name.empty())
                 parsingError(format("function '{0}' has the same name as the extern {1} '{2}'; Inform 6 keeps these "
-                    "in one namespace, ignoring case, so rename the function or give it an `asI6` name.",
+                    "in one namespace, ignoring case, so rename the function.",
                     funcDef.dName(), vd->type.name == "attribute" ? "attribute" : "global", vd->dName()));
 
     processParameterList(funcDef);
+    if(!isExternal && getCurrentCompileContext() == eCompileContext::global && file.peekToken().is("asi6"))
+        parsingError("'asI6' can't rename a free function.");
 
     // Overloading a global function is fine — the call site picks by argument types and each
     // overload emits under its own routine name. Declaring the SAME signature twice is not: there
@@ -2403,6 +2418,8 @@ void bglParser::checkEmitterTokens(functionDef& fn, const string& body, bool isG
         if(isParam) continue;
         if(low == "self" && isGlobal)
             parsingError(format("emitter '{0}' uses $self, but a global emitter has no receiver; use a parameter.", fn.dName()));
+        if(low == "prop" && isGlobal)
+            parsingError(format("emitter '{0}' uses $prop, which is only available in an array<T> emitter.", fn.dName()));
         if(tokens.count(low)) continue;
         if(all_of(low.begin(), low.end(), [](char h){ return isxdigit((unsigned char)h); })) continue;
         parsingError(format("'${0}' in emitter '{1}' is neither one of its parameters nor a substitution token.",

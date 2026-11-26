@@ -58,6 +58,16 @@ static bool parseHunkHeader(const string& line, int& oldStart, int& oldCount, in
     return s[0] == '@' && s[1] == '@';
 }
 
+// `@@ routine Banner @@` → Banner; empty when the line is not a routine header.
+static string routineHeaderName(const string& line){
+    istringstream in(line);
+    string at, word, name, close;
+    in >> at >> word >> name >> close;
+    string extra;
+    if(at != "@@" || word != "routine" || name.empty() || close != "@@" || (in >> extra)) return "";
+    return name;
+}
+
 bool parseUnifiedDiff(const string& text, vector<i6PatchFileSection>& sections, string& error, int& errorLine){
     vector<string> lines;
     {
@@ -90,6 +100,21 @@ bool parseUnifiedDiff(const string& text, vector<i6PatchFileSection>& sections, 
             return false;
         }
         i6PatchHunk h;
+        if(string name = routineHeaderName(l); !name.empty()){
+            h.routine = name;
+            h.patchLine = (int)i + 1;
+            while(i + 1 < lines.size() && lines[i + 1].rfind("@@", 0) != 0 && lines[i + 1].rfind("--- ", 0) != 0)
+                h.newLines.push_back(lines[++i]);
+            while(!h.newLines.empty() && rtrim(h.newLines.back()).empty()) h.newLines.pop_back();
+            while(!h.newLines.empty() && rtrim(h.newLines.front()).empty()) h.newLines.erase(h.newLines.begin());
+            if(h.newLines.empty()){
+                error = format("no routine follows '@@ routine {0} @@'", name);
+                errorLine = h.patchLine;
+                return false;
+            }
+            sections.back().hunks.push_back(std::move(h));
+            continue;
+        }
         int oldCount, newCount;
         if(!parseHunkHeader(l, h.oldStart, oldCount, newCount)){
             error = "malformed merge chunk header";
@@ -137,11 +162,64 @@ static bool matchesAt(const vector<string>& lines, size_t at, const vector<strin
     return true;
 }
 
+// The lines a routine spans, from its `[ Name` to its closing `];`. Strings, dictionary words and
+// comments are passed over. Every definition of the name is listed.
+static vector<pair<size_t, size_t>> findRoutines(const vector<string>& lines, const string& name){
+    vector<pair<size_t, size_t>> found;
+    auto lower = [](string s){ for(char& c : s) c = (char)tolower((unsigned char)c); return s; };
+    const string want = lower(name);
+    for(size_t i = 0; i < lines.size(); i++){
+        const string& l = lines[i];
+        size_t p = l.find_first_not_of(" \t");
+        if(p == string::npos || l[p] != '[') continue;
+        size_t q = l.find_first_not_of(" \t", p + 1);
+        if(q == string::npos) continue;
+        size_t e = q;
+        while(e < l.size() && (isalnum((unsigned char)l[e]) || l[e] == '_')) e++;
+        if(lower(l.substr(q, e - q)) != want) continue;
+        bool inString = false, closed = false;
+        size_t j = i, c = e;
+        for(; j < lines.size() && !closed; j++, c = 0){
+            const string& t = lines[j];
+            for(; c < t.size(); c++){
+                char ch = t[c];
+                if(inString){ if(ch == '"') inString = false; continue; }
+                if(ch == '"'){ inString = true; continue; }
+                if(ch == '!') break;
+                if(ch == '\''){
+                    size_t close = t.find('\'', c + 1);
+                    if(close != string::npos && close - c <= 3 + 9) c = close;
+                    continue;
+                }
+                if(ch == ']'){ closed = true; break; }
+            }
+            if(closed) break;
+        }
+        if(!closed) break;
+        found.push_back({i, j});
+        i = j;
+    }
+    return found;
+}
+
 // With `failed`, a hunk that matches nowhere is skipped and listed there, and the rest still apply.
 static bool applyHunksImpl(vector<string>& lines, const vector<i6PatchHunk>& hunks, string& error, int& errorLine,
                            vector<const i6PatchHunk*>* failed){
     long shift = 0;     // lines added minus lines removed by the hunks already applied
     for(const i6PatchHunk& h : hunks){
+        if(!h.routine.empty()){
+            auto at = findRoutines(lines, h.routine);
+            if(at.size() != 1 && failed){ failed->push_back(&h); continue; }
+            if(at.size() != 1){
+                error = at.empty() ? format("routine '{0}' isn't in the file", h.routine)
+                                   : format("routine '{0}' is defined more than once in the file", h.routine);
+                errorLine = h.patchLine;
+                return false;
+            }
+            lines.erase(lines.begin() + (long)at[0].first, lines.begin() + (long)at[0].second + 1);
+            lines.insert(lines.begin() + (long)at[0].first, h.newLines.begin(), h.newLines.end());
+            continue;
+        }
         // A hunk with no old lines inserts after line oldStart.
         long start = h.oldLines.empty() ? h.oldStart : h.oldStart - 1;
         long expect = start + shift;
@@ -190,8 +268,34 @@ static bool readLines(const string& path, vector<string>& lines, string* eol = n
     return true;
 }
 
+// The file, among those `path` includes, that defines the routine; empty when none does.
+static string includedFileWithRoutine(const string& path, const string& routine, const vector<string>& searchPaths){
+    vector<string> queue = {path};
+    set<string> seen = {path};
+    for(size_t at = 0; at < queue.size() && at < 64; at++){
+        vector<string> lines;
+        if(!readLines(queue[at], lines)) continue;
+        if(at > 0 && !findRoutines(lines, routine).empty()) return queue[at];
+        const filesystem::path dir = filesystem::path(queue[at]).parent_path();
+        for(const string& l : lines){
+            size_t p = l.find_first_not_of(" \t#");
+            if(p == string::npos || l.size() < p + 8) continue;
+            string word = l.substr(p, 7);
+            for(char& c : word) c = (char)tolower((unsigned char)c);
+            if(word != "include") continue;
+            size_t a = l.find('"', p), b = a == string::npos ? a : l.find('"', a + 1);
+            if(b == string::npos) continue;
+            string name = l.substr(a + 1, b - a - 1);
+            string found = resolveIncludePath(name, "", dir, searchPaths);
+            if(found.empty()) found = resolveIncludePath(name, ".h", dir, searchPaths);
+            if(!found.empty() && seen.insert(found).second) queue.push_back(found);
+        }
+    }
+    return "";
+}
+
 string i6PatchSet::applyPatchFile(const string& patchPath, const string& sourceDir, const vector<string>& searchPaths,
-                                  merge* record){
+                                  merge* record, bool skipMissingFiles){
     std::error_code ec;
     string key = filesystem::weakly_canonical(patchPath, ec).string();
     if(record) record->patchPath = patchPath;
@@ -213,36 +317,57 @@ string i6PatchSet::applyPatchFile(const string& patchPath, const string& sourceD
         resolved.push_back(target);
         if(record) record->targets.push_back({sec.target, target});
     }
-    for(size_t i = 0; i < sections.size(); i++)
-        if(resolved[i].empty())
+    for(size_t i = 0; i < sections.size(); i++){
+        if(!resolved[i].empty()) continue;
+        if(!skipMissingFiles)
             return format("{0}({1}): file '{2}' not found", patchName, sections[i].patchLine, sections[i].target);
+        sections.erase(sections.begin() + i);
+        resolved.erase(resolved.begin() + i);
+        i--;
+    }
     if(appliedPatches.count(key)) return "";
 
     // Apply every section on scratch copies first, so a failed patch changes nothing.
     map<string, i6PatchedFile> staged;
+    auto stage = [&](const string& target) -> i6PatchedFile* {
+        auto it = staged.find(target);
+        if(it != staged.end()) return &it->second;
+        auto prior = files.find(target);
+        if(prior != files.end()) return &staged.emplace(target, prior->second).first->second;
+        i6PatchedFile pf;
+        if(!readLines(target, pf.lines, &pf.eol)) return nullptr;
+        return &staged.emplace(target, std::move(pf)).first->second;
+    };
+    set<string> touched;
     for(size_t i = 0; i < sections.size(); i++){
         const i6PatchFileSection& sec = sections[i];
         const string& target = resolved[i];
+        i6PatchedFile* pf = stage(target);
+        if(!pf) return format("{0}({1}): can't read '{2}'", patchName, sec.patchLine, target);
+        touched.insert(target);
 
-        auto it = staged.find(target);
-        if(it == staged.end()){
-            auto prior = files.find(target);
-            if(prior != files.end()) it = staged.emplace(target, prior->second).first;
-            else {
-                i6PatchedFile pf;
-                if(!readLines(target, pf.lines, &pf.eol))
-                    return format("{0}({1}): can't read '{2}'", patchName, sec.patchLine, target);
-                it = staged.emplace(target, std::move(pf)).first;
-            }
+        // A routine the file doesn't hold is looked for in the files it includes.
+        vector<i6PatchHunk> here;
+        for(const i6PatchHunk& h : sec.hunks){
+            string holder;
+            if(!h.routine.empty() && findRoutines(pf->lines, h.routine).empty())
+                holder = includedFileWithRoutine(target, h.routine, searchPaths);
+            i6PatchedFile* other = holder.empty() ? nullptr : stage(holder);
+            if(!other){ here.push_back(h); continue; }
+            touched.insert(holder);
+            if(!applyHunks(other->lines, {h}, err, errLine))
+                return format("{0}({1}): {2} '{3}'", patchName, errLine, err, filesystem::path(holder).filename().string());
         }
-        if(!applyHunks(it->second.lines, sec.hunks, err, errLine)){
+        if(!applyHunks(pf->lines, here, err, errLine)){
             string by;
-            for(const string& p : it->second.patches) by += (by.empty() ? "" : ", ") + filesystem::path(p).filename().string();
+            for(const string& p : pf->patches) by += (by.empty() ? "" : ", ") + filesystem::path(p).filename().string();
             string msg = format("{0}({1}): {2} '{3}'", patchName, errLine, err, filesystem::path(target).filename().string());
             if(!by.empty()) msg += format(" (already patched by {0})", by);
             return msg;
         }
     }
+    for(auto it = staged.begin(); it != staged.end(); )
+        it = touched.count(it->first) ? next(it) : staged.erase(it);
     for(auto& [target, pf] : staged){
         pf.patches.push_back(patchPath);
         files[target] = std::move(pf);
@@ -490,7 +615,8 @@ int runPatchTool(int argc, char* argv[]){
     string json = format("{\"applied\": {0}, \"failed\": [", applied);
     for(size_t i = 0; i < failed.size(); i++){
         const i6PatchHunk& h = *failed[i];
-        string text = format("@@ -{0} @@ (patch line {1})\n", h.oldStart, h.patchLine);
+        string text = h.routine.empty() ? format("@@ -{0} @@ (patch line {1})\n", h.oldStart, h.patchLine)
+                                        : format("@@ routine {0} @@ (patch line {1})\n", h.routine, h.patchLine);
         // Show the hunk as removed/added lines, with its context.
         size_t a = 0, b = 0;
         while(a < h.oldLines.size() || b < h.newLines.size()){

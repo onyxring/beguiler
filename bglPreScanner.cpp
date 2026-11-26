@@ -1205,6 +1205,11 @@ void bglParser::preScanExtend(token& tok){
 void bglParser::preScanClassHead(bool isExtern, bool isEmitter, bool isAliasClass, bool isValue, bool isPrimitive){
     token nameTok = file.getToken();
     string nameStr = nameTok.value;
+    static const set<string> declarationWords = {"class", "struct", "enum", "bnum", "extern", "emitter", "extend", "alias",
+        "primitive", "static", "const", "if", "else", "for", "while", "do", "switch", "case", "return", "break", "continue",
+        "new", "delete"};
+    if(declarationWords.count(nameStr))
+        parsingError(format("'{0}' is a reserved word: it can't name a type.", nameTok.originalValue.empty() ? nameStr : nameTok.originalValue));
     classDef* cls = nullptr;
     if(!languageService.isObjectType(nameStr)){
         classDef& stub = languageService.registerClass(nameStr, isExtern);

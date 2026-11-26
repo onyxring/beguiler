@@ -4,7 +4,7 @@
 // EXPECT_ERROR: must take no parameters
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

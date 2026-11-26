@@ -1,0 +1,32 @@
+/*  run_six_parameters_in_any_call — a routine with more than five parameters receives them all on the
+    Z-machine, whether the call is a statement, part of an expression, or written in an emitter body, and keeps
+    them while it calls another such routine or itself.  */
+// EXPECT_OUTPUT: 21 21 21 28 36 21 41 19 65 21
+#beguilerSettings { target = z5; informName = "none"; }
+int total = 0;
+int sum6(int a, int b, int c, int d, int e, int f) { return a + b + c + d + e + f; }
+int sum7(int a, int b, int c, int d, int e, int f, int g) { return a + b + c + d + e + f + g; }
+void keep6(int a, int b, int c, int d, int e, int f) { total = a + b + c + d + e + f; }
+int outer6(int a, int b, int c, int d, int e, int f) { return sum6(0, 0, 0, 0, 0, 20) + f; }
+int down7(int a, int b, int c, int d, int e, int f, int g) { if (g == 0) return f; return down7(a, b, c, d, e, f + 1, g - 1) + g; }
+int crowded(int a, int b, int c, int d, int e, int f) {
+    int l1 = 1; int l2 = 1; int l3 = 1; int l4 = 1; int l5 = 1; int l6 = 1; int l7 = 1; int l8 = 1; int l9 = 1; int l10 = 1;
+    int inner = sum6(0, 0, 0, 0, 0, 50);
+    return inner + f + l1 + l2 + l3 + l4 + l5 + l6 + l7 + l8 + l9 + l10;
+}
+emitter int viaEmitter(int a, int b, int c, int d, int e, int f) { sum6($a, $b, $c, $d, $e, $f) }
+object box {
+    int add6(int a, int b, int c, int d, int e, int f) { return a + b + c + d + e + f; }
+}
+void main() {
+    int x = sum6(1, 2, 3, 4, 5, 6);
+    int stale = sum6(0, 0, 0, 0, 0, 99);
+    int y = viaEmitter(1, 2, 3, 4, 5, 6);
+    stale = sum6(0, 0, 0, 0, 0, 99);
+    keep6(1, 2, 3, 4, 5, 6);
+    print($"{x} {y} {total} {sum7(1, 2, 3, 4, 5, 6, 7)} {sum6(1, 2, 3, 4, 5, sum6(1, 2, 3, 4, 5, 6))} ");
+    stale = sum6(0, 0, 0, 0, 0, 99);
+    print($"{box.add6(1, 2, 3, 4, 5, 6)} ");
+    print($"{outer6(0, 0, 0, 0, 0, 21)} {down7(0, 0, 0, 0, 0, 10, 3)} {crowded(0, 0, 0, 0, 0, 5)} ");
+    if (sum6(1, 2, 3, 4, 5, 6) == 21) print("21");
+}

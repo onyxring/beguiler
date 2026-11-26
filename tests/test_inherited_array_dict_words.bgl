@@ -25,7 +25,7 @@
 //   - Plural form (`..word`) round-trips as `'word/p'` in both forms.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

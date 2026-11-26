@@ -4,7 +4,7 @@
 // harness has no I6 stdlib, so the routed action's Sub is absent — the emitted directives are
 // what matters).
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

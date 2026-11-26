@@ -8,9 +8,10 @@
    -----------------------------------------------------------------------------*/
 #once
 #if TARGET_GLULX
-    #error "PunyInform runs only on the Z-machine. Set `target = z5` (or z3/z8) in #beguilerSettings."
+    #error "PunyInform runs only on the Z-machine. Set `target = z5` (or z8) in #beguilerSettings."
 #endif
 #declare PUNYINFORM
+#mergeI6 "punyBanner"
 
 //-- Attributes ------------------------------------------
 extern attribute light;        /// object is a light source
@@ -138,7 +139,7 @@ extern const object Directions;                 /// shared placeholder bound to 
 //-- Global routines ------------------------------------------------
 extern void           _StatusLineHeight(int h);                                                  /// Sets the status window to `h` lines and remembers it.
 extern void           Banner();                                                                  /// Prints the game name and serial number.
-extern void           ChangeFgColour(eColor colour);                                             /// Changes the foreground color when colors are enabled (z5 and later; a stub on z3).
+extern void           ChangeFgColour(eColor colour);                                             /// Changes the foreground color when colors are enabled.
 extern void           ChooseObjectsFinal_Discard(int n);                                         /// Removes option `n` (0 or higher) from within ChooseObjectsFinal.
 extern void           ChooseObjectsFinal_Pick(int n);                                            /// Picks option `n` (0 or higher) from within ChooseObjectsFinal.
 extern void           ClearScreen(eWindow window);                                               /// Clears the main window, the status window or both (z5 and later).
@@ -415,6 +416,8 @@ extend class object {
     inline instanceName;
     inline parent;
     iString short_name;
+    rawArray<object> found_in;       /// The rooms a floating object is in, or a routine that is true when it is in `location`.
+    rawArray<object> add_to_scope;   /// Objects brought into scope with this one, or a routine calling `AddToScope`.
 }
 
 // Reuse the settings title and headline for Treaty of Babel metadata

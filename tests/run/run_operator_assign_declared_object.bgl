@@ -1,0 +1,17 @@
+// run_operator_assign_declared_object — `b1 = 7;` on a declared object calls its class's `operator =`,
+// as it does for a local and a member holding the object.
+// EXPECT_OUTPUT: b1=7 r=8 inner=9
+#beguilerSettings { target = z5; informName = "none"; }
+class Box : object { int v = 0; void operator = (int n){ v = n; } }
+Box b1 { }
+Box b2 { }
+Box b3 { }
+object holder { Box inner = b3; }
+void main(){
+    bglInit();
+    b1 = 7;
+    Box r = b2;
+    r = 8;
+    holder.inner = 9;
+    print($"b1={b1.v} r={b2.v} inner={b3.v}^");
+}

@@ -20,7 +20,7 @@
 //     verb's own Verb directive (brand-new words get their own Verb)
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

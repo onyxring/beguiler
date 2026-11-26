@@ -8,6 +8,7 @@
    -----------------------------------------------------------------------------*/
 #once
 #declare I6_STANDARD_LIBRARY
+#mergeI6 "stdlibBanner"
 
 // Binds release 6.12; an earlier release lacks many of these names
 #emitlast {
@@ -608,6 +609,9 @@ extend class object {
     inline instanceName;
     inline parent;
     iString short_name;
+    rawArray<object> found_in;       /// The rooms a floating object is in, or a routine that is true when it is in `location`.
+    rawArray<object> add_to_scope;   /// Objects brought into scope with this one, or a routine calling `AddToScope`.
+    rawArray<string> articles;       /// The articles for a name in a language without inflection.
     property door_dir;   /// On a direction object, the exit property it reads (`n_to`, …); on a door, the way it leads.
 }
 
@@ -684,22 +688,6 @@ extend class object {
     }
 #endif
 
-// Add Beguile to the banner
-replace void Banner(){
-    print($"^{bgl.printRules.bold}{story}{bgl.printRules.roman}{headline}");
-    print($"Release {bgl.header.release} / Serial number {bgl.header.printSerial()}");
-    print($"^{bgl.printRules.italics}Written in{bgl.printRules.roman} Beguile v{beguilerMajor}.{beguilerMinor}.{beguilerPatch}");
-    print($"^{bgl.printRules.italics}Compiled with{bgl.printRules.roman} Inform v");
-    #i6 { inversion; }
-    print($" / Library v{LibRelease} ");
-    #i6 {
-        #Ifdef STRICT_MODE; print "S"; #Endif;
-        #Ifdef INFIX; print "X";
-        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
-    }
-    print("^");
-    #i6 { _bglBannerExtras(); }
-}
 extern property ext_bannerText;   /// A library extension's routine printing its text after the banner.
 #emitfirst {
     #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;

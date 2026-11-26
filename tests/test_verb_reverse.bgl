@@ -17,7 +17,7 @@
 //     `_test_verb_reverse_not_last.bgl`.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

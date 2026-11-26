@@ -270,7 +270,7 @@ bool Blorb::build(const string& storyFile,
         xml += "    </bibliographic>\n"
                "    <colophon>\n"
                "      <generator>Beguile</generator>\n"
-               "      <generatorversion>" + to_string(BEGUILER_VERSION) + "</generatorversion>\n"
+               "      <generatorversion>" + to_string(compilerVersion().number()) + "</generatorversion>\n"
                "      <originated>" + fmt + "</originated>\n"
                "    </colophon>\n"
                "  </story>\n"

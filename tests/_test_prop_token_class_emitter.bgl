@@ -1,0 +1,5 @@
+// EXPECT_ERROR: emitter 'half' uses $prop, which is only available in an array<T> emitter.
+#beguilerSettings { target = z5; }
+class C : object { int v = 4; emitter int half(){ ($self.v / 2 + $prop) } }
+C c1 { }
+void main(){ print(c1.half()); }

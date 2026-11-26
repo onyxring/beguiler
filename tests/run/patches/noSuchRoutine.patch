@@ -1,0 +1,6 @@
+--- a/verblib.h
++++ b/verblib.h
+@@ routine NoSuchRoutine @@
+[ NoSuchRoutine;
+    rtrue;
+];

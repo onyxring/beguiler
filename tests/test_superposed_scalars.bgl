@@ -1,0 +1,7 @@
+// test_superposed_scalars — an unused superposed scalar or constant is withheld; a used one is kept.
+#beguilerSettings { target = z5; informName = "none"; }
+superposed const int UNUSEDLIMIT = 4;
+superposed int unusedCount = 2;
+superposed const int USEDLIMIT = 6;
+superposed int usedCount = 3;
+void main(){ print(USEDLIMIT + usedCount); }

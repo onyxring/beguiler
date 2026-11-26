@@ -5,7 +5,7 @@
 // (`{.foo, …, reverse, withI6Synonyms}`). Any pattern token after it (here, `noun`) is a compile
 // error — there's no I6 semantics for "reverse, then more pattern matching."
 
-#beguilerSettings { target = z5; informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; }
 #include <bindings/i6StandardLibrary>
 
 verb Bad {

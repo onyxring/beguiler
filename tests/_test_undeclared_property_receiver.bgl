@@ -12,4 +12,4 @@ bool f() {
     if(unknownThing.parent == player) return true;   // unknownThing is not declared
     return false;
 }
-// EXPECT_ERROR: Undeclared identifier 'unknownthing'
+// EXPECT_ERROR: Undeclared identifier 'unknownThing'

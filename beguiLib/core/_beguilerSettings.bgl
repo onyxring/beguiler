@@ -48,7 +48,6 @@ extern enum eTarget{
 }
 /// The formats for compiler error messages.
 extern enum eErrorFormat{
-    E0,   /// Archimedes style.
     E1,   /// Microsoft style.
     E2    /// Macintosh style.
 }

@@ -255,7 +255,16 @@ bool bglLanguageService::isI6StatementKeyword(const string& name){
         // Inform 6's built-in properties, which every object answers
         "call", "create", "recreate", "destroy", "remaining", "copy", "print_to_array",
         // grammar-token words: read as tokens in array data (`Array a --> held;`)
-        "held", "multi", "multiheld", "multiexcept", "multiinside", "creature", "topic", "number", "scope", "special"
+        "held", "multi", "multiheld", "multiexcept", "multiinside", "creature", "topic", "number", "scope", "special",
+        // names Inform 6 defines before the program starts
+        "nothing", "class", "routine", "glk", "sender", "sw__var", "sys__glob0", "sys__glob1", "sys__glob2",
+        "temp_global", "temp__global2", "temp__global3", "temp__global4", "sys_statusline_flag",
+        "wordsize", "target_zcode", "target_glulx", "dict_word_size", "dict_char_size", "dict_is_unicode",
+        "num_attr_bytes", "indiv_prop_start", "gobjfield_chain", "gobjfield_name", "gobjfield_proptab",
+        "gobjfield_parent", "gobjfield_sibling", "gobjfield_child", "gobj_ext_start", "gobj_total_length",
+        "grammar__version", "float_infinity", "float_ninfinity", "float_nan",
+        "double_hi_infinity", "double_lo_infinity", "double_hi_ninfinity", "double_lo_ninfinity",
+        "double_hi_nan", "double_lo_nan"
     };
     return keywords.count(name) > 0;
 }
@@ -446,6 +455,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
         if(v->name == lower && v->isPrePassStub){
             v->isPrePassStub = false;
             v->isExternal = isExternal;
+            v->writtenName = name;
             v->i6name = isExternal ? "" : "_bglVerb_" + lower;
             v->src = parser.file.currentLocation();
             if(classDef* vc = findClass("verb"))
@@ -460,6 +470,7 @@ verbObjectDef& bglLanguageService::registerVerbObject(string name, bool isExtern
     }
     verbObjectDef& vd = *(new verbObjectDef());
     vd.name = lower;
+    vd.writtenName = name;
     vd.isExternal = isExternal;
     // The verb's object only carries its handler; the action, the grammar and `<Name>Sub` keep the
     // verb's own name. Inform 6 keeps objects in one namespace with properties, so the object takes

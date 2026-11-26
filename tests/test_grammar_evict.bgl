@@ -13,7 +13,7 @@
 // with the real stdlib binding; I6 handoff is skipped, so they need not be real library verbs.)
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

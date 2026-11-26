@@ -1,6 +1,8 @@
 !% -G
 !% -E1
 !% $OMIT_UNUSED_ROUTINES=1
+!% ++include_path=<root>/inform6/stdlib
+!% ++include_path=<root>/beguiler/tests/output/i6patched
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 
@@ -10,7 +12,6 @@ Constant beguiler = 5;
     Constant story    = "";
     Constant headline = "";
 
-Replace banner;
 
     #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
 
@@ -107,43 +108,6 @@ object _glulx
 ];
 object bgl
 ;
-[Banner;
-    print "^";
-    style bold;
-    print (string)story;
-    style roman;
-    print (string)headline;
-    print "Release ";
-    print _bglheader._bglHeader_release._opconv_int();
-    print " / Serial number ";
-    _bglheader._bglHeader_printSerial();
-    print "^";
-    style underline;
-    print "Written in";
-    style roman;
-    print " Beguile v";
-    print 0;
-    print ".";
-    print 0;
-    print ".";
-    print 5;
-    print "^";
-    style underline;
-    print "Compiled with";
-    style roman;
-    print " Inform v";
-     inversion; 
-    print " / Library v";
-    print (string)librelease;
-    print " ";
-    
-        #Ifdef STRICT_MODE; print "S"; #Endif;
-        #Ifdef INFIX; print "X";
-        #Ifnot; #Ifdef DEBUG; print "D"; #Endif; #Endif;
-    
-    print "^";
-     _bglBannerExtras(); 
-];
 object _bglVerb_whiff
   with priority 10,
        handler [;
@@ -273,34 +237,7 @@ verb 'study'
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
-class _bglaccessor5
-  with
-    _opconv_int[;
-        return _bgl_bglOpCodes_aloads(52, 0);
-    ]
-;
-_bglaccessor5 __bglheader_release;
-object _bglHeader
-  with _bglHeader_release __bglheader_release,
-       _bglHeader_serialChar [i;
-    return _bgl_bglOpCodes_aloadb(54, i);
-  ],
-       _bglHeader_printSerial [i;
-    i = 0;
-    for (i = 0 : i < 6 : i++) {
-        print (char)self._bglHeader_serialChar(i);
-    }
-  ]
-;
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
-    return result;
-];
-[_bgl_bglOpCodes_aloadb addr idx result;
-     @aloadb addr idx result; 
-    return result;
-];
-[_bgl_bglOpCodes_aloads addr idx result;
-     @aloads addr idx result; 
     return result;
 ];

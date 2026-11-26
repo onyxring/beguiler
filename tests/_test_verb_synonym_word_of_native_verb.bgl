@@ -1,0 +1,9 @@
+// EXPECT_ERROR: 'dial' is already a word of verb 'TypeNum'.
+#beguilerSettings { target = z5; includePaths = "../../inform6/stdlib"; informName = "none"; }
+#include <bindings/i6StandardLibrary>
+verb TypeNum {
+    grammar = { {.type|.dial, .into, NOUN} };
+    void handler() { }
+}
+verb Ring { grammar = { {.ring, NOUN} }; void handler() { } }
+extend Ring { synonyms = {.dial}; }

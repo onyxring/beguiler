@@ -13,7 +13,7 @@
 
 // Emission-only test: the bindings declare these verbs but the real I6 library (with the actual
 // XxxSub routines + the <...> runner) isn't compiled here, so skip the I6 handoff.
-#beguilerSettings { informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; informName = "none"; }
 
 #include <bindings/i6StandardLibrary>
 

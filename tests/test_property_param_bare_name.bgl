@@ -3,7 +3,7 @@
 // would otherwise emit as `self.<name>` (a value read). This is an implicit `(property)` cast, so
 // an engine that indexes by property number can take `property task` and callers pass the bare
 // name with no file-scope `extern property` re-declaration — the name is known as an object member.
-#beguilerSettings { target = z5; informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; }
 #include <i6StandardLibrary>
 
 extern class tracker : object {

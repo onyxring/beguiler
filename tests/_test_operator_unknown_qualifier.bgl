@@ -1,0 +1,4 @@
+// EXPECT_ERROR: 'foo++' is not an operator
+#beguilerSettings { target = z5; }
+class C : object { int v = 0; void operator foo++ (){ v = v + 1; } }
+void main(){ }

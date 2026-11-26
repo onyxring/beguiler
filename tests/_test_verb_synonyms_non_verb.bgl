@@ -5,6 +5,7 @@
 //
 // EXPECT_ERROR: is only valid when extending a verb
 
+#beguilerSettings { includePaths = "../../inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
 object rock { }

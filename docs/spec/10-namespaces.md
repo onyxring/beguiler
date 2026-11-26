@@ -180,7 +180,7 @@ later file declares the target (§18.3). What an import contributes depends on t
 |---|---|---|
 | Emitter class | Value emitters, emitter functions | Expanded at the use site |
 | Object | Methods, properties, type aliases | Through the object path |
-| Static members | Static variables | As a static member reference |
+| Class with static members | Static variables and static methods | As a static member reference |
 
 `#using` a regular class that has only non-static instance members is a compile-time error; instance
 methods require a receiver.

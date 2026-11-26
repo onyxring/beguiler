@@ -1,0 +1,38 @@
+// run_stdlib_status_line_glulx — <extensions/stdlib/statusLine>: the status line draws each turn, and a
+// game replaces a section by replacing its routine.
+// EXPECT_OUTPUT: [Room A | 0 turns]
+// EXPECT_OUTPUT: [The crate | 3 turns]
+// EXPECT_OUTPUT: [Darkness | 7 turns]
+// INPUT: status
+// INPUT: enter crate
+// INPUT: close crate
+// INPUT: status
+// INPUT: open crate
+// INPUT: out
+// INPUT: north
+// INPUT: status
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = glulx; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <extensions/stdlib/statusLine>
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; object n_to = cellar; }
+object cellar { short_name = "Cellar"; string description = "A cellar."; }
+object crate { short_name = "crate"; rawArray<dictionaryWord> name = {.crate}; parent = roomA; attributes = {enterable, container, open, openable, static}; }
+object glow { short_name = "glow"; parent = crate; attributes = {light, scenery}; }
+replace void statusRight() { print($"{turns} turns"); }
+replace void statusMiddle() { print("MIDDLE"); }
+verb Status {
+    grammar = { {.status} };
+    void handler() {
+        print("[");
+        statusLeft();
+        print(" | ");
+        statusRight();
+        print("]^");
+    }
+}
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

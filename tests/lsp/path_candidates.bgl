@@ -1,0 +1,13 @@
+#beguilerSettings { target = z5; informName = "none"; }
+enum Growth { seed, sprout }
+object gauge { int level = 1; }
+object plot {
+    Growth kind = Growth.seed;
+    int gauge = 2;
+    void grow() {
+        Growth growth = Growth.sprout;
+        int n = ::gauge.level;
+        object o = plot.child.sibling;
+    }
+}
+void main() { }

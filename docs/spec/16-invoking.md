@@ -139,7 +139,7 @@ and `.inf` is precompiler mode, as specified in §15.1.
 
 In precompiler mode the compiler synthesizes no ICL header: the `!%` lines at the top of the `.inf`
 file are the sole authority, and the target is read from them (`-G` selects Glulx; `-z` selects the
-Z-machine, version 5; `-v3`, `-v5` or `-v8` select an explicit Z-machine version). A `-G` or
+Z-machine, version 5; `-v5` or `-v8` select an explicit Z-machine version). A `-G` or
 `-z5`/`-z8` option on the command line, or a `target` in a `#beguilerSettings` block, is still
 accepted but the `!%` value is what Inform 6 sees.
 

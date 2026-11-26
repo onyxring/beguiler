@@ -15,7 +15,7 @@ satisfy it).
 An author picks a tier by choosing a binding/library set; no single library has
 to compromise for the others:
 
-- **Beguile + puny bindings** -> tiny z3/z5, retro / 8-bit niche.
+- **Beguile + puny bindings** -> tiny z5, retro / 8-bit niche.
 - **Beguile + i6 stdlib bindings** -> classic z5/z8/Glulx, Inform-compatible.
 - **Beguile + bglStdLib (this)** -> **Glulx only**, modern, graphics-first.
 

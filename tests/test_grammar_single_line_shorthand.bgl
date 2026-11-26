@@ -16,7 +16,7 @@
 // (parseGrammarLineContent) so it inherits all the same validation.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

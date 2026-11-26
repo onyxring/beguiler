@@ -1,0 +1,33 @@
+/*  run_library_array_properties_untyped — the binding types `found_in` and `add_to_scope`, so an object
+    fills them without naming a type and they hold exactly the listed objects.  */
+// EXPECT_OUTPUT: A thin mist.
+// EXPECT_OUTPUT: A brass knob.
+// EXPECT_OUTPUT: rooms=2 scope=1
+// INPUT: x mist
+// INPUT: x knob
+// INPUT: e
+// INPUT: x mist
+// INPUT: count
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#includeI6 "grammar"
+object hall  { short_name = "Hall";  string description = "A hall.";  attributes = {light}; object e_to = study; }
+object study { short_name = "Study"; string description = "A study."; attributes = {light}; object w_to = hall; }
+object mist {
+    short_name = "mist"; name = {.mist}; string description = "A thin mist."; attributes = {scenery};
+    found_in = {hall, study};
+}
+object drawer {
+    parent = hall; short_name = "drawer"; name = {.drawer}; attributes = {static};
+    add_to_scope = {knob};
+}
+object knob { short_name = "knob"; name = {.knob}; string description = "A brass knob."; }
+verb Count {
+    grammar = {.count};
+    void handler() { #i6 { print "rooms=", mist.#found_in / WORDSIZE, " scope=", drawer.#add_to_scope / WORDSIZE, "^"; } }
+}
+bool initialise() { location = hall; rfalse; }

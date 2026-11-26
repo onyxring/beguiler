@@ -1,0 +1,3 @@
+// EXPECT_ERROR: Undeclared identifier 'NoSuchThing'
+#beguilerSettings { target = z5; }
+void main(){ int b = NoSuchThing + 1; }

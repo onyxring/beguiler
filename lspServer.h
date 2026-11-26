@@ -94,10 +94,12 @@ private:
                                             const std::string& lower, const std::string& ownerName);
     // Hover case: `owner.member` — resolve the owner chain, then the member on it.
     std::string hoverDottedMember(const std::string& uri, int line, int col, const std::string& lower,
-                                  const std::string& ownerName, std::string& docComment);
+                                  const std::string& ownerName, std::string& docComment, bool globalPath = false);
     // Hover case: a bare identifier — locals, params, class members, globals, verbs, enum values.
     std::string hoverIdentifier(const std::string& uri, int line, int col, bool isCall, const std::string& lower,
-                                const std::string& ownerName, std::string& docComment);
+                                const std::string& ownerName, std::string& docComment, bool globalName = false);
+    // The class `selfType` stands for at (line, col).
+    classDef* selfTypeAt(const std::string& uri, int line, int col);
     json handleCompletion(const json& params);
     // handleCompletion's cases, one method each, called in phase order. Convention: each sets
     // `handled` true and returns that case's completion result when the cursor belongs to it;
@@ -206,6 +208,8 @@ private:
     std::pair<int,int> functionLines(const std::string& uri, int line, int col, functionDef* fn);
     // `isCall`: the name is followed by `(`, so a routine wins over a variable of the same name.
     LspSymbolRef resolveSymbol(const std::string& uri, int cursorLine, int cursorCol, const std::string& loweredName, bool isCall = false);
+    // What `::name` means: a file-scope name, an enum value or a #define.
+    LspSymbolRef resolveGlobalSymbol(const std::string& uri, const std::string& loweredName, bool isCall);
     // resolveSymbol's tiers, tried in this order. Each fills `out` and returns true when it
     // resolves the name; a false return leaves `out` for the next tier to try.
     // Tier: a class member whose declaration sits on the cursor line.
@@ -250,6 +254,16 @@ private:
     // Resolve a lowercased dotted path (`bgl.util`, `self`, `rack.marks`) to the target it names.
     bool resolveTarget(const std::string& uri, int line, int col, const std::string& pathLower, LspTarget& out);
     LspMember findMemberOn(const LspTarget& t, const std::string& nameLower);
+    // Everything the first name of an access path may mean at (line, col), nearest scope first: a name
+    // in scope, then the type, object, variable, imported member and verb of that name. `globalOnly`
+    // (a `::` path) leaves the scope out.
+    std::vector<LspTarget> headTargets(const std::string& uri, int line, int col, const std::string& nameLower, bool globalOnly);
+    // Every target a lowercased dotted path may name, most likely first.
+    std::vector<LspTarget> resolveTargets(const std::string& uri, int line, int col, const std::string& pathLower, bool globalOnly);
+    // What `seg` on target `t` gives access to.
+    bool stepTarget(const LspTarget& t, const std::string& segLower, LspTarget& out);
+    // The member on the first of `targets` that has it.
+    LspMember findMemberOnAny(const std::vector<LspTarget>& targets, const std::string& nameLower);
     LspTarget conversionTarget(classDef* c);
     // The line of `value` within enum `ed`'s declaration.
     sourceLocation enumValueSource(enumDef* ed, const std::string& valueLower);

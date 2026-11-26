@@ -13,7 +13,7 @@
 //   - Replace can coexist with the verb's own block (emits last; replace overrides at runtime)
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

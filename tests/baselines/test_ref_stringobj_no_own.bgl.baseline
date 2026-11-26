@@ -4,7 +4,7 @@
 Constant beguiler = 5;
 #Ifdef beguiler;#Endif;
 
-    Default bglStringDefaultSize 500;
+    Default bglStringDefaultSize 500; #Ifdef bglStringDefaultSize; #Endif;
 
 constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
@@ -951,7 +951,7 @@ class _bglString(bglstringpoolreserve)
             lckBuf  = _bglStr._bglText_ambiguousLock(ab);
             _bglStrEnsure(self, _bglBuf._bglText_length(ab));
             if(_bglStrIs(unkStr)) ab = unkStr._bglText_getBuf();   ! growing may have moved it
-            _bglBuf._bglText_setAny(self._bglText_getBuf(), ab);
+            _bglBuf._bglText_setFromBuffer(self._bglText_getBuf(), ab);
             _bglStr._bglText_ambiguousFree(ab, lckBuf);
             _bglStr._bglText_ambiguousFree(self, lckSelf);
         
@@ -1518,16 +1518,6 @@ object _bglBuf
        _cutwritten 0,
        _cutroom 0,
        _heapshort 0,
-       _bglText_isTracked [buf p i;
-    p=buf;
-    if (p == 0) {
-        return false;
-    }
-    for (i = 0 : i < self._trackedcount : i++) {
-         if(_bglTrackedRegistry-->i == p) rtrue; 
-    }
-    return false;
-  ],
        _registerTracked [buf;
     
             if(self._trackedCount >= _BGL_TRACKED_CAP){
@@ -1572,15 +1562,6 @@ object _bglBuf
         return buf->(pos + WORDSIZE);
     }
     return -1;
-  ],
-       _bglText_setAny [buf stringVal;
-    if (self._bglText_isTracked(stringVal)) {
-        self._bgltext_setfrombuffer(buf, stringVal);
-    }
-    else {
-        self._bgltext_setfromliteral(buf, stringVal);
-    }
-    return buf;
   ],
        _bglText_setFromLiteral [buf stringVal sz room;
     sz=self._bglText_size(buf);

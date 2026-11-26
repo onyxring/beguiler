@@ -572,7 +572,7 @@ bool bglParser::processForCStyle(const std::string& loopVarName, const sourceLoc
             for(int j = 1; j < k; j++) path += file.getToken().value;
             file.getToken();   // '='
             assignedTarget = func != nullptr ? qualifyIdentifier(path, func, body) : path;
-            if(assignedTarget.empty()) parsingError(format("Undeclared variable '{0}'", path));
+            if(assignedTarget.empty()) parsingError(format("Undeclared variable '{0}'", file.asWritten(path)));
             if(isConstName(path, func, body)) parsingError(format("Cannot assign to const variable '{0}'", path));
         }
     }
@@ -1683,8 +1683,6 @@ bool bglParser::retargetSwitchBreaks(statementBlock* blk, const string& label){
 bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'try' is not valid at global scope");
-    if(beguilerSettings.target == "z3")
-        parsingError("try/catch/throw requires Z-machine v5 or later (current target is Z3)");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     sourceLocation stmtLoc = file.currentLocation();
@@ -1764,8 +1762,6 @@ bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
 bool bglParser::processThrow(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     if(getCurrentCompileContext() == eCompileContext::global)
         parsingError("'throw' is not valid at global scope");
-    if(beguilerSettings.target == "z3")
-        parsingError("try/catch/throw requires Z-machine v5 or later (current target is Z3)");
     functionDef* func = dynamic_cast<functionDef*>(&ctx);
     statementBlock* body = func ? dynamic_cast<statementBlock*>(func->body) : nullptr;
     sourceLocation stmtLoc = file.currentLocation();
@@ -1997,7 +1993,7 @@ bool bglParser::finishPrefixIncDec(token op, token varName, StatementContext& sc
     statementBlock* body = sc.body;
     const token& tok = op;
     string lhs = func != nullptr ? qualifyIdentifier(varName.value, func, body) : varName.value;
-    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", varName.value));
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", file.asWritten(varName.value)));
     lhs = withMemberI6Name(varName.value, lhs, func, body);
     if(string g = staticMemberGlobal(varName.value); !g.empty()) lhs = g;
     if(isConstName(varName.value, func, body))
@@ -3403,7 +3399,7 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
     if(func != nullptr){
         string qualified = qualifyIdentifier(lhsOriginal, func, body);
         if(qualified.empty())
-            parsingError(format("Undeclared variable '{0}'", lhsOriginal));
+            parsingError(format("Undeclared variable '{0}'", file.asWritten(lhsOriginal)));
         // Honour a member's `as <i6name>` alias on the assignment target, as the read
         // path does — the declaration emits under the alias, so writing to the Beguile
         // name would target a property that does not exist.
@@ -3648,7 +3644,11 @@ bglParser::AssignTarget bglParser::resolveAssignmentTarget(const string& lhsOrig
         // A global declared as an instance of a class with a copy operator is that object: `=` copies into it.
         if(leftType == nullptr)
             if(auto* od = languageService.findGlobalAs<objectDef>(lhsOriginal);
-               od != nullptr && od->objectClass != nullptr && od->objectClass->copiesOnAssign)
+               od != nullptr && od->objectClass != nullptr
+               && (od->objectClass->copiesOnAssign
+                   // or of a class with any `operator =`: the assignment is a call to it.
+                   || findMemberInHierarchy(od->objectClass, [](typeMember* m){
+                          auto* fd = dynamic_cast<functionDef*>(m); return fd != nullptr && fd->name == "="; })))
                 leftType = &languageService.getType(od->objectClass->name);
     }
 
@@ -4291,6 +4291,18 @@ bool bglParser::processAssignmentStatement(token tok, token symbol, StatementCon
     // Skip operator= emitter if RHS contains $target — the opcode handles its own store
     if(rhs->text().find("$target") == string::npos)
         resolveAssignmentOperator(assignExpr, rhs, target, isBindAssign);
+    // A plain store into a declared object: the name is the object, with nothing to store into.
+    // (An operator that is a call leaves no `$target =` store in its body.)
+    static const regex storesIntoTarget(R"(\$target\s*=[^=])");
+    if(func != nullptr && !looseIdentifierMode && assignExpr.variableLeft == lhsOriginal
+       && (assignExpr.emitterBody.empty() || regex_search(assignExpr.emitterBody, storesIntoTarget))
+       && lhsOriginal.find('.') == string::npos && findAssignedDeclaration(lhsOriginal, func, body) == nullptr){
+        bool isParam = false;
+        for(paramDef* p : func->params) if(p->name == lhsOriginal) isParam = true;
+        if(!isParam)
+            if(auto* od = languageService.findGlobalAs<objectDef>(lhsOriginal); od != nullptr && !od->isExternal)
+                parsingError(format("'{0}' is a declared object and can't be assigned.", file.asWritten(lhsOriginal)));
+    }
 
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
@@ -4400,7 +4412,7 @@ bool bglParser::processCompoundAssignment(token tok, token symbol, StatementCont
             tok.value = "self." + tok.value;
     }
     string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
-    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", file.asWritten(tok.value)));
     // Honour a member's `as <i6name>` alias, as the plain-assignment and read paths do:
     // the member emits under the alias, so a compound write to its Beguile name targeted
     // a property that does not exist ("No such constant as score").
@@ -4698,7 +4710,7 @@ bool bglParser::processPostfixIncDec(token tok, token symbol, StatementContext& 
     statementBlock* body = sc.body;
     file.getToken(token::endStatement);
     string lhs = func != nullptr ? qualifyIdentifier(tok.value, func, body) : tok.value;
-    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", tok.value));
+    if(lhs.empty()) parsingError(format("Undeclared variable '{0}'", file.asWritten(tok.value)));
     lhs = withMemberI6Name(tok.value, lhs, func, body);
     if(string g = staticMemberGlobal(tok.value); !g.empty()) lhs = g;
     if(isConstName(tok.value, func, body))
@@ -5288,6 +5300,8 @@ void bglParser::bindGlobalCallStatement(functionCallStatement& callStmt, token t
     string bindName = callStmt.functionName;
     bool escaped = bindName.rfind(kGlobalEscapeMarker, 0) == 0;
     if(escaped) bindName = bindName.substr(strlen(kGlobalEscapeMarker));
+    ErrorAt atCall(*this, tok.src);
+    callDisplayName = tok.originalValue.empty() ? tok.value : tok.originalValue;
     GlobalCallBinding gcb = bindGlobalCall(bindName, callStmt.args,
                                             callStmt.namedArgNames, callStmt.interpSegmentsPerArg,
                                             escaped ? nullptr : func, escaped ? nullptr : body);
@@ -6192,6 +6206,14 @@ bool bglParser::dispatchPathStatement(token tok, token symbol, StatementContext&
         return parsingError(format("'{0} {1} …' computes a value that nothing uses: assign it or pass it to a call.",
             tok.originalValue.empty() ? tok.value : tok.originalValue, symbol.value));
     if(tok.is("else")) return parsingError("'else' has no 'if' before it.");
+    // `x;`: a name alone. Parsing it reports an undeclared one first.
+    if(symbol.is(token::endStatement) && (tok.is(eTokenType::identifier) || tok.is(eTokenType::name))){
+        file.pendingToken = symbol;
+        file.hasPendingToken = true;
+        parseExpression(tok, {token::endStatement}, sc.func, sc.body);
+        return parsingError(format("'{0}' computes a value that nothing uses: assign it or pass it to a call.",
+            tok.originalValue.empty() ? tok.value : tok.originalValue));
+    }
     return parsingError(format("Unhandled token '{0}'",tok.value));
 }
 

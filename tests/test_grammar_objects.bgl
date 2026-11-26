@@ -9,7 +9,7 @@
 */
 
 #beguilerSettings {
-    informName = "none";
+    includePaths = "../../inform6/stdlib"; informName = "none";
 }
 
 #include <bindings/i6StandardLibrary>

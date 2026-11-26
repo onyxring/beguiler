@@ -16,7 +16,7 @@ void statusLeft() {
     if(location == thedark) { print(location); return; }
     FindVisibilityLevels();
     if(visibility_ceiling == location) print(location);
-    else print($"{bgl.printRules.the(visibility_ceiling)}");
+    else print($"{bgl.printRules.cThe(visibility_ceiling)}");
 }
 
 /// Print the middle of the status line.

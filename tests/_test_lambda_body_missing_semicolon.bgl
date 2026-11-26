@@ -1,0 +1,8 @@
+/* A statement in a lambda body with no ';' before the closing brace */
+// EXPECT_ERROR: Expected ';' before '}'.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+int n;
+void run(func<void> f){ f(); }
+void main(){
+    run(=> { n = 1 });
+}

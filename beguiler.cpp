@@ -197,7 +197,7 @@ void beguiler::extractBlorbSettings(const string& filename) {
                         if(!val.empty() && val.back() == '"') val.pop_back();
                         // The lexer reads the target too (a Glulx character literal is Unicode), and
                         // the library is lexed before the parser reaches this block.
-                        if(beguilerSettings.target.empty() && (val == "glulx" || val == "z5" || val == "z8" || val == "z3"))
+                        if(beguilerSettings.target.empty() && (val == "glulx" || val == "z5" || val == "z8"))
                             beguilerSettings.target = val;
                         // A target given on the command line wins over the source's.
                         const string& t = beguilerSettings.target;
@@ -286,10 +286,9 @@ void beguiler::preScanSourceSettings(CompileJob& job) {
     // `#if TARGET_ZCODE` resolves correctly during preScanFile (BLR is loaded next).
     extractInfTargetFromIcl(settings.inFile);
     // No target named anywhere: the default, Glulx, is known before the library is read.
-    if(beguilerSettings.target.empty()){
-        beguilerSettings.target = "glulx";
-        parser.defineSymbol("target_glulx");
-    }
+    if(beguilerSettings.target.empty()) beguilerSettings.target = "glulx";
+    // A target from the command line, with no settings block in the source, is defined here.
+    parser.defineSymbol(beguilerSettings.target == "glulx" ? "target_glulx" : "target_zcode");
 
     // Phase 1: asset scan — runs before preScanFile so _blorbAssets.bgl exists during parse
     Blorb& blorb = job.blorb;
@@ -468,13 +467,28 @@ void beguiler::resolveOutputPaths(CompileJob& job) {
     }
 }
 
+// A path as one word of a command line: quoted when it holds a space.
+static string commandWord(const string& path){
+    return path.find(' ') == string::npos ? path : "\"" + path + "\"";
+}
+
+// The command as popen takes it. The Windows shell drops the outer quotes of a line that starts
+// with one, so such a line gets a second pair.
+static string commandLine(const string& cmd){
+    #ifdef _WIN32
+        if(!cmd.empty() && cmd.front() == '"') return "\"" + cmd + "\"";
+    #endif
+    return cmd;
+}
+
 // Writes the Inform 6 files that patches changed into the output folder's `i6patched` folder, and
 // points the transpiled .inf's includes of the originals at the copies. True on failure.
 bool beguiler::writePatchedI6Files(const fs::path& outDir) {
     i6PatchSet& patches = languageService.i6Patches;
-    if(!patches.files.empty() && languageService.isInfMode){
-        cerr << "Error: Inform 6 patches can't be used when compiling a .inf file." << endl;
-        return true;
+    // A .inf source includes its Inform 6 files itself, so they are read as they are.
+    if(languageService.isInfMode){
+        patches.files.clear();
+        return false;
     }
     string err = patches.writeCopies((fs::absolute(outDir) / "i6patched").string());
     if(!err.empty()){
@@ -585,7 +599,7 @@ void beguiler::applyEconomyAbbreviations() {
         } else {
             // 1. Compute optimal abbreviations (a -u compile prints them; discard its output file).
             string uOut = settings.tmpFile + ".econ.tmp";
-            string uCmd = settings.informPath + " -u " + settings.tmpFile + " " + uOut + " 2>&1";
+            string uCmd = commandLine(commandWord(settings.informPath) + " -u " + commandWord(settings.tmpFile) + " " + commandWord(uOut) + " 2>&1");
             vector<string> abbrevs;
             if(FILE* up = popen(uCmd.c_str(), "r")){
                 char b[4096];
@@ -632,8 +646,8 @@ void beguiler::applyEconomyAbbreviations() {
 // locations and filtering BLR-internal warnings, then relocates gameinfo.dbg. True on failure.
 bool beguiler::runInform6() {
     string debugSwitch = settings.debugMode ? " -k" : "";  // -k: write debug info to gameinfo.dbg
-    string i6Cmd = settings.informPath + debugSwitch + " " + settings.switches + " " +
-                   settings.tmpFile + " " + settings.outFile;
+    string i6Cmd = commandWord(settings.informPath) + debugSwitch + " " + settings.switches + " " +
+                   commandWord(settings.tmpFile) + " " + commandWord(settings.outFile);
     cout << i6Cmd << endl << endl;
     cout.flush(); cerr.flush();
 
@@ -661,7 +675,7 @@ bool beguiler::runInform6() {
     regex i6DiagReE2(R"re(^File "(.+\.inf)"; Line (\d+)\s+#\s+(Error|Warning|Fatal error):\s+(.*)$)re");
 
     // Capture stderr too so I6 errors come through (I6 mostly writes to stdout, but be safe).
-    string popenCmd = i6Cmd + " 2>&1";
+    string popenCmd = commandLine(i6Cmd + " 2>&1");
     FILE* pipe = popen(popenCmd.c_str(), "r");
     if(!pipe){
         cerr << "Error running I6!" << endl;
@@ -839,8 +853,7 @@ bool beguiler::go(int argc, char* argv[]) {
     if(tryRunLspServer(argc, argv)) return false;
     if(int rc = runPatchTool(argc, argv); rc >= 0) return rc != 0;
 
-   cout << "Beguiler " << (BEGUILER_VERSION / 1000) << "." << ((BEGUILER_VERSION % 1000) / 10)
-        << "." << (BEGUILER_VERSION % 10)
+   cout << "Beguiler " << compilerVersion().display
         << " : The Beguile-Inform6 Transpiler (" << __DATE__ << ")" << endl;
     if(parseArgs(argc, argv)) return true;
 
@@ -937,6 +950,10 @@ bool beguiler::parseArgs(int argc, char* argv[]) {
             } else if(arg == "-z8" || arg == "-Z8") {
                 beguilerSettings.target = "z8";
             } else if(arg.size() >= 3 && arg[1] == 'E' && isdigit(arg[2])) {
+                if(arg != "-E1" && arg != "-E2") {
+                    cerr << "Error: the error format is -E1 or -E2, not '" << arg << "'." << endl;
+                    return true;
+                }
                 beguilerSettings.errorFormat = arg.substr(2);
             } else if(arg == "--debug" || arg == "-D") {
                 // One debug mode: the Beguile debugger's files and I6's DEBUG (its debugging verbs

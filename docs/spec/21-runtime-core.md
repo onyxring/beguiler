@@ -1026,12 +1026,6 @@ name in camel case without the `glk_` prefix (`windowOpen` is `glk_window_open`)
 | `quit` / `restart` | `void ⟨op⟩()` | E | `@quit`, `@restart` |
 | `verify` | `int verify()` | E | `@verify` |
 | `soundEffect` | `void soundEffect(int num, int effect, int vol)` | E | `@sound_effect` |
-
-The following members do not exist on a Z3 target — that is, when the `target` setting is anything
-but `z3` (§17.7).
-
-| Member | Signature | Kind | Meaning |
-|---|---|---|---|
 | `eraseWindow` | `void eraseWindow(int win)` | E | `@erase_window` |
 | `eraseLine` | `void eraseLine(int v)` | E | `@erase_line` |
 | `setCursor` | `void setCursor(int line, int col)` | E | `@set_cursor` |

@@ -1,0 +1,5 @@
+// EXPECT_ERROR: 'o1' is a declared object and can't be assigned.
+#beguilerSettings { target = z5; }
+object o1 { }
+object o2 { }
+void main(){ o1 = o2; }

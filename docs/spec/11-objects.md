@@ -413,6 +413,8 @@ object cloak {
 }
 ```
 
+**See also** §8.2.8 — `typesealed` members; §21.5.7 — `parentProp`, the type of `parent`.
+
 ### 11.5.2 `children`
 
 **Syntax**

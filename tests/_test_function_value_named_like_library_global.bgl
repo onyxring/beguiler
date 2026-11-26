@@ -1,6 +1,6 @@
 // Negative test: a function named like a library global is reported where it is declared, even when only used as a value.
 // EXPECT_ERROR: has the same name as the extern global 'score'
-#beguilerSettings { target = z5; informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; }
 #include <bindings/i6StandardLibrary>
 int score(object o){ return 1; }
 int callIt(func<int, object> f){ return f(nothing); }

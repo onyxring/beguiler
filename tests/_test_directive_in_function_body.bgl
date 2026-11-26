@@ -1,0 +1,7 @@
+// A directive other than a conditional, a message or raw Inform 6 is written at file level.
+// EXPECT_ERROR: '#define' can't be used inside a function
+#beguilerSettings { target = z5; }
+void main(){
+    #define INSIDE 2
+    print(INSIDE);
+}

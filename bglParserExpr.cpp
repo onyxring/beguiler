@@ -814,6 +814,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     functionDef* func, statementBlock* body)
 {
     const string lhsAtEntry = expr->text();
+    const sourceLocation opSrc = pendingOperatorSrc;
 
     // Postfix operators (++ and --): no RHS needed. Find the zero-param emitter and inline.
     if(opName == "++" || opName == "--"){
@@ -1183,6 +1184,7 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
     if(!matchedOp && !useRawFallback && !rhsType.empty() && !languageService.arrayInUse && cls->name == "array"
        && (opName == "+" || opName == "-"))
         parsingError(format("'{0}=' on an array comes from `<array>`: add `#include <array>`.", opName));
+    ErrorAt atOperator(*this, opSrc);
     if(!matchedOp && !useRawFallback && !rhsType.empty())
         parsingError(format("No operator '{0}' on type '{1}' accepting '{2}'{3}{4}", opName, cls->dName(), typeDisplayName(rhsType),
                             laterUsingHint(expr->tokens.size() == 1 ? expr->tokens[0] : string(), expr->resolvedType),
@@ -1471,6 +1473,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
     // callee's parameter (see parseCallArgList / §6.2.1). Self-calls resolve against the enclosing
     // object/class; plain calls against global functions of that name.
     BraceArgHints braceHints;
+    const sourceLocation callSrc = file.currentLocation();
     functionDef* resolvedGlobal = nullptr;   // the overload bindGlobalCall picked, for emission
     if(isSelfCall){
         string recvType = currentObject ? currentObject->name : (currentClass ? currentClass->name : string());
@@ -1573,6 +1576,7 @@ bool bglParser::parseExprFunctionCall(expression* expr, const string& callName, 
         }
     }
     if(!isSelfCall){
+        ErrorAt atCall(*this, callSrc);
         GlobalCallBinding gcb = bindGlobalCall(callName, pal.args, pal.namedArgNames,
                                                  pal.interpSegmentsPerArg, func, body);
         resolvedGlobal = gcb.method;
@@ -3238,6 +3242,7 @@ bglParser::ExprStep bglParser::parseExprCall(ExprParseState& st, token& next){
     statementBlock* body = st.body;
 
     string callName = cur.value;
+    callDisplayName = cur.originalValue.empty() ? cur.value : cur.originalValue;
     // `::name(args)` calls the global function, past any member of the same name (§3.9).
     bool forceGlobal = callName.size() > 2 && callName[0] == ':' && callName[1] == ':';
     if(forceGlobal) callName = callName.substr(2);
@@ -4538,8 +4543,10 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
         // can dispatch/type-check. Loose mode (#bgl islands) and global scope
         // (func == nullptr) keep the verbatim-passthrough for I6 interop.
         if(func != nullptr && !looseIdentifierMode
-           && resolveIdentifierType(cur.value, func, body).empty())
-            parsingError(format("Undeclared identifier '{0}'", cur.value));
+           && resolveIdentifierType(cur.value, func, body).empty()){
+            ErrorAt at(*this, cur.src);
+            parsingError(format("Undeclared identifier '{0}'", file.asWritten(cur.value)));
+        }
         objText = cur.value;
     }
     else if(propType.empty() && func != nullptr && !looseIdentifierMode){
@@ -5029,7 +5036,7 @@ bglParser::ExprStep bglParser::parseExprPostfixQuery(ExprParseState& st, token& 
     if(queryFn != nullptr){
         // Type supports postfix ? — inline the emitter
         string qualified = !accessorRead.empty() ? accessorRead : func != nullptr ? qualifyIdentifier(varName, func, body) : varName;
-        if(qualified.empty()) parsingError(format("Undeclared identifier '{0}'", varName));
+        if(qualified.empty()) parsingError(format("Undeclared identifier '{0}'", file.asWritten(varName)));
         auto* blk = dynamic_cast<i6Block*>(queryFn->body);
         emitterBindings qb; qb.self = qualified; qb.val = qualified; qb.trim = emitterTrim::wsSemi;
         expr->tokens.push_back(expandEmitterBody(blk, qb));
@@ -5047,7 +5054,8 @@ bglParser::ExprStep bglParser::parseExprPostfixQuery(ExprParseState& st, token& 
             if(expr->resolvedType.empty()) expr->resolvedType = resolveIdentifierType(cur.value, func, body);
             expr->tokens.push_back(qualified);
         } else if(func != nullptr || !looseIdentifierMode){
-            parsingError(format("Undeclared identifier '{0}'", cur.value));
+            ErrorAt at(*this, cur.src);
+            parsingError(format("Undeclared identifier '{0}'", file.asWritten(cur.value)));
         } else {
             expr->tokens.push_back(cur.value);
         }
@@ -5252,7 +5260,8 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             }
         }
     } else if(func != nullptr || !looseIdentifierMode){
-        parsingError(format("Undeclared identifier '{0}'", cur.value));
+        ErrorAt at(*this, cur.src);
+        parsingError(format("Undeclared identifier '{0}'", file.asWritten(cur.value)));
     } else {
         expr->tokens.push_back(cur.value); // #bgl island: an I6 name Beguile hasn't seen
     }
@@ -5477,6 +5486,7 @@ bglParser::ExprStep bglParser::parseExprOperator(ExprParseState& st){
             if(string r = receiverText(expr), k = keepValueResult(r, expr->resolvedType); k != r)
                 replaceReceiver(expr, k);
             // Peek at RHS
+            pendingOperatorSrc = cur.src;
             applyBinaryOperator(expr, opName, cls, terminators, parenDepth, [&]{ return exprNext(st); }, prefetched, func, body);
         } else if(auto* lhsEnum = languageService.findEnum(expr->resolvedType);
                   lhsEnum && lhsEnum->isBnum && (cur.value == "|" || cur.value == "&" || cur.value == "^")){
@@ -6384,6 +6394,8 @@ expression* bglParser::parseExpressionInner(token firstToken, std::vector<std::s
         if(cur.is(eTokenType::eof)){
             parsingError("Unexpected end of file inside expression");
         }
+        if(cur.is(token::braceClose) && !allowEmptyExpr)
+            parsingError("Expected ';' before '}'.");
         // I6's array operators `->` and `-->` arrive as `-`/`--` then `>`, which no Beguile operand follows.
         if((cur.value == "-" || cur.value == "--") && file.peekToken().is(">"))
             parsingError(cur.value == "-"

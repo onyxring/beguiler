@@ -1,0 +1,5 @@
+/* asI6 after a file-scope routine's parameters */
+// EXPECT_ERROR: 'asI6' can't rename a free function.
+#beguilerSettings { target = z5; informName = "none"; outputPath = "tests/output"; }
+void f() asI6 Hook { }
+void main(){ f(); }

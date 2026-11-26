@@ -11,7 +11,7 @@
 //   - Multiple hyphens and a mix with plain words in the same list still lex correctly.
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

@@ -14,7 +14,7 @@
 //   - A non-shared word on either verb still gets its own plain `verb 'w'`
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

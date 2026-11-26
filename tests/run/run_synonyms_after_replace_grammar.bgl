@@ -1,0 +1,20 @@
+// run_synonyms_after_replace_grammar — a synonym attaches to a word the verb still has once
+// `replace grammar` has dropped its first one.
+// EXPECT_OUTPUT: [dialing]
+// INPUT: zonk to book
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+object roomA { short_name = "Room A"; string description = "Room A."; attributes = {light}; }
+object book { "book"; rawArray<dictionaryWord> name = {.book}; parent = roomA; }
+verb TypeNum {
+    grammar = { {.type|.dial, .into, NOUN} };
+    void handler() { print("[dialing]^"); }
+}
+extend TypeNum { replace grammar = { {.dial, .to, NOUN} }; }
+extend TypeNum { synonyms = {.zonk}; }
+bool Initialise() { location = roomA; rfalse; }
+#includeI6 "grammar"

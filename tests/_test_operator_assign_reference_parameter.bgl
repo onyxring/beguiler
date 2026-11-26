@@ -1,0 +1,6 @@
+// An `operator =` converts an argument for a value type only: a reference class has no instance to assign into.
+// EXPECT_ERROR: No overload of function 'show' accepts these argument types
+#beguilerSettings { target = z5; }
+class Box : object { int v = 0; void operator = (int n){ v = n; } }
+void show(Box b){ print(b.v); }
+void main(){ show(5); }

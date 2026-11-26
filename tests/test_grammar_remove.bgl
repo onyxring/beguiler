@@ -3,7 +3,7 @@
 // matches on a single trigger word + pattern, letting you drop one synonym while keeping the
 // other. Removal is source-order (only sees lines before it) and warns if nothing matches.
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

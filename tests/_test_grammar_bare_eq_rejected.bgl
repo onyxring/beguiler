@@ -5,7 +5,7 @@
 // EXPECT_ERROR: `grammar = { ... }` is not allowed
 
 #beguilerSettings {
-    target = z5;
+    includePaths = "../../inform6/stdlib"; target = z5;
     informName = "none";
     outputPath = "tests/output";
 }

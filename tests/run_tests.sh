@@ -54,6 +54,11 @@
 #                                 Negative tests are unaffected by --capture.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Baselines hold the compiler's version, which otherwise follows the release tag.
+export BEGUILER_VERSION="v0.0.5"
+# Include paths in the output are absolute: the folder holding the repository reads as <root>.
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+portable() { sed "s#$ROOT_DIR#<root>#g" "$1"; }
 BEGUILER="${BEGUILER:-$SCRIPT_DIR/../beguiler}"
 BASELINE_DIR="$SCRIPT_DIR/baselines"
 OUTPUT_DIR="$SCRIPT_DIR/output"
@@ -95,7 +100,7 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
     fi
 
     if [ "$CAPTURE" = true ]; then
-        cp "$inf" "$BASELINE_DIR/${name}.baseline"
+        portable "$inf" > "$BASELINE_DIR/${name}.baseline"
         echo "  CAPTURED: $name"
         cleanup
     else
@@ -139,12 +144,12 @@ for src in "$SCRIPT_DIR"/test_*.bgl "$SCRIPT_DIR"/test_*.inf; do
             continue
         fi
 
-        if diff -q "$inf" "$baseline" > /dev/null 2>&1; then
+        if portable "$inf" | diff -q - "$baseline" > /dev/null 2>&1; then
             echo "  PASS: $name"
             PASS=$((PASS + 1))
         else
             echo "  FAIL: $name — output differs from baseline"
-            diff "$inf" "$baseline" | head -20
+            portable "$inf" | diff - "$baseline" | head -20
             FAIL=$((FAIL + 1))
         fi
         cleanup
@@ -162,7 +167,7 @@ for src in "$SCRIPT_DIR"/_test_*.bgl "$SCRIPT_DIR"/_test_*.inf; do
     name=$(basename "$src")
 
     # Collect declared expected-error substrings. Accept either comment style.
-    expected=$(grep -E '^[[:space:]]*(//|!)[[:space:]]*EXPECT_ERROR:' "$src" \
+    expected=$(grep -aE '^[[:space:]]*(//|!)[[:space:]]*EXPECT_ERROR:' "$src" \
         | sed -E -e 's|^[[:space:]]*//[[:space:]]*EXPECT_ERROR:[[:space:]]*||' \
                  -e 's|^[[:space:]]*![[:space:]]*EXPECT_ERROR:[[:space:]]*||')
     if [ -z "$expected" ]; then

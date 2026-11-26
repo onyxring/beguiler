@@ -227,6 +227,7 @@ char fileLexer::readChar(){ //actually get the next character, removing it from 
     auto&[inputFileStream, fileName, curLine, curCol]=files.top(); 
 
     retval=(char)(inputFileStream->get());
+    if(retval == 0 && !inputFileStream->eof()) parser.parsingError("The file holds a NUL character: it is not a text file.");
     if(retval=='\n'){
         curLine++;
         curCol=0;
@@ -295,7 +296,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
                     else if(ch == '}' && span > 0) span--;
                     else if(ch == '"' && span > 0){
                         char d = peekChar();
-                        while(d != EOF && d != '"' && d != '\n'){ readChar(); retval.value += d; takeEscape(d); d = peekChar(); }
+                        while(d != EOF && d != '"'){ readChar(); retval.value += d; takeEscape(d); d = peekChar(); }
                         if(d == '"'){ readChar(); retval.value += d; }
                     }
                     ch = peekChar();
@@ -607,7 +608,7 @@ token fileLexer::getBasicToken(bool suppressBleed){
         // looseIdentifierMode is only set during those sub-parses, so use it as the signal
         // that hitting EOF is benign rather than premature.
         if(parser.getCurrentCompileContext()!=eCompileContext::global && !parser.looseIdentifierMode)
-            parser.parsingError("End of file encountered prematurely");
+            parser.parsingError("The file ended inside a block: a ';' or '}' is missing.");
         retval.tokenType=eTokenType::eof;
     }
 
@@ -964,6 +965,14 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
         outRemainingDepth = 0;
     }
     return retval;
+}
+
+sourceLocation fileLexer::includerOutside(const string& dir){
+    if(dir.empty() || files.empty() || get<1>(files.top()).rfind(dir, 0) != 0) return {};
+    auto below = files;
+    for(below.pop(); !below.empty(); below.pop())
+        if(get<1>(below.top()).rfind(dir, 0) != 0) return {get<1>(below.top()), get<2>(below.top()), get<3>(below.top())};
+    return {};
 }
 
 sourceLocation fileLexer::currentLocation(){
@@ -1508,6 +1517,8 @@ token fileLexer::getToken(){
     // normalize to lowercase for case-insensitive parsing (string literals excluded above)
     retval.originalValue = retval.value; // save pre-lowercase value for case-sensitive I6 emission
     transform(retval.value.begin(), retval.value.end(), retval.value.begin(), ::tolower);
+    if(retval.value != retval.originalValue && (isalpha((unsigned char)retval.value[0]) || retval.value[0] == '_'))
+        writtenAs[retval.value] = retval.originalValue;
 
     //we have our basic token, but let's try to classify it a little more specifically, possibly grabbing additional basic tokens to complete more complex ones
     if(retval.is("#")){

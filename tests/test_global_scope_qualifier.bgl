@@ -2,7 +2,7 @@
 // scope (params/locals/enclosing-object members) and suppressing the member-shadow warning. Here
 // the verb has an inherited `meta` property (class verb) AND there's a global `meta` (i6 binding);
 // `::meta` unambiguously means the global. Also exercised as an rvalue.
-#beguilerSettings { target = z5; informName = "none"; }
+#beguilerSettings { includePaths = "../../inform6/stdlib"; target = z5; informName = "none"; }
 #include <i6StandardLibrary>
 
 verb Frob {

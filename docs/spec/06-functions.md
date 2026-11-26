@@ -171,6 +171,9 @@ A call is resolved in two steps:
    parameter counts.
 2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
    match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
+   A parameter of a value type (a struct, or a primitive class such as `float`) also takes an argument
+   that the type's `operator =` accepts, converted by it. A reference class's `operator =` converts no
+   argument: there is no instance to assign into.
    A declared object is an exact match for its class, as a variable of that class is: for an object
    of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
 
@@ -264,8 +267,8 @@ void Main() { … }
 **Description**
 
 `Main` is the program's entry point. The compiler does not check for it: a program built without an
-IF library binding defines `Main` itself, and a missing or duplicated `Main` is reported by the
-Inform 6 stage. A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
+IF library binding defines `Main` itself, and a missing `Main` is reported when Inform 6 runs. A
+second `Main` is a compile-time error, as for any function declared twice (§6.4). A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
 and calls a library-specific entry point, such as `Initialise`, that the program supplies instead
 (§23.3.1).
 

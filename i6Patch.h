@@ -20,6 +20,7 @@ struct i6PatchHunk {
     int patchLine = 0;          // line of the `@@` header in the patch file
     vector<string> oldLines;    // context and removed lines
     vector<string> newLines;    // context and added lines
+    string routine;             // `@@ routine Name @@`: newLines is the whole routine that takes its place
 };
 
 struct i6PatchFileSection {
@@ -32,7 +33,8 @@ struct i6PatchFileSection {
 bool parseUnifiedDiff(const string& text, vector<i6PatchFileSection>& sections, string& error, int& errorLine);
 
 // Applies hunks in order. Each hunk must match exactly (trailing whitespace ignored) at its
-// stated line, shifted by the earlier hunks, or at the nearest place it matches.
+// stated line, shifted by the earlier hunks, or at the nearest place it matches. A routine hunk
+// takes the place of the one routine of its name, wherever it is.
 // False on the first hunk that matches nowhere, with the message and the hunk's patch line.
 bool applyHunks(vector<string>& lines, const vector<i6PatchHunk>& hunks, string& error, int& errorLine);
 
@@ -54,9 +56,9 @@ class i6PatchSet {
         string patchedDir;              // set once the copies are written
 
         // Reads the patch and applies it. On failure returns the message, prefixed with the patch
-        // line it concerns; empty on success.
+        // line it concerns; empty on success. With skipMissingFiles, a file that isn't found is left out.
         string applyPatchFile(const string& patchPath, const string& sourceDir, const vector<string>& searchPaths,
-                              merge* record = nullptr);
+                              merge* record = nullptr, bool skipMissingFiles = false);
         // Writes the patched copies into `dir`, removing anything else there. Empty on success.
         string writeCopies(const string& dir);
         // The copy's path for an original, or empty.

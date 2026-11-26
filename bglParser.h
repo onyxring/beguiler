@@ -1260,6 +1260,7 @@ class bglParser {
         void rejectEmitterNamesInBody(const string& text, const i6Block* blk);
         static constexpr size_t kMaxEmitterDepth = 8;
     public:
+        void rejectPatternElementDeclaration(const string& typeName);
         bool isTypeCompatible(string argType, string paramType);   // public: the LSP filters typed-argument completions with it
         string funcValueType(const string& name);
         static string literalBaseType(const string& t);
@@ -1497,6 +1498,15 @@ class bglParser {
         vector<functionDef*> lambdaOuterFuncStack;
         string addCapture(const string& outerName, const string& typeName, class variableDeclaration* vd = nullptr); // register a closure capture, return global name
         sourceLocation currentStatementSrc;  // location of the first token of the current statement
+        sourceLocation errorAt;              // where the next error is reported, when a site knows better than the stream
+        sourceLocation pendingOperatorSrc;   // the binary operator about to be applied
+        string callDisplayName;              // the name of the call being bound, as written
+        // Reports errors raised in its scope at `at`.
+        struct ErrorAt {
+            bglParser& p; sourceLocation saved;
+            ErrorAt(bglParser& parser, const sourceLocation& at) : p(parser), saved(parser.errorAt) { if(at.line > 0) p.errorAt = at; }
+            ~ErrorAt() { p.errorAt = saved; }
+        };
 
         map<string,string> definedSymbols;  // symbols defined via #define; value is "" for boolean flags, else the literal value
         map<string, string> i6DefinedSymbols;   // #defineI6 symbols: used by name (their I6 Constant)
