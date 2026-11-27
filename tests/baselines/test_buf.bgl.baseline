@@ -10,6 +10,8 @@ constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
+global _bglByteHeapFrom = 0;
+global _bglByteHeapTo = 0;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -76,11 +78,11 @@ array _bglbufglulxstreams table 16;
     Constant _BGL_TRACKED_CAP (bglBufferPoolReserve + bglTrackedBufferReserve);
     Array _bglTrackedRegistry --> _BGL_TRACKED_CAP;
 
-Array _bglcap_bufa -> 0 64;
+Array _bglcap_bufa -> $90 $84 0 64;
 Array bufa -> (WORDSIZE + 64);
-Array _bglcap_bufb -> 0 64;
+Array _bglcap_bufb -> $90 $84 0 64;
 Array bufb -> (WORDSIZE + 64);
-Array _bglcap_bufsmall -> 0 16;
+Array _bglcap_bufsmall -> $90 $84 0 16;
 Array bufsmall -> (WORDSIZE + 16);
 [exerciseLength szA szA2 szB szS lenA lenA2 lenB trA trA2;
     szA=_bglbuf._bglText_size(bufa);
@@ -257,10 +259,7 @@ object _bglBuf
     self._trackedcount++;
   ],
        _bglText_size [buf;
-    if (buf == 0) {
-        return -1;
-    }
-    return buf-->(-1);
+    return _bglbytesize(buf);
   ],
        _bglText_length [buf;
     return buf-->(0);
@@ -633,11 +632,24 @@ object _bglBuf
   ]
 ;
 [_bglByteAt arr i isWrite n;
-    n= ((arr))-->-1;
+    n=_bglbytesize(arr);
     if (i >= 0 && i < n) {
         return arr + WORDSIZE + i;
     }
     return _bgloutofrange(i,n,iswrite);
+];
+[_bglByteSize arr a;
+    a = arr;
+    if (arr == 0) {
+        return -1;
+    }
+    if ( a-->-2  == 36996) {
+        return  a-->-1 ;
+    }
+    if (_bglbyteheapto ~= 0 && _bglunsignedcompare(arr,_bglbyteheapfrom) >= 0&&_bglunsignedcompare(arr,_bglbyteheapto) < 0) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
 [_bglCharIsAlpha c;
     return _bglcharislower(c) || _bglcharisupper(c);
@@ -792,6 +804,23 @@ object _bglBuf
     print " is skipped]^";
     _bglsink-->0 = 0;
     return _bglsink;
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];
 array _bglsink --> 1;
 [_bglAt arr i isWrite n;

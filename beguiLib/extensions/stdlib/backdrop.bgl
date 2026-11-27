@@ -1,9 +1,9 @@
 //===================================================================================================
 // backdrop.bgl — scenery a room mentions, answered without an object for every word
 // A room or backdrop object lists its scenery in a backdrops member, one row per thing
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <array>
 #include <bindings/i6StandardLibrary>
 

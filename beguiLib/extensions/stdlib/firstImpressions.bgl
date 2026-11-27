@@ -1,9 +1,9 @@
 //===================================================================================================
 // firstImpressions.bgl — text shown with a description only the first time the player sees it
 // An object's preImpression and postImpression print until it has beenSeen
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/trackSeen>
 
 property preImpression;    /// Shown before the description, the first time.

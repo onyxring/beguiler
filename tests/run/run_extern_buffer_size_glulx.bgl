@@ -1,0 +1,28 @@
+// run_extern_buffer_size_glulx — the Glulx form of run_extern_buffer_size.
+// EXPECT_OUTPUT: ext 10 10 z glob 6 5 5 loc 7 2 abcdef
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <string>
+#include "glulxConsole.bgl"
+
+#i6 { Array _pad --> 1 7; Array i6buf buffer 10; }
+extern array<char> i6buf;
+array<char> g[6];
+array<char> h = "hello";
+
+void local(){
+    array<char> loc[7];
+    loc.length = 2;
+    print("loc ", loc.size, " ", loc.length, " ");
+}
+
+void main(){
+    bglInit(); glulxConsole();
+    print("ext ", i6buf.size, " ", i6buf.length, " ");
+    i6buf[9] = 'z';
+    print(i6buf[9], " ");
+    print("glob ", g.size, " ", h.size, " ", h.length, " ");
+    local();
+    stringObj s = "abc";
+    s = s + "def";
+    print(s);
+}

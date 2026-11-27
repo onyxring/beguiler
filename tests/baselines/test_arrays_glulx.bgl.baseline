@@ -6,13 +6,19 @@ Constant beguiler = 5;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
+global _bglLinkHeld = 0;
+global _bglLinkMarkCount = 0;
 constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 16384;
 #Ifdef _bglHeapWords;#Endif;
+constant _bglStatusRock = 1073741824;
+global _bglByteHeapFrom = 0;
+global _bglByteHeapTo = 0;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
+
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;
@@ -65,7 +71,7 @@ object _glulx
 ];
 [_bglResumeLineInput inputBuf typed;
 ];
-[_bglGlkEvent event context inputBuf _l_target known n typed;
+[_bglGlkEvent event context inputBuf _l_target known n saved held printed typed ch m;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
@@ -77,17 +83,51 @@ object _glulx
     if (~~known) {
         return false;
     }
-    typed = 0;
-    if (context == 0) {
-        typed=_bglsuspendlineinput(inputBuf);
+    if (context ~= 0) {
+         _l_target(); 
+        return true;
     }
+    saved=__glkHook(72);
+    held=__glkHook(313, _bgllinktext, _bgl_link_text, 1, 0);
+    __glkHook(71, held);
+    _bgllinkheld=held;
+    _bgllinkmarkcount = 0;
      _l_target(); 
-    if (context == 0) {
-        _bglresumelineinput(inputBuf, typed);
-        rtrue;
+    _bgllinkheld = 0;
+    __glkHook(71, saved);
+    __glkHook(68, held, _bgllinkcounts);
+    printed= _bgllinkcounts-->1;
+    if (printed > _bgl_link_text) {
+        printed=_bgl_link_text;
     }
+    if (printed == 0) {
+        return true;
+    }
+    typed=_bglsuspendlineinput(inputBuf);
+    ch = 0;
+    m = 0;
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(258, _bglcurrentwindow());
+    }
+    for (n = 0 : n < printed : n++) {
+        for (m = 0 : m < _bgllinkmarkcount : m++) {
+            if ( _bgllinkmarks-->(m * 3)  == n) {
+                __glkHook(256,  _bgllinkmarks-->(m * 3 + 2) );
+            }
+            if ( _bgllinkmarks-->(m * 3 + 1)  == n) {
+                __glkHook(256, 0);
+            }
+        }
+        ch= _bgllinktext-->n ;
+        @streamunichar ch;
+    }
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(256, 0);
+    }
+    _bglresumelineinput(inputBuf, typed);
     return true;
 ];
+array _bgllinkcounts --> 2;
 [_bglCurrentWindow stream win;
     stream=__glkHook(72);
     win=__glkHook(32, 0, 0);
@@ -120,9 +160,9 @@ Array bglhag --> $9084 0;
 array g_sized table 8;
 Array bglhah --> $9084 3;
 array g_flags table true false true;
-Array _bglcap_g_buf -> 0 0 0 32;
+Array _bglcap_g_buf -> 0 0 $90 $84 0 0 0 32;
 Array g_buf buffer 32;
-Array _bglcap_g_short -> 0 0 0 8;
+Array _bglcap_g_short -> 0 0 $90 $84 0 0 0 8;
 Array g_short buffer 8;
 object inventory
   with slots 0 0 0 0 0 0 0 ,
@@ -164,6 +204,11 @@ object inventory
     ];
 
 
+    Constant _BGL_LINK_TEXT 512;
+    Array _bglLinkText --> _BGL_LINK_TEXT;   ! what a link printed, while line input waited
+    Array _bglLinkMarks --> 48;               ! up to 16 links it printed:  start, end, value
+
+
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 [__glkHook _vararg_count api args retval;
@@ -180,11 +225,24 @@ object inventory
     return _bgloutofrange(i,n,iswrite);
 ];
 [_bglByteAt arr i isWrite n;
-    n= ((arr))-->-1;
+    n=_bglbytesize(arr);
     if (i >= 0 && i < n) {
         return arr + WORDSIZE + i;
     }
     return _bgloutofrange(i,n,iswrite);
+];
+[_bglByteSize arr a;
+    a = arr;
+    if (arr == 0) {
+        return -1;
+    }
+    if ( a-->-2  == 36996) {
+        return  a-->-1 ;
+    }
+    if (_bglbyteheapto ~= 0 && _bglunsignedcompare(arr,_bglbyteheapfrom) >= 0&&_bglunsignedcompare(arr,_bglbyteheapto) < 0) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
 [_bglFloatGt x y;
      @jfgt x y ?yes; rfalse; .yes; rtrue; 
@@ -218,6 +276,23 @@ object inventory
     print " is skipped]^";
     _bglsink-->0 = 0;
     return _bglsink;
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 2147483647;
+    v=y & 2147483647;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 

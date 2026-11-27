@@ -7,6 +7,8 @@ constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
+global _bglByteHeapFrom = 0;
+global _bglByteHeapTo = 0;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -82,7 +84,7 @@ Array bglhah --> $9084 2;
 array g_objs table plainobj1 plainobj2;
 Array bglhai --> $9084 2;
 array g_rooms table r1 r2;
-Array _bglcap_g_buf -> 0 32;
+Array _bglcap_g_buf -> $90 $84 0 32;
 Array g_buf buffer 32;
 object inventory
   with slots 0 0 0 0 0 0 0 ,
@@ -109,11 +111,24 @@ object inventory
     return _bgloutofrange(i,n,iswrite);
 ];
 [_bglByteAt arr i isWrite n;
-    n= ((arr))-->-1;
+    n=_bglbytesize(arr);
     if (i >= 0 && i < n) {
         return arr + WORDSIZE + i;
     }
     return _bgloutofrange(i,n,iswrite);
+];
+[_bglByteSize arr a;
+    a = arr;
+    if (arr == 0) {
+        return -1;
+    }
+    if ( a-->-2  == 36996) {
+        return  a-->-1 ;
+    }
+    if (_bglbyteheapto ~= 0 && _bglunsignedcompare(arr,_bglbyteheapfrom) >= 0&&_bglunsignedcompare(arr,_bglbyteheapto) < 0) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
 [_bglOutOfRange i n isWrite;
     print "^[Beguile run-time error: array index ";
@@ -141,6 +156,23 @@ object inventory
     print " is skipped]^";
     _bglsink-->0 = 0;
     return _bglsink;
+];
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
 ];
 array _bglsink --> 1;
 [_bglArrSize arr;

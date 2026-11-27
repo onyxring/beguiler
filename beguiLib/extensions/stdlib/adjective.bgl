@@ -1,9 +1,9 @@
 //===================================================================================================
 // adjective.bgl — words that describe an object without naming it
 // The parser prefers an object named by a noun over one matched by adjective words alone
-// Include it after the library's verblib, and after the extensions that answer the parser's hooks first
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/parserUtil>
 #include <extensions/stdlib/hooks/parser>
 #include <extensions/stdlib/hooks/standardLibrary>
@@ -14,6 +14,21 @@ property requireNoun;   /// True when a command must name the object with a noun
 enum adjectiveMode { nounRequired = 0, nounPreferred = 1 }   /// Whether adjectives alone can name an object.
 
 attribute _nounReferenced;
+
+// Move adjectiveParser behind the other extensions, which keep their order
+void _adjectiveAnswersLast() {
+    int left = 0; object each; object before;
+    #i6 {
+        objectloop(each in LibraryExtensions) left++;
+        each = youngest(LibraryExtensions);
+        while(left > 0) {
+            before = elder(each);
+            if(each ~= adjectiveParser) move each to LibraryExtensions;
+            each = before; left--;
+        }
+    }
+}
+#startup { _adjectiveAnswersLast(); }
 
 object adjectiveParser {
     parent = LibraryExtensions;

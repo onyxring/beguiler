@@ -2,7 +2,7 @@
 """Doc tests: compile and run every `bgl` code block in the language spec.
 
 Each block is wrapped into a program, compiled for the Z-machine (then Glulx, if that fails), run, and any
-result the spec states with `// → value` is checked. A block that isn't meant to compile carries a marker in an
+result the spec states with `// -> value` is checked. A block that isn't meant to compile carries a marker in an
 HTML comment on the line before its fence:
 
     <!-- doctest: skip -->      syntax sketch or fragment that needs context; not compiled
@@ -11,6 +11,9 @@ HTML comment on the line before its fence:
     <!-- doctest: compile -->   compiled (through Inform 6) but not run: it needs state a bare program lacks
     <!-- doctest: pending reason -->  not compiled: the example and the compiler disagree, awaiting a decision;
                                 listed on every run so it isn't forgotten
+
+A block with a `// … in a routine:` line is split there:  the lines above it are file scope and the lines below
+it are the body of `main`.
 
 A line whose comment says `compile-time error` is left out of the program, and is checked on its own to be
 rejected.
@@ -39,17 +42,18 @@ DECL_START = re.compile(
 # `Type name(params) {` — a function; `Type name {` — an object of a class; `Type name[...]`/`= ...;` at top level
 FUNC_START = re.compile(r'^\s*[A-Za-z_][\w<>,\s|]*\s+[A-Za-z_]\w*\s*\([^;]*\)\s*(\{|$)')
 INSTANCE_START = re.compile(r'^\s*[A-Za-z_][\w<>]*\s+[A-Za-z_]\w*\s*\{')
-DECL_VALUE = re.compile(r'^\s*(?:const\s+)?([A-Za-z_][\w<>,]*(?:<[^;=]*>)?)\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*=\s*.*;\s*//\s*→\s*(.+)$')
-PRINT_VALUE = re.compile(r'^\s*(?:print|for|if|try|while)\b.*;\s*(?:\})?\s*//\s*→\s*(.+)$')
+DECL_VALUE = re.compile(r'^\s*(?:const\s+)?([A-Za-z_][\w<>,]*(?:<[^;=]*>)?)\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*=\s*.*;\s*//\s*->\s*(.+)$')
+PRINT_VALUE = re.compile(r'^\s*(?:print|for|if|try|while)\b.*;\s*(?:\})?\s*//\s*->\s*(.+)$')
 VAR_DECL = re.compile(r'^\s*(?:const\s+)?[A-Za-z_][\w]*(?:<[^;=]*>)?\s+[A-Za-z_]\w*\s*(?:\[[^\]]*\])?\s*(?:=|;)')
 STATEMENT_KEYWORDS = re.compile(r'^\s*(print|printLine|if|for|while|do|switch|return|try|throw|rtrue|rfalse|break|continue)\b')
 
 
+SCOPE_MARK = re.compile(r'^[ \t]*//[ \t]*…[ \t]*in a routine:[^\n]*$', re.M)
 ERROR_LINE = re.compile(r'//.*\bcompile-time error\b|//\s*error\b', re.I)
 
 
 def expected_text(raw):
-    """The value a `// → v` comment states: up to an explanatory `:` or `(`, without quotes."""
+    """The value a `// -> v` comment states: up to an explanatory `:` or `(`, without quotes."""
     v = raw.strip()
     if '(' in v and not v.startswith('"') and not v.startswith('('):
         v = v.split('(', 1)[0].strip()
@@ -128,7 +132,7 @@ def is_declaration(chunk):
     return bool(DECL_START.match(first) or FUNC_START.match(first) or INSTANCE_START.match(first))
 
 
-BARE_EXPR = re.compile(r'^(\s*)([^;{}]+?)\s*//\s*→\s*(.+)$')
+BARE_EXPR = re.compile(r'^(\s*)([^;{}]+?)\s*//\s*->\s*(.+)$')
 
 
 def elided(code):
@@ -150,7 +154,7 @@ def split_error_lines(code):
 
 
 def instrument(code):
-    """Add a print after each `T x = …; // → v` line, print a bare `expr // → v`, and collect the values."""
+    """Add a print after each `T x = …; // -> v` line, print a bare `expr // -> v`, and collect the values."""
     out, expects, n = [], [], 0
     depth = 0
     for line in code.split('\n'):
@@ -182,6 +186,10 @@ def programs_for(code):
     """Candidate whole programs for a block, most faithful first."""
     if has_main(code):
         return [code]
+    scope = SCOPE_MARK.search(code)
+    if scope:
+        # The example marks where file scope ends and a routine's body begins.
+        return [code[:scope.start()] + '\nvoid main(){\n    bglInit();\n' + code[scope.end():] + '\n}\n']
     chunks = split_chunks(code)
     decls = [c for c in chunks if is_declaration(c)]
     stmts = [c for c in chunks if not is_declaration(c)]

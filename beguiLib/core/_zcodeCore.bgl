@@ -43,3 +43,8 @@ extend bgl {
 
 superposed int _bglWinWidth(int win){ return bgl.asm.loadb(0, $21); }
 superposed void _bglWinMoveCursor(int win, int col, int line){ bgl.asm.setCursor(line + 1, col + 1); }
+
+extend _bglUi{
+    /// After a restore, undo or restart, bring the windows on screen back in line with the program's.
+    void recoverWindows() asI6 _bglUi_recoverWindows { }
+}

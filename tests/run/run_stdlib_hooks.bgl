@@ -6,7 +6,6 @@
 // EXPECT_OUTPUT: You see nothing unexpected in that direction.
 // EXPECT_OUTPUT: As good-looking as ever.
 // EXPECT_OUTPUT: [first banner line]
-// EXPECT_OUTPUT: [game banner line]
 // EXPECT_OUTPUT: order: first second third
 // INPUT: jump
 // INPUT: look north
@@ -30,7 +29,6 @@ object myHooks {
         return 2;
     }
 }
-void orBannerText() { print("[game banner line]^"); }
 // Asked in the order they are declared.
 object firstHooks { parent = LibraryExtensions; bool ext_beforeAction() { if(action == ShowOrder) print("order: first "); rfalse; } }
 object secondHooks { parent = LibraryExtensions; bool ext_beforeAction() { if(action == ShowOrder) print("second "); rfalse; } }

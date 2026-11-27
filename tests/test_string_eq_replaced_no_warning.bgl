@@ -1,0 +1,16 @@
+// A program which replaces `string`'s `==` and `!=` decides what they mean, so neither warns.
+// EXPECT_NO_WARNING: compares their addresses
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+extend class string {
+    replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
+    replace emitter eBool operator != (string v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+}
+string a = "x";
+string b = "x";
+void main(){
+    if(a == b) print("1");
+    if(a != "x") print("2");
+}

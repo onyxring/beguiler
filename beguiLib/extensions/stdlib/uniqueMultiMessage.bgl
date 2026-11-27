@@ -6,6 +6,7 @@
 //
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/informLibrary>
 #include <buf>
 

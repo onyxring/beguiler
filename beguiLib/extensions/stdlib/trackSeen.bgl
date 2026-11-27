@@ -1,8 +1,8 @@
 //===================================================================================================
 // trackSeen.bgl — the beenSeen attribute: what the player has examined, and the rooms looked at
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/informLibrary>
 #include <extensions/stdlib/hooks/standardLibrary>
 #include <extensions/stdlib/hooks/verbs>

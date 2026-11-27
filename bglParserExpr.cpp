@@ -500,6 +500,9 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     vector<statementBlock*> savedOuterBlocks = lambdaOuterBlockStack;
     lambdaOuterBlockStack = savedBlockStack;
     activeBlockStack.clear();
+    // A try around the lambda is the outer routine's:  a throw in the lambda leaves the lambda.
+    vector<size_t> savedTryDepths = tryBlockDepths;
+    tryBlockDepths.clear();
 
     token bodyStart = interpolatedBody ? token() : file.getToken();
     if(interpolatedBody){
@@ -674,6 +677,7 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
     lambdaOuterFunc = savedOuterFunc;
     lambdaOuterBody = savedOuterBody;
     activeBlockStack = savedBlockStack;
+    tryBlockDepths = savedTryDepths;
     lambdaOuterBlockStack = savedOuterBlocks;
     if(!lambdaOuterFuncStack.empty()) lambdaOuterFuncStack.pop_back();
 
@@ -736,6 +740,8 @@ string bglParser::parseLambdaExpr(functionDef* outerFunc, statementBlock* outerB
         unload.text = cap.outerName + " = " + cap.globalName + ";";
         unload.cooked = true;
         postInjections.push_back(&unload);
+        // Inside a try, a throw skips the copy-back:  the catch makes it instead.
+        if(!tryBlockDepths.empty() && !tryOwnedStack.empty()) tryOwnedStack.back().captures.push_back({load.text, unload.text});
     }
 
     return fd.name;
@@ -1112,6 +1118,12 @@ bool bglParser::applyBinaryOperator(expression* expr, const string& opName, clas
         derivedFromCompare = matchedOp != nullptr;
         matchName = opName;
     }
+    // Two strings are two addresses:  equal text in two places compares unequal.  A replaced operator decides for itself.
+    if((opName == "==" || opName == "!=")
+       && (expr->resolvedType == "string" || expr->resolvedType == "stringliteral")
+       && (rhsType == "string" || rhsType == "stringliteral")
+       && !(matchedOp != nullptr && matchedOp->isReplacement))
+        parsingWarning(format("'{0}' between two strings compares their addresses, not their text.", opName));
 
     // LHS conversion fallback: if LHS has operator() → convertedType, retry operator search on that type.
     // The "converted-to-converted" clause (param type == convertedType) also requires the RHS to
@@ -2748,7 +2760,7 @@ bglParser::ExprStep bglParser::parseExprFloatLiteral(ExprParseState& st){
     // token so far) selects `$-` and is consumed so it isn't repeated. Glulx-only: the
     // Z-machine has no float opcodes, so `float` isn't even a type there.
     if(definedSymbols.find("target_glulx") == definedSymbols.end())
-        parsingError(format("float literal '{0}' requires a Glulx target — the Z-machine has no floating point.", cur.value));
+        parsingError(format("float literal '{0}' requires a Glulx target: the Z-machine has no floating point.", cur.value));
     bool isNegated = (expr->tokens.size() == 1 && expr->tokens[0] == "-");
     if(isNegated) expr->tokens.pop_back();
     string i6lit = (isNegated ? "$-" : "$+") + cur.value;
@@ -4530,7 +4542,7 @@ bglParser::ExprStep bglParser::parseExprMemberPropertyRead(ExprParseState& st, t
                     return false; });
                 if(overloads > 1)
                     parsingError(format("'{0}.{1}' names {2} overloads, so it cannot be used as a bare "
-                        "function reference — only a call can say which one is meant. Wrap the overload "
+                        "function reference: only a call can say which one is meant. Wrap the overload "
                         "you want in a function of its own and reference that.", cur.originalValue.empty() ? cur.value : cur.originalValue, sm->dName(), overloads));
                 expr->tokens.push_back(i6Emitter::staticRoutineName(owner ? owner : sc, sm));
                 string t = "func<" + (sm->returnType.name.empty() ? string("void") : sm->returnType.name);
@@ -5105,7 +5117,7 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
             }
         if(signatures.size() > 1)
             parsingError(format("'{0}' names {1} overloads, so it cannot be used as a bare "
-                "function reference — only a call can say which one is meant. Wrap the overload "
+                "function reference: only a call can say which one is meant. Wrap the overload "
                 "you want in a function of its own and reference that.", cur.value, signatures.size()));
     }
     // A `#using`-imported object's method named bare, not called: it needs its object, so it isn't a value.
@@ -5170,7 +5182,7 @@ bglParser::ExprStep bglParser::parseExprBareIdentifier(ExprParseState& st, token
         // `Box::sum(…)`: the lexer glues `::` onto the name that follows.
         if(next.value.rfind("::", 0) == 0 && next.value.size() > 2){
             string member = next.value.substr(2), owner = cur.originalValue.empty() ? cur.value : cur.originalValue;
-            parsingError(format("'{0}::{1}' — a class's member is reached with '.': `{0}.{1}`. `::` names a global "
+            parsingError(format("'{0}::{1}': a class's member is reached with '.': `{0}.{1}`. `::` names a global "
                 "(`::{1}`) or a type's operator (`{0}::operator ==`).", owner, member));
         }
         parsingError(format(
@@ -6169,6 +6181,21 @@ bool bglParser::referenceAsCondition(string& text, string& type){
     return true;
 }
 
+// A condition which is a reference alone is its null test, through the type's own `operator ?` (§4.7).
+// A query which is the plain `~= 0` test changes nothing, so the condition is left as written.
+void bglParser::queryCondition(expression* cond){
+    if(cond == nullptr || cond->tokens.empty()) return;
+    string text = cond->text(), type = cond->resolvedType;
+    // `a && b` and `a || b` test their operands already.
+    if(text.find("&&") != string::npos || text.find("||") != string::npos) return;
+    string before = text;
+    if(!referenceAsCondition(text, type)) return;
+    auto bare = [](string s){ string r; for(char c : s) if(c != ' ' && c != '(' && c != ')') r += c; return r; };
+    if(bare(text) == bare(before) + "~=0" || bare(text) == bare(before) + "~=nothing") return;
+    cond->tokens.assign(1, text);
+    cond->resolvedType = type;
+}
+
 // A sub-expression that stopped at `?` where the `?` is a postfix query (what follows can't start a
 // ternary branch: `!v.keeper?`, `x && a?`): the query is applied to it, and the token after the `?`
 // becomes its terminator. False, consuming nothing, when it is a ternary or the type has no query.
@@ -6326,7 +6353,7 @@ bglParser::ExprStep bglParser::parseExprDirective(ExprParseState& st){
     // ##VerbName is not valid in Beguile expressions; the ## prefix is emitted automatically.
     if(cur.value.rfind("##", 0) == 0){
         string verbName = cur.value.substr(2);
-        parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+        parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly: the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
     }
     // #beguilerSettings.propName — resolve to a compile-time literal
     if(cur.value == "#beguilersettings"){

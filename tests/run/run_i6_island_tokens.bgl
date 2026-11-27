@@ -1,4 +1,4 @@
-/*  run_i6_island_tokens — `$i6Name` and `$i6Expr` resolve inside `#i6` islands (§15.2).
+/*  run_i6_island_tokens — `$i6Name` and `$i6Expr` resolve inside `#i6` islands (§16.2).
 
     An island is raw I6 exactly as an emitter body is, and wants the same two escapes: name a
     Beguile declaration whose emitted identifier the author should not have to know, or inline one

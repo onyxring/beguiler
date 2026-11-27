@@ -31,6 +31,7 @@ struct _winDim {
     int _id = 0;
     int _axis = 0;   // 0 = width, 1 = height
     int _method = 0;   // The window's split method
+    int _size = 0;   // The size last given on the axis the split controls
     int operator() {
         bgl.asm.windowGetSize(_id, ((int)_glkWinSizeBuf) + bgl.wordsize, ((int)_glkWinSizeBuf) + (2 * bgl.wordsize));
         return _glkWinSizeBuf[_axis];
@@ -39,8 +40,10 @@ struct _winDim {
         // Placement is the low two bits: left 0, right 1, above 2, below 3
         int adjustable = 0;
         if((_method % 4) >= 2) adjustable = 1;
-        if(_axis == adjustable)
+        if(_axis == adjustable){
             bgl.asm.windowSetArrangement(_glkSplitPair(_id), _method, v, _id);
+            _size = v;
+        }
         else
             bgl.output.log("[glulxWindow] size ignored: this axis is fixed by the sibling window (resize the split axis).");
     }
@@ -56,6 +59,9 @@ class window[16] : _bglObject {
     int _type = 0;   // Its eGlulxWindowType
     int _bglChildStyles = 0;   // The sheet childStyles refers to, or 0
     int _splitMethod = 0;   // How its split placed it
+    int _seq = 0;   // Its opening's number; its rock is _bglWinRockBase plus this
+    window _parentWin = null;   // The window it was split from, or null when split from a root
+    int _root = 0;   // The root it was split from: 1 the main window, 2 the status bar
     /// The style sheet for windows split from this one; a sheet passed to the split wins.
     typesealed childStylesRef childStyles asI6 _bglWin_childStyles;
     /// The window's width, writable only on the axis its split controls.
@@ -63,18 +69,43 @@ class window[16] : _bglObject {
     /// The window's height, on the same terms as `width`.
     _winDim height asI6 _bglWin_height;
 
-    void _bind(int newId, bGlulxWindowMethodFlags method = noBorder){
+    void _bind(int newId, bGlulxWindowMethodFlags method, int size){
         self.id = newId;
         self._splitMethod = (int)method;
         self.width._id  = newId; self.width._axis  = 0; self.width._method  = (int)method;
         self.height._id = newId; self.height._axis = 1; self.height._method = (int)method;
+        self.width._size = size; self.height._size = size;
+    }
+    int _openSize(){
+        if((self._splitMethod % 4) >= 2) return self.height._size;
+        return self.width._size;
     }
     /// Close this window and return it to the pool.
     void close() asI6 _bglWin_close {
-        if(self.id == 0) return;
-        bgl.asm.windowClose(self.id, 0);
+        if(self.id == 0 && _bglWinIndex(self) < 0) return;
+        if(self.id != 0) bgl.asm.windowClose(self.id, 0);
         self.id = 0;
+        _bglWinForget(self);
         delete self;
+    }
+    // Open this window again, empty, where its split put it
+    void _reopen(){
+        int pid = 0;
+        if(self._root == 1) pid = bgl.ui.mainWin.id;
+        else if(self._root == 2) pid = bgl.ui.statusBar.id;
+        else if(self._parentWin != null) pid = self._parentWin.id;
+        int size = self._openSize();
+        bGlulxWindowMethodFlags method = (bGlulxWindowMethodFlags)self._splitMethod;
+        int newId = 0;
+        if(pid != 0){
+            _bglWinSeq++;
+            self._seq = _bglWinSeq;
+            int rock = _bglWinRockBase + _bglWinSeq;
+            if(self._root == 1)      newId = _glkOpen(pid, (eGlulxWindowType)self._type, method, size, bgl.ui.mainWin.childStyles, _bglNoStyles, rock);
+            else if(self._root == 2) newId = _glkOpen(pid, (eGlulxWindowType)self._type, method, size, bgl.ui.statusBar.childStyles, _bglNoStyles, rock);
+            else                     newId = _glkOpen(pid, (eGlulxWindowType)self._type, method, size, self._parentWin.childStyles, _bglNoStyles, rock);
+        }
+        self._bind(newId, method, size);
     }
 
     // ---- re-arrangement: change an existing window's placement and size ----
@@ -87,6 +118,7 @@ class window[16] : _bglObject {
         self._splitMethod = (int)method;
         self.width._method  = (int)method;
         self.height._method = (int)method;
+        self.width._size = size; self.height._size = size;
         bgl.asm.windowSetArrangement(_glkSplitPair(self.id), method, size, self.id);
     }
     /// Move this window to the top of its parent split and resize it. `size` is lines, or a
@@ -98,18 +130,18 @@ class window[16] : _bglObject {
 
     // ---- split family: the name picks the content type; Up/Down return …Horz, Left/Right …Vert ----
     /// Split this window and put a new text grid above it, `size` lines tall.
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, self, 0, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglWin_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, self, 0, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 /// A window that holds text — the base of the grid and buffer kinds.
 class textWindow[8]       : window { }
@@ -134,8 +166,8 @@ alias class textBufferWindowVert for textBufferWindow { hide height.operator =; 
 alias class graphicsWindowHorz   for graphicsWindow   { hide width.operator =; hide moveLeft; hide moveRight; }
 alias class graphicsWindowVert   for graphicsWindow   { hide height.operator =; hide moveUp; hide moveDown; }
 
-// Split: styles apply to the new window only, inherited first; type-wide hints are restored after
-window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size,
+// Split: the parent is a window, or a root (1 the main window, 2 the status bar)
+window _splitFrom(int parentId, window parentWin, int root, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size,
                   ref styleSheet inherited = _bglNoStyles, ref styleSheet styles = _bglNoStyles){
     if(parentId == 0) return null;   // Parent not open (e.g. a status bar with no height)
     // Take the pooled object first so a spent pool opens no window
@@ -144,17 +176,94 @@ window _splitFrom(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags m
     else if(type == eGlulxWindowType.textGrid)  kid = new textGridWindow();
     else                                        kid = new textBufferWindow();
     if(kid == null) return null;
+    _bglWinSeq++;
+    int id = _glkOpen(parentId, type, method, size, inherited, styles, _bglWinRockBase + _bglWinSeq);
+    if(id == 0){ delete kid; return null; }   // Glk refused (e.g. no graphics support)
+    kid._bind(id, method, size);
+    kid._type = (int)type;
+    kid._seq = _bglWinSeq;
+    kid._parentWin = parentWin;
+    kid._root = root;
+    _bglWinRemember(kid);
+    return kid;
+}
+// Open a Glk window:  styles apply to the new window only, inherited first; type-wide hints are restored after
+int _glkOpen(int parentId, eGlulxWindowType type, bGlulxWindowMethodFlags method, int size,
+             ref styleSheet inherited, ref styleSheet styles, int rock){
     bool styled = type != eGlulxWindowType.graphics;
     bool hasInherited = (int)inherited != 0;
     if(styled && hasInherited) _applySheet((int)type, inherited);
     if(styled) _applySheet((int)type, styles);
-    int id = bgl.asm.windowOpen(parentId, type, size, method, 0);
+    int id = bgl.asm.windowOpen(parentId, type, size, method, rock);
     if(styled) _restoreSheet((int)type, styles);
     if(styled && hasInherited) _restoreSheet((int)type, inherited);
-    if(id == 0){ delete kid; return null; }   // Glk refused (e.g. no graphics support)
-    kid._bind(id, method);
-    kid._type = (int)type;
-    return kid;
+    return id;
+}
+
+// ---- recovery after restore, undo and restart ----
+// The windows the program has open, in the order it opened them; restore and undo roll this back with the rest of memory
+const int _bglWinRockBase = $40000000;   // The status bar's rock (core); a window's is this plus its opening's number
+rawArray<window> _bglWinOpen[32];
+int _bglWinOpenCount = 0;
+int _bglWinSeq = 0;
+rawArray<int> _bglWinDoomed[32];   // Glk windows to close, gathered before closing any
+
+int _bglWinIndex(window w){
+    for(int i = 0; i < _bglWinOpenCount; i++) if(_bglWinOpen[i] == w) return i;
+    return -1;
+}
+void _bglWinRemember(window w){
+    if(_bglWinOpenCount >= 32) return;
+    _bglWinOpen[_bglWinOpenCount] = w;
+    _bglWinOpenCount++;
+}
+// Drop a closed window, keeping the order; windows split from it now hang from its parent
+void _bglWinForget(window w){
+    int at = _bglWinIndex(w);
+    if(at < 0) return;
+    for(int i = 0; i < _bglWinOpenCount; i++){
+        if(_bglWinOpen[i]._parentWin == w){ _bglWinOpen[i]._parentWin = w._parentWin; _bglWinOpen[i]._root = w._root; }
+    }
+    for(int j = at; j < _bglWinOpenCount - 1; j++) _bglWinOpen[j] = _bglWinOpen[j + 1];
+    _bglWinOpenCount--;
+}
+// True when w is back in its pool
+bool _bglWinGone(window w){
+    #i6 { if(parent(w) ~= 0 && metaclass(parent(w)) == Class) rtrue; }
+    return false;
+}
+window _bglWinBySeq(int seq){
+    for(int i = 0; i < _bglWinOpenCount; i++) if(_bglWinOpen[i]._seq == seq) return _bglWinOpen[i];
+    return null;
+}
+// Keep Glk's windows the program has open, close the ones it doesn't, and open again the ones Glk lost
+void _bglWinRecover(){
+    int i = 0;
+    int n = 0;
+    i = 0;
+    while(i < _bglWinOpenCount){
+        if(_bglWinGone(_bglWinOpen[i])) _bglWinForget(_bglWinOpen[i]);   // deleted without close()
+        else { _bglWinOpen[i].id = 0; i++; }
+    }
+    int g = bgl.asm.windowIterate(0, 0);
+    while(g != 0){
+        int rock = bgl.asm.windowGetRock(g);
+        if(rock > _bglWinRockBase){
+            window w = _bglWinBySeq(rock - _bglWinRockBase);
+            if(w != null && bgl.asm.windowGetType(g) == w._type) w.id = g;
+            else if(n < 32){ _bglWinDoomed[n] = g; n++; }
+        }
+        g = bgl.asm.windowIterate(g, 0);
+    }
+    for(i = 0; i < n; i++) bgl.asm.windowClose(_bglWinDoomed[i], 0);
+    for(i = 0; i < _bglWinOpenCount; i++){
+        window k = _bglWinOpen[i];
+        if(k.id != 0) k._bind(k.id, (bGlulxWindowMethodFlags)k._splitMethod, k._openSize());
+        else k._reopen();
+    }
+}
+#startup {
+    _bglWinRecoverHook = _bglWinRecover;
 }
 
 // ---- expose window types under bgl.glulx ----
@@ -180,18 +289,18 @@ extend _bglMainWindow {
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[1]; }
         void operator=(int v){ bgl.asm.windowSetArrangement(_glkSplitPair(outer.id), _m, v, outer.id); }
     }
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, null, 1, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglMainWin_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, null, 1, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 // statusBar already has height; add width and the splits
 extend _bglStatus {
@@ -203,18 +312,18 @@ extend _bglStatus {
         int operator(){ bgl.asm.windowGetSize(outer.id, ((int)_glkWinSizeBuf)+bgl.wordsize, ((int)_glkWinSizeBuf)+(2*bgl.wordsize)); return _glkWinSizeBuf[0]; }
         void operator=(int v){ bgl.asm.windowSetArrangement(_glkSplitPair(outer.id), _m, v, outer.id); }
     }
-    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
-    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
-    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitUpGrid    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpGrid { return (textGridWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.textGrid, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textGridWindowHorz   splitDownGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownGrid { return (textGridWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.textGrid, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitLeftGrid  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftGrid { return (textGridWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.textGrid, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textGridWindowVert   splitRightGrid (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightGrid { return (textGridWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.textGrid, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitUpGraphics    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpGraphics { return (graphicsWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.graphics, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    graphicsWindowHorz   splitDownGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownGraphics { return (graphicsWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.graphics, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitLeftGraphics  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftGraphics { return (graphicsWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.graphics, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    graphicsWindowVert   splitRightGraphics (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightGraphics { return (graphicsWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.graphics, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitUpBuffer    (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitUpBuffer { return (textBufferWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.above | scale | border, size, self.childStyles, styles); }
+    textBufferWindowHorz splitDownBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitDownBuffer { return (textBufferWindowHorz)_splitFrom(self.id, null, 2, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.below | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitLeftBuffer  (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitLeftBuffer { return (textBufferWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.left | scale | border, size, self.childStyles, styles); }
+    textBufferWindowVert splitRightBuffer (int size, bGlulxWindowScale scale=fixed, bGlulxWindowBorder border=noBorder, ref styleSheet styles = _bglNoStyles) asI6 _bglStatus_splitRightBuffer { return (textBufferWindowVert)_splitFrom(self.id, null, 2, eGlulxWindowType.textBuffer, bGlulxWindowPlacement.right | scale | border, size, self.childStyles, styles); }
 }
 
 // ---- Images — blorb only ----

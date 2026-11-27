@@ -5,9 +5,6 @@
 //-----------------------------------------------------------------------------
 #once
 #declare BGL_STRING_HEAP
-#if BGL_STRING_POOL
-    #error "<string> and <archive/string> both provide stringObj; include one of them."
-#endif
 
 #include <buf>
 
@@ -579,6 +576,8 @@ extern var _bglStrRead(var s);   // Reader for the value-based methods
             move obj to _bglObjectHeap;
         }
         _bglBuf._registerTracked(_bglStrNoRoom + 2 * WORDSIZE);
+        _bglByteHeapFrom = _bglStrHeap;
+        _bglByteHeapTo = _bglStrHeap + bglStringHeapSize;
         _bglStrReady = true;
     ];
 }
@@ -1525,7 +1524,7 @@ class _bglString[bglStringPoolReserve] : bglAllocated {
 //------------------------------------------------------------------------------
 
 
-/// Adds text comparison (`==`) and query and transform methods to `string`; methods that change text return a new `stringObj`.
+/// Adds text comparison and query and transform methods to `string`; methods that change text return a new `stringObj`.
 extend class string {
     // No lifecycle: a string owns no storage
     // Assignment repoints the slot; no text is copied
@@ -1539,13 +1538,12 @@ extend class string {
 
     // No += or []=: mutation needs a buffer this type doesn't own
 
-    // Equality compares content; == and != must be replaced together
-    replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
-    replace emitter eBool operator != (string v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
-    replace emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    // `==` against a string or literal stays the core's address comparison; against a stringObj it compares text
+    emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }   /// True when the texts differ.
+    emitter bool equals(stringLiteral v)        { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(string v)               { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(stringObj v)            { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
     emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
@@ -1712,6 +1710,9 @@ emitter class stringObj {
     emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
+    emitter bool equals(stringLiteral v)  { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(string v)         { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(stringObj v)      { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
 
     // Switch comparison
     emitter eBool operator switch(stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
@@ -1829,19 +1830,18 @@ extend class charLiteral {
     emitter stringObj operator + (stringObj v) { _bglStr._bglText_prependChar($v, $self) }
 }
 
-/// Adds content comparison and query methods to the `"…"` literal.
+/// Adds text comparison and query methods to the `"…"` literal.
 extend class stringLiteral {
     emitter stringObj operator + (string v)      { _bglStr._bglText_append($self, $v) }
     emitter stringObj operator + (stringObj v)   { _bglStr._bglText_append($self, $v) }
     emitter stringObj operator + (charLiteral c) { _bglStr._bglText_appendChar($self, $c) }
 
-    // Replace core's address equality so a literal on the left compares content
-    replace emitter eBool operator == (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator == (string v)        { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }
-    replace emitter eBool operator != (stringLiteral v) { (~~_bglStr._bglText_areEqual($val, $v, false)) }
-    replace emitter eBool operator != (string v)        { (~~_bglStr._bglText_areEqual($val, $v, false)) }
-    replace emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }
+    // `==` against a string or literal stays the core's address comparison; against a stringObj it compares text
+    emitter eBool operator == (stringObj v)     { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter eBool operator != (stringObj v)     { (~~_bglStr._bglText_areEqual($val, $v, false)) }   /// True when the texts differ.
+    emitter bool equals(stringLiteral v)        { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(string v)               { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
+    emitter bool equals(stringObj v)            { _bglStr._bglText_areEqual($val, $v, false) }   /// True when both are the same text.
     emitter eBool operator =~ (stringLiteral v) { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (string v)        { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.
     emitter eBool operator =~ (stringObj v)     { _bglStr._bglText_areEqual($val, $v, true) }   /// True when both are the same text, ignoring case.

@@ -1,9 +1,9 @@
 //===================================================================================================
 // stateDescriptors.bgl — the notes on an object's state in lists, such as "(providing light)"
 // Each note comes from a handler, so a game can add, remove or replace one
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <array>
 #include <extensions/stdlib/hooks/writeAfterEntry>
 

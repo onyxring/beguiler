@@ -1,9 +1,9 @@
 //===================================================================================================
 // distinctRead.bgl — READ as its own action, not a synonym for EXAMINE
 // READ prints the object's readDescription
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <bindings/i6StandardLibrary>
 
 property readDescription;   /// The text READ prints; `description` reads as EXAMINE.
@@ -11,7 +11,7 @@ property readDescription;   /// The text READ prints; `description` reads as EXA
 extend Examine { grammar -= { {.read} }; }
 
 verb Read {
-    grammar = { {.read, NOUN} };
+    grammar = {.read, NOUN};
 
     void handler() {
         property text = (property)readDescription;

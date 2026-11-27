@@ -1,9 +1,9 @@
 //===================================================================================================
 // betterChoice.bgl — better decisions when the parser has to choose between objects
 // An object can answer for itself with chooseAnswer chooseobject(chooseCode code)
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <bindings/i6StandardLibrary>
 
 enum chooseCode { planExclude = 0, planInclude = 1, askingForHint = 2 } /// What the parser is asking `chooseobject`.

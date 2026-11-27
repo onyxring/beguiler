@@ -1,0 +1,35 @@
+// run_if_skips_raw_block_directives — a branch of `#if` that isn't taken skips a raw block whole: the Inform 6
+// `#Ifdef`/`#Endif` inside an `#emitlast`, `#i6` or `#startup` aren't read as Beguile's `#endif`.
+// EXPECT_OUTPUT: z only
+#beguilerSettings { target = z5; informName = "none"; }
+
+#if TARGET_GLULX
+    int glulxOnly = 1;
+    #emitlast {
+        #Ifdef glulxOnly;
+        Constant _glulxSeen 1;
+        #Endif;
+    }
+    #i6 {
+        #Ifdef glulxOnly;
+        Constant _glulxSeen2 1;
+        #Endif;
+    }
+    #startup {
+        #Ifdef glulxOnly; glulxOnly = 2; #Endif;
+    }
+    void which(){ print("glulx"); }
+#else
+    void which(){ print("z only"); }
+#endif
+
+#if TARGET_GLULX
+#else
+    #emitlast {
+        #Ifdef TARGET_ZCODE;
+        Constant _zSeen 1;
+        #Endif;
+    }
+#endif
+
+void main(){ which(); }

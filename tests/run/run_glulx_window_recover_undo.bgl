@@ -1,0 +1,44 @@
+// run_glulx_window_recover_undo — without a library, bgl.ui.recoverWindows() after an undo: a window closed
+// since the snapshot comes back (empty), one opened since is closed, and the status bar gets its height back.
+// EXPECT_OUTPUT: hud yes, live yes; side no; windows 3; status 1; again 3
+#beguilerSettings { target = glulx; informName = "none"; }
+#include <glulxWindow>
+#include "glulxConsole.bgl"
+
+textGridWindowHorz hud = null;
+textBufferWindowVert side = null;
+array<int> sizeBuf[2];
+
+bool live(int id) {
+    int w = bgl.asm.windowIterate(0, 0);
+    while (w != 0) { if (w == id) return true; w = bgl.asm.windowIterate(w, 0); }
+    return false;
+}
+int windows() {
+    int n = 0;
+    int w = bgl.asm.windowIterate(0, 0);
+    while (w != 0) { if (bgl.asm.windowGetType(w) != 1) n++; w = bgl.asm.windowIterate(w, 0); }
+    return n;
+}
+int statusLines() {
+    bgl.asm.windowGetSize(bgl.ui.statusBar.id, 0, ((int)sizeBuf) + bgl.wordsize);
+    return sizeBuf[0];
+}
+
+void main() {
+    bglInit(); glulxConsole();
+    bgl.ui.statusBar.height = 1;
+    hud = bgl.ui.mainWin.splitUpGrid(2);
+    if (bgl.asm.saveundo() == -1) {
+        bgl.ui.recoverWindows();
+        print($"hud {hud != null ? "yes" : "no"}, live {live(hud.id) ? "yes" : "no"}; side {side != null ? "yes" : "no"}; windows {windows()}; status {statusLines()}; ");
+        bgl.ui.recoverWindows();
+        print($"again {windows()}");
+        return;
+    }
+    hud.close();
+    side = bgl.ui.mainWin.splitRightBuffer(20);
+    bgl.ui.statusBar.height = 3;
+    bgl.asm.restoreundo();
+    print("restoreundo failed");
+}

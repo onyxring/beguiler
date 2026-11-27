@@ -38,7 +38,7 @@ superposed _bglObject _bglStatus {
                 bGlulxWindowMethodFlags winMethod = bGlulxWindowPlacement.above | bGlulxWindowScale.fixed | bGlulxWindowBorder.noBorder;
                 int win = bgl.ui.statusBar.id;
                 if(win == 0)
-                    bgl.ui.statusBar.id = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, 0);
+                    bgl.ui.statusBar.id = bgl.asm.windowOpen(bgl.asm.windowGetRoot(), eGlulxWindowType.textGrid, v, winMethod, _bglStatusRock);
                 else
                     bgl.asm.windowSetArrangement(bgl.asm.windowGetParent(win), winMethod, v, win);
             #else
@@ -46,4 +46,24 @@ superposed _bglObject _bglStatus {
             #endif
         }
     }
+    // After a restore, undo or restart:  take back the status window Glk kept, at the program's height
+    void _recover() asI6 _bglStatus_recover {
+        #if TARGET_GLULX
+            int h = self.height;
+            int found = 0;
+            int g = bgl.asm.windowIterate(0, 0);
+            while(g != 0){
+                if(bgl.asm.windowGetRock(g) == _bglStatusRock) found = g;
+                g = bgl.asm.windowIterate(g, 0);
+            }
+            self.id = found;
+            if(h > 0) self.height = h;
+            else if(found != 0){ bgl.asm.windowClose(found, 0); self.id = 0; }
+        #endif
+    }
 }
+
+#if TARGET_GLULX
+    // The rock of the status window opened here; <glulxWindow>'s windows take the rocks above it
+    const int _bglStatusRock = $40000000;
+#endif

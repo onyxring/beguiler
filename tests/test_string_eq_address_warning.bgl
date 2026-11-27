@@ -1,0 +1,17 @@
+// `==` or `!=` between two strings (literals included) compares addresses, and says so; a cast, a null test
+// or a stringObj on either side doesn't.
+// EXPECT_WARNING: '==' between two strings compares their addresses, not their text.
+// EXPECT_WARNING: '!=' between two strings compares their addresses, not their text.
+#beguilerSettings { target = z5; informName = "none"; }
+#include <string>
+string a = "x";
+string b = "x";
+stringObj o = "x";
+void main(){
+    if(a == b) print("1");
+    if(a != "x") print("2");
+    if((int)a == (int)b) print("3");
+    if(a == null) print("4");
+    if(a == o) print("5");
+    if(a.equals(b)) print("6");
+}

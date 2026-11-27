@@ -254,7 +254,7 @@ std::string implicitRootName(classDef* cls){
 std::string refNotApplicable(classDef* cls, const std::string& typeShown){
     if(cls == nullptr) return "";
     if(cls->isPrimitive)
-        return "'" + typeShown + "' is a primitive type — its value is held directly, so there is nothing to refer to.";
+        return "'" + typeShown + "' is a primitive type: its value is held directly, so there is nothing to refer to.";
     return "";
 }
 

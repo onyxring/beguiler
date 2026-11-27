@@ -4,7 +4,7 @@
     carried the Z-machine version as its value, so `#if TARGET_ZCODE > 3` worked but the Glulx
     equivalent could not exist. Both are bare flags now — they answer "which machine", nothing
     more. Anything finer is a question about the `target` SETTING, so `#if` reads settings
-    properties directly, with the same values the expression handler gives (§17.7): a string
+    properties directly, with the same values the expression handler gives (§15.7): a string
     compares against a string literal (case-insensitively, like every other Beguile name), an int
     compares numerically, and a bool tests on its own.  */
 // EXPECT_OUTPUT: z5 zcode notGlulx frames econ

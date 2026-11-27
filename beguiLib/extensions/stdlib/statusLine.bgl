@@ -1,8 +1,8 @@
 //===================================================================================================
 // statusLine.bgl — a status line with left, middle and right sections a game can replace
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <buf>
 #include <extensions/general/center>
 #include <bindings/i6StandardLibrary>

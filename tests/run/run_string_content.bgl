@@ -19,6 +19,6 @@ void main(){
     print("indexOf(fig): "); print(s.indexOf("fig")); print("^");
 
     string lit = "apple";
-    print("literal equals string: "); print(("apple" == lit) ? "yes" : "no"); print("^");
+    print("literal equals string: "); print("apple".equals(lit) ? "yes" : "no"); print("^");
     print("ordering: "); print(("apple" < "pear") ? "yes" : "no"); print("^");
 }

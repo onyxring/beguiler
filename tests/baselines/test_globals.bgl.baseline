@@ -10,6 +10,8 @@ constant _bglHeapWords = 1536;
 constant MAX_ROOMS = 20;
 constant MAX_ITEMS = 10;
 constant TITLE = "test";
+
+
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;

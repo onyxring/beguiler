@@ -669,7 +669,11 @@ extend class object {
             int operator()        { return _bglStatusGetHeight(); }
             void operator = (int v){ gg_statuswin_size = v; _bglStatusSetHeight(v); }
         }
+        // The library finds its own status window; Glk keeps its height, so set the program's again
+        replace void _recover(){ if(gg_statuswin != 0) _bglStatusSetHeight(gg_statuswin_size); }
     }
+    // The library's last call after a restore, undo or restart (phase 2)
+    void _bglIdentifyGlkObject(int phase){ if(phase == 2) bgl.ui.recoverWindows(); }
     extend _bglMainWindow {
         replace auto id = {
             int operator()        { return gg_mainwin; }
@@ -692,18 +696,12 @@ extern property ext_bannerText;   /// A library extension's routine printing its
 #emitfirst {
     #Ifndef ext_bannerText; Property individual ext_bannerText; #Endif;
 }
-// Print each extension's ext_bannerText, then orBannerText; emitted last, where LibraryExtensions is defined
+// Print each extension's ext_bannerText; emitted last, where LibraryExtensions is defined
 #emitlast {
-    Default orBannerText 0;
-    [ _bglBannerExtras more;
+    [ _bglBannerExtras;
         #Ifdef LibraryExtensions;
-        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        if (LibraryExtensions.RunAll(ext_bannerText)) new_line;
         #Endif;
-        switch (metaclass(orBannerText)) {
-            Routine: orBannerText(); more = true;
-            String:  print (string) orBannerText; more = true;
-        }
-        if (more) new_line;
     ];
 }
 
@@ -1035,6 +1033,10 @@ extern var LanguageLM(var n = 0, var x1 = 0, var x2 = 0);
     #Ifdef LibraryExtensions;
         Object _bglLibraryHooks LibraryExtensions
           with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
+        #Ifdef TARGET_GLULX;
+            Object _bglGlkHooks LibraryExtensions
+              with ext_identifyglkobject [ phase; _bglIdentifyGlkObject(phase); rfalse; ];
+        #Endif;
     #Endif;
 }
 

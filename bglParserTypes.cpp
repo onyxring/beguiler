@@ -879,7 +879,7 @@ optional<string> bglParser::selectTypeCandidate(const string& name, const string
             for(auto& c : candidates) if(!c.isFunction){ allFunctions = false; break; }
             if(allFunctions)
                 parsingError(format("'{0}' names {1} overloads, so it cannot be used as a bare "
-                    "function reference — only a call can say which one is meant. Wrap the overload "
+                    "function reference: only a call can say which one is meant. Wrap the overload "
                     "you want in a function of its own and reference that.", name, candidates.size()));
         }
         // Where a property is expected (`obj.provides(number)`), a property's name is that property.
@@ -1592,7 +1592,7 @@ bglParser::ParsedArgList bglParser::parseCallArgList(functionDef* func, statemen
                                                     : format("argument '{0}'", namedArgName);
                 parsingError(format("cannot infer the type of the '{{ … }}' {0}: the parameter is not "
                                     "an object-backed class, is out of range, or overloads disagree here "
-                                    "— write '<Type>{{ … }}' to name the type explicitly", where));
+                                    "; write '<Type>{{ … }}' to name the type explicitly", where));
             }
             string anonName = nextAnonName();
             bakeInlineObjectAggregate(cls, cls->name, anonName, func, body);  // consumes through '}'
@@ -1878,7 +1878,7 @@ string bglParser::validateGlobalCall(GlobalCallMatch& gcm, const string& funcNam
     }
     if(gcm.match == nullptr){
         // Loose mode (#bgl{}): bind to nameMatch when arity matches but types don't —
-        // arguments pass through to I6 unchecked. See spec §15.6.
+        // arguments pass through to I6 unchecked. See spec §16.6.
         if(looseIdentifierMode && gcm.nameMatch != nullptr){
             gcm.match = gcm.nameMatch;
             return gcm.match->returnType.name;
@@ -2116,7 +2116,7 @@ string bglParser::substituteElemOps(const string& body, const string& elemType,
                 if(cd != nullptr && !cd->isExternal && !cd->isEmitterClass && !cd->isAlias)
                     parsingWarning(format(
                         "'{0}' publishes no 'operator {1}', so {2}falls back to word semantics "
-                        "— for a class that means comparing object addresses, not values. "
+                        "; for a class that means comparing object addresses, not values. "
                         "Declare `{3} operator {1} ({0} o)` on '{0}' to give it one, or the "
                         "`static {3} operator {1} ({0} a, {0} b)` form if the operator needs "
                         "both operands as parameters.",
@@ -2198,7 +2198,7 @@ string bglParser::resolveI6Name(const string& spec){
     bool hasSig = false;
     if(size_t p = path.find('('); p != string::npos){
         if(path.empty() || path.back() != ')'){
-            parsingError(format("$i6Name({0}) — unterminated overload signature; expected a closing ')'", spec));
+            parsingError(format("$i6Name({0}): unterminated overload signature; expected a closing ')'", spec));
             return "";
         }
         sig     = trim(path.substr(p + 1, path.size() - p - 2));
@@ -2215,23 +2215,23 @@ string bglParser::resolveI6Name(const string& spec){
             from = c + 1;
         }
     }
-    if(path.empty()){ parsingError("$i6Name() — no declaration named"); return ""; }
+    if(path.empty()){ parsingError("$i6Name(): no declaration named"); return ""; }
     // The parenthesized list is a SIGNATURE — type names selecting one overload, as in
     // `Type::operator ==(int)` (§4.15) — not an argument list. Passing values used to fall through
     // the overload match and be reported as a missing member, which pointed at the wrong thing.
     for(const string& t : sigTypes){
         if(t.empty()){
-            parsingError(format("$i6Name({0}) — empty entry in the overload signature; it takes type "
+            parsingError(format("$i6Name({0}): empty entry in the overload signature; it takes type "
                                 "names, e.g. $i6Name({1}(int, int))", spec, path));
             return "";
         }
         string probe = t;
         transform(probe.begin(), probe.end(), probe.begin(), ::tolower);
         if(languageService.getType(probe).name.empty()){
-            parsingError(format("$i6Name({0}) — '{1}' is not a type name. The parentheses after a "
+            parsingError(format("$i6Name({0}): '{1}' is not a type name. The parentheses after a "
                                 "path hold the SIGNATURE that selects one overload, not the "
                                 "arguments: write $i6Name({2}(int, int)), then supply the arguments "
-                                "outside — $i6Name({2}(int, int))($a, $b).", spec, t, path));
+                                "outside: $i6Name({2}(int, int))($a, $b).", spec, t, path));
             return "";
         }
     }
@@ -2259,7 +2259,7 @@ string bglParser::resolveI6Name(const string& spec){
         return d + ")";
     };
     auto notReferenceable = [&](const string& what){
-        parsingError(format("$i6Name({0}) — '{1}' is an emitter; it has no I6 name because no routine "
+        parsingError(format("$i6Name({0}): '{1}' is an emitter; it has no I6 name because no routine "
                             "is emitted for it. Use $i6Expr(...) to expand it inline instead.", spec, what));
         return string();
     };
@@ -2273,7 +2273,7 @@ string bglParser::resolveI6Name(const string& spec){
         if(overloads.size() > 1){
             string list;
             for(functionDef* fd : overloads){ if(!list.empty()) list += ", "; list += describe(fd); }
-            parsingError(format("$i6Name({0}) — '{1}' is ambiguous between {2}. Name the parameter types "
+            parsingError(format("$i6Name({0}): '{1}' is ambiguous between {2}. Name the parameter types "
                                 "to select one, e.g. $i6Name({1}(int, int)).", spec, shown, list));
             return "";
         }
@@ -2291,7 +2291,7 @@ string bglParser::resolveI6Name(const string& spec){
             return fd->i6name.empty() ? fd->name : fd->i6name;
         }
         if(hasSig && languageService.findGlobalAs<functionDef>(path)){
-            parsingError(format("$i6Name({0}) — no overload of '{1}' has those parameter types", spec, shown));
+            parsingError(format("$i6Name({0}): no overload of '{1}' has those parameter types", spec, shown));
             return "";
         }
         // Named declarations before plain globals: an object instance is registered in BOTH
@@ -2302,7 +2302,7 @@ string bglParser::resolveI6Name(const string& spec){
         if(auto* g = languageService.findGlobal(path))
             return g->i6name.empty() ? g->name : g->i6name;
         if(!td.name.empty())                         return td.i6name.empty() ? td.name : td.i6name;
-        parsingError(format("$i6Name({0}) — no declaration named '{1}' is in scope", spec, shown));
+        parsingError(format("$i6Name({0}): no declaration named '{1}' is in scope", spec, shown));
         return "";
     }
 
@@ -2321,7 +2321,7 @@ string bglParser::resolveI6Name(const string& spec){
             if(ev->name == member) return ed->isExternal ? member : to_string(ev->value);
     classDef* cls = getDispatchClass(headType);
     if(cls == nullptr){
-        parsingError(format("$i6Name({0}) — '{1}' does not name a type with members", spec, head));
+        parsingError(format("$i6Name({0}): '{1}' does not name a type with members", spec, head));
         return "";
     }
     vector<functionDef*> candidates;
@@ -2333,7 +2333,7 @@ string bglParser::resolveI6Name(const string& spec){
     if(candidates.size() > 1){
         string list;
         for(functionDef* fd : candidates){ if(!list.empty()) list += ", "; list += describe(fd); }
-        parsingError(format("$i6Name({0}) — '{1}' is ambiguous between {2}. Name the parameter types "
+        parsingError(format("$i6Name({0}): '{1}' is ambiguous between {2}. Name the parameter types "
                             "to select one, e.g. $i6Name({1}(int, int)).", spec, shown, list));
         return "";
     }
@@ -2359,7 +2359,7 @@ string bglParser::resolveI6Name(const string& spec){
     if(prop != member || findMemberInHierarchy(cls, [&](typeMember* m){
            auto* vd = dynamic_cast<variableDeclaration*>(m); return vd != nullptr && vd->name == member; }) != nullptr)
         return prop;
-    parsingError(format("$i6Name({0}) — '{1}' has no member '{2}'", spec, typeDisplayName(headType), member));
+    parsingError(format("$i6Name({0}): '{1}' has no member '{2}'", spec, typeDisplayName(headType), member));
     return "";
 }
 
@@ -2403,7 +2403,7 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
         while(open < out.size() && (out[open] == ' ' || out[open] == '\t')) open++;
         if(open >= out.size() || out[open] != '('){ at += 7; continue; }
         size_t close = matchingParen(out, open);
-        if(close == string::npos){ parsingError("$i6Expr( — unterminated; expected a closing ')'"); break; }
+        if(close == string::npos){ parsingError("$i6Expr( is unterminated; expected a closing ')'"); break; }
         string payload = out.substr(open + 1, close - open - 1);
 
         // Bind each token to a placeholder local of the right Beguile type.
@@ -2489,12 +2489,12 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
             // the author's typo, a known-but-untyped one is a use site that never supplied the
             // receiver's type — nothing the BLR author can do about it from the body.
             if(find(untyped.begin(), untyped.end(), tok) != untyped.end())
-                parsingError(format("$i6Expr({0}) — '{1}' is available here but its Beguile type is "
+                parsingError(format("$i6Expr({0}): '{1}' is available here but its Beguile type is "
                                     "not, so the expression cannot be type-checked. Reaching the "
                                     "receiver through $i6Expr is not supported at this kind of use "
                                     "site; use the plain token outside $i6Expr instead.", src, tok));
             else
-                parsingError(format("$i6Expr({0}) — '{1}' is not bound at this use site; $i6Expr can "
+                parsingError(format("$i6Expr({0}): '{1}' is not bound at this use site; $i6Expr can "
                                     "only reference this emitter's own parameters and receiver.",
                                     src, tok));
             out.replace(at, close - at + 1, "");
@@ -2514,7 +2514,7 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
                 if(before != '$' && before != '.')
                     for(paramDef* p : b.fn->params)
                         if(p->name == w)
-                            parsingError(format("$i6Expr({0}) — '{1}' is this emitter's parameter; name it as `${1}`.", src, src.substr(i, j - i)));
+                            parsingError(format("$i6Expr({0}): '{1}' is this emitter's parameter; name it as `${1}`.", src, src.substr(i, j - i)));
                 i = j;
             }
         }
@@ -2582,7 +2582,7 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
                 else if(b.fn != nullptr)
                     for(size_t i = 0; i < b.fn->params.size() && i < b.args.size(); i++)
                         if("$" + b.fn->params[i]->name == tokenName) text = b.args[i];
-                if(!text) parsingError(format("$i6Expr({0}) — '{1}' has no value at this use site to hold in a temporary.",
+                if(!text) parsingError(format("$i6Expr({0}): '{1}' has no value at this use site to hold in a temporary.",
                                               out.substr(open + 1, close - open - 1), tokenName));
                 else raw->text = i6Emitter::replaceWord(raw->text, ph, *text);
             }
@@ -2597,7 +2597,7 @@ string bglParser::substituteI6Exprs(const string& body, const emitterBindings& b
     return out;
 }
 
-// Resolve the two Beguile-reaching tokens inside a raw-I6 island (§15.2). An island is raw text
+// Resolve the two Beguile-reaching tokens inside a raw-I6 island (§16.2). An island is raw text
 // exactly as an emitter body is, and wants the same two escapes — but it has no receiver and no
 // parameters, so nothing else is bound. `#bgl` remains the way to run Beguile STATEMENTS in an
 // island; these two are for naming a declaration and for inlining one expression.
@@ -2640,7 +2640,7 @@ string bglParser::substituteI6Names(const string& body){
         }
         size_t close = matchingParen(out, open);
         if(close == string::npos){
-            parsingError("$i6Name( — unterminated; expected a closing ')'");
+            parsingError("$i6Name( is unterminated; expected a closing ')'");
             break;
         }
         string rep = resolveI6Name(out.substr(open + 1, close - open - 1));
@@ -2844,14 +2844,21 @@ std::string bglParser::memberI6Name(const std::string& recvTypeName, const std::
             }
         return "";
     };
+    // Every parent counts, not only the first:  a member can come from any of them.
+    set<classDef*> seen;
+    std::function<string(classDef*)> walk = [&](classDef* c) -> string {
+        if(c == nullptr || !seen.insert(c).second) return "";
+        if(string a = pick(c->members); !a.empty()) return a;
+        for(classDef* b : c->baseClasses) if(string a = walk(b); !a.empty()) return a;
+        return "";
+    };
     if(auto* od = dynamic_cast<objectDef*>(&td)){
         if(string a = pick(od->members); !a.empty()) return a;
-        for(classDef* c = od->objectClass; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
-            if(string a = pick(c->members); !a.empty()) return a;
+        if(string a = walk(od->objectClass); !a.empty()) return a;
+        for(typeDef* b : od->baseClasses) if(string a = walk(dynamic_cast<classDef*>(b)); !a.empty()) return a;
     }
     if(auto* cd = dynamic_cast<classDef*>(&td))
-        for(classDef* c = cd; c != nullptr; c = c->baseClasses.empty() ? nullptr : c->baseClasses[0])
-            if(string a = pick(c->members); !a.empty()) return a;
+        if(string a = walk(cd); !a.empty()) return a;
     // A verb's name names its action too, so the verb object is found among the verbs (by either name).
     for(verbObjectDef* v : languageService.verbs){
         string i6 = v->i6name; transform(i6.begin(), i6.end(), i6.begin(), ::tolower);
@@ -2989,7 +2996,7 @@ bool bglParser::rejectRawMemberLengthOp(const std::string& owner, const std::str
             "{2} needs a tracked array; give the member another name.", owner, prop, what));
     parsingError(format("{0} needs an array's length word, but '{1}.{2}' is a RAW member array "
         "(rawArray<T>, or array<dictionaryWord>, whose layout I6 owns). It is inline property data "
-        "with no length word — its extent is fixed at {1}.#{2}/WORDSIZE — so the operation would "
+        "with no length word (its extent is fixed at {1}.#{2}/WORDSIZE) so the operation would "
         "read the last ELEMENT as a length and walk off the end. size, length and subscripting "
         "do work on it; declare the member `array<T>` if you need the rest.", what, owner, prop));
     return true;
@@ -3853,7 +3860,7 @@ optional<string> bglParser::selectQualifiedCandidate(const string& name, const s
             for(auto& c : candidates) if(!c.isFunction){ allFunctions = false; break; }
             if(allFunctions)
                 parsingError(format("'{0}' names {1} overloads, so it cannot be used as a bare "
-                    "function reference — only a call can say which one is meant. Wrap the overload "
+                    "function reference: only a call can say which one is meant. Wrap the overload "
                     "you want in a function of its own and reference that.", name, candidates.size()));
         }
         // Where a property is expected (`obj.provides(number)`), a property's name is that property.
@@ -5566,7 +5573,7 @@ functionDef* bglParser::bindMethodCall(string& objType, const string& objPath, c
     }
     if(mm.method == nullptr){
         // Loose mode (#bgl{}): if there's exactly one name+arity match, bind to it without
-        // type-checking the arguments. The trade-off is documented in spec §15.6 — Beguile
+        // type-checking the arguments. The trade-off is documented in spec §16.6 — Beguile
         // names are still found, but argument types pass through to I6 unchecked. Multiple
         // candidates remain ambiguous and fall through to the standard error.
         if(looseIdentifierMode){

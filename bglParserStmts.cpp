@@ -403,6 +403,7 @@ bool bglParser::processIf(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     ifStmt.src = stmtLoc;
     // Caller already consumed "if" "(" — read condition
     ifStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
+    queryCondition(ifStmt.condition);
     // Drain any ternary injections from the condition BEFORE the if statement
     for(statement* inj : pendingInjections) if(body != nullptr) body->statements.push_back(inj);
     pendingInjections.clear();
@@ -455,6 +456,7 @@ bool bglParser::processWhile(vector<token>& t, Qualifiers&, abstractObject& ctx)
     whileStmt.src = stmtLoc;
     // Caller already consumed "while" "(" — read condition
     whileStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
+    queryCondition(whileStmt.condition);
     vector<statement*> condSetup = pendingInjections;
     pendingInjections.clear();
     whileStmt.body = new statementBlock();
@@ -811,7 +813,7 @@ bool bglParser::processForIn(const std::string& elemVarName, std::string elemVar
                 // runtime (there's no count slot to read). Iterating it would silently walk
                 // off the end. Require an explicit indexed loop bounded by a known length.
                 if(tn.size() >= 8 && tn.substr(0,8) == "rawarray")
-                    parsingError(format("'for in': cannot iterate rawArray parameter '{0}' — a rawArray has no "
+                    parsingError(format("'for in': cannot iterate rawArray parameter '{0}'; a rawArray has no "
                                         "length header, so its size isn't known. Loop explicitly with a known "
                                         "bound, e.g. `for(int i in 0 to n-1) {0}[i]`.", arrExprText));
                 classDef* pc = languageService.classOf(tn);
@@ -1398,6 +1400,7 @@ bool bglParser::processDo(vector<token>& t, Qualifiers&, abstractObject& ctx) {
     else if(!keyword.is("until")) parsingError(format("Expected 'while' or 'until' after do block, got '{0}'", keyword.value));
     file.getToken(token::parenOpen);
     doStmt.condition = parseExpression(file.getToken(), {token::parenClose}, func, body);
+    queryCondition(doStmt.condition);
     // The condition's set-up runs at the end of every pass, before the test; a `continue` in this
     // loop jumps to the test, so it is sent to the set-up instead.
     if(!pendingInjections.empty()){
@@ -1708,6 +1711,13 @@ bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
         owned = std::move(tryOwnedStack.back());
         tryOwnedStack.pop_back();
     }
+    // A capture's slot starts as its local, so the catch's copy-back is right even if the throw came first.
+    for(auto c = owned.captures.rbegin(); c != owned.captures.rend(); ++c){
+        i6RawNode* load = new i6RawNode();
+        load->text = c->first;
+        load->cooked = true;
+        tcStmt.tryBody->statements.insert(tcStmt.tryBody->statements.begin(), load);
+    }
     // Nothing is live when the try begins.
     statementBlock* ownerBody = currentFunc ? dynamic_cast<statementBlock*>(currentFunc->body) : body;
     for(variableDeclaration* flag : owned.flags){
@@ -1745,6 +1755,13 @@ bool bglParser::processTry(vector<token>& t, Qualifiers&, abstractObject& ctx) {
             release->text = format("if ({0}) {{ {1} }}", r->first, r->second);
             release->cooked = true;
             tcStmt.catchBody->statements.push_back(release);
+        }
+        // A lambda's writes to the locals it captured, which the throw kept from being copied back.
+        for(auto& c : owned.captures){
+            i6RawNode* copyBack = new i6RawNode();
+            copyBack->text = c.second;
+            copyBack->cooked = true;
+            tcStmt.catchBody->statements.push_back(copyBack);
         }
         functionDef catchCtx;
         if(func != nullptr){ catchCtx.returnType = func->returnType; catchCtx.params = func->params; }
@@ -5633,7 +5650,7 @@ bool bglParser::processCallStatement(token tok, StatementContext& sc){
         try { calleeType = resolveIdentifierType((string)tok, func, body); } catch(...) { resolvingCallee = false; throw; }
         resolvingCallee = false;
         if(isUnionType(calleeType))
-            parsingError(format("Cannot call '{0}' directly — it has union type '{1}'. "
+            parsingError(format("Cannot call '{0}' directly: it has union type '{1}'. "
                 "Discriminate with typeof() and narrow with a cast first, e.g. "
                 "`func<void> f = (func<void>){0}; f();`", (string)tok, calleeType));
     }

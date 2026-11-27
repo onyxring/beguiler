@@ -36,7 +36,7 @@ extern emitter class rawArray<T> {
 extern emitter class byteArray : array {
     replace emitter char operator[](int i)          { _bglByteAt($val, $i, 0)->0 }       /// The character at `i`.
     replace emitter char operator[]=(int i, char v) { _bglByteAt($val, $i, 1)->0 = $v }  /// Set the character at `i`.
-    replace emitter int  size                       { (($val) + 0)-->(-1) }               /// How many characters the array can hold.
+    replace emitter int  size                       { _bglByteSize($val) }                /// How many characters the array can hold.
     replace typesealed byteArrayLength length;                                       /// How many characters the array holds.
     /// assign elements to an array<char>
     replace emitter void operator = (array<char> v) { $self = _bglByteArrAssign($self, $v) }
@@ -236,19 +236,31 @@ superposed int _bglByteArrStore(int dst, int src){
         return _bglByteArrAssign(dst, src);
     }
 }
+// The string heap's bounds, set by the extension which keeps one: its byte arrays carry no marker
+superposed int _bglByteHeapFrom = 0;
+superposed int _bglByteHeapTo = 0;
+// A Beguile byte array's capacity, in the word before it; an Inform 6 buffer's is its own length word
+superposed int _bglByteSize(int arr){
+    rawArray<int> a = (rawArray<int>)arr;
+    if(arr == 0) return -1;
+    if(a[-2] == $9084) return a[-1];
+    if(_bglByteHeapTo != 0 && _bglUnsignedCompare(arr, _bglByteHeapFrom) >= 0 && _bglUnsignedCompare(arr, _bglByteHeapTo) < 0) return a[-1];
+    return a[0];
+}
 superposed int _bglByteArrCopyInto(int dst, int src){
     rawArray<int> d = (rawArray<int>)dst;
     rawArray<int> s = (rawArray<int>)src;
     rawArray<char> db = (rawArray<char>)dst;
     rawArray<char> sb = (rawArray<char>)src;
     int n = s[0];
-    if(n > d[-1]) n = d[-1];
+    int room = _bglByteSize(dst);
+    if(n > room) n = room;
     for(int i = 0; i < n; i++) db[bgl.wordsize + i] = sb[bgl.wordsize + i];
     d[0] = n;
     return dst;
 }
 superposed int _bglByteAt(int arr, int i, bool isWrite){
-    int n = ((rawArray<int>)arr)[-1];
+    int n = _bglByteSize(arr);
     if(i >= 0 && i < n) return arr + bgl.wordsize + i;
     return _bglOutOfRange(i, n, isWrite);
 }

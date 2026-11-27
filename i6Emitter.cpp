@@ -789,7 +789,55 @@ string i6Emitter::replaceWord(string str, const string& from, const string& to){
 static const set<string> i6WordOperators = {"has", "hasnt", "in", "notin", "ofclass", "provides", "or", "to"};
 static bool operandEnd(char c){ return isalnum((unsigned char)c) || c == '_' || c == ')' || c == ']' || c == '\'' || c == '"'; }
 static bool operandStart(char c){ return isalnum((unsigned char)c) || c == '_' || c == '(' || c == '\'' || c == '"' || c == '$' || c == '-' || c == '~'; }
+// True when the word at [at, end) is an Inform 6 print rule:  `(name) x` inside a print statement.
+static bool isPrintRule(const string& str, size_t at, size_t end){
+    size_t l = at, r = end;
+    while(l > 0 && str[l - 1] == ' ') l--;
+    while(r < str.size() && str[r] == ' ') r++;
+    if(l == 0 || str[l - 1] != '(' || r >= str.size() || str[r] != ')') return false;
+    size_t k = l - 1;
+    while(k > 0 && str[k - 1] == ' ') k--;
+    if(k > 0 && str[k - 1] == ',') return true;
+    size_t w = k;
+    while(w > 0 && (isalnum((unsigned char)str[w - 1]) || str[w - 1] == '_')) w--;
+    string kw = str.substr(w, k - w);
+    for(char& c : kw) c = (char)tolower((unsigned char)c);
+    return kw == "print" || kw == "print_ret";
+}
+
+static const set<string> i6PrintRuleNames = {"name", "the", "a", "an", "char", "string", "address", "number", "property", "object"};
+
+// replaceWord, leaving the word alone where it is a print rule (`print (name) x`).
+static string replaceWordKeepPrintRules(const string& str, const string& from, const string& to){
+    if(!i6PrintRuleNames.count(from)) return i6Emitter::replaceWord(str, from, to);
+    string out;
+    size_t pos = 0, at;
+    while((at = findWordCI(str, from, pos)) != string::npos){
+        size_t end = at + from.size();
+        bool whole = (at == 0 || !(isalnum((unsigned char)str[at - 1]) || str[at - 1] == '_' || str[at - 1] == '$' || str[at - 1] == '.'))
+                  && (end >= str.size() || !(isalnum((unsigned char)str[end]) || str[end] == '_'));
+        out += str.substr(pos, at - pos);
+        out += whole && !isPrintRule(str, at, end) ? to : str.substr(at, from.size());
+        pos = end;
+    }
+    return out + str.substr(pos);
+}
+
 string i6Emitter::renameLocal(const string& str, const string& from, const string& to){
+    static const set<string>& printRules = i6PrintRuleNames;
+    if(printRules.count(from)){
+        string out;
+        size_t pos = 0, at;
+        while((at = findWordCI(str, from, pos)) != string::npos){
+            size_t end = at + from.size();
+            bool whole = (at == 0 || !(isalnum((unsigned char)str[at - 1]) || str[at - 1] == '_' || str[at - 1] == '$' || str[at - 1] == '.'))
+                      && (end >= str.size() || !(isalnum((unsigned char)str[end]) || str[end] == '_'));
+            out += str.substr(pos, at - pos);
+            out += whole && !isPrintRule(str, at, end) ? to : str.substr(at, from.size());
+            pos = end;
+        }
+        return out + str.substr(pos);
+    }
     if(!i6WordOperators.count(from)) return replaceWord(str, from, to);
     string out;
     size_t pos = 0, at;
@@ -1532,7 +1580,7 @@ string i6Emitter::exprText(expression* expr){
     // so property accesses (`info.width`) stay intact.
     if(currentLocalRenames.empty() && currentSpillAliases.empty()) return result;
     return mapOutsideLiterals(result, [&](string code){
-        for(auto& [from, to] : currentSpillAliases)  code = replaceWord(code, from, to);   // a frame slot wins over a rename
+        for(auto& [from, to] : currentSpillAliases)  code = replaceWordKeepPrintRules(code, from, to);   // a frame slot wins over a rename
         for(auto& [from, to] : currentLocalRenames)  code = renameLocal(code, from, to);
         code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
@@ -1580,7 +1628,7 @@ string i6Emitter::spillName(const string& name){
 string i6Emitter::spillWord(const string& text){
     if(currentSpillAliases.empty() && currentLocalRenames.empty()) return text;
     return mapOutsideLiterals(text, [&](string code){
-        for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
+        for(auto& [from, to] : currentSpillAliases) code = replaceWordKeepPrintRules(code, from, to);
         for(auto& [from, to] : currentLocalRenames) code = renameLocal(code, from, to);
         code = restoreCallEscapes(code);
         return currentSpillAliases.empty() ? code : groupFrameSlots(code);
@@ -3285,7 +3333,28 @@ void i6Emitter::pushTailReturns(functionDef* fd, statementBlock* body){
         b->statements.insert(b->statements.begin() + k, r);
     };
     if(tailIndex == runCount - 1 && !dynamic_cast<returnStatement*>(last)) tail(body);
-    else branches(body->statements[tailIndex]);
+    else {
+        branches(body->statements[tailIndex]);
+        // When every branch of a trailing if/else now returns, the original return can't be reached.
+        std::function<bool(statementBlock*)> returns = [&](statementBlock* b){
+            if(b == nullptr) return false;
+            size_t k = lastRun(b);
+            if(k == 0) return false;
+            statement* s = b->statements[k - 1];
+            if(dynamic_cast<returnStatement*>(s) || dynamic_cast<throwStatement*>(s)) return true;
+            if(auto* raw = dynamic_cast<i6RawNode*>(s); raw && !raw->isI6Island && raw->parts.empty()){
+                string t = trimmed(raw->text);
+                for(const char* kw : {"return", "rtrue", "rfalse", "quit", "@throw"})
+                    if(t.rfind(kw, 0) == 0) return true;
+                return false;
+            }
+            if(auto* is = dynamic_cast<ifStatement*>(s)) return returns(is->thenBlock) && returns(is->elseBlock);
+            return false;
+        };
+        if(auto* is = dynamic_cast<ifStatement*>(body->statements[tailIndex]);
+           is && dynamic_cast<returnStatement*>(last) && returns(is->thenBlock) && returns(is->elseBlock))
+            body->statements.erase(body->statements.begin() + (runCount - 1));
+    }
 }
 void i6Emitter::emitLocalArrayAllocs(functionDef* fn, const vector<variableDeclaration*>& locals,
                                      statementBlock* body, const string& indent){
@@ -4105,7 +4174,7 @@ void i6Emitter::emitRawNode(i6RawNode* raw, const string& indent){
     string text = raw->cooked ? spillWord(raw->text) : raw->text;
     if(!raw->cooked && !currentSpillAliases.empty())
         text = mapOutsideLiterals(text, [&](string code){
-            for(auto& [from, to] : currentSpillAliases) code = replaceWord(code, from, to);
+            for(auto& [from, to] : currentSpillAliases) code = replaceWordKeepPrintRules(code, from, to);
             return groupFrameSlots(code);
         });
     // A renamed local, everywhere the island names it: in I6 a local's name means the local even after
@@ -5274,7 +5343,7 @@ void i6Emitter::synthesizeChildrenPlacement(){
             // A world-tree object has exactly one parent. Two containers naming the same child is a
             // genuine conflict — the resulting tree would be ambiguous — so it's a hard error.
             if(claimed.count(childName))
-                throw runtime_error(format("children conflict: '{0}' is listed in more than one container's `children` — a world-tree object has exactly one parent.", childName));
+                throw runtime_error(format("children conflict: '{0}' is listed in more than one container's `children`; a world-tree object has exactly one parent.", childName));
             // An explicit `parent` on the child: a conflict ONLY if it names a different container.
             // Declaring the same link both ways (`a.children = { b }` and `b.parent = a`) is redundant
             // but consistent — the explicit `parent` already places it, so accept it silently.
@@ -5284,7 +5353,7 @@ void i6Emitter::synthesizeChildrenPlacement(){
                     if(vd->name == "parent" && vd->declaredExpressionValue){ ownParent = vd->declaredExpressionValue->text(); break; }
             if(!ownParent.empty()){
                 if(ownParent != containerI6)
-                    throw runtime_error(format("children conflict: '{0}' is placed in '{1}'.children but also sets `parent = {2}` — a world-tree object has exactly one parent.", childName, container->dName(), ownParent));
+                    throw runtime_error(format("children conflict: '{0}' is placed in '{1}'.children but also sets `parent = {2}`; a world-tree object has exactly one parent.", childName, container->dName(), ownParent));
                 claimed.insert(childName);   // same container, declared both ways — consistent; parent stands
                 continue;
             }
@@ -6600,8 +6669,6 @@ int i6Emitter::i6StringChars(const string& lit){
     return n;
 }
 
-// An array<char>'s capacity, in the word just before it: I6 lays consecutive arrays out contiguously,
-// and the buffer's own first word is its length.
 // The two words before a word array's table: the marker, then its length. I6 lays arrays out in source
 // order, so this one sits immediately before the array it heads.
 string i6Emitter::arrayHeader(int length){
@@ -6610,11 +6677,13 @@ string i6Emitter::arrayHeader(int length){
     return format("Array {0} --> $9084 {1};\n", name, length);
 }
 
+// The two words before an array<char>: the marker, then its capacity (the buffer's own first word is
+// its length).  A byte array, so the words sit right against the buffer.
 string i6Emitter::byteCapacityPrefix(const string& name, int capacity){
     bool glulx = beguilerSettings.target == "glulx";
     unsigned v = (unsigned)max(capacity, 0);
-    string bytes = glulx ? format(" {0} {1} {2} {3}", (v >> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255)
-                         : format(" {0} {1}", (v >> 8) & 255, v & 255);
+    string bytes = glulx ? format(" 0 0 $90 $84 {0} {1} {2} {3}", (v >> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255)
+                         : format(" $90 $84 {0} {1}", (v >> 8) & 255, v & 255);
     return "Array _bglcap_" + name + " ->" + bytes + ";\n";
 }
 

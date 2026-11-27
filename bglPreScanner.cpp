@@ -71,6 +71,16 @@ void bglParser::preScanSkipBody(bool isI6Content){
 // On #else: continue scanning (it's the true branch).
 // On #endif: done.
 // Records the skipped source-line range via recordInactiveRange() for LSP inactive-region reporting.
+// In a skipped #if branch, step over a raw block's body:  the Inform 6 directives in it aren't ours
+void bglParser::skipRawDirectiveBody(token t){
+    if(t.is("#storedemitfirst") || t.is("#storedemitlast")){
+        if(file.peekToken().is(eTokenType::identifier)) file.getToken();
+    }
+    else if(!(t.is("#startup") || t.is("#emitfirst") || t.is("#emitlast") || t.is("#i6"))) return;
+    if(!file.peekToken().is(token::braceOpen)) return;
+    file.getToken();
+    file.getRawTextThroughClosingBrace(/*isI6Content=*/true);
+}
 void bglParser::preScanSkipConditionalBlock(){
     int depth = 1;
     int startLine1 = file.currentLocation().line;  // first dead line (one past the #if)
@@ -78,6 +88,7 @@ void bglParser::preScanSkipConditionalBlock(){
         token t = file.getToken();
         if(t.is(eTokenType::eof)) { recordInactiveRange(startLine1, file.currentLocation().line); return; }
         if(!t.is(eTokenType::directive)) continue;
+        skipRawDirectiveBody(t);
         if(t.is("#if")) { depth++; continue; }
         if(t.is("#endif")) {
             depth--;
@@ -381,6 +392,13 @@ void bglParser::preScanDirective(token tok){
         preScanSkipBody(/*isI6Content=*/true);
     } else if(tok.value == "#beguilersettings"){
         preScanSkipBody(); // skip { target = Glulx; ... } so the closing } doesn't corrupt the token stream
+    } else if(tok.value == "#emitafteri6include"){
+        string anchor = file.getToken().literalText();
+        if(anchor.size() >= 2 && anchor.front()=='"' && anchor.back()=='"') anchor = anchor.substr(1, anchor.size()-2);
+        if(preScanEmitAnchor.empty() && !anchor.empty()){
+            preScanEmitAnchor = anchor;
+            markEmitAnchor(anchor, true);
+        }
     } else if(tok.value == "#mergei6"){
         if(file.peekToken().is("?")) file.getToken();
         file.getToken();    // the patch name; the main pass applies it
@@ -457,6 +475,7 @@ void bglParser::preScanDirective(token tok){
         while(depth > 0){
             token t = file.getToken();
             if(t.is(eTokenType::eof)) break;
+            if(t.is(eTokenType::directive)) skipRawDirectiveBody(t);
             if(t.is("#if")) depth++;
             if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
         }
@@ -469,6 +488,7 @@ void bglParser::preScanDirective(token tok){
         while(depth > 0){
             token t = file.getToken();
             if(t.is(eTokenType::eof)) break;
+            if(t.is(eTokenType::directive)) skipRawDirectiveBody(t);
             if(t.is("#if")) depth++;
             if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
         }
@@ -850,6 +870,11 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
 
     preScanDepth++;
 
+    // An included file is outside the range of the file that includes it.
+    string outerAnchor = isFirst ? string() : preScanEmitAnchor;
+    preScanEmitAnchor.clear();
+    if(!outerAnchor.empty()) markEmitAnchor(outerAnchor, false);
+
     if(isFirst){
         // Mirror main parse: always load __beguileCore.bgl first
         filesystem::path sysPath = filesystem::path(settings.libPath) / "core" / "__beguileCore.bgl";
@@ -891,8 +916,74 @@ void bglParser::preScanFile(string filename, const std::string* contentOverride)
                                 }
     }
 
+    if(!preScanEmitAnchor.empty()) markEmitAnchor(preScanEmitAnchor, false);
+    preScanEmitAnchor = outerAnchor;
+    if(!outerAnchor.empty()) markEmitAnchor(outerAnchor, true);
+
     file.close();
     preScanDepth--;
+}
+
+void bglParser::markEmitAnchor(const string& anchor, bool begins){
+    auto* mark = new emitAnchorNode();
+    mark->anchor = anchor;
+    mark->begins = begins;
+    mark->src = file.currentLocation();
+    languageService.globals.push_back(mark);
+}
+
+// The file an Inform 6 include node names, lowered and without its folder or `.h`.
+static string i6IncludeStem(const string& text){
+    size_t q1 = text.find('"'), q2 = text.rfind('"');
+    if(q1 == string::npos || q2 <= q1) return "";
+    string name = text.substr(q1 + 1, q2 - q1 - 1);
+    if(size_t slash = name.find_last_of("/\\>"); slash != string::npos) name = name.substr(slash + 1);
+    transform(name.begin(), name.end(), name.begin(), ::tolower);
+    if(name.size() > 2 && name.compare(name.size() - 2, 2, ".h") == 0) name.resize(name.size() - 2);
+    return name;
+}
+
+void bglParser::placeAnchoredEmits(){
+    vector<typeDef*>& g = languageService.globals;
+    map<typeDef*, size_t> placed;      // per include node: how many nodes already follow it
+    set<string> reported;
+    while(true){
+        size_t e = 0;
+        while(e < g.size()){ auto* m = dynamic_cast<emitAnchorNode*>(g[e]); if(m && !m->begins) break; e++; }
+        if(e >= g.size()) break;
+        size_t b = e;
+        while(b > 0 && dynamic_cast<emitAnchorNode*>(g[b - 1]) == nullptr) b--;
+        auto* open = b > 0 ? dynamic_cast<emitAnchorNode*>(g[b - 1]) : nullptr;
+        if(open == nullptr || !open->begins){ g.erase(g.begin() + e); continue; }   // an end with no beginning
+        b--;
+        vector<typeDef*> range(g.begin() + b + 1, g.begin() + e);
+        g.erase(g.begin() + b, g.begin() + e + 1);
+        string want = open->anchor;
+        transform(want.begin(), want.end(), want.begin(), ::tolower);
+        if(want.size() > 2 && want.compare(want.size() - 2, 2, ".h") == 0) want.resize(want.size() - 2);
+        auto isAnchor = [&](typeDef* n){
+            auto* raw = dynamic_cast<i6RawNode*>(n);
+            return raw && !raw->isPrePassStub && raw->text.rfind("#include ", 0) == 0 && i6IncludeStem(raw->text) == want;
+        };
+        size_t at = g.size();
+        for(size_t i = 0; i < g.size(); i++) if(isAnchor(g[i])){ at = i; break; }
+        bool inPlace = at < b || any_of(range.begin(), range.end(), isAnchor);   // already past the include, or holding it
+        if(inPlace){
+            g.insert(g.begin() + b, range.begin(), range.end());
+        } else if(at == g.size()){
+            if(!lspMode && reported.insert(want).second){   // a file open in the editor alone has no program around it
+                ErrorAt here(*this, open->src);
+                parsingError(format("#emitAfterI6Include: this program has no #includeI6 \"{0}\".", open->anchor));
+            }
+            g.insert(g.begin() + b, range.begin(), range.end());
+        } else {
+            size_t& after = placed[g[at]];
+            g.insert(g.begin() + at + 1 + after, range.begin(), range.end());
+            after += range.size();
+        }
+    }
+    for(size_t i = g.size(); i-- > 0;)
+        if(dynamic_cast<emitAnchorNode*>(g[i])) g.erase(g.begin() + i);   // a beginning left open
 }
 
 // Walks tokens in the currently-open file, registering type/global stubs until EOF.

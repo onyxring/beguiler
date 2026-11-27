@@ -8,6 +8,8 @@ constant _bglWorldBufSize = 128;
 constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
 constant Slots = 4;
+
+
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;

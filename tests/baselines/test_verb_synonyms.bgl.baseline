@@ -18,13 +18,19 @@ Constant beguiler = 5;
 
         replace main _oldmain;
     
+global _bglLinkHeld = 0;
+global _bglLinkMarkCount = 0;
 constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 16384;
 #Ifdef _bglHeapWords;#Endif;
+constant _bglStatusRock = 1073741824;
+
+
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
+global _bglWinRecoverHook = 0;
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;
@@ -72,7 +78,7 @@ Global _bglLowAddressGuardKept = _bglLowAddressGuard;   ! referenced, so OMIT_UN
  Constant NO_ATTRIBUTE 0; #Ifdef NO_ATTRIBUTE; #Endif; 
 object _glulx
 ;
-[_bglGlkEvent event context inputBuf _l_target known n typed;
+[_bglGlkEvent event context inputBuf _l_target known n saved held printed typed ch m;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
@@ -84,17 +90,51 @@ object _glulx
     if (~~known) {
         return false;
     }
-    typed = 0;
-    if (context == 0) {
-        typed=_bglsuspendlineinput(inputBuf);
+    if (context ~= 0) {
+         _l_target(); 
+        return true;
     }
+    saved=__glkHook(72);
+    held=__glkHook(313, _bgllinktext, _bgl_link_text, 1, 0);
+    __glkHook(71, held);
+    _bgllinkheld=held;
+    _bgllinkmarkcount = 0;
      _l_target(); 
-    if (context == 0) {
-        _bglresumelineinput(inputBuf, typed);
-        rtrue;
+    _bgllinkheld = 0;
+    __glkHook(71, saved);
+    __glkHook(68, held, _bgllinkcounts);
+    printed= _bgllinkcounts-->1;
+    if (printed > _bgl_link_text) {
+        printed=_bgl_link_text;
     }
+    if (printed == 0) {
+        return true;
+    }
+    typed=_bglsuspendlineinput(inputBuf);
+    ch = 0;
+    m = 0;
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(258, _bglcurrentwindow());
+    }
+    for (n = 0 : n < printed : n++) {
+        for (m = 0 : m < _bgllinkmarkcount : m++) {
+            if ( _bgllinkmarks-->(m * 3)  == n) {
+                __glkHook(256,  _bgllinkmarks-->(m * 3 + 2) );
+            }
+            if ( _bgllinkmarks-->(m * 3 + 1)  == n) {
+                __glkHook(256, 0);
+            }
+        }
+        ch= _bgllinktext-->n ;
+        @streamunichar ch;
+    }
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(256, 0);
+    }
+    _bglresumelineinput(inputBuf, typed);
     return true;
 ];
+array _bgllinkcounts --> 2;
 [_bglCurrentWindow stream win;
     stream=__glkHook(72);
     win=__glkHook(32, 0, 0);
@@ -108,6 +148,12 @@ object _glulx
 ];
 object bgl
 ;
+[_bglIdentifyGlkObject phase;
+    if (phase == 2) {
+        _bglui._bglUi_recoverWindows();
+        rtrue;
+    }
+];
 object _bglVerb_quaff
   with priority 10,
        handler [;
@@ -162,6 +208,11 @@ verb 'g//' 'peek' = 'gaze';
     ];
 
 
+    Constant _BGL_LINK_TEXT 512;
+    Array _bglLinkText --> _BGL_LINK_TEXT;   ! what a link printed, while line input waited
+    Array _bglLinkMarks --> 48;               ! up to 16 links it printed:  start, end, value
+
+
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines
 
 
@@ -175,16 +226,10 @@ verb 'g//' 'peek' = 'gaze';
 
  Array _bglLineEvent --> 4; 
 
-    Default orBannerText 0;
-    [ _bglBannerExtras more;
+    [ _bglBannerExtras;
         #Ifdef LibraryExtensions;
-        if (LibraryExtensions.RunAll(ext_bannerText)) more = true;
+        if (LibraryExtensions.RunAll(ext_bannerText)) new_line;
         #Endif;
-        switch (metaclass(orBannerText)) {
-            Routine: orBannerText(); more = true;
-            String:  print (string) orBannerText; more = true;
-        }
-        if (more) new_line;
     ];
 
 
@@ -197,6 +242,10 @@ verb 'g//' 'peek' = 'gaze';
     #Ifdef LibraryExtensions;
         Object _bglLibraryHooks LibraryExtensions
           with ext_afterprompt [; if (_bglPromptHook) indirect(_bglPromptHook); rfalse; ];
+        #Ifdef TARGET_GLULX;
+            Object _bglGlkHooks LibraryExtensions
+              with ext_identifyglkobject [ phase; _bglIdentifyGlkObject(phase); rfalse; ];
+        #Endif;
     #Endif;
 
 
@@ -221,7 +270,133 @@ verb 'g//' 'peek' = 'gaze';
 [_bglFloatLt x y;
      @jflt x y ?yes; rfalse; .yes; rtrue; 
 ];
+object _bglUi
+  with _bglUi_recoverWindows [;
+    _bglstatus._bglStatus_recover();
+     if(_bglWinRecoverHook) indirect(_bglWinRecoverHook); 
+  ]
+;
 [_bgl_bglOpCodes_aload addr idx result;
      @aload addr idx result; 
     return result;
+];
+class _bglaccessor6
+  with
+    _opconv_int[;
+        return gg_statuswin;
+    ],
+    _opeq[v;
+        gg_statuswin=v;
+    ]
+;
+_bglaccessor6 __bglstatus_id;
+class _bglaccessor3
+  with
+    _opconv_int[;
+        return _bglwinwidth(_bglstatus._bglStatus_id._opconv_int());
+    ]
+;
+_bglaccessor3 __bglstatus_width;
+class _bglaccessor7
+  with
+    _opconv_int[;
+        return _bglstatusgetheight();
+    ],
+    _opeq[v;
+        gg_statuswin_size=v;
+        _bglstatussetheight(v);
+    ]
+;
+_bglaccessor7 __bglstatus_height;
+object _bglStatus
+  with _bglStatus_id __bglstatus_id,
+       _bglStatus_width __bglstatus_width,
+       _bglStatus_height __bglstatus_height,
+       _bglStatus_recover [;
+    if (gg_statuswin ~= 0) {
+        _bglstatussetheight(gg_statuswin_size);
+    }
+  ]
+;
+[_bglStatusGetHeight;
+    if (gg_statuswin == 0) {
+        return 0;
+    }
+    __glkHook(37, gg_statuswin, 0, (_bglarrangebuf) + WORDSIZE);
+    return  _bglAt(_bglarrangebuf, 0, 0)-->0 ;
+];
+[_bglStatusSetHeight lines pair method;
+    if (gg_statuswin == 0 || lines == _bglstatusgetheight()) {
+        return;
+    }
+    pair=__glkHook(41, gg_statuswin);
+    while (pair ~= 0) {
+        __glkHook(39, pair, (_bglarrangebuf) + WORDSIZE, 0, 0);
+        method= _bglAt(_bglarrangebuf, 0, 0)-->0  & 15;
+        if (method == 2 || method == 3) {
+            break;
+        }
+        pair=__glkHook(41, pair);
+    }
+    if (pair == 0) {
+        return;
+    }
+    __glkHook(38, pair, (18), lines, 0);
+    gg_statuswin_cursize=lines;
+    rtrue;
+];
+[_bglWinMoveCursor win col line;
+    if (win ~= 0) {
+        __glkHook(43, win, col, line);
+        rtrue;
+    }
+];
+[_bglWinWidth win;
+    if (win == 0) {
+        return 80;
+    }
+    __glkHook(37, win, (_bglwinsize) + WORDSIZE, 0);
+    return  _bglAt(_bglwinsize, 0, 0)-->0 ;
+];
+Array bglhaf --> $9084 0;
+array _bglarrangebuf table 1;
+Array bglhae --> $9084 0;
+array _bglwinsize table 1;
+[_bglAt arr i isWrite n;
+    n=_bglarrsize(arr);
+    if (i >= 0 && i < n) {
+        return arr + (i + 1) * WORDSIZE;
+    }
+    return _bgloutofrange(i,n,iswrite);
+];
+[_bglOutOfRange i n isWrite;
+    print "^[Beguile run-time error: array index ";
+    print i;
+    print " is outside the ";
+    print n;
+    print " element";
+    if (n ~= 1) {
+        print "s";
+    }
+    print " it ";
+    if (isWrite) {
+        print "can hold";
+    }
+    else {
+        print "holds";
+    }
+    print "; the ";
+    if (isWrite) {
+        print "write";
+    }
+    else {
+        print "read";
+    }
+    print " is skipped]^";
+    _bglsink-->0 = 0;
+    return _bglsink;
+];
+array _bglsink --> 1;
+[_bglArrSize arr;
+    return  ((arr))-->0 ;
 ];

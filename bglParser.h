@@ -579,6 +579,7 @@ class bglParser {
             int id = 0;                                         // the try statement's
             int bits = 0;                                       // bits handed out in flags.back()
             std::vector<std::pair<std::string, std::string>> live;   // {test, release} per local, in declared order
+            std::vector<std::pair<std::string, std::string>> captures;   // {load, copy-back} per lambda capture made in the try
         };
         vector<TryOwned> tryOwnedStack;
         int loopDepth = 0;                  // nesting depth of for/while/do loops (for continue validation)
@@ -1264,7 +1265,7 @@ class bglParser {
         // only visible names are its own tokens.
         string substituteI6Exprs(const string& body, const emitterBindings& b,
                                  functionDef* func = nullptr, statementBlock* enclosing = nullptr);
-        // Resolve `$i6Name(...)` / `$i6Expr(...)` in a raw-I6 island (§15.2). An island has no
+        // Resolve `$i6Name(...)` / `$i6Expr(...)` in a raw-I6 island (§16.2). An island has no
         // receiver and no parameters, so these two are the only tokens it can carry.
         string resolveIslandTokens(const string& raw, functionDef* func, statementBlock* enclosing);
         // Emitter bodies currently being expanded, outermost first. A body reached twice is a cycle;
@@ -1335,6 +1336,7 @@ class bglParser {
         // A class derived from `verb`: a value of it is the verb's object, whose action is read from it.
     bool isStoreLocation(expression* e);
     bool referenceAsCondition(string& text, string& type);
+    void queryCondition(expression* cond);
     string laterUsingHint(const string& text, const string& type);
     string hiddenNameHint(expression* e, const string& wantedType);
     bool replacesOrReplacedBy(functionDef* a, functionDef* b);
@@ -1567,6 +1569,9 @@ class bglParser {
 
         // Pre-scanner state
         set<string> preScanOnceFiles;
+        string preScanEmitAnchor;            // the `#emitAfterI6Include` of the file being pre-scanned
+        void markEmitAnchor(const string& anchor, bool begins);
+        void placeAnchoredEmits();           // moves each anchored range to its Inform 6 include
         int preScanDepth = 0;
         void preScanDirective(token tok);
         void preScanGlobalLoop();         // walks tokens in the currently-open file, registering type/global stubs until EOF
@@ -1586,6 +1591,7 @@ class bglParser {
         // for the duration of the call.
         void preScanBglIslandContent(const std::string& content, const std::string& virtualName, int startLine);
         void preScanSkipConditionalBlock(); // skips tokens in a false #if branch until #elif/#else/#endif
+        void skipRawDirectiveBody(token t);
         // Skip a `{ ... }` body during pre-scan. The `isI6Content` flag controls
         // `!` handling: false (default) treats `!` as a Beguile operator (correct
         // for object/class/function bodies); true treats it as I6 line-comment

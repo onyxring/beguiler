@@ -42,6 +42,13 @@ class expression;  // forward decl: objectDef::childrenPlacement holds parsed ob
 class typeDef:virtual public abstractObject{
     public:         
 };
+// Where a file's `#emitAfterI6Include` range begins or ends in the global list.
+class emitAnchorNode : public typeDef {
+    public:
+        string anchor;          // the Inform 6 include the range is emitted after
+        bool begins = true;
+        sourceLocation src;
+};
 class typeInstance:virtual public abstractObject{
     public:                 
 };
@@ -415,6 +422,7 @@ class functionDef:public typeMember, public typeDef{
         bool replaceFoundNothing = false;    // a `replace` with no earlier function of its name to replace
         functionDef* substitutedFrom = nullptr;  // a copy with its type parameters bound: the declaration it copies
         functionDef* replacedFunc = nullptr;  // pointer to predecessor functionDef
+        bool isReplacement = false;           // declared with `replace`
         bool replacedWasCalled = false;       // set when replaced() is encountered during body parsing
         bool isReplaceStub = false;           // a pre-scan stub for a `replace` declaration: it takes the name's place, not an overload
         bool isReplacedDead = false;          // true when this replaced version is unreachable (no successor calls replaced())

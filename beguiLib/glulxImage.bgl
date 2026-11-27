@@ -19,8 +19,8 @@ bglSize _bglGetImageInfo(int imgId){
     retval.height = _glkTmpSizeBuf[1];
     return retval;
 }
-int _imgWidth (int imgId){ return _bglGetImageInfo(imgId).width;  }
-int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
+superposed int _imgWidth (int imgId){ return _bglGetImageInfo(imgId).width;  }
+superposed int _imgHeight(int imgId){ return _bglGetImageInfo(imgId).height; }
 
 /// A picture from the blorb file. Ask it how big it is; draw it through a window's `drawImage()`
 /// or a print rule.

@@ -548,7 +548,7 @@ bool beguiler::emitOutput(CompileJob& job) {
                         bool isSend = k < vline.size() && vline[k] == '(';   // `obj.length(…)` calls a routine
                         if(propMembers.count(name) && !isSend){
                             std::cerr << "ERROR: raw '." << name << "' property access emitted at "
-                                      << settings.tmpFile << ":" << vno << " — the property-class member '"
+                                      << settings.tmpFile << ":" << vno << ": the property-class member '"
                                       << name << "' did not dispatch through its read emitter. This is an "
                                       << "unsupported context (e.g. `getObj()." << name << "`, `x." << name
                                       << "." << name << "`, or a method on the read). Read it into an "
@@ -595,7 +595,7 @@ void beguiler::applyEconomyAbbreviations() {
             }
         }
         if(userAbbrevs){
-            cout << "[economy] author Abbreviate directives found — leaving text handling to you." << endl;
+            cout << "[economy] author Abbreviate directives found: leaving text handling to you." << endl;
         } else {
             // 1. Compute optimal abbreviations (a -u compile prints them; discard its output file).
             string uOut = settings.tmpFile + ".econ.tmp";

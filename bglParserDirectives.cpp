@@ -122,7 +122,7 @@ string bglParser::processBglConditionals(const string& text){
                 // Only `##if` is valid inside emitter bodies per spec §7.2. The single-hash
                 // forms `#ifdef` / `#ifndef` exist as top-level directives, but their
                 // double-hash counterparts were never part of the emitter-body grammar.
-                parsingError(format("'##{0}' is not valid in an emitter body — use '##if <expr>' instead", dir));
+                parsingError(format("'##{0}' is not valid in an emitter body: use '##if <expr>' instead", dir));
             } else if(dir == "if"){
                 string condText;
                 while(pos < text.size() && text[pos] != '\n' && !(text[pos] == '#' && pos+1 < text.size() && text[pos+1] == '#'))
@@ -268,12 +268,12 @@ string bglParser::expandEmitterBody(const i6Block* blk, const emitterBindings& b
     // stops being self-enforcing once a body can call out.
     for(const i6Block* active : emitterExpansionChain)
         if(active == blk){
-            parsingError("emitter expansion cycle — a $i6Expr chain reaches the same emitter body "
+            parsingError("emitter expansion cycle: a $i6Expr chain reaches the same emitter body "
                          "again. An emitter is substituted, not called, so it cannot recurse.");
             return "";
         }
     if(emitterExpansionChain.size() >= kMaxEmitterDepth){
-        parsingError(format("emitter expansion exceeded a depth of {0} — check the $i6Expr chain for "
+        parsingError(format("emitter expansion exceeded a depth of {0}: check the $i6Expr chain for "
                             "a runaway expansion.", (int)kMaxEmitterDepth));
         return "";
     }
@@ -405,7 +405,7 @@ bool bglParser::evaluateCondition(const string& expr){
                 return v;
             }
             // `#beguilerSettings.<property>` reads a settings property as a compile-time value,
-            // the same value the expression handler would give (§17.7). Every declared property
+            // the same value the expression handler would give (§15.7). Every declared property
             // is readable, so `#if #beguilerSettings.target == "z8"` and `#if
             // #beguilerSettings.economy` both work; a bool reads as 1/0 so it tests directly.
             if(pos<s.size() && s[pos]=='#'){
@@ -415,7 +415,7 @@ bool bglParser::evaluateCondition(const string& expr){
                 string lower=ref; transform(lower.begin(),lower.end(),lower.begin(),::tolower);
                 const string prefix="#beguilersettings.";
                 if(lower.rfind(prefix,0)!=0){
-                    p.parsingError(format("'{0}' is not valid in a #if condition — the only directive reference allowed here is #beguilerSettings.<property>.", ref));
+                    p.parsingError(format("'{0}' is not valid in a #if condition: the only directive reference allowed here is #beguilerSettings.<property>.", ref));
                     return "0";
                 }
                 string key=lower.substr(prefix.size());
@@ -545,6 +545,7 @@ void bglParser::skipConditionalBlock(abstractObject& ctx){
             return;
         }
         if(!t.is(eTokenType::directive)) continue;
+        skipRawDirectiveBody(t);
         if(t.is("#if"))    { depth++; continue; }
         if(t.is("#endif")) {
             depth--;
@@ -578,7 +579,7 @@ bool bglParser::processDirectiveUnrecognized(token directive){
     // ##VerbName is an I6 action-constant syntax that Beguile handles automatically.
     if(directive.value.rfind("##", 0) == 0){
         string verbName = directive.value.substr(2);
-        return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly — the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
+        return parsingError(format("'##' prefix is not valid in Beguile source. Write '{0}' directly: the '##' prefix is emitted automatically by the verb type's operator ==.", verbName));
     }
     if(directive.value == "#i6replace")
         return parsingError("'#i6replace' is not a Beguile directive. Replace an extern routine with `replace` on its "
@@ -601,7 +602,7 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
         if(includeName.size() >= 2 && includeName.front()=='"' && includeName.back()=='"')
             includeName = includeName.substr(1, includeName.size()-2);
         if(includeNameSpansLines(includeName)){
-            parsingError("#include \"...\": missing closing '\"' — the include filename must be on one line.");
+            parsingError("#include \"...\": missing closing '\"'; the include filename must be on one line.");
             return processDirectiveUnrecognized(directive);
         }
         filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
@@ -630,7 +631,7 @@ bool bglParser::directiveInclude(token directive, abstractObject& contextObj){
         if(t.is(eTokenType::eof)) unterminated = true;
         if(unterminated){
             parsingError(format("#include <{0}…>: missing closing '>'. An include name "
-                                "must be on one line — add the '>'.", includeName));
+                                "must be on one line: add the '>'.", includeName));
             return processDirectiveUnrecognized(directive);   // stop this directive (don't search for a garbage filename)
         }
         // Recursive lib search: `<name>` finds name.bgl anywhere under beguiLib (files first,
@@ -826,7 +827,7 @@ bool bglParser::directiveIncludeI6(token directive, abstractObject& contextObj){
     if(innerPath.size() >= 2 && innerPath.front()=='"' && innerPath.back()=='"')
         innerPath = innerPath.substr(1, innerPath.size()-2);
     if(includeNameSpansLines(innerPath)){
-        parsingError("#includeI6: missing closing '\"' — the include filename must be on one line.");
+        parsingError("#includeI6: missing closing '\"'; the include filename must be on one line.");
         return false;
     }
     string emitPath;
@@ -901,7 +902,7 @@ bool bglParser::directiveMergeI6(token directive, abstractObject& contextObj){
     if(name.size() >= 2 && name.front()=='"' && name.back()=='"')
         name = name.substr(1, name.size()-2);
     if(includeNameSpansLines(name)){
-        parsingError("#mergeI6: missing closing '\"' — the patch filename must be on one line.");
+        parsingError("#mergeI6: missing closing '\"'; the patch filename must be on one line.");
         return false;
     }
     filesystem::path curDir = filesystem::path(file.currentLocation().file).parent_path();
@@ -1000,7 +1001,7 @@ bool bglParser::directiveIf(token directive, abstractObject& contextObj){
     while(t.isNot("\n") && t.isNot(";") && t.isNot(eTokenType::eof)){
         // getBasicToken hands back a bare `#`; the directive name is the token after it. A `#`
         // normally means the next directive has started — except `#beguilerSettings.<prop>`,
-        // which is a value inside the condition (§17.7).
+        // which is a value inside the condition (§15.7).
         if(t.value == "#"){
             token name = file.getBasicToken(true);
             string dir = "#" + name.value;
@@ -1032,6 +1033,7 @@ void bglParser::skipToEndif(token& directive, bool sawElse){
     while(depth > 0){
         token t = file.getToken();
         if(t.is(eTokenType::eof)) { parsingError(format("Unexpected end of file inside {0} block.", from)); return; }
+        if(t.is(eTokenType::directive)) skipRawDirectiveBody(t);
         if(t.is("#if"))    depth++;
         if(t.is("#endif")) { depth--; if(depth == 0) endLine1 = t.src.line - 1; }
         if(depth == 1 && (t.is("#elif") || t.is("#else"))){
@@ -1295,7 +1297,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
     if(getCurrentCompileContext() == eCompileContext::codeBlock && !languageService.isInfMode){
         static const set<string> fileLevelOnly = {"#include", "#once", "#startup", "#using", "#emitfirst", "#emitlast",
             "#storedemitfirst", "#storedemitlast", "#includei6", "#mergei6", "#define", "#definei6", "#redef",
-            "#declare", "#undef"};
+            "#declare", "#undef", "#emitafteri6include"};
         if(fileLevelOnly.count(directive.value))
             return parsingError(format("'{0}' can't be used inside a function; write it at file level.", directive.value));
     }
@@ -1318,6 +1320,13 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("#storedemitlast"): return directiveStoredEmitLast(directive, contextObj);
         case chk("#includei6"): return directiveIncludeI6(directive, contextObj);
         case chk("#mergei6"): return directiveMergeI6(directive, contextObj);
+        case chk("#emitafteri6include"):{
+            // The pre-scan marked the range; here the directive is only checked.
+            token name = file.getToken();
+            if(!name.is(eTokenType::quote))
+                return parsingError("#emitAfterI6Include needs the Inform 6 file's name in quotes.");
+            return false;
+        }
         case chk("#i6"): return directiveI6(directive, contextObj);
         case chk("#define"):
         case chk("#definei6"):
@@ -1355,7 +1364,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         case chk("##ifdef"):
         case chk("##ifndef"):{
             bool neg = (directive.value == "##ifndef");
-            parsingError(format("'{0}' is not a Beguile directive — '##' marks a Beguile conditional "
+            parsingError(format("'{0}' is not a Beguile directive: '##' marks a Beguile conditional "
                 "inside raw I6, such as an emitter body. In Beguile source write '#if {1}SYMBOL'. To "
                 "emit an Inform 6 conditional instead, put it in an '#i6' island: "
                 "#i6 {{ #Ifndef SYMBOL; … #Endif; }}", directive.value, neg ? "!" : ""));
@@ -1363,7 +1372,7 @@ bool bglParser::processDirective(token directive, abstractObject& contextObj){
         }
         case chk("##else"):
         case chk("##endif"):{
-            parsingError(format("'{0}' is not a Beguile directive — '##' marks a Beguile conditional "
+            parsingError(format("'{0}' is not a Beguile directive: '##' marks a Beguile conditional "
                 "inside raw I6, such as an emitter body. In Beguile source the conditional is '#if' "
                 "/ '#else' / '#endif'.", directive.value));
             return false;

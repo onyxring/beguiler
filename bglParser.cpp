@@ -1005,7 +1005,7 @@ void bglParser::validateHiddenMembers(){
             }
             string where = hm.src.line > 0 ? format("{0}:{1}:1: ", hm.src.file, hm.src.line) : string();
             if(mem == nullptr){
-                parsingWarning(where + format("hide '{0}' on '{1}': no inherited member named '{0}' — "
+                parsingWarning(where + format("hide '{0}' on '{1}': no inherited member named '{0}'; "
                     "the hide has no effect (you can only hide members inherited from a base class).",
                     hm.memberName, cls->dName()));
                 continue;
@@ -1019,7 +1019,7 @@ void bglParser::validateHiddenMembers(){
                 }) != nullptr;
                 if(!opFound)
                     parsingWarning(where + format("hide '{0}.operator {1}' on '{2}': {3} has no "
-                        "'operator {1}' — the hide has no effect.",
+                        "'operator {1}': the hide has no effect.",
                         hm.memberName, hm.operatorName, cls->dName(),
                         vd ? format("type '{0}'", typeDisplayName(vd->type.name)) : format("member '{0}'", hm.memberName)));
             }
@@ -2194,7 +2194,7 @@ bool bglParser::parseFile(string filename, const std::string* contentOverride){
         openConditionals.resize(conditionalBase);
         parsingError(format("The '#if' at line {0} has no '#endif'.", line));
     }
-    if(includeDepth == 1){ writeAutoCopyOperators(); declareParamOwners(); }
+    if(includeDepth == 1){ writeAutoCopyOperators(); declareParamOwners(); placeAnchoredEmits(); }
     //emit.out<<endl;
     file.close();
     usingImports = savedUsingImports;  // restore parent file's imports
@@ -2422,7 +2422,7 @@ bool bglParser::processTypedProperty(vector<token>& t, Qualifiers& q, abstractOb
             file.getToken();
         if(file.peekToken().is(token::endStatement)) file.getToken();
         parsingError("a property declaration no longer specifies a type. Write "
-            "`[additive] property <name>;` — the type is set by each use site, not the property. "
+            "`[additive] property <name>;`: the type is set by each use site, not the property. "
             "For an additive property, every contributing member must be a `rawArray<T>` with a "
             "consistent element type across the hierarchy.");
         return false;
@@ -2503,7 +2503,7 @@ string bglParser::applyI6NameClause(token& nameTok, const token& otherTok, bool 
     if(!isAsBgl){
         if(isExtern){
             parsingError(format("'asI6' names the Inform 6 symbol to emit, so it cannot apply to an "
-                                "'extern' declaration — that adopts a symbol Inform 6 already "
+                                "'extern' declaration: that adopts a symbol Inform 6 already "
                                 "defines. Write `extern … {0} asBgl {1};` to give '{0}' the Beguile "
                                 "name '{1}'.", declared, otherName));
             return "";
@@ -2598,7 +2598,7 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
         string shown = tok.originalValue.empty() ? tok.value : tok.originalValue;
         // `Box::hello()`: the lexer glues `::` onto the name that follows.
         if(tok.is(eTokenType::dataType) && nx.value.rfind("::", 0) == 0 && nx.value.size() > 2)
-            parsingError(format("'{0}::{1}' — a class's member is reached with '.': `{0}.{1}`.", shown, nx.value.substr(2)));
+            parsingError(format("'{0}::{1}': a class's member is reached with '.': `{0}.{1}`.", shown, nx.value.substr(2)));
     }
     if(tok.is("outer") && file.peekToken().is(token::period) && getCurrentCompileContext() == eCompileContext::codeBlock)
         if(auto* f = dynamic_cast<functionDef*>(&contextObject))
@@ -2639,7 +2639,7 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
     }
     if(tok.is(eTokenType::eof)) {
         if(getCurrentCompileContext() == eCompileContext::codeBlock)
-            parsingError(file.braceLines.empty() ? string("Unexpected end of file — missing closing '}'")
+            parsingError(file.braceLines.empty() ? string("Unexpected end of file: missing closing '}'")
                 : format("The '{{' at line {0} is never closed: the file ends before its '}}'.", file.braceLines.back()));
         return true;
     }
@@ -2886,7 +2886,7 @@ bool bglParser::processStatementDispatchInner(token tok, abstractObject& context
                 string example = q.isConst
                     ? "const int " + name + " = ...;"
                     : "int " + name + " = ...;";
-                parsingError(format("Missing type before identifier '{0}'. Variable declarations require a type — e.g. `{1}`", name, example));
+                parsingError(format("Missing type before identifier '{0}'. Variable declarations require a type, e.g. `{1}`", name, example));
             }
         }
         if(tok.is(token::bracketOpen))
@@ -3110,7 +3110,7 @@ bool bglParser::processParameterList(functionDef& funcDef){
         if(param.isRef){
             string why = refNotApplicable(getDispatchClass(param.type.name), typeDisplayName(param.type.name));
             if(why.empty() && languageService.findEnum(param.type.name) != nullptr)
-                why = "'" + typeDisplayName(param.type.name) + "' is an enumeration — its value is held directly, so there is nothing to refer to.";
+                why = "'" + typeDisplayName(param.type.name) + "' is an enumeration: its value is held directly, so there is nothing to refer to.";
             if(!why.empty()) parsingError("'ref': " + why);
         }
         tok=file.getToken(); // name, "=", ",", or ")"

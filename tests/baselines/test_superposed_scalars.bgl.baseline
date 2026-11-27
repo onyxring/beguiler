@@ -9,6 +9,8 @@ constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
 
 constant USEDLIMIT = 6;
+
+
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;

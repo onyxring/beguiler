@@ -2107,9 +2107,9 @@ json LspServer::hoverVerbExtendKeyword(const string& word, const string& docText
         }
         if(inVerbBody) {
             string hd;
-            if(word == "synonyms")      hd = "**`synonyms`** — declare true I6 aliases of this verb: `synonyms = {.w1, .w2};` emits `Verb 'w1' 'w2' = '<anchor>';`, so any later `extend` of the verb flows to them too (unlike copying a grammar line, which is a one-time snapshot).";
-            else if(word == "priority") hd = "**`priority`** — grammar match order. On the verb block it sets the anchor (default `10`); inside an `extend` it is a block-local directive stamped onto the lines that block adds. Lower number = matched earlier.";
-            else                        hd = "**`grammar`** — this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts an extern verb's word), `replace grammar = { … }` wipes and replaces.";
+            if(word == "synonyms")      hd = "**`synonyms`**: declare true I6 aliases of this verb: `synonyms = {.w1, .w2};` emits `Verb 'w1' 'w2' = '<anchor>';`, so any later `extend` of the verb flows to them too (unlike copying a grammar line, which is a one-time snapshot).";
+            else if(word == "priority") hd = "**`priority`**: grammar match order. On the verb block it sets the anchor (default `10`); inside an `extend` it is a block-local directive stamped onto the lines that block adds. Lower number = matched earlier.";
+            else                        hd = "**`grammar`**: this verb's grammar lines. In an `extend`: `grammar += { … }` appends, `grammar -= { … }` removes matching lines (or evicts an extern verb's word), `replace grammar = { … }` wipes and replaces.";
             handled = true;
             return {{"contents", {{"kind", "markdown"}, {"value", hd}}}};
         }
@@ -3575,8 +3575,8 @@ json LspServer::completeExtendBody(int line, int col, const string& docText, boo
                             {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
                     };
                     add("grammar",  "verb grammar",  "Add or alter this verb's grammar: `grammar += { … }` (append), `grammar -= { … }` (remove matching lines / evict a word), `replace grammar = { … }` (wipe and replace).");
-                    add("synonyms", "verb synonyms", "`synonyms = {.w1, .w2};` — declare true I6 aliases of this verb (emits `Verb 'w1' 'w2' = '<anchor>';`), so later extensions flow to them.");
-                    add("priority", "verb priority", "`priority = N;` — block-local grammar priority stamped onto the lines this extend adds (lower number = matched earlier).");
+                    add("synonyms", "verb synonyms", "`synonyms = {.w1, .w2};`: declare true I6 aliases of this verb (emits `Verb 'w1' 'w2' = '<anchor>';`), so later extensions flow to them.");
+                    add("priority", "verb priority", "`priority = N;`: block-local grammar priority stamped onto the lines this extend adds (lower number = matched earlier).");
                     add("replace",  "member replace","Qualifier to override an inherited member: `replace grammar = { … }` or `replace void handler(){ … }`.");
                     handled = true; return items;
                 }
@@ -3594,9 +3594,9 @@ json LspServer::completeExtendBody(int line, int col, const string& docText, boo
                             {"detail", detail},
                             {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
                     };
-                    add("inject", "add an element", "`inject <element> [after X | before X | first | last];` — splice an element in at a position (no clause = append). The element is a reference, a value, or an inline object `Type{ … }` / inferred `{ … }`.");
-                    add("remove", "remove an element", "`remove <name | [N]>;` — remove an element by reference or index.");
-                    add("move",   "reposition an element", "`move <name | [N]> <after Y | before Y | first | last>;` — reposition an existing element (remove-then-inject at the new spot).");
+                    add("inject", "add an element", "`inject <element> [after X | before X | first | last];`: splice an element in at a position (no clause = append). The element is a reference, a value, or an inline object `Type{ … }` / inferred `{ … }`.");
+                    add("remove", "remove an element", "`remove <name | [N]>;`: remove an element by reference or index.");
+                    add("move",   "reposition an element", "`move <name | [N]> <after Y | before Y | first | last>;`: reposition an existing element (remove-then-inject at the new spot).");
                     handled = true; return items;
                 }
             }
@@ -3685,15 +3685,15 @@ json LspServer::completeMemberModifiers(int line, int col, const string& docText
                             {"detail", detail},
                             {"documentation", {{"kind", "markdown"}, {"value", doc}}}});
                     };
-                    add("static", "static member", "`static` — one shared slot at class level, not per-instance.");
-                    add("const",  "constant member", "`const` — an immutable member (must be initialized).");
-                    add("replace","override inherited", "`replace` — override an inherited member (`replace void handler(){…}` / `replace grammar = {…}`).");
-                    add("emitter","emitter member", "`emitter` — an inline-I6 member (expanded at the call site, no runtime call).");
-                    add("superposed","superposed member", "`superposed` — a lazily-emitted, zero-footprint member.");
+                    add("static", "static member", "`static`: one shared slot at class level, not per-instance.");
+                    add("const",  "constant member", "`const`: an immutable member (must be initialized).");
+                    add("replace","override inherited", "`replace`: override an inherited member (`replace void handler(){…}` / `replace grammar = {…}`).");
+                    add("emitter","emitter member", "`emitter`: an inline-I6 member (expanded at the call site, no runtime call).");
+                    add("superposed","superposed member", "`superposed`: a lazily-emitted, zero-footprint member.");
                     if(isClassBody) {
-                        add("inline", "positional slot", "`inline` — mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }`.");
-                        add("required", "required member", "`required` — every object of the class must give this member a value, itself or through a subclass.");
-                        add("default","class default member", "`default` — a member value provided as the class default (valid in class declarations only).");
+                        add("inline", "positional slot", "`inline`: mark a member so it takes a positional value in inline object construction `Type{ v1, v2 }`.");
+                        add("required", "required member", "`required`: every object of the class must give this member a value, itself or through a subclass.");
+                        add("default","class default member", "`default`: a member value provided as the class default (valid in class declarations only).");
                     }
                     handled = true; return json{{"isIncomplete", true}, {"items", items}};
                 }
@@ -3794,7 +3794,7 @@ json LspServer::completeKeywordSnippet(int col, const string& lineText, bool& ha
                 {"insertText", "enum ${1:Name} {\n\t${2:first},\n\t$0\n}"},
                 {"insertTextFormat", 2},             // 2 = Snippet
                 {"documentation", {{"kind", "markdown"}, {"value",
-                    "**enum** — a named set of integer constants.\n\n"
+                    "**enum**: a named set of integer constants.\n\n"
                     "```beguile\n"
                     "enum Name {\n"
                     "    first,       // 1\n"
@@ -4551,7 +4551,7 @@ static const set<string> bglModifiers = {
 // likewise not a qualifier — the parser answers "Illegal global identifier".
 static const set<string> bglDirectives = {
     "#include", "#once", "#define", "#defineI6", "#declare", "#if", "#else", "#endif",
-    "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit"
+    "#i6", "#startup", "#emitfirst", "#emitlast", "#using", "#exit", "#emitAfterI6Include"
 };
 
 int LspServer::classifyWord(const string& word) const {

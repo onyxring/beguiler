@@ -76,15 +76,16 @@ Constant beguiler = 5;
       return r;
    ];
    [ _bglByteArrayLocalAlloc nbytes words r i;
-      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      words = 3 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
       r = _bglFrameAlloc(words);
       for (i = 0: i < words: i++) r-->i = 0;
-      r-->0 = nbytes;
-      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
-      return r + WORDSIZE;
+      r-->0 = $9084;
+      r-->1 = nbytes;
+      r-->2 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + 2 * WORDSIZE;
    ];
    [ _bglByteArrayLocalFree nbytes;
-      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+      _bglFrameFree(3 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
@@ -93,13 +94,19 @@ Constant beguiler = 5;
 
     Replace HandleGlkEvent _bglAuthorGlkEvent;
 
+global _bglLinkHeld = 0;
+global _bglLinkMarkCount = 0;
 constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 16384;
 #Ifdef _bglHeapWords;#Endif;
+constant _bglStatusRock = 1073741824;
+
+
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
+
 global _bglInitDone = 0;
 #Ifdef TARGET_GLULX;
 [ _bglLowAddressGuard;
@@ -152,7 +159,7 @@ object _glulx
 ];
 [_bglResumeLineInput inputBuf typed;
 ];
-[_bglGlkEvent event context inputBuf _l_target known n typed;
+[_bglGlkEvent event context inputBuf _l_target known n saved held printed typed ch m;
     if (_bgl_bglOpCodes_aload(event, 0) ~= 8) {
         return false;
     }
@@ -164,17 +171,51 @@ object _glulx
     if (~~known) {
         return false;
     }
-    typed = 0;
-    if (context == 0) {
-        typed=_bglsuspendlineinput(inputBuf);
+    if (context ~= 0) {
+         _l_target(); 
+        return true;
     }
+    saved=__glkHook(72);
+    held=__glkHook(313, _bgllinktext, _bgl_link_text, 1, 0);
+    __glkHook(71, held);
+    _bgllinkheld=held;
+    _bgllinkmarkcount = 0;
      _l_target(); 
-    if (context == 0) {
-        _bglresumelineinput(inputBuf, typed);
-        rtrue;
+    _bgllinkheld = 0;
+    __glkHook(71, saved);
+    __glkHook(68, held, _bgllinkcounts);
+    printed= _bgllinkcounts-->1;
+    if (printed > _bgl_link_text) {
+        printed=_bgl_link_text;
     }
+    if (printed == 0) {
+        return true;
+    }
+    typed=_bglsuspendlineinput(inputBuf);
+    ch = 0;
+    m = 0;
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(258, _bglcurrentwindow());
+    }
+    for (n = 0 : n < printed : n++) {
+        for (m = 0 : m < _bgllinkmarkcount : m++) {
+            if ( _bgllinkmarks-->(m * 3)  == n) {
+                __glkHook(256,  _bgllinkmarks-->(m * 3 + 2) );
+            }
+            if ( _bgllinkmarks-->(m * 3 + 1)  == n) {
+                __glkHook(256, 0);
+            }
+        }
+        ch= _bgllinktext-->n ;
+        @streamunichar ch;
+    }
+    if (_bgllinkmarkcount > 0) {
+        __glkHook(256, 0);
+    }
+    _bglresumelineinput(inputBuf, typed);
     return true;
 ];
+array _bgllinkcounts --> 2;
 [_bglCurrentWindow stream win;
     stream=__glkHook(72);
     win=__glkHook(32, 0, 0);
@@ -234,6 +275,11 @@ object bgl
         if (_bglAuthorGlkEvent) return _bglAuthorGlkEvent(event, context, buffer);
         return 0;
     ];
+
+
+    Constant _BGL_LINK_TEXT 512;
+    Array _bglLinkText --> _BGL_LINK_TEXT;   ! what a link printed, while line input waited
+    Array _bglLinkMarks --> 48;               ! up to 16 links it printed:  start, end, value
 
 
     Array _bglLinkRoutines --> 33;   ! count, then up to 32 routines

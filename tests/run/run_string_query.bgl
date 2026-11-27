@@ -1,5 +1,5 @@
 /*  Non-mutating introspection: assignment, length, isEmpty, search
-    (indexOf/startsWith/endsWith/contains), equality against literal and against
+    (indexOf/startsWith/endsWith/contains), equality (`equals`, and `==` by address) against literal and against
     another string, and switch dispatch on a string. Runtime-only truths.
     Ported from the retired WIP/stringRuntime harness. */
 // EXPECT_OUTPUT: assign-literal: hello
@@ -20,6 +20,8 @@
 // EXPECT_OUTPUT: eq-literal-false: no
 // EXPECT_OUTPUT: eq-string-true: yes
 // EXPECT_OUTPUT: eq-string-false: no
+// EXPECT_OUTPUT: addr-same: yes
+// EXPECT_OUTPUT: addr-literal: no
 // EXPECT_OUTPUT: switch-case: 2
 #beguilerSettings { target = z5; informName = "none"; }
 #include <string>
@@ -55,12 +57,16 @@ void search() {
 
 void equality() {
     string s; s = "test";
-    print("eq-literal-true: ");  print((s == "test")  ? "yes" : "no"); print("^");
-    print("eq-literal-false: "); print((s == "other") ? "yes" : "no"); print("^");
+    print("eq-literal-true: ");  print(s.equals("test")  ? "yes" : "no"); print("^");
+    print("eq-literal-false: "); print(s.equals("other") ? "yes" : "no"); print("^");
     string o; o = "test";
-    print("eq-string-true: ");   print((s == o) ? "yes" : "no"); print("^");
+    print("eq-string-true: ");   print(s.equals(o) ? "yes" : "no"); print("^");
     o = "different";
-    print("eq-string-false: ");  print((s == o) ? "yes" : "no"); print("^");
+    print("eq-string-false: ");  print(s.equals(o) ? "yes" : "no"); print("^");
+    // `==` between two strings compares addresses: the same string, but not an equal literal
+    string same; same = s;
+    print("addr-same: ");        print((s == same) ? "yes" : "no"); print("^");
+    print("addr-literal: ");     print((s == "test") ? "yes" : "no"); print("^");
 
     int code = 0;
     switch(s) {

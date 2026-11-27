@@ -1,0 +1,23 @@
+// run_emit_after_i6_include — extensions included above the library's files are emitted after the
+// file each names, and adjective answers the hooks last wherever it is included.
+// EXPECT_OUTPUT: [hooks: (_betterChoiceHooks) (_trackSeenHooks) (_dialogueHooks) (_bglLibraryHooks) (adjectiveParser)]
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#include <extensions/stdlib/adjective>
+#include <extensions/stdlib/betterChoice>
+#include <extensions/stdlib/trackSeen>
+#include <extensions/stdlib/dialogue>
+#includeI6 "parser"
+#includeI6 "verblib"
+object hall { short_name = "Hall"; string description = "A hall."; attributes = {light}; }
+bool Initialise() {
+    location = hall;
+    object each;
+    print("[hooks:");
+    #i6 { objectloop(each in LibraryExtensions) print " ", (object) each; }
+    print("]^");
+    rfalse;
+}
+#includeI6 "grammar"

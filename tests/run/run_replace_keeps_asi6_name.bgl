@@ -1,0 +1,29 @@
+// run_replace_keeps_asi6_name — a `replace` with no `asI6` keeps the I6 name the replaced method's `asI6` gave,
+// so calls compiled before the replacement reach it: on a superposed object, and on a class.
+// EXPECT_OUTPUT: new object, new class
+#beguilerSettings { target = z5; informName = "none"; }
+
+superposed _bglObject greeter {
+    void hello() asI6 greeter_hello { print("old object"); }
+}
+superposed _bglObject caller {
+    void go() asI6 caller_go { greeter.hello(); }
+}
+class card {
+    void hello() asI6 card_hello { print("old class"); }
+}
+void show(card c){ c.hello(); }
+
+extend greeter {
+    replace void hello(){ print("new object"); }
+}
+extend class card {
+    replace void hello(){ print("new class"); }
+}
+
+card aCard;
+void main(){
+    caller.go();
+    print(", ");
+    show(aCard);
+}

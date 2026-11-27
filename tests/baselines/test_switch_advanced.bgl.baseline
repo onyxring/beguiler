@@ -13,6 +13,8 @@ constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
 constant bglStringHeapSize = 5120;
 constant bglStringCaptureSize = 512;
+global _bglByteHeapFrom = 0;
+global _bglByteHeapTo = 0;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -629,6 +631,8 @@ array _bglbufglulxstreams table 16;
             move obj to _bglObjectHeap;
         }
         _bglBuf._registerTracked(_bglStrNoRoom + 2 * WORDSIZE);
+        _bglByteHeapFrom = _bglStrHeap;
+        _bglByteHeapTo = _bglStrHeap + bglStringHeapSize;
         _bglStrReady = true;
     ];
 
@@ -1443,10 +1447,7 @@ object _bglBuf
     }
   ],
        _bglText_size [buf;
-    if (buf == 0) {
-        return -1;
-    }
-    return buf-->(-1);
+    return _bglbytesize(buf);
   ],
        _bglText_length [buf;
     return buf-->(0);
@@ -1842,6 +1843,19 @@ object _bglBuf
     return self._bglText_trimRight(self._bglText_trimLeft(buf));
   ]
 ;
+[_bglByteSize arr a;
+    a = arr;
+    if (arr == 0) {
+        return -1;
+    }
+    if ( a-->-2  == 36996) {
+        return  a-->-1 ;
+    }
+    if (_bglbyteheapto ~= 0 && _bglunsignedcompare(arr,_bglbyteheapfrom) >= 0&&_bglunsignedcompare(arr,_bglbyteheapto) < 0) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
+];
 [_bglCharToLower c;
     switch (c) {
         'A' to 'Z':
@@ -1878,6 +1892,23 @@ object _bglBuf
 ];
 object _bglStringLockStack
 ;
+[_bglUnsignedCompare x y u v;
+    if (x == y) {
+        return 0;
+    }
+    if (x < 0 && y >= 0) {
+        return 1;
+    }
+    if (x >= 0 && y < 0) {
+        return -1;
+    }
+    u=x & 32767;
+    v=y & 32767;
+    if (u > v) {
+        return 1;
+    }
+    return -1;
+];
 [_bglAt arr i isWrite n;
     n=_bglarrsize(arr);
     if (i >= 0 && i < n) {

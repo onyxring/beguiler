@@ -76,12 +76,12 @@ void bglParser::parseEnumEmitterMethod(enumDef& en){
     returnType.value = maybeParseUnionTail(returnType.value);
     token name = file.getToken({eTokenType::identifier, eTokenType::dataType});
     if(name.is("operator"))
-        parsingError(format("enum '{0}': operators cannot be attached to an enum — only emitter methods "
+        parsingError(format("enum '{0}': operators cannot be attached to an enum; only emitter methods "
                             "(`emitter T name(){{ ... }}`) are allowed", en.dName()));
     token paren = file.getToken();
     bool isValue = paren.is(token::braceOpen);
     if(!paren.is(token::parenOpen) && !isValue)
-        parsingError(format("enum '{0}': '{1}' must be an emitter method or value — expected '(' or '{{' after the name",
+        parsingError(format("enum '{0}': '{1}' must be an emitter method or value; expected '(' or '{{' after the name",
                             en.dName(), (string)name));
     functionDef& fd = *(new functionDef());
     fd.name = (string)name; fd.displayName = name.originalValue;
@@ -166,7 +166,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
     int val=1;
     while(true){
         tok=file.getToken();
-        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside enum — missing closing '}'");
+        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside enum: missing closing '}'");
         if(tok.is(token::braceClose)) break;
         if(tok.is(token::comma)) continue;   // tolerate a separator between entries
         // Emitter method member: `emitter <type> name(params){ body }` (declaration or `extend enum`).
@@ -178,7 +178,7 @@ bool bglParser::processEnumDeclaration(token tok, bool isExternal, token nameOve
         // A misplaced member declaration (static/const/… method): only emitter methods may be attached.
         if(isEnumMemberQualifier(tok))
             parsingError(format("enum '{0}': only emitter methods (`emitter T name(){{ ... }}`) may be "
-                                "attached to an enum — '{1}' members are not allowed", newEnum.dName(), (string)tok));
+                                "attached to an enum: '{1}' members are not allowed", newEnum.dName(), (string)tok));
         // Otherwise this is a value entry.
         if(!namedHere.insert(tok.value).second)
             parsingError(format("enum '{0}' already has a member '{1}'.", newEnum.dName(),
@@ -1451,7 +1451,7 @@ bool bglParser::processVariableDeclaration(token dataType, token variableName, t
     // `array<T>` / `array<char>` are handled earlier via processArrayDeclaration and never
     // reach here as a plain variable declaration.
     if(dataType.value == "array")
-        parsingError("bare 'array' is not a valid type — declare the element type: array<T>");
+        parsingError("bare 'array' is not a valid type: declare the element type: array<T>");
     rejectPatternElementDeclaration(dataType.value);
     // A plain file-scope declaration of a reference class with no value is that class's object, as with `{ }`.
     if(symbol.is(token::endStatement) && !isRef && !isExternal && !isConst && !isSuperposed && !isAdditive
@@ -1666,7 +1666,7 @@ int bglParser::readCompileTimeInt(const string& what){
             return 0;
         }
     }
-    parsingError(format("{0} must be a compile-time integer — an integer literal, a #define'd integer, a "
+    parsingError(format("{0} must be a compile-time integer: an integer literal, a #define'd integer, a "
                         "`const int` set to an integer literal, or an integer #beguilerSettings property. Got '{1}'.",
                         what, t.value));
     return 0;
@@ -1826,7 +1826,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
                     funcDef.dName()));
             if(same)
                 parsingError(format("'{0}' is already defined with these parameter types. Overloads must "
-                    "differ in their parameters — a return type alone cannot tell two calls apart.",
+                    "differ in their parameters: a return type alone cannot tell two calls apart.",
                     funcDef.displayName.empty() ? funcDef.name : funcDef.displayName));
         }
     }
@@ -1920,7 +1920,7 @@ bool bglParser::processRoutineDeclaration(token returnType, token name, abstract
         // (a library routine) or is supplied by a Beguile `default` override — so the extern itself
         // emits nothing. A body would misleadingly look like an (empty) definition; reject it.
         if(file.peekToken().is(token::braceOpen))
-            parsingError(format("extern function '{0}' cannot have a body — declare it with ';'. "
+            parsingError(format("extern function '{0}' cannot have a body: declare it with ';'. "
                                 "Its implementation comes from I6, or from a `default` override.", funcDef.name));
         // `extern int I6Twice(int x) asBgl twice;`: Beguile calls it `twice`, Inform 6 knows it as I6Twice.
         if(file.peekToken().is("asbgl")){
@@ -2059,7 +2059,7 @@ bool bglParser::processGrammarObjectDeclaration(const string& grammarName){
 
     token tok = file.getToken();
     while(tok.isNot(token::braceClose)){
-        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside settings/object body — missing closing '}'");
+        if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside settings/object body: missing closing '}'");
         // Determine type — explicit or inferred
         string memberType;
         bool isArray = false;
@@ -2271,7 +2271,7 @@ grammarLine bglParser::parseGrammarLineContent(){
                 token sep = file.getToken({token::comma, token::braceClose});
                 if(sep.is(token::braceClose)) break;                     // end of literal
                 if(line.withI6Synonyms)                                  // something follows withI6Synonyms
-                    parsingError("'withI6Synonyms' must be the last element in a grammar line literal — no tokens may follow it");
+                    parsingError("'withI6Synonyms' must be the last element in a grammar line literal: no tokens may follow it");
                 // A comma after `reverse`: the only element allowed to follow it is `withI6Synonyms`.
                 token nxt = file.getToken({eTokenType::identifier, eTokenType::dataType});
                 if(nxt.value != "withi6synonyms")
@@ -2341,7 +2341,7 @@ vector<grammarLine> bglParser::parseGrammarLines(){
     } else {
         token tok = file.getToken();
         while(tok.isNot(token::braceClose)){
-            if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar — missing closing '}'");
+            if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside grammar: missing closing '}'");
             tok.assert(token::braceOpen, "Expected '{' to start a grammar line");
             result.push_back(parseGrammarLineContent());
 

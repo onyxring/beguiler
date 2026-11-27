@@ -18,13 +18,15 @@
 // `ext_topicAsk`, `ext_topicTell` can stop a topic, and `ext_topicAsked`, `ext_topicTold` follow one.
 // "guard, hello" means SAY HELLO TO GUARD.
 //
-// Include it after the library's verblib, and <extensions/stdlib/dialogueGrammar> after its grammar.
+// Its grammar is in <extensions/stdlib/dialogueGrammar>, which it includes.
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/informLibrary>
 #include <extensions/stdlib/hooks/keyboard>
 #include <extensions/stdlib/hooks/parser>
 #include <extensions/stdlib/betterChoice>
+#include <extensions/stdlib/dialogueGrammar>
 #include <languages/english>
 
 extern int     advance_warning;   // the object the parser saw further along the command
@@ -33,8 +35,8 @@ extern const int SCORE__IFGOOD;
 
 object playerInteractingWith = null;   /// Who the player is talking to.
 
-const int ORDIA_ALL = 1;               /// In `knownBy` or `context`: everyone.
-const int ORDIA_RESPONSE_ONLY = -1;    /// As a quip's second part: the first is only ever a reply.
+superposed const int ORDIA_ALL = 1;              /// In `knownBy` or `context`: everyone.
+superposed const int ORDIA_RESPONSE_ONLY = -1;   /// As a quip's second part: the first is only ever a reply.
 
 attribute learnable;                   /// A listener told this topic learns it, through `learnTopic`.
 property learnTopic;                   /// A character's routine for a topic it has been told.

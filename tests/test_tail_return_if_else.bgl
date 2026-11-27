@@ -1,0 +1,19 @@
+// A routine ending in if/else and a constant return: the return is copied into both branches (the printed
+// line becomes print_ret), and the original, which no path reaches, is left out.
+#beguilerSettings { target = z5; informName = "none"; }
+bool pick(bool a){
+    if(a) print("yes^");
+    else print("no^");
+    rtrue;
+}
+bool pickNested(int n){
+    if(n == 1) print("one^");
+    else if(n == 2) print("two^");
+    else print("many^");
+    rtrue;
+}
+bool pickOpen(bool a){
+    if(a) print("only^");
+    rtrue;
+}
+void main(){ pick(true); pickNested(2); pickOpen(false); }

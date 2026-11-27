@@ -70,6 +70,7 @@ function gridText(content){
     eachRun(content, run => { if(run.text) t += run.text; });
     return t;
 }
+let afterClick = false;   // the last input was a hyperlink click
 let promptIdx = -1;   // where the latest update's trailing `>` prompt starts in `out`, or -1
 function snapshotGrids(){
     const snaps = [];
@@ -82,6 +83,7 @@ function snapshotGrids(){
 function collect(content){
     const tagged = [];   // other windows' lines: after the main window's text for the same update,
     let promptAt = -1;   // but before its trailing `>` prompt, which the command's echo continues
+    let mainAdded = false;
     for(const win of content || []){
         if(showGrids && win.lines){
             const g = grids.get(win.id) || [];
@@ -99,6 +101,7 @@ function collect(content){
                 if(t) tagged.push(`\n[win ${win.id}] ` + t + '\n');
                 continue;
             }
+            mainAdded = true;
             if(!para.append) out.push('\n');
             const paraStart = out.length;
             let paraText = '';
@@ -110,6 +113,17 @@ function collect(content){
             if(!para.append && paraText.trim() === '>') promptAt = paraStart - 1;
         }
     }
+    // A link the story handled without touching the line input leaves the prompt as it was:  a fresh `>`
+    // here keeps the click a step of its own in the transcript, as a story which re-prompts shows it.
+    if(afterClick && promptAt < 0 && !mainAdded){
+        afterClick = false;
+        for(const t of tagged) out.push(t);
+        out.push('\n');
+        promptIdx = out.length;
+        out.push('>');
+        return;
+    }
+    afterClick = false;
     if(promptAt >= 0) out.splice(promptAt, 0, ...tagged);
     else for(const t of tagged) out.push(t);
     promptIdx = promptAt >= 0 ? promptAt + tagged.length : -1;
@@ -178,6 +192,7 @@ glkote.update = (arg) => {
             return finish();
         }
         const partial = (click[2] !== undefined && req.type === 'line') ? { [req.id]: click[2] } : undefined;
+        afterClick = true;
         setImmediate(() => iface.accept({ type: 'hyperlink', gen: arg.gen, window: link.win, value: link.value, partial }));
         return;
     }

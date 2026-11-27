@@ -1,9 +1,9 @@
 //===================================================================================================
 // menu.bgl — a tree of menus for help, hints and about screens
 // A menu's children are its choices; `show()` runs the menu.
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <ui>
 #include <extensions/general/center>
 #include <bindings/i6StandardLibrary>

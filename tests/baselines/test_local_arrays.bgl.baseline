@@ -76,15 +76,16 @@ Constant beguiler = 5;
       return r;
    ];
    [ _bglByteArrayLocalAlloc nbytes words r i;
-      words = 2 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
+      words = 3 + ((nbytes + WORDSIZE - 1) / WORDSIZE);
       r = _bglFrameAlloc(words);
       for (i = 0: i < words: i++) r-->i = 0;
-      r-->0 = nbytes;
-      r-->1 = nbytes;   ! the length: a buffer starts full, as I6's does
-      return r + WORDSIZE;
+      r-->0 = $9084;
+      r-->1 = nbytes;
+      r-->2 = nbytes;   ! the length: a buffer starts full, as I6's does
+      return r + 2 * WORDSIZE;
    ];
    [ _bglByteArrayLocalFree nbytes;
-      _bglFrameFree(2 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
+      _bglFrameFree(3 + ((nbytes + WORDSIZE - 1) / WORDSIZE));
    ];
    [ _bglByteArrayLocalCopy dst src i;
       for (i = 0: i < src-->0: i++) dst->(WORDSIZE + i) = src->(WORDSIZE + i);
@@ -94,6 +95,8 @@ constant _bglWorldBufSize = 128;
 #Ifdef _bglWorldBufSize;#Endif;
 constant _bglHeapWords = 1536;
 #Ifdef _bglHeapWords;#Endif;
+global _bglByteHeapFrom = 0;
+global _bglByteHeapTo = 0;
 global _bglWorldBufIdx = -1;
 global _bglHeap = 0;
 global _bglPromptHook = 0;
@@ -340,11 +343,24 @@ object _bglArray
     return _bgloutofrange(i,n,iswrite);
 ];
 [_bglByteAt arr i isWrite n;
-    n= ((arr))-->-1;
+    n=_bglbytesize(arr);
     if (i >= 0 && i < n) {
         return arr + WORDSIZE + i;
     }
     return _bgloutofrange(i,n,iswrite);
+];
+[_bglByteSize arr a;
+    a = arr;
+    if (arr == 0) {
+        return -1;
+    }
+    if ( a-->-2  == 36996) {
+        return  a-->-1 ;
+    }
+    if (_bglbyteheapto ~= 0 && _bglunsignedcompare(arr,_bglbyteheapfrom) >= 0&&_bglunsignedcompare(arr,_bglbyteheapto) < 0) {
+        return  a-->-1 ;
+    }
+    return  a-->0 ;
 ];
 [_bglHeapAdopt a b;
     b = 0;

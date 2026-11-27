@@ -16,6 +16,7 @@
 // before a visible one; define either as an I6 constant first to change it.
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/keyboard>
 #include <extensions/stdlib/hooks/verbs>
 #include <array>
@@ -27,6 +28,8 @@
     Default queuedCommandPrompt "^>>";
     Property individual ext_canAttemptAction;
     Property individual ext_isCompletedAction;
+    #Ifdef ext_canAttemptAction; #Endif;
+    #Ifdef ext_isCompletedAction; #Endif;
 }
 extern const int actionQueueBuffer;       /// How many commands can wait at once.
 extern const string queuedCommandPrompt;  /// What is printed before a visible queued command.
@@ -342,7 +345,7 @@ superposed int _runQueuedCommand(var inputBuffer) {
 
 object _playerCommandHooks {
     parent = LibraryExtensions;
-    bool ext_messages(int n, int x1, int x2) {
+    bool ext_messages() {
         if(action != Miscellany) rfalse;
         switch(lm_n) {
             case 99: rtrue("[Queued actions interrupted by an event.]^");

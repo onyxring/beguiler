@@ -1,0 +1,15 @@
+// run_lambda_throw_capture — a lambda passed as an argument writes the locals it captured back even when
+// it, or the routine that called it, throws: the catch sees the writes (D2152); a throw before the lambda
+// exists leaves the local as it was.
+// EXPECT_OUTPUT: 3 6 5
+#beguilerSettings { target = z5; informName = "none"; }
+void each3(func<void, int> fn) { for (int i in 1 to 3) fn(i); }
+void each3Then(func<void, int> fn) { for (int i in 1 to 3) fn(i); throw 9; }
+void main() {
+    int seen = 0;
+    try { each3((int i) => { seen += i; if (i >= 2) throw i; }); } catch (int hit) { print(seen, " "); }
+    int total = 0;
+    try { each3Then((int i) => { total += i; }); } catch (int hit) { print(total, " "); }
+    int other = 5;
+    try { if (other > 0) throw 1; each3((int i) => { other += i; }); } catch (int hit) { print(other); }
+}

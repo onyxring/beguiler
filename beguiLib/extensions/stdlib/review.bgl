@@ -1,13 +1,13 @@
 //===================================================================================================
 // review.bgl — REVIEW: look again, or examine again, without a turn passing
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/trackSeen>
 
 verb Review {
     meta = true;
-    grammar = { {.review} };
+    grammar = {.review};
 
     void handler() {
         location.ungive(beenSeen);
@@ -18,7 +18,7 @@ verb Review {
 
 verb ReviewObj {
     meta = true;
-    grammar = { {.review, NOUN} };
+    grammar = {.review, NOUN};
 
     void handler() {
         if(noun.hasnt(beenSeen)) {

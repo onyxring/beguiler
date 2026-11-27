@@ -70,12 +70,52 @@ bool _bglGlkEvent(var event, int context, var inputBuf){
     #i6 { for (n = _bglLinkRoutines-->0 : n > 0 : n--) if (_bglLinkRoutines-->n == target) known = true; }
     if(!known) return false;
 
-    int typed = 0;
-    if(context == 0) typed = _bglSuspendLineInput(inputBuf);
+    if(context != 0){
+        #i6 { target(); }
+        return true;
+    }
+    // The line input waiting in the main window stays as it is unless the link prints:  its text is held
+    // here, and only then is the input paused (which echoes the line typed so far) to print it
+    int saved = bgl.asm.streamGetCurrent();
+    int held = bgl.asm.streamOpenMemoryUni((int)_bglLinkText, _BGL_LINK_TEXT, 1, 0);
+    bgl.asm.streamSetCurrent(held);
+    _bglLinkHeld = held;
+    _bglLinkMarkCount = 0;
     #i6 { target(); }
-    if(context == 0) _bglResumeLineInput(inputBuf, typed);
+    _bglLinkHeld = 0;
+    bgl.asm.streamSetCurrent(saved);
+    bgl.asm.streamClose(held, (int)_bglLinkCounts);
+    int printed = _bglLinkCounts[1];
+    if(printed > _BGL_LINK_TEXT) printed = _BGL_LINK_TEXT;
+    if(printed == 0) return true;
+    int typed = _bglSuspendLineInput(inputBuf);
+    int ch = 0;
+    int m = 0;
+    if(_bglLinkMarkCount > 0) bgl.asm.requestHyperlinkEvent(_bglCurrentWindow());
+    // The links it printed are set again, where they were
+    for(n = 0; n < printed; n++){
+        for(m = 0; m < _bglLinkMarkCount; m++){
+            if(_bglLinkMarks[m * 3] == n) bgl.asm.setHyperlink(_bglLinkMarks[m * 3 + 2]);
+            if(_bglLinkMarks[m * 3 + 1] == n) bgl.asm.setHyperlink(0);
+        }
+        ch = _bglLinkText[n];
+        bgl.asm.streamunichar(ch);
+    }
+    if(_bglLinkMarkCount > 0) bgl.asm.setHyperlink(0);
+    _bglResumeLineInput(inputBuf, typed);
     return true;
 }
+rawArray<int> _bglLinkCounts[2];   // A link's printing:  read, written
+int _bglLinkHeld = 0;              // The stream holding a link's printing, while it runs
+int _bglLinkMarkCount = 0;         // The links it printed, as start, end, value in _bglLinkMarks
+#emitlast {
+    Constant _BGL_LINK_TEXT 512;
+    Array _bglLinkText --> _BGL_LINK_TEXT;   ! what a link printed, while line input waited
+    Array _bglLinkMarks --> 48;               ! up to 16 links it printed:  start, end, value
+}
+extern const int _BGL_LINK_TEXT;
+extern rawArray<int> _bglLinkText;
+extern rawArray<int> _bglLinkMarks;
 
 // Only a value recorded here is called as a link target
 #emitlast {
@@ -91,6 +131,18 @@ superposed void _bglNoteLinkRoutine(var v){
 
 superposed void _bglLink(string text, int value){
     if(bgl.asm.gestalt(11, 0) == 0){ print(text); return; }   // 11: gestalt_Hyperlinks
+    // Printed by a link while its text is held:  where the link falls is recorded, to set it again
+    if(_bglLinkHeld != 0 && bgl.asm.streamGetCurrent() == _bglLinkHeld){
+        int start = bgl.asm.streamGetPosition(_bglLinkHeld);
+        print(text);
+        if(_bglLinkMarkCount < 16){
+            _bglLinkMarks[_bglLinkMarkCount * 3] = start;
+            _bglLinkMarks[_bglLinkMarkCount * 3 + 1] = bgl.asm.streamGetPosition(_bglLinkHeld);
+            _bglLinkMarks[_bglLinkMarkCount * 3 + 2] = value;
+            _bglLinkMarkCount++;
+        }
+        return;
+    }
     int win = _bglCurrentWindow();
     if(win != 0) bgl.asm.requestHyperlinkEvent(win);
     bgl.asm.setHyperlink(value);
@@ -161,9 +213,16 @@ extend _bglPrintRules {
             bgl.asm.imageDrawScaled(bgl.ui.mainWin.id, image, align, 0, scaledSize.width, scaledSize.height);
         }
     }
-    extend _bglUi{
-    }
 #endif
+
+superposed int _bglWinRecoverHook = 0;   // <glulxWindow>'s part of recoverWindows, or 0
+extend _bglUi{
+    /// After a restore, undo or restart, bring the windows on screen back in line with the program's.
+    void recoverWindows() asI6 _bglUi_recoverWindows {
+        bgl.ui.statusBar._recover();
+        #i6 { if(_bglWinRecoverHook) indirect(_bglWinRecoverHook); }
+    }
+}
 
 //-- Story file header ---------------------------------------------------------
 /// The story file header: the release number and serial code the game was compiled with.

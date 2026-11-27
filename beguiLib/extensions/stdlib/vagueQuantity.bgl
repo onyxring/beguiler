@@ -8,6 +8,7 @@
 //
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/writeAfterEntry>
 #include <extensions/stdlib/hooks/writeList>
 

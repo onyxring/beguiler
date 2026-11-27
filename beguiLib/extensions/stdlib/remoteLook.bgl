@@ -1,8 +1,8 @@
 //===================================================================================================
 // remoteLook.bgl — look in a direction, and see into the room next door
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <bindings/i6StandardLibrary>
 
 property n_look;  property s_look;  property e_look;  property w_look;

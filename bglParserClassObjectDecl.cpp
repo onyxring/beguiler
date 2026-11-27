@@ -54,8 +54,11 @@ using namespace std;
 // read with the same conventions as an operator declaration (§5.6.6 / §10.8.6): `=`, `<=>`, `[]`,
 // `[]=`, `()`, `?`, and identifier-qualified forms like `prefix++`.
 // Keeps the routine a `replace` overrides reachable from its replacement, so tools can still read it.
+// Calls already made reach the routine by its I6 name, so the replacement keeps one an `asI6` gave.
 static void keepReplaced(functionDef& replacement, typeMember* old) {
-    if(auto* o = dynamic_cast<functionDef*>(old); o && !o->isPrePassStub && !replacement.replacedFunc) replacement.replacedFunc = o;
+    auto* o = dynamic_cast<functionDef*>(old);
+    if(o && !o->asI6Name.empty() && replacement.asI6Name.empty()) replacement.i6name = replacement.asI6Name = o->asI6Name;
+    if(o && !o->isPrePassStub && !replacement.replacedFunc) replacement.replacedFunc = o;
 }
 
 void bglParser::parseHideDirective(classDef& cls){
@@ -115,7 +118,7 @@ void bglParser::enforceHidden(classDef* receiverCls, const string& memberName,
     string what = hit->operatorName.empty()
                 ? format("Member '{0}' is hidden", memberName)
                 : format("'{0}.operator {1}' is hidden", memberName, hit->operatorName);
-    parsingError(format("{0} on type '{1}'. Cast the receiver to the base surface — e.g. (({2}){3}).{4} — to reach it.",
+    parsingError(format("{0} on type '{1}'. Cast the receiver to the base surface (e.g. (({2}){3}).{4}) to reach it.",
                         what, receiverCls->dName(), doorType,
                         receiverText.empty() ? string("x") : receiverText, memberName));
 }
@@ -134,7 +137,7 @@ void bglParser::parseClassTypeParameters(classDef& newClass, token nameTok, bool
     //   time replaces T with the use-site binding before any type query runs.
     //   Skipped on `extend class Foo<…>` — type parameters are part of the original decl.
     if(file.peekToken().is("<")){
-        if(isExtend) parsingError(format("extend class '{0}': type parameters cannot be added by extend — they are part of the original declaration", (string)nameTok));
+        if(isExtend) parsingError(format("extend class '{0}': type parameters cannot be added by extend; they are part of the original declaration", (string)nameTok));
         if(isAlias)  parsingError(format("alias class '{0}': type parameters are not supported on alias classes", (string)nameTok));
         file.getToken(); // consume '<'
         while(true){
@@ -166,7 +169,7 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
             if(!isExternal)
                 parsingError(format(kindWord(&newClass) + " '{0}': empty pool brackets '[]' are only valid on `extern class` (marker for an I6-defined pooled type)", (string)nameTok));
             if(isExtend)
-                parsingError(format("extend class '{0}': pool brackets cannot be added by extend — pool status is part of the original declaration", (string)nameTok));
+                parsingError(format("extend class '{0}': pool brackets cannot be added by extend; pool status is part of the original declaration", (string)nameTok));
             newClass.poolSize = -1; // extern marker
         } else if(inner.is(eTokenType::integer) || inner.is(eTokenType::identifier)){
             // `[N]` sized form — N may be an integer literal or an identifier referring to a
@@ -176,9 +179,9 @@ void bglParser::parseClassPoolSize(classDef& newClass, token& tok, token nameTok
             // field is set to a positive sentinel so all "is this pooled?" checks downstream
             // continue to work.
             if(isExternal)
-                parsingError(format("extern class '{0}': pool size cannot be specified — extern declarations describe I6-defined types, and the I6 declaration owns the pool size. Use 'extern class {0}[]' as a marker that the type is pooled, or omit the brackets.", (string)nameTok));
+                parsingError(format("extern class '{0}': pool size cannot be specified; extern declarations describe I6-defined types, and the I6 declaration owns the pool size. Use 'extern class {0}[]' as a marker that the type is pooled, or omit the brackets.", (string)nameTok));
             if(isExtend)
-                parsingError(format("extend class '{0}': pool size cannot be modified — pool size is part of the original declaration's contract", (string)nameTok));
+                parsingError(format("extend class '{0}': pool size cannot be modified; pool size is part of the original declaration's contract", (string)nameTok));
             if(isEmitterClass)
                 parsingError(format("emitter class '{0}': pool size is not valid (emitter classes have no I6 backing for instances)", (string)nameTok));
             if(isAlias)
@@ -229,7 +232,7 @@ void bglParser::parseClassInheritance(classDef& newClass, token& tok, token name
         };
         set<classDef*> visited;
         if(reachesSelf(parent, visited))
-            parsingError(format(kindWord(&newClass) + " '{0}': circular inheritance — '{1}' transitively inherits from '{0}'",
+            parsingError(format(kindWord(&newClass) + " '{0}': circular inheritance; '{1}' transitively inherits from '{0}'",
                                 newClass.dName(), parentDisplay));
     };
     // The pre-scan may already have linked these bases (drainDeferredClassBases); add each once.
@@ -386,7 +389,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         // Must be followed by ; (no body)
         token afterAuto = file.getToken();
         if(!afterAuto.is(token::endStatement))
-            parsingError("operator auto() cannot have a body — declare return type only");
+            parsingError("operator auto() cannot have a body: declare return type only");
         newClass.members.push_back(&funcDef);
         tok = file.getToken();
         return true;
@@ -397,7 +400,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
        && (funcDef.params.size() != 1 || funcDef.params[0]->type.name != newClass.name))
         parsingError(format("Emitter 'init' takes no parameters, or one '{0}' to copy from.", newClass.dName()));
     if(isMemberStatic && q.isEmitter)
-        parsingError(format("'{0}': 'static' and 'emitter' cannot be combined — an emitter inlines at the call site and has no routine to make static", funcDef.name));
+        parsingError(format("'{0}': 'static' and 'emitter' cannot be combined; an emitter inlines at the call site and has no routine to make static", funcDef.name));
     if(!isEmitter && (funcDef.name == "switch" || funcDef.name == "?"))
         parsingError(format("operator {0}() must be declared as an emitter", funcDef.name));
     // init/deinit are receiver lifecycle hooks and must inline — except a `static`
@@ -407,7 +410,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
     if(!isEmitter && !isMemberStatic && (funcDef.name == "init" || funcDef.name == "deinit"))
         parsingError(format("'{0}' must be declared as an emitter", funcDef.name));
     if(isMemberStatic && funcDef.name == "init")
-        parsingError("'init' cannot be 'static' — construction needs the receiver it is initialising");
+        parsingError("'init' cannot be 'static': construction needs the receiver it is initialising");
     if(isMemberStatic && funcDef.name == "deinit" && funcDef.params.size() != 1)
         parsingError("a 'static deinit' takes exactly one parameter: the value to destroy");
     funcDef.isStatic = isMemberStatic;
@@ -479,7 +482,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
         // receiver, so it emits as a free routine and carries no such requirement — which is
         // how a bare-word type (string, float) publishes a callable comparison.
         parsingError(format("Non-emitter function '{0}' is not allowed in an extern or alias class "
-                            "(a 'static' method is allowed — it needs no instance)", funcDef.name));
+                            "(a 'static' method is allowed: it needs no instance)", funcDef.name));
     } else if(funcDef.isEmitter && file.peekToken().is(token::endStatement)){
         // Semicolon-terminated emitter: pass-through (value unchanged)
         file.getToken(); // consume ';'
@@ -499,7 +502,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             static const regex leadingReturn(R"(^\s*return\b)", regex::icase);
             if(funcDef.returnType.name != "void" && regex_search(rawblock.i6Body, leadingReturn))
                 parsingError(format("'{0}' is an emitter{1}: its body is the Inform 6 expression spliced in where "
-                                    "it is called, so it can't begin with 'return' — write the value alone, "
+                                    "it is called, so it can't begin with 'return': write the value alone, "
                                     "as in {{ $self-->1 }}", funcDef.name,
                                     q.isEmitter ? "" : " (every member of an emitter class is)"));
         } else {
@@ -515,6 +518,7 @@ bool bglParser::parseClassMethodMember(classDef& newClass, token& tok, token nam
             saveBackingsAcrossRecursion(funcDef);
         }
     }
+    funcDef.isReplacement = isReplace;
     if(isExtend){
         // find an existing member with the same name and parameter signature
         // Pre-scan stubs match by name only (they have no params)
@@ -1073,7 +1077,7 @@ void bglParser::parseClassMember(classDef& newClass, token& tok, bool isExternal
         return;
     }
     if(tok.is(eTokenType::eof))
-        parsingError(format("Unexpected end of file inside class '{0}' — missing closing '}}'", newClass.dName()));
+        parsingError(format("Unexpected end of file inside class '{0}': missing closing '}}'", newClass.dName()));
     // Conditional compilation between members. Needed for inline accessor objects — an
     // `auto name = { … }` accessor is parsed as a nested class body, so a target guard like
     //   #if TARGET_GLULX
@@ -1312,7 +1316,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
     // `superposed` only makes sense for a class that emits a revivable `Class` directive.
     if(isSuperposed){
         if(isExtend)       parsingError(format("'extend class {0}': 'superposed' belongs on the original class declaration, not on extend.", (string)nameTok));
-        if(isExternal)     parsingError(format("'superposed extern class {0}': extern classes are I6-defined — Beguile emits no directive to withhold.", (string)nameTok));
+        if(isExternal)     parsingError(format("'superposed extern class {0}': extern classes are I6-defined; Beguile emits no directive to withhold.", (string)nameTok));
         if(isEmitterClass) parsingError(format("'superposed emitter class {0}': emitter classes have no I6 backing to withhold.", (string)nameTok));
         if(isAlias)        parsingError(format("'superposed alias class {0}': alias classes dissolve to their parent for emission; nothing to withhold.", (string)nameTok));
     }
@@ -1401,7 +1405,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         }
         if(createFn != nullptr){
             if(createFn->returnType.name != "void")
-                parsingError(format(kindWord(&newClass) + " '{0}': 'create' must have void return type — I6 ignores the return value", newClass.dName()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'create' must have void return type; I6 ignores the return value", newClass.dName()));
             // Z-machine only. Z's CA__Pr hands Cl__Ms a fixed `(obj, id, y, a, b, c, d)` and its
             // create arm enumerates the cases up to three, erroring past that; Glulx's CA__Pr and
             // Cl__Ms both forward `_vararg_count` through to `create`, so there is no cap there.
@@ -1410,7 +1414,7 @@ bool bglParser::processClassDeclaration(token tok, bool isExternal, bool isExten
         }
         if(destroyFn != nullptr){
             if(destroyFn->returnType.name != "void")
-                parsingError(format(kindWord(&newClass) + " '{0}': 'destroy' must have void return type — I6 ignores the return value", newClass.dName()));
+                parsingError(format(kindWord(&newClass) + " '{0}': 'destroy' must have void return type; I6 ignores the return value", newClass.dName()));
             if(!destroyFn->params.empty())
                 parsingError(format(kindWord(&newClass) + " '{0}': 'destroy' must take no parameters", newClass.dName()));
         }
@@ -2281,6 +2285,9 @@ void bglParser::processMemberMethod(objectDef& obj, token returnType, token name
             for(size_t i = 0; i < obj.members.size(); i++)
                 if(auto* fd = dynamic_cast<functionDef*>(obj.members[i]))
                     if(sigEq(fd)){
+                        if(!fd->asI6Name.empty() && !funcDef.asI6Name.empty() && funcDef.asI6Name != fd->asI6Name)
+                            parsingError(format("object '{0}': the replacement of '{1}' must keep its I6 name '{2}'.",
+                                                obj.dName(), funcDef.dName(), fd->asI6Name));
                         keepReplaced(funcDef, fd);
                         // An `extend … replace` above the object: the object's own declaration, still to
                         // come, is what it replaces.
@@ -2874,7 +2881,7 @@ token bglParser::parseDeclarationPositionals(objectDef& obj, token tok){
     size_t idx = 0;
     while(true){
         if(idx >= slots.size())
-            parsingError(format("'{0}': too many positional values — '{1}' has {2} positional member(s) (declared `inline`)",
+            parsingError(format("'{0}': too many positional values; '{1}' has {2} positional member(s) (declared `inline`)",
                                 obj.dName(), display, (int)slots.size()));
         string terminator = bakeMemberValue(obj, slots[idx++], tok, display, nullptr, nullptr);
         if(terminator == token::braceClose){ token close; close.tokenType = eTokenType::symbol; close.value = token::braceClose; return close; }
@@ -3015,7 +3022,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
             parsingError(format("inline '{0}{{...}}': positional values are ','-separated; ';' begins the named section, "
                                 "so only named members may follow it", typeDisplay));
         if(!inNamed && !expectNamed && isNamed && sawPositional)
-            parsingError(format("inline '{0}{{...}}': named members follow a ';' — write `... ; {1} = value;` "
+            parsingError(format("inline '{0}{{...}}': named members follow a ';'; write `... ; {1} = value;` "
                                 "(',' separates positional values only)",
                                 typeDisplay, vt.originalValue.empty() ? vt.value : vt.originalValue));
         variableDeclaration* target;
@@ -3030,7 +3037,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
         } else {
             sawPositional = true;
             if(idx >= inlineFields.size())
-                parsingError(format("inline '{0}{{...}}': too many positional values — the class declares {1} inline member(s)",
+                parsingError(format("inline '{0}{{...}}': too many positional values; the class declares {1} inline member(s)",
                                     typeDisplay, (int)inlineFields.size()));
             target = inlineFields[idx++];
         }
@@ -3039,7 +3046,7 @@ void bglParser::bakeInlineObjectAggregate(classDef* cls, const string& typeDispl
         if(inNamed){
             // Named section: ';'-separated. A ',' between named members is an error.
             if(terminator == ",")
-                parsingError(format("inline '{0}{{...}}': named members are separated by ';', not ',' — write `{1} = value;`",
+                parsingError(format("inline '{0}{{...}}': named members are separated by ';', not ','; write `{1} = value;`",
                                     typeDisplay, target->name));
             expectNamed = true;
         } else {
@@ -3448,7 +3455,7 @@ void bglParser::parseExternObjectMember(objectDef& newObj, token& tok){
         string verbDisplayName = newObj.displayName.empty() ? newObj.name : newObj.displayName;
         for(grammarLine& gl : lines){
             if(!gl.patternTokens.empty())
-                parsingWarning(format("extern verb '{0}': pattern tokens after the trigger word(s) in `grammar = {{...}}` are ignored — extern verbs don't emit I6 grammar; only the dict words in the first position contribute to the verb's claimed-words list",
+                parsingWarning(format("extern verb '{0}': pattern tokens after the trigger word(s) in `grammar = {{...}}` are ignored; extern verbs don't emit I6 grammar; only the dict words in the first position contribute to the verb's claimed-words list",
                     verbDisplayName));
             gl.targetVerb = verbDisplayName;
             gl.isOwnLine = true;
@@ -3537,7 +3544,7 @@ void bglParser::parseObjectMember(objectDef& newObj, token& tok){
         tok = file.getToken();
         return;
     }
-    if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}' — missing closing '}}'", newObj.dName()));
+    if(tok.is(eTokenType::eof)) parsingError(format("Unexpected end of file inside object '{0}': missing closing '}}'", newObj.dName()));
     if(tok.is(eTokenType::directive)){
         if(tok.is("#i6")) processI6InlineMember(newObj);
         else if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif")) processDirective(tok, newObj);
@@ -3860,7 +3867,7 @@ bool bglParser::processArrayExtension(arrayDeclaration* arr){
     // An extern array's data is defined in I6, not Beguile — there is no initializer for us to
     // edit, and Beguile emits no array directive for it. Editing it declaratively is meaningless.
     if(arr->isExternal)
-        parsingError(format("extend {0}: cannot edit an extern array — its contents are defined "
+        parsingError(format("extend {0}: cannot edit an extern array; its contents are defined "
                             "in I6, not Beguile, so there is no initializer to inject into", arrName));
     initializerList* init = dynamic_cast<initializerList*>(arr->declaredExpressionValue);
     if(!init){
@@ -4017,7 +4024,7 @@ void bglParser::typeFromMemberAliasOrPath(objectDef& obj, token& tok){
 void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok, token nameTok, bool isExternalObj, int& extendBlockPriority, int verbPriorityDefault, bool& extendHadReplaceGrammar){
     markMemberStart(tok);
     rejectAccessModifier(tok);
-    if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object — missing closing '}'");
+    if(tok.is(eTokenType::eof)) parsingError("Unexpected end of file inside object: missing closing '}'");
     if(tok.is(eTokenType::directive)){
         if(tok.is("#i6")) processI6InlineMember(*obj);
         else if(tok.is("#if") || tok.is("#elif") || tok.is("#else") || tok.is("#endif")) processDirective(tok, *obj);
@@ -4185,7 +4192,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             // Priority is meaningless under replace; if the user also set a non-default
             // `priority = N;` in the same extend block, that's a contradiction.
             if(extendBlockPriority != verbPriorityDefault)
-                parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block — priority is meaningless under replace");
+                parsingError("`replace grammar = { ... }` cannot be combined with a non-default `priority = N;` in the same extend block: priority is meaningless under replace");
             file.getToken(token::assignment);
             vector<grammarLine> lines = parseGrammarLines();
             if(file.peekToken().is(token::endStatement)) file.getToken();
@@ -4256,7 +4263,7 @@ void bglParser::parseExtendMember(objectDef* obj, verbObjectDef* vod, token& tok
             }
             if(file.peekToken().is(token::endStatement)) file.getToken();
             if(vod == nullptr)
-                parsingError(format("`synonyms = {{ ... }}` is only valid when extending a verb — '{0}' is not a verb", obj->dName()));
+                parsingError(format("`synonyms = {{ ... }}` is only valid when extending a verb: '{0}' is not a verb", obj->dName()));
             else if(syn.synonymWords.empty())
                 parsingError("`synonyms = { ... }` requires at least one trigger word");
             else
@@ -4516,7 +4523,7 @@ void bglParser::extendGrammarRuleListRemove(objectDef& obj, const string& member
                 // Two-layer diagnostic: distinguish "opaque extern grammar" (word IS claimed —
                 // point the user at word-level eviction) from a genuine typo (word not claimed).
                 if(externClaims(rem.verbWord))
-                    parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a word of the extern verb, whose own grammar Beguile can't see line-by-line — use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
+                    parsingWarning(format("grammar -= on extern verb '{0}': no Beguile-added grammar matches `'{1}' * {2}`. '{1}' is a word of the extern verb, whose own grammar Beguile can't see line-by-line; use `grammar -= {{ {{.{1}}} }}` to evict the whole word, or check your pattern.", vn, rem.verbWord, patStr));
                 else
                     parsingWarning(format("grammar -= on extern verb '{0}': '{1}' is not a word this verb claims and Beguile added no grammar line `'{1}' * {2}`, so nothing was removed. Check the trigger word.", vn, rem.verbWord, patStr));
             } else if(wordLevel){

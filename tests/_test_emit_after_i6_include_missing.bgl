@@ -1,0 +1,4 @@
+// EXPECT_ERROR: #emitAfterI6Include: this program has no #includeI6 "verblib".
+#emitAfterI6Include "verblib"
+int looks = 0;
+void Main() { looks++; }

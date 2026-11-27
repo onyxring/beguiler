@@ -1,17 +1,17 @@
 //===================================================================================================
 // parserUtil.bgl — helpers for extensions that change how the parser chooses between objects
-// Include it after the library's verblib
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <bindings/i6StandardLibrary>
 
-const int PLANNING_EXCLUDE = 0;   /// Planning a list for "all": may the object be left out?
-const int PLANNING_INCLUDE = 1;   /// Planning a list for "all": may the object be put in?
-const int ASKING_FOR_HINT  = 2;   /// Choosing between matches: how good a match is the object?
+superposed const int PLANNING_EXCLUDE = 0;   /// Planning a list for "all": may the object be left out?
+superposed const int PLANNING_INCLUDE = 1;   /// Planning a list for "all": may the object be put in?
+superposed const int ASKING_FOR_HINT  = 2;   /// Choosing between matches: how good a match is the object?
 
-const int DEFER_CHOICE  = 0;      /// Leave it to the other hooks, then the parser.
-const int FORCE_INCLUDE = 1;      /// Put the object in the list.
-const int FORCE_EXCLUDE = 2;      /// Leave the object out of the list.
+superposed const int DEFER_CHOICE  = 0;      /// Leave it to the other hooks, then the parser.
+superposed const int FORCE_INCLUDE = 1;      /// Put the object in the list.
+superposed const int FORCE_EXCLUDE = 2;      /// Leave the object out of the list.
 
 /// Take an object out of the choice, leaving its place in the match list empty.
 superposed int excludeObjFromDisambiguation(object obj) {

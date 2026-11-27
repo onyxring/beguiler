@@ -10,6 +10,7 @@
 // Set `no_implicit_actions` to turn this off.
 //===================================================================================================
 #once
+#emitAfterI6Include "verblib"
 #include <extensions/stdlib/hooks/parser>
 #include <extensions/stdlib/hooks/standardLibrary>
 #include <extensions/stdlib/playerCommandQueue>

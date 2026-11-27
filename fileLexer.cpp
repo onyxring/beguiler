@@ -654,7 +654,7 @@ string fileLexer::getRawTextToStatementEnd(int depth){
         if(c != EOF) text += c;
         c = readChar();
     }
-    parser.parsingError("Unexpected end of file — missing ';'");
+    parser.parsingError("Unexpected end of file: missing ';'");
     return text;
 }
 string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
@@ -679,7 +679,7 @@ string fileLexer::getRawTextThroughClosingBrace(bool isI6Content){
              else if(openLine > 0)
                  parser.parsingError(format("The '{{' at line {0} is never closed: the file ends before its '}}'.", openLine));
              else
-                 parser.parsingError("Unexpected end of file — missing closing '}'");
+                 parser.parsingError("Unexpected end of file: missing closing '}'");
              break;
          }
          // A one-line `#i6 …;` has no region: what follows it isn't its `{`.
@@ -838,7 +838,7 @@ string fileLexer::getRawTextUntilCloseOrBgl(eBglDirective& outDirective, int& ou
                 count = 0;
                 break;
             }
-            parser.parsingError("Unexpected end of file — missing closing '}'");
+            parser.parsingError("Unexpected end of file: missing closing '}'");
             break;
         }
         // Line comments
@@ -1362,7 +1362,7 @@ token fileLexer::lexCharLiteralToken(token retval){
             parser.parsingError(format("Unterminated character literal '{0}{1}: a character literal is one "
                 "character between single quotes (e.g. 'a').", charVal, rest));
         readChar();
-        parser.parsingError(format("'{0}{1}' is not a valid character literal — a character literal "
+        parser.parsingError(format("'{0}{1}' is not a valid character literal: a character literal "
             "holds a single character (e.g. 'a'). Inform 6's dictionary-word form is not Beguile "
             "syntax: write the dictionary word as .{0}{1} (or ..{0}{1} for the plural form).",
             charVal, rest));

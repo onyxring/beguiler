@@ -1,7 +1,8 @@
 //===================================================================================================
-// dialogueGrammar.bgl — the grammar for dialogue.bgl. Include it right after the library's grammar.
+// dialogueGrammar.bgl — the grammar for dialogue.bgl, which includes it
 //===================================================================================================
 #once
+#emitAfterI6Include "grammar"
 #i6 {
     extend 'ask' replace
     * 											-> askTopic

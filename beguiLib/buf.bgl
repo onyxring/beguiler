@@ -115,10 +115,9 @@ superposed object _bglBuf {
             }
     }
 
-    // Capacity in chars, -1 for null; not valid on an I6 buffer array (no size word)
+    // Capacity in chars, -1 for null; an Inform 6 buffer's is its length word
     superposed int size(array<char> buf) asI6 _bglText_size {
-        if((int)buf == 0) return -1;
-        return _bglGetWord(buf, -1);
+        return _bglByteSize((int)buf);
     }
 
     // Current char count

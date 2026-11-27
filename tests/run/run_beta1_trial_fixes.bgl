@@ -1,0 +1,53 @@
+// run_beta1_trial_fixes — the defects the Beta 1 field trials found: a local named `name` beside an
+// object print (D2149), a member named like an attribute reached through a second parent (D2150),
+// a bare condition through a class's own `operator ?` (D2151), and stringObj.equals() (D2148).
+// EXPECT_OUTPUT: thing 3
+// EXPECT_OUTPUT: locked true then false
+// EXPECT_OUTPUT: [one]
+// EXPECT_OUTPUT: equals true false
+// INPUT: probe
+// INPUT: quit
+// INPUT: y
+#beguilerSettings { target = z5; includePaths = "../../../inform6/stdlib"; }
+#include <bindings/i6StandardLibrary>
+#includeI6 "parser"
+#includeI6 "verblib"
+#include <string>
+
+class Item : object { int n; }
+Item thing { "thing"; }
+
+class Lockable : object { bool Locked; }
+class Base : object { int w; }
+class Box : Base, Lockable { }
+Box crate { }
+
+class Counter : object {
+    int n;
+    emitter eBool operator ? () { ($self.n ~= 0) }
+}
+Counter zero { }
+Counter one { n = 1; }
+
+object roomA { "Room A"; attributes = {light}; }
+
+verb Probe {
+    grammar = {.probe};
+    void handler() {
+        int name = 3;
+        Item p = thing;
+        print(p, " ", name, "^");
+        crate.Locked = true;
+        print("locked ", crate.Locked);
+        crate.Locked = false;
+        print(" then ", crate.Locked, "^");
+        if (zero) print("[zero]");
+        if (one) print("[one]");
+        print("^");
+        stringObj s = "alpha";
+        string t = "alpha";
+        print("equals ", s.equals(t), " ", s.equals("beta"), "^");
+    }
+}
+#includeI6 "grammar"
+bool Initialise() { location = roomA; rfalse; }
