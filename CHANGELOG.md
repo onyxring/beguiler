@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.0-beta] - 2026-11-27
 
 Releases:
 - Each release archive now carries the matching Beguilex extension in a
@@ -72,8 +72,7 @@ Library (beguiLib):
   with many anonymous arrays get smaller.
 - `<string>` is now the heap-based runtime that was `<stringObj>`: each
   `stringObj` buffer grows as text is written, with no 494-character limit. The
-  pool-based runtime is kept as `<archive/string>`; a program includes one or
-  the other.
+  pool-based runtime is retired.
 - `center()` and `inset()` moved from `bgl.ui` to `bgl.output`.
 - The library bindings replace `stringOrRoutine` with `iString`
   (`string | interpolatedString`), a string plain or interpolated, for
@@ -84,6 +83,11 @@ Library (beguiLib):
   Inform 6 object header: `object hook { "small brass hook", cloakroom; }`.
 
 Language:
+- `==` and `!=` between two `string`s compare addresses, with or without
+  `<string>`, and the compiler warns that they do; `equals()` compares text, and a
+  `stringObj` on either side of `==` compares text.
+- `print` takes several arguments (`print("You have ", n, " coins.^")`): it is
+  a distributor, and any function can be made one with `distributor NAME;`.
 - `#mergeI6 "name"` applies a patch, a unified diff from `diff -u` or `git
   diff`, to the Inform 6 files it names, wherever it appears in the program.
   Patches stack, so several extensions can each change a library routine
@@ -125,6 +129,13 @@ Language:
     branch of a trailing `switch` or `if` too, where that return is a single
     instruction.
 
+Glulx:
+- Windows are recovered after restore, undo and restart:
+  `bgl.ui.recoverWindows()` keeps, closes or reopens the program's windows
+  (reopened ones come back empty), and the standard library binding calls it.
+- A hyperlink whose routine prints nothing leaves the line the player is
+  typing alone.
+
 Editor:
 - After `return` in a routine that returns an enum, `bnum`, `bool`, or a union
   holding one, completion offers the possible values first (for a base `bnum`,
@@ -142,6 +153,14 @@ Fixes:
   was emitted as an Inform 6 method call instead of through its emitter.
 - `return #beguilerSettings.x;` was rejected when the setting came straight
   after `return`.
+- Windows: every compile failed at the runtime library (source files were read
+  in text mode).
+- `size` of an Inform 6 buffer reached as `extern array<char>` read the word
+  before it; a `replace` without `asI6` lost the replaced method's I6 name; a
+  skipped `#if` branch misread an Inform 6 `#Endif;` inside `#emitlast`; a local
+  named `name` broke printing an object; a member reached through a second
+  parent kept an attribute's name; a lambda's writes to captured locals were lost
+  when it threw.
 
 ## [0.1.0-preview.5] - 2026-10-20
 
