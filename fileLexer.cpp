@@ -151,7 +151,8 @@ void fileLexer::open(string filename){
         files.push(make_tuple(static_cast<istream*>(stream), filename, 1, 0));
         return;
     }
-    ifstream* inputFileStream = new ifstream(filename);
+    // Binary:  in text mode, Windows reports positions tellg/seekg can't return to in files with \n line ends
+    ifstream* inputFileStream = new ifstream(filename, std::ios::binary);
     if (!inputFileStream->is_open()) {
         delete inputFileStream;
         parser.parsingError("Unable to open file "+filename+".");
