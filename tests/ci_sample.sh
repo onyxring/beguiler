@@ -18,11 +18,12 @@ while read -r name; do
     if [ ! -f "$inf" ]; then
         echo "  ERROR: $name — nothing transpiled"; tail -5 "$OUT/$name.log"; fail=$((fail + 1)); continue
     fi
-    if diff -q "$inf" "baselines/$name.baseline" > /dev/null; then
+    # Windows writes \r\n line ends, which Inform 6 reads like \n.
+    if diff -q --strip-trailing-cr "$inf" "baselines/$name.baseline" > /dev/null; then
         pass=$((pass + 1))
     else
         echo "  FAIL: $name — output differs from the baseline"
-        diff "$inf" "baselines/$name.baseline" | head -20
+        diff --strip-trailing-cr "$inf" "baselines/$name.baseline" | head -20
         fail=$((fail + 1))
     fi
 done < ci-sample.txt
