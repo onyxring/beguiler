@@ -1,0 +1,251 @@
+//===================================================================================================
+// helpMenus.bgl — mack's help/hints menu tree 
+//===================================================================================================
+
+const int insetWidth = 15; 
+
+// ── Root ────────────────────────────────────────────────────────────────────────────────────────
+menu HelpSys { "Monkeys and Car Keys"; }
+
+// ── About ───────────────────────────────────────────────────────────────────────────────────────
+menu aboutMenu { "About this game", HelpSys;
+    void rawDescription() {
+        bgl.output.inset("Welcome to “Monkeys and Car Keys,” a short text adventure where you explore the edges of a lost civilization in search of your car keys and encounter a few monkeys along the way. “MACK” was written by Jim Fisher and implemented using the Inform 6 language. It was an entry in the annual Interactive Fiction Competition (2025).^^If this is your first attempt at a text adventure, or if you need a refresher on how to play, take a quick look at the “How to play this game” section of this menu guide.");
+    }
+}
+
+// ── How to play (with children) ─────────────────────────────────────────────────────────────────
+menu howToPlay { "How to play this game", HelpSys; }
+
+menu htpWhatAre { "What are text adventures?", howToPlay;
+    void rawDescription() {
+        bgl.output.inset("If you are new to text adventures, sometimes called parser-based Interactive Fiction, don’t worry.
+                They’re easy to dive into. Typical games of this type are stories, similar to traditional literature, with a beginning, middle, and end... except YOU
+                play the protagonist. Text adventures usually start off with a description of your surroundings, then pause with a prompt:^");
+        bgl.output.inset(">", insetWidth);
+        bgl.output.inset("^The prompt is your opportunity to tell the game what you want to do by adding short imperative commands, like so:^");
+        bgl.output.inset(">GO NORTH", insetWidth);
+        bgl.output.inset(">EXAMINE TREE", insetWidth);
+        bgl.output.inset(">TAKE ROCK", insetWidth);
+        bgl.output.inset("^The game responds to your commands and, assuming they are possible, progresses the story. This exchange repeats, with you exploring the
+                world and SOLVING THE PUZZLES within it, until the story is finished.^");
+    }
+}
+
+menu htpTypical { "Typical text adventure commands", howToPlay;
+    void rawDescription() {
+        bgl.output.inset("This game accepts the typical commands used by most text adventures. Here’s a list of the most common:^");
+        bgl.output.inset("L - Short for LOOK, this describes your current location in the story.", insetWidth, 5);
+        bgl.output.inset("GO <direction> - Move in one of the cardinal or inter-cardinal directions, or UP, or DOWN. The word “GO” is optional and can be skipped entirely.
+                The direction can be abbreviated as N, S, E, W, NW, NE, SW, SE, U, or D.", insetWidth, 5);
+        bgl.output.inset("X <thing> - Short for EXAMINE, this means “take a look at this nearby thing.”", insetWidth, 5);
+        bgl.output.inset("TAKE <thing> - Pick up a nearby object.", insetWidth, 5);
+        bgl.output.inset("DROP <thing> - Put something down which you are holding.", insetWidth, 5);
+        bgl.output.inset("PUT <thing> in <thing> - Put something you are holding IN something else. You can also put stuff ON things; the two variants are not necessarily the same.", insetWidth, 5);
+        bgl.output.inset("I - Short for INVENTORY, this command lists what you are currently carrying.", insetWidth, 5);
+        bgl.output.inset("UNLOCK <thing> WITH <thing> - Unlock something (a door for example) with something else (like a key).", insetWidth, 5);
+        bgl.output.inset("UNDO - Take back the last action you took. The game will revert and it will be as though your previous command never happened.", insetWidth, 5);
+        bgl.output.inset("OPEN <thing> - Open something which can be opened.", insetWidth, 5);
+        bgl.output.inset("^The above list of commands is not exhaustive. In fact, all text adventures have their own unique sets of verbs and nouns so you
+                should experiment by trying actions which seem to make sense in the current context.");
+        bgl.output.center("^HINT FOR BEGINNERS: For most text adventures, the single most important command for exploring your options in the game is EXAMINE. If you’re not sure what to do, start by examining as many things as you can. Often this will reveal hints for furthering the story.^", 60);
+    }
+}
+
+menu htpConversations { "Having conversations with other characters", howToPlay;
+    void rawDescription() {
+        bgl.output.inset("In addition to the commands traditionally available in text adventures, this game also supports the conversational verbs ASK, TELL, and SAY:^");
+        bgl.output.inset(">ASK BOY ABOUT COSTUME", insetWidth);
+        bgl.output.inset(">TELL GIRL ABOUT MOON ", insetWidth);
+        bgl.output.inset(">SAY HELLO TO BAKER", insetWidth);
+        bgl.output.inset("^For convenience, these commands may be abbreviated with the letters A, T, and S, respectively. Additionally, the game will try to work out to whom you are probably speaking, so the above commands may be abbreviated as...^");
+        bgl.output.inset(">A COSTUME", insetWidth);
+        bgl.output.inset(">T MOON", insetWidth);
+        bgl.output.inset(">S HELLO", insetWidth);
+        bgl.output.inset("^...but it’s possible the game could make a false assumption. Just specify all words to clarify your intent if the game assumes incorrectly.");
+        bgl.output.inset("^Remember the ASK and TELL commands are different: You ASK characters about topics they might know; you TELL them of topics which you know.");
+        bgl.output.inset("^An alternative syntax for SAY is also available. You can do so by first naming the character, followed by a comma and specifying your topic.  For example:^");
+        bgl.output.inset(">GUARD, HELP", insetWidth);
+        bgl.output.inset("^The above is equivalent to:^");
+        bgl.output.inset(">SAY HELP TO GUARD", insetWidth);
+    }
+}
+
+menu htpReviewing { "Reviewing first impressions", howToPlay;
+    string description = "This story sometimes provides the protagonist’s “first impressions” when describing something for the first time. Subsequent
+                examinations of the same object/place will not restate these initial thoughts. If you’d like to take a look at them again, you can use the
+                REVIEW command in place of EXAMINE or LOOK.^^REVIEW takes no time and does not advance the turn counter.";
+}
+
+menu htpAutoGen { "Automatically generated commands", howToPlay;
+    void rawDescription() {
+        bgl.output.inset("Occasionally, this game will generate commands on the player’s behalf. Usually, this is when the player’s intentions are clear but not
+                explicitly stated. For example, consider:^");
+        bgl.output.inset(">FEED APPLE TO LION^", insetWidth);
+        bgl.output.inset("In the above example, the FEED command requires the player to be holding the apple. If the player is NOT holding the apple, but it is
+                nearby, the game may first generate an implied command...^");
+        bgl.output.inset(">>TAKE APPLE^", insetWidth);
+        bgl.output.inset("...prior to attempting to FEED the lion.^^Generated commands take time and advance the game’s TURN counter. UNDO commands also treat them
+                individually, just like player commands. Generated commands are annotated with a double prompt (“>>”) to distinguish them from traditional player input.");
+    }
+}
+
+menu htpMultiple { "Actions affecting multiple things", howToPlay;
+    void rawDescription() {
+        bgl.output.inset("In many parser games, some commands affect multiple objects. For example: ^");
+        bgl.output.inset(">TAKE APPLES", insetWidth);
+        bgl.output.inset("^Might result in...^");
+        bgl.output.inset("apple: Taken.", insetWidth);
+        bgl.output.inset("apple: Taken.", insetWidth);
+        bgl.output.inset("apple: Taken.", insetWidth);
+        bgl.output.inset("apple: Taken.", insetWidth);
+        bgl.output.inset("^This game attempts to make this a little more concise by consolidating these messages into...^");
+        bgl.output.inset("4 apples: Taken.", insetWidth);
+    }
+}
+
+// ── Credits ─────────────────────────────────────────────────────────────────────────────────────
+menu credits { "Credits", HelpSys;
+    void rawDescription() {
+        bgl.output.inset("BETA TESTERS^");
+        bgl.output.inset("I want to recognize, and extend my appreciation to, the beta testers of this game. They were diligent in their efforts and found an embarrassingly inordinate number of both functional and logical bugs in the early drafts.^^Individually, each tester provided unique insights and suggestions. Collectively, the group’s feedback effected a polish to this game beyond anything I could have accomplished alone. Of course, the remaining defects, which I am confident exist, are mine.^^It’s hard to overstate how valuable I found their contributions:^", insetWidth);
+        bgl.output.center("Robert Eggleston (aerobert)");
+        bgl.output.center("Brian Rushton (mathbrush)");
+        bgl.output.center("AM Ruf (amruf)");
+        bgl.output.center("Deborah Sherwood (dsherwood)");
+        bgl.output.center("Javier Garze (jade)");
+        bgl.output.center("Sterling Fisher");
+        bgl.output.inset("^ABOUT THE AUTHOR^");
+        bgl.output.inset("My name is Jim Fisher; you might know me as OnyxRing. I’ve written a few how-to articles and contributed a collection of extensions for the procedural version of Inform (“Inform6”).
+        I’m also the author of a handful of other Interactive Fiction titles, including my debut work “Wade Wars: Book III” which I produced in 1993.^^
+        The ebb and flow of my love for IF has spanned several decades.^^
+        If you have questions or items of feedback, I welcome them. You can contact me directly using the IF community’s forums at www.IntFiction.org. My username is OnyxRing.^^I hope you enjoy “Monkeys and Car Keys.”", insetWidth);
+    }
+}
+
+// ── Hints (Spoilers!) ───────────────────────────────────────────────────────────────────────────
+menu hints { "Hints (Spoilers!)", HelpSys; }
+
+// Hint group 1: wandering in a circle
+menu hintCircle1 { "I’m wandering in a circle, with no place to go...", hints; }
+menu hc1H1 { "Hint 1", hintCircle1; string description = "Have you searched through all the greenery? You may find some useful things."; }
+menu hc1H2 { "Hint 2", hintCircle1; string description = "Have you tried to ASK the canopy monkeys (south of the rock wall), ABOUT your keys?"; }
+menu hc1H3 { "Hint 3", hintCircle1; string description = "Have you tried repeating the canopy monkeys’ words to the BLIND monkey statue? (i.e., SAY monkey-words TO STATUE)"; }
+menu hc1H4 { "Hint 4", hintCircle1; string description = "Have you tried to ASK the BLIND monkey statue ABOUT things? (i.e., ASK STATUE ABOUT things)"; }
+menu hc1H5 { "Hint 5", hintCircle1; string description = "Have you tried repeating the BLIND monkey statue’s answers to the canopy monkeys? (i.e., SAY monkey-words TO MONKEYS)"; }
+menu hc1H6 { "Hint 6", hintCircle1; string description = "The BLIND monkey statue is not the only statue with ears uncovered."; }
+menu hc1H7 { "Hint 7", hintCircle1; string description = "Have you asked the MUTE monkey statue (east of the rock wall) about the banana in monkey-speak (SAY monkey-words TO STATUE)?"; }
+menu hc1Walk { "Walkthrough for this part", hintCircle1;
+    void rawDescription() {
+        bgl.output.inset("The following commands entered at the start of the game will get you through this area:^");
+        bgl.output.inset("x wall", insetWidth);
+        bgl.output.inset("nw", insetWidth);
+        bgl.output.inset("x foliage", insetWidth);
+        bgl.output.inset("take wrapper", insetWidth);
+        bgl.output.inset("ask statue about car keys", insetWidth);
+        bgl.output.inset("ne", insetWidth);
+        bgl.output.inset("x foliage", insetWidth);
+        bgl.output.inset("take glasses", insetWidth);
+        bgl.output.inset("x wall", insetWidth);
+        bgl.output.inset("climb vine", insetWidth);
+        bgl.output.inset("take vine", insetWidth);
+        bgl.output.inset("se", insetWidth);
+        bgl.output.inset("x foliage", insetWidth);
+        bgl.output.inset("sw", insetWidth);
+        bgl.output.inset("say jeezee to monkeys", insetWidth);
+        bgl.output.inset("nw", insetWidth);
+        bgl.output.inset("say jera to statue", insetWidth);
+        bgl.output.inset("se", insetWidth);
+        bgl.output.inset("say hua to monkeys", insetWidth);
+        bgl.output.inset("nw", insetWidth);
+        bgl.output.inset("say soopah to statue", insetWidth);
+        bgl.output.inset("ask statue about mama Ciedue", insetWidth);
+        bgl.output.inset("se", insetWidth);
+        bgl.output.inset("ne", insetWidth);
+        bgl.output.inset("say bojo to statue", insetWidth);
+        bgl.output.inset("e", insetWidth);
+    }
+}
+
+// Hint group 2: cliff edge
+menu hintCliff { "I’m at the cliff edge with no way across...", hints; }
+menu clfH1 { "Hint 1", hintCliff; string description = "Did you manage to get the vine and recover your eyeglasses from the previous area? These will be necessary. "; }
+menu clfH2 { "Hint 2", hintCliff; string description = "The anchor is something you can throw the vine through."; }
+menu clfH3 { "Hint 3", hintCliff; string description = "Mama Ciedue is nearsighted. Maybe you can throw something to her to fix this. As her name suggests, what she sees, she’ll do."; }
+menu clfH4 { "Hint 4", hintCliff; string description = "The ladder is something you can tie the vine to. Mama Ciedue will imitate this action imperfectly."; }
+menu clfH5 { "Hint 5", hintCliff; string description = "Pick up all the rocks and put them all in the barrel.  Mama Ciedue doesn’t have rocks on her side, but she’ll use something else."; }
+menu clfH6 { "Hint 6", hintCliff; string description = "As a final act, push the barrel over the edge.  When Mama sees this, she’ll do it too, but only if her babies will be safe."; }
+menu clfWalk { "Walkthrough for this part", hintCliff;
+    void rawDescription() {
+        bgl.output.inset("The following commands, entered after you have first arrived at the cliff edge, will get you through this area:^");
+        bgl.output.inset("throw vine through anchor", insetWidth);
+        bgl.output.inset("climb down", insetWidth);
+        bgl.output.inset("throw glasses at mama", insetWidth);
+        bgl.output.inset("tie vine to ladder", insetWidth);
+        bgl.output.inset("take rocks", insetWidth);
+        bgl.output.inset("put rocks in barrel", insetWidth);
+        bgl.output.inset("take rocks", insetWidth);
+        bgl.output.inset("put rocks in barrel", insetWidth);
+        bgl.output.inset("take rocks", insetWidth);
+        bgl.output.inset("put rocks in barrel", insetWidth);
+        bgl.output.inset("push barrel", insetWidth);
+        bgl.output.inset("u", insetWidth);
+        bgl.output.inset("e", insetWidth);
+    }
+}
+
+// Hint group 3: baby monkey / flat banana
+menu hintBanana { "I can’t get this baby monkey to give me the flat banana...", hints; }
+menu banH1 { "Hint 1", hintBanana; string description = "Did you manage to recover your dehydrated bananas from the previous area? These will be necessary. "; }
+menu banH2 { "Hint 2", hintBanana; string description = "Wait for the baby monkey to appear then give him the bananas. He’ll drop the flat banana."; }
+menu banH3 { "Hint 3", hintBanana; string description = "Wait for Murk to come back and eat the dehydrated bananas. Then pick him up too. "; }
+menu banWalk { "Walkthrough for this part", hintBanana;
+    void rawDescription() {
+        bgl.output.inset("The following commands, entered as you first enter the top of the column, will get you through this area:^");
+        bgl.output.inset("z", insetWidth);
+        bgl.output.inset("z", insetWidth);
+        bgl.output.inset("z", insetWidth);
+        bgl.output.inset("give wrapper to monkey", insetWidth);
+        bgl.output.inset("take banana", insetWidth);
+        bgl.output.inset("z", insetWidth);
+        bgl.output.inset("take monkey", insetWidth);
+        bgl.output.inset("w", insetWidth);
+        bgl.output.inset("w", insetWidth);
+    }
+}
+
+// Hint group 4: back at the circle
+menu hintCircle2 { "I’m back at the circle again, with no place to go...", hints; }
+menu hc2H1 { "Hint 1", hintCircle2; string description = "Have you examined the wall, South of the Rock Wall?  Funny how that monkey smile is shaped like a flat banana."; }
+menu hc2H2 { "Hint 2", hintCircle2; string description = "Did you find the symbols on the back of the banana?  Show them to the DEAF monkey, north of the rock wall, and he’ll translate them, teaching you how to pronounce the secret words. "; }
+menu hc2H3 { "Hint 3", hintCircle2; string description = "Did you let Murk climb the rock wall from the side covered in vines?  He’ll reach the top and help you recover your tire iron. "; }
+menu hc2H4 { "Hint 4", hintCircle2; string description = "If you put the flat banana in the monkey mouth engraved on the cliff wall, and speak the secret words in the monkey ear etching, the nest of the ancients will be revealed. (Hope you’re ready.)"; }
+menu hc2Walk { "Walkthrough for this part", hintCircle2;
+    void rawDescription() {
+        bgl.output.inset("The following commands, entered as you first return to the base of the rock wall from the east, will get you through this area:^");
+        bgl.output.inset("nw", insetWidth);
+        bgl.output.inset("monkey, climb vines", insetWidth);
+        bgl.output.inset("take iron", insetWidth);
+        bgl.output.inset("take baby monkey", insetWidth);
+        bgl.output.inset("show banana to statue", insetWidth);
+        bgl.output.inset("se", insetWidth);
+        bgl.output.inset("sw", insetWidth);
+        bgl.output.inset("put banana in etched mouth", insetWidth);
+        bgl.output.inset("say ayee to ear", insetWidth);
+    }
+}
+
+// Hint group 5: Grok fight
+menu hintGrok { "Grok has my keys and keeps pummeling me...", hints; }
+menu grkH1 { "Hint 1", hintGrok; string description = "If Grok hits you three times, you lose."; }
+menu grkH2 { "Hint 2", hintGrok; string description = "If you land three SOLID blows on Grok, you win."; }
+menu grkH3 { "Hint 3", hintGrok; string description = "You need to hit Grok with the tire iron to land a SOLID blow. "; }
+menu grkH4 { "Hint 4", hintGrok; string description = "If you have Murk with you during the fight, he’ll interfere with Grok’s third attack, allowing you to get your third blow in before him."; }
+menu grkWalk { "Walkthrough for this part", hintGrok;
+    void rawDescription() {
+        bgl.output.inset("The following commands, entered after the cliff wall has lifted and Grok has landed his first blow, will complete the game successfully:^");
+        bgl.output.inset("hit grok with iron", insetWidth);
+        bgl.output.inset("hit grok with iron", insetWidth);
+        bgl.output.inset("hit grok with iron", insetWidth);
+    }
+}

@@ -1,0 +1,257 @@
+/*===================================================================================================
+  Monkeys and Car Keys
+  Copyright 2025, Jim Fisher (OnyxRing)
+  
+  This a Beguile port of the original I6.
+  ---------------------------------------------------------------------------------------------------
+  MaCK was an entry in the 2025 Annual IFComp.  It placed 23rd.
+  
+  Dependencies:
+    Inform 6
+    I6 standard library
+    Beguile 1
+====================================================================================================*/
+#beguilerSettings {
+    target = Z5;
+    includePaths = "../../../inform6/stdlib";  //the I6 standard library: change this to where it sits on your own machine
+    title    = "Monkeys and Car Keys";
+    headline = "^Copyright (c) 2025: Jim Fisher^";
+    release  = 104;
+    narrativeTense = 1;     // present tense: past-tense text is left out
+    narrativeVoice = 2;     // second person
+}
+#using bgl
+#using bgl.printRules;   // {italics} / {roman} / {the(…)} in interpolated text
+
+// Dev toggle: skips the intro and fixes the random seed, for repeatable runs
+//#define orBetaDev true
+
+//Imports from the Beguile Language Runtime
+#include <ui>
+#include <i6StandardLibrary>  //bindings for the i6 Standard Library
+
+#include <languages/english>                     // pronouns and verbs that agree: they(…), them(…), …
+
+#include <extensions/general/loopArray>          // cycling message lists
+#include "gameStateTracker.bgl"                 // tasks, states and score
+#include "gameState.bgl"                        // game-local: the gameState instance + mack's task constants
+
+const int SERIOUS_HINTS_MARK = 50; // if this many moves have been made without scoring, start offering serious hints
+
+#include "myGameBaseline.bgl"   // base classes, verbs, and the library's parser and verblib stages
+#include <languages/english/messages>   // the library's messages, in place of English.h's
+
+object _gameOverrides {
+    parent = LibraryExtensions;
+    bool ext_messages(int n, int x1, int x2){
+        x1=lm_o; x2=lm_s; n=lm_n;
+        switch(action){
+            case Jump:
+                cThe(actor, "jump", "jumps", "jumped");
+                if(dehydratedBananas.parent == player) rtrue(" on the spot, fruitlessly, except for the pack of dehydrated bananas you are carrying.^");
+                if(banana.parent == player)            rtrue(" on the spot, fruitlessly, except for the flat, stone banana you are carrying.^");
+                rtrue(" on the spot, bananalessly.^");
+            case Pray: rtrue("You pray to the gods of the jungle. They do not answer.^");
+            case Sing: rtrue("You sing a little jingle about keys.^");
+        }
+        rfalse;
+    }
+}
+
+#include <extensions/stdlib/remoteLook>   // look in a direction, see into the next room
+
+//======= the game world (content) =================================================================== 
+#include "worldArea1-Ring.bgl"
+#include "worldArea2-Cliff.bgl"
+#include "worldArea3-Column.bgl"
+#include "topics.bgl"
+#include "helpMenus.bgl"
+
+// murk (worldArea3), dehydratedBananas (worldArea1), and banana (worldArea3) are all native Beguile
+// objects now; the two-pass compiler resolves them cross-file, so no externs are needed here.
+
+//=================================================================================================
+extend gameState {
+    replace int maxScore = 25;
+    int taskVineDetachedFromWall    = 0;
+    int taskInspectWall             = 1;
+    int taskMuteStatueRevealed      = 1;
+    int taskDeafStatueRevealed      = 1;
+    int taskBlindStatueRevealed     = 1;
+    int taskSpeakWithMonkeys        = 2;
+    int taskHiddenPathRevealed      = 2;
+    int taskGlassesGivenToCiedue    = 2;
+    int taskBridgeRestored          = 2;
+    int taskGetBanana               = 1;
+    int taskStatueReadSecretWords   = 1;
+    int taskGetTireIron             = 2;
+    int taskRevealThroneRoom        = 2;
+    int taskDefeatGrok              = 3;
+    int stateVineIsOverAnchor       = 1;
+    int stateInCombat               = 0;
+    int stateBananaPlacedOnWall     = 0;
+    int stateNearVineIsTied         = 0;
+    int taskAllStonesInBarrel       = 1;
+    int stateFarVineIsTied          = 1;
+    int stateLiberatedBanana        = 1;
+    int stateMonkeyEyeSeen          = 0;
+    array<var> taskSayMonkeyWords   = {0,"^[Note: Although you are free to type the whole phrase, it is only necessary to specify one word when speaking monkey.]^"};
+}
+
+// A stateDescriptors inventory note: "on your back" for Murk when he's being carried.
+bool waeOnBack(object obj, bool suppress) {
+    if (obj != murk) rfalse;
+    if (suppress == false && obj.parent == player) print("on your back");
+    return obj.parent == player;
+}
+
+bool Initialise() {
+    print("“Let’s eat at the café,” she suggested.");
+
+
+    stateDescriptors.addInventoryHandler(waeOnBack);
+    stateDescriptors.suppressSingleItemWhich = true;
+
+    location = southOfRockWall;
+    player.description = "You’re dirty, sweaty, and tired. Your clothes are torn, your hair a mess. You look like you’ve been lost in the jungle.";
+
+    #if orBetaDev
+        rtrue;          // skill the intro during development 
+    #endif
+    
+    ui.statusBar.height=0; //.setStatusHeight(0);
+    print($"^^^^Grunting, you lurch over the incline, grasping the thick vines, and pause to catch your breath. {italics}This
+            looks familiar{roman}, you lie to yourself, seeing no difference from where you were an hour ago. You listen for some
+            sign of civilization, a car horn maybe, but hear only the chirps and gurgles of the jungle.^^{italics}I’m never getting
+            out of here.{roman}^^With a sigh, you resume your trudge then pause, glimpsing something white through the greenery. ^^{italics}Is that it?{roman}^^-^");
+   
+    ui.waitForKey();    
+
+    print("^It is! Your Jeep is just visible
+            through the leaves, right where you parked it...^^...easy to find after a ten-minute jaunt into nature...^^...nine hours ago.^");
+
+    print("^A final push through the foliage rewards you with the sight of a dozen small, brown monkeys climbing through
+            your vehicle. The interior of the topless Jeep is a shambles. Seats are torn, stuffing is tossed about, and the
+            content of your open glove box litters the ground.^^The small monkeys take to the trees as you arrive, leaving
+            you alone with your ransacked car...^^-^");
+    
+    ui.waitForKey();
+
+    print("^...Well, almost alone.^^A large, yellow primate, altogether different from the small, brown monkeys, climbs slowly out of your backseat. Something between monkey and
+            gorilla, the creature stands upright, as tall as a man. It levels its eyes at you, unconcerned, and loudly jingles something
+            in its paw before casually striding into the thick undergrowth.^");
+
+    print($"^{italics}My keys!{roman} ^^Panicked, you give chase through the vegetation, emerging in an open space at the base of a
+            rock wall. The yellow creature is nowhere in sight but high above, hidden by the jungle canopy, you can hear the
+            chittering of a score of monkeys.^^-^");
+
+    ui.waitForKey(); 
+    ClearScreen(); 
+    //ui.setStatusHeight(1);
+    ui.statusBar.height=1;
+    print("^^^^");
+    rfalse;
+}
+
+// The magic words are myGameBaseline's defaults; PLOVER gets the game's curly quotes.
+extend Plover { replace void handler() { print("Yes, the crocodile’s dentist. But there don’t seem to be any of those around at the moment.^"); } }
+
+// (Epilogue and the other standard-library entry-point stubs are now declared `extern default` in
+// the i6StandardLibrary binding, so GameEpilogue can call Epilogue() directly.)
+
+// End-of-game screen, which the library calls when the game ends. Reports any
+// final score change, prints the win/lose banner centered, then runs the standard score/status/
+// after-game-over sequence.
+replace void GameEpilogue() {
+    if (score != last_score) {
+        if (notify_mode == 1) NotifyTheScore();
+        last_score = score;
+    }
+    #if TARGET_GLULX
+        glk_set_style(style_Alert);
+    #endif
+    print("^");
+    switch (deadflag) {
+        case 1: bgl.output.center("*** You have FAILED to get your keys. ***^(Sorry, try again.)");
+        case 2: bgl.output.center("*** You have won! ***^(Good job!)");
+    }
+    #if TARGET_GLULX
+        glk_set_style(style_Normal);
+    #endif
+    Epilogue();
+    ScoreSub();
+    DisplayStatus();
+    AfterGameOver();
+}
+
+// The standard library's grammar.
+#includeI6 "grammar";
+
+//=================================================================== New Grammar ====================
+
+// Grammar token: matches when the parsed noun is one of the three statues (used by `Extend 'show'`).
+bool isAStatue() {
+    if (noun == muteStatue || noun == deafStatue || noun == blindStatue) rtrue;
+    rfalse;
+}
+
+// Extend the existing `show` verb (a standard-library verb) for the statues. Existing verb → a
+// grammar object with grammarRules targeting Show (no new `verb Show`). Default rule priority emits
+// `Extend 'show'` (matches LAST, after creature rules — what the I6 `Extend 'show' last` wanted).
+// `reverse` swaps noun/second so both forms land the statue in the same slot.
+grammar showStatues {
+    grammarRule statueHeld   = {Show, {.show, noun(isAStatue), HELD, reverse}};   // show <statue> <held>     → Show reverse
+    grammarRule heldToStatue = {Show, {.show, held, .to, NOUN(isAStatue)}};       // show <held> to <statue>  → Show
+}
+
+// `hoot` (+ synonyms) — making monkey noises. New verb; handler() is the action body (-> HootSub).
+verb Hoot {
+    grammar = {.hoot|.grunt|.chitter|.chatter|.squeal|.bark|.screech};
+    void handler() { print("You make noises which sound, to you at least, like monkey sounds. There is no reply.^"); }
+}
+
+verb Greet {
+    grammar = {
+        {.greet, TALKABLE},
+        {.greet, ANIMATE},
+        {.greet, NOUN},
+    };
+    void handler() {
+        if (noun.hasnt(animate) || noun.hasnt(talkable)) {
+             print("Things which are not alive seldom greet you back. This holds true now.^");
+             return;
+        }
+        //playerCommands.pushCommand(util.orStr.format("say hello to $noun"), false, true);
+        playerCommands.pushCommand("say hello to monkeys", false, true);
+        ::meta=true;
+    }
+} 
+// `x sky` / `x ground`: route X <direction> through remoteLook like EXAMINE <direction>.
+extend LookDirection { priority = 5; grammar += { {.x, NOUN(ADirection)} }; }
+   verb Follow {
+       grammar = { {.follow, NOUN}, {.follow, NOUN, NOUN(ADirection)} };
+       void handler() {
+           if(noun == muteStatue && gameState.isTrue(taskHiddenPathRevealed)) { Go.perform(e_obj); return; }   // its beam lights the hidden path
+           if(second != null) { Go.perform(second); return; }
+           if(noun.has(animate)) { print($"There’s no need to follow {the(noun)}.^"); return; }
+           print("You’d do better to pick a direction.^");
+       }
+   }
+   // "examine tracks/dirt", referenced by various backdrop entries...
+   int bdDirt() {
+       if(action != Follow) rtrue("There’s very little you can do with the dirt or the tracks in it.");
+       string ways;
+       switch(location) {
+           case southOfRockWall: ways = "The tracks curve away around the wall in two directions, northeast and northwest. You’ll have to pick one.";
+           case westOfRockWall:  ways = "The path curves around the wall, northeast and southeast. You’ll have to pick one.";
+           case eastOfRockWall:  ways = "The path curves around the wall, northwest and southwest. You’ll have to pick one.";
+           case northOfRockWall: ways = "The trail curves around the wall, southwest and southeast. You’ll have to pick one.";
+           default:              rtrue("There are no tracks here to follow.");
+       }
+       if(second != null) { Go.perform(second); return bdRedirected; }
+       rtrue(ways);
+   }
+   verb WalkTo {
+       grammar = { {.go|.walk|.run|.head, .to|.toward|.towards, NOUN} };
+       void handler() { print($"You’re already about as close to {the(noun)} as you need to be. To go somewhere else, try a direction.^"); }
+   }

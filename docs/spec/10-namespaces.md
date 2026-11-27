@@ -8,42 +8,21 @@
 - [10.5 Global Emitter Aliases](#105-global-emitter-aliases)
 <!-- /toc -->
 
-A **namespace** is a container reached by a dotted path: `lib.gfx.window`, `bgl.util.math.pow(2, 8)`.
-Beguile has no namespace keyword. An ordinary object (§11) or an emitter class (§8.2.3) serves as
-the container, and the names under it — types, values and further namespaces — are its members. A
-type is placed in a namespace with `alias name for Type;` (§10.1); an object or class is placed there
-as a value with `auto` or `alias` (§10.2); an emitter class composes sub-namespaces through alias
-members (§10.3). `#using` (§10.4) imports a namespace, or a branch of one, so that its members may be
-written without the path.
+A **namespace** is a container reached by a dotted path:  `lib.gfx.window`, `bgl.util.math.pow(2, 8)`.  Beguile has no namespace keyword:  an ordinary object (§11) or an emitter class (§8.2.3) serves as the container, and the names under it (types, values, and further namespaces) are its members.
 
-An emitter namespace (§7.7) is a related but simpler construct: it groups emitters under a name that
-is not a type, is called by name only, and is not composed with the forms of this chapter. The root
-namespace of the runtime, `bgl` (§21.3), is an object of the kind this chapter describes.
+An emitter namespace (§7.7) is a related but simpler construct:  it groups emitters under a name which is not a type, is called by name only, and is not composed with the forms of this chapter.  The root namespace of the runtime, `bgl` (§21.3), is an object of the kind we cover here.
 
 ## 10.1 Namespace-Scoped Types
 
 **Syntax**
 
 ```syntax
-alias ⟨name⟩ for ⟨type⟩ ;
+alias NAME for TYPE ;
 ```
 
-This form appears inside an object body.
+To reach a type through a dotted path, declare it at top level and alias it onto a namespace object with `alias name for Type;` in the object's body.  Classes and enums can be aliased, and a dotted type path is accepted wherever a type name is.  Inside the object's own body its type aliases can also be named bare, as a nested type is inside the C# type which holds it.
 
-**Description**
-
-A type may be reached through a dotted path on an object. The type is declared at top level and then
-aliased onto a namespace object with `alias name for Type;` in the object's body; the `for` keyword
-distinguishes a type alias from an instance member (`auto x = y;`). Classes and enums may be aliased.
-A dotted type path is accepted wherever a type name is: variable declarations, parameters, return
-types, globals, array element types, base class lists and casts. Inside the object's own body its
-type aliases are also named bare, as a nested type is inside the C# type that holds it.
-
-When the aliased type is an enum or bnum, one further segment names a value of it; the path is
-resolved as the enum value itself. When it is a class, the path goes on into the class's static
-members as the class's name does (`ns.part.made`, `ns.part.twice(3)`).
-
-Type aliases may be imported with `#using` (§10.4), which shortens the path a use site must write.
+When the aliased type is an enum or bnum, one further segment names a value of it, and the path is resolved as the enum value itself.  When it is a class, the path goes on into the class's static members as the class's name does (`ns.part.made`, `ns.part.twice(3)`).
 
 **Example**
 
@@ -68,29 +47,18 @@ eGfxPlacement where = lib.gfx.placement.above;      // enum value
 **Syntax**
 
 ```syntax
-auto  ⟨name⟩ = ⟨target⟩ ;
-alias ⟨name⟩ = ⟨target⟩ ;
+auto  NAME = TARGET ;
+alias NAME = TARGET ;
 ```
 
-**Description**
+A namespace member can also alias a *value* (an object or a class), which makes its members reachable through the path.  The two forms differ in whether a runtime member exists on the host:
 
-A namespace member may also alias a *value* — an object or a class — so that its members are
-reachable through the path. The two forms differ in whether a runtime member exists on the host:
+- `auto name = obj` binds a runtime member whose value is `obj`.  `host.name` is a first-class value, and `obj` (with everything it references) will always be present in the program.
+- `alias name = Target` is compile-time only:  `host.name.m()` resolves to `Target.m()` and no member exists on the host.  Since `Target` is referenced only where the alias is used, pairing it with a `superposed` target (§3.12) gives a namespace which costs nothing until it is called.  `Target` can be a class; `alias asm = bglOpCodes` is equivalent to the alias-member form `emitter auto asm = bglOpCodes;` (§10.3), a compile-time redirect with no I6 backing.
 
-- `auto name = obj` binds a runtime member whose value is `obj`. `host.name` is a first-class value,
-  and `obj` (with everything it references) is always present in the program.
-- `alias name = Target` is compile-time only: `host.name.m()` resolves to `Target.m()` and no member
-  exists on the host. `Target` is referenced only where the alias is used, so paired with a
-  `superposed` target (§3.12) the namespace costs nothing until it is called. `Target` may be a class;
-  `alias asm = bglOpCodes` is equivalent to the alias-member form `emitter auto asm = bglOpCodes;`, a
-  compile-time redirect with no I6 backing.
+`TARGET` can be a path through other namespace members (`alias o = root.ops;`); it names the object or class which the path reaches.
 
-`⟨target⟩` may be a path through other namespace members (`alias o = root.ops;`); it names the object or
-class the path reaches.
-
-Only these forms make a path step a namespace step. An ordinary member whose declared value happens
-to name an object — `object door { room target = hallway; }` — is storage: `door.target` reads the
-member at run time and may be assigned.
+Only the above forms make a path step a namespace step.  An ordinary member whose declared value happens to name an object (e.g., `object door { room target = hallway; }`) is storage:  `door.target` reads the member at run time and can be assigned.
 
 | Form | Target | Runtime member | Use |
 |---|---|---|---|
@@ -98,6 +66,7 @@ member at run time and may be assigned.
 | `alias name = Target` | object or class | no | Compile-time value alias; gates a `superposed` target on use |
 | `auto name = obj` | object | yes | When `host.name` must be a runtime value |
 | `Type name;` in an emitter class | class | no | Alias member (§10.3) |
+| `emitter auto name = Type;` | class | no | Alias member, in any class or object body (§10.3) |
 
 **Example**
 
@@ -113,22 +82,17 @@ extend lib { alias world = _world; }
 **Syntax**
 
 ```syntax
-emitter class ⟨host⟩ { ⟨class⟩ ⟨name⟩ ; }
+emitter class HOST { CLASS NAME ; }
+emitter auto NAME = CLASS ;
 ```
 
-**Description**
-
-An emitter class may declare **alias members**: typed references to other classes, declared as
-`TypeName name;` with no initializer, resolved at compile time. They compose a root namespace that
-delegates to sub-namespaces, and combine with `#using` (§10.4).
+An emitter class can declare **alias members**:  typed references to other classes, declared as `TypeName name;` and resolved at compile time.  The second form, `emitter auto name = TypeName;`, names the class in an initializer instead, and can appear in any class or object body.  We use them to compose a root namespace which delegates to sub-namespaces.
 
 - The member type must be a declared class, emitter or normal.
-- No initializer is permitted.
-- Alias members are valid only on emitter classes; an object uses value aliases (§10.2) instead.
-- Aliases chain: `a.b.c.method()` resolves through any number of hops.
-- `const` and `inline` apply as on any member (§8.3.2, §8.3.5). `_bglObject`'s
-  `inline const string instanceName;` is an alias member of this kind: it has no storage, and each
-  object's value becomes its I6 header name (§11.5.4).
+- The typed form takes no initializer.
+- The typed form is an alias member only on an emitter class; on an object it declares an ordinary member.  An object uses `emitter auto` or a value alias (§10.2) instead.
+- Aliases chain:  `a.b.c.method()` resolves through any number of hops.
+- `const` and `inline` apply as they do on any member (§8.3.2, §8.3.5).
 
 **Example**
 
@@ -140,11 +104,11 @@ emitter class libStrings {
 emitter class lib { }
 extend class lib { libStrings strings; }
 
-lib.strings.banner;                 // → libStrings.banner
+lib.strings.banner;                 // -> libStrings.banner
 int c = lib.strings.count;
 
 #using lib
-strings.banner;                     // → lib.strings → libStrings.banner
+strings.banner;                     // -> lib.strings -> libStrings.banner
 ```
 
 ## 10.4 `#using`
@@ -152,29 +116,16 @@ strings.banner;                     // → lib.strings → libStrings.banner
 **Syntax**
 
 ```syntax
-#using ⟨name⟩ [ .⟨name⟩ ] … [ ; ]
+#using NAME [ .NAME ] … [ ; ]
 ```
 
-**Description**
+`#using` imports the members of the named class or object into the current file's scope, which lets you reference them without qualification.  A dotted path names a member class or object of the first name (`bgl.glulx`).  `#using` controls only how much of the namespace path can be omitted; it declares nothing.
 
-`#using` imports the members of the named class or object into the current file's scope, so that
-they may be referenced without qualification. A dotted path names a member class or object of the
-first name (`bgl.glulx`). `#using` controls only how much of the namespace path may be omitted; it
-declares nothing.
+**File scope.**  The import is active from the directive to the end of the file.  It does not cross `#include` in either direction:  an included file will not see the includer's imports, and a `#using` in an included file will not affect the includer.
 
-**File scope.** The import is active from the directive to the end of the file. It does not cross
-`#include` in either direction: an included file does not see the includer's imports, and a `#using`
-in an included file does not affect the includer.
+**Priority.**  Imported names form the lowest tier of identifier resolution (§3.8.3); they rank below locals, parameters, class and object members, and globals.  A global with the same name as an imported member wins, with a warning.  A verb doesn't compete with an imported member at the head of a path (`stock.count`) or in a call (`Show(5)`).  If two imports declare a member with the same name, using that name unqualified is a compile-time error; qualify it.
 
-**Priority.** Imported names form the lowest tier of identifier resolution (§3.8.3): they rank below
-locals, parameters, class and object members and globals. A global with the same name as an imported
-member wins, with a warning. A verb has no members and can't be called, so it doesn't compete with an
-imported member at the head of a path (`stock.count`) or in a call (`Show(5)`). If two imports declare a
-member with the same name, using that name unqualified is a compile-time error; qualify it.
-
-**Target.** The target must be a class or object that is already declared when the directive is read.
-If it is not yet declared, the directive is ignored with a warning and never takes effect, even when a
-later file declares the target (§18.3). What an import contributes depends on the kind of target:
+**Target.**  The target must be a class or object which is already declared when the directive is read.  If it is not yet declared, the directive is ignored with a warning and never takes effect, even when a later file declares the target (§18.3).  What an import contributes depends on the kind of target:
 
 | Target | Imported | Resolution |
 |---|---|---|
@@ -182,12 +133,9 @@ later file declares the target (§18.3). What an import contributes depends on t
 | Object | Methods, properties, type aliases | Through the object path |
 | Class with static members | Static variables and static methods | As a static member reference |
 
-`#using` a regular class that has only non-static instance members is a compile-time error; instance
-methods require a receiver.
+`#using` a regular class which has only non-static instance members is a compile-time error, since instance methods require a receiver.
 
-**Alias imports.** Type aliases declared in the target (§10.1) are imported as bare type names, and a
-partial path resolves from the imported point: with `#using bgl.glulx`, `window` resolves to the
-aliased class; with `#using bgl`, `glulx.window` resolves through the partial path.
+**Alias imports.**  Type aliases declared in the target (§10.1) are imported as bare type names, and a partial path resolves from the imported point:  with `#using bgl.glulx`, `window` resolves to the aliased class; with `#using bgl`, `glulx.window` resolves through the partial path.
 
 **Example**
 
@@ -202,37 +150,26 @@ void Main() { int ws = wordsize; }    // myPlatform.wordsize
 window myWin;                         // resolves to glulxWindow
 ```
 
-**Notes**
+> ***Note:** In default mode `#using bgl` is implicit; however, in precompiler mode it must be written inside a Beguile island (§16.1.2).*
 
-In default mode `#using bgl` is implicit; in precompiler mode it must be written inside a Beguile
-island (§15.1.2).
-
-**See also** §3.8.3 — the resolution tiers; §15.1.2 — precompiler mode; §21.3 — the `bgl` namespace;
-Appendix B — the directive index.
+**See also** §3.8.3 (the resolution tiers); §16.1.2 (precompiler mode); §21.3 (the `bgl` namespace); Appendix B (the directive index).
 
 ## 10.5 Global Emitter Aliases
 
 **Syntax**
 
 ```syntax
-alias ⟨name⟩ = ⟨object⟩ [ .⟨member⟩ … ] .⟨name⟩ ;
+alias NAME = OBJECT [ .MEMBER … ] .NAME ;
 ```
 
-**Description**
-
-At file scope, `alias` can make an object's emitters callable without their path. Every overload of
-`⟨name⟩` on the object is called as a global function of that name, including overloads that a later
-`extend` of the object adds. An overload that an `extend … { replace … }` replaces is replaced for the
-global name too.
+At file scope, `alias` can make an object's emitters callable without their path.  Every overload of `NAME` on the object can then be called as a global function of that name, including overloads which a later `extend` of the object adds.  An overload which an `extend … { replace … }` replaces is replaced for the global name too.
 
 - The object path follows the rules of value aliases (§10.2).
 - The alias keeps the member's name.
-- Only emitters can be aliased. An emitter has no routine of its own, so the global name and the
-  member are the same definition. An object's ordinary method is a compile-time error here.
+- Only emitters can be aliased.  An emitter has no routine of its own, so the global name and the member are the same definition.  An object's ordinary method is a compile-time error here.
 - A global function of the same name, declared anywhere, joins the same overload set.
 
-The core declares the print family this way: `print`, `printLine` and `printName` live in
-`bgl.output` (§21.4) and are global through aliases.
+The print family is declared this way:  `print`, `printLine`, and `printName` live in `bgl.output` (§21.4) and are global through aliases.
 
 **Example**
 
@@ -251,4 +188,4 @@ void Main(){
 }
 ```
 
-**See also** §10.2 — value aliases; §21.4 — `bgl.output`.
+**See also** §10.2 (value aliases); §21.4 (`bgl.output`).

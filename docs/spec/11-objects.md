@@ -3,7 +3,7 @@
 <!-- toc -->
 - [11.1 Overview](#111-overview)
 - [11.2 Declaring an Object](#112-declaring-an-object)
-- [11.3 Inline Objects — `Type{ … }`](#113-inline-objects-type-)
+- [11.3 Inline Objects: `Type{ … }`](#113-inline-objects-type-)
   - [11.3.1 Positional and Named Members](#1131-positional-and-named-members)
   - [11.3.2 Type Inference from the Target](#1132-type-inference-from-the-target)
   - [11.3.3 Inline Objects as Arguments](#1133-inline-objects-as-arguments)
@@ -32,41 +32,25 @@
 
 ## 11.1 Overview
 
-An *object* is a named, globally visible instance that exists as a concrete entity in the story file.
-A class (§8.1) is a type; an object is a single instance of a type. **Any** class may be instantiated
-as a named object, including utility classes and data tables; objects are commonly used for
-world-model entities (rooms, things, characters), and those inherit from `object` to get the
-world-model members. The declaration says which class is instantiated, not whether the instance is an
-`object`: a base that does not derive from `object` gives an instance that is not one, whichever of
-the two declaration forms is used (§11.2).
+An *object* is a named, globally visible instance which exists as a concrete entity in the story file:  where a class (§8.1) is a type, an object is a single instance of one.  **Any** class can be instantiated as a named object; however, most are world-model entities (rooms, things, characters), which inherit from `object` to get the world-model members.
 
 ## 11.2 Declaring an Object
 
 **Syntax**
 
 ```syntax
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
-object ⟨name⟩ [ asI6 ⟨i6name⟩ ] : ⟨base⟩ [ , ⟨base⟩ … ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
-⟨class⟩ ⟨name⟩ [ asI6 ⟨i6name⟩ ] { [ ⟨value⟩ , … ; ] ⟨member⟩ … }
-object ⟨name⟩ ;
-⟨class⟩ ⟨name⟩ ;
+object NAME [ asI6 I6NAME ] { [ VALUE , … ; ] MEMBER … }
+object NAME [ asI6 I6NAME ] : BASE [ , BASE … ] { [ VALUE , … ; ] MEMBER … }
+CLASS NAME [ asI6 I6NAME ] { [ VALUE , … ; ] MEMBER … }
+object NAME ;
+CLASS NAME ;
 ```
 
-**Description**
+An object is declared at global scope.  Without a body, `object NAME;` and `CLASS NAME;` (of a reference class) declare an object exactly as an empty body does; a global which refers to an object instead is declared `ref` (§3.7).
 
-An object is declared at global scope. Without a body, `object ⟨name⟩;` and `⟨class⟩ ⟨name⟩;` (of a
-reference class) declare an object exactly as an empty body does, as `Object j;` does in Inform 6; a
-global that refers to an object instead is declared `ref` (§3.7). The name becomes a globally visible identifier usable wherever
-an `object`-typed value is expected. The body holds member declarations in the same form as a class
-body (§8.3.1): a member is written `Type name [= value];` and members are `;`-separated. A member
-with no initializer defaults to `0`, `false` or `null` according to its type. The one exception is
-`static`: an object has no class-wide members of its own, so `static` in an object body is a
-compile-time error. An inline accessor declared in an object (`auto x = { … }`, §9.9.2) is a class,
-so its own members may be `static`.
+The body holds member declarations in the same form as a class body (§8.3.1):  a member is written `Type name [= value];` and members are `;`-separated.  A member with no initializer will default to `0`, `false`, or `null` according to its type.  The one exception is `static`, which is a compile-time error in an object body, since an object has no class-wide members of its own.  An inline accessor declared in an object (`auto x = { … }`, §9.9.2) is a class, though, so its own members can be `static`.
 
-The body may open with a **positional section**: `,`-separated values filling the class's positional
-members in order (§8.3.5), ended by the first `;`, exactly as in an inline object (§11.3.1). Members
-follow as usual. A member given positionally can't also be given by name.
+The body can open with a **positional section**:  `,`-separated values which fill the class's positional members in order (§8.3.5), ended by the first `;`, exactly as in an inline object (§11.3.1).  A member given positionally can't also be given by name.
 
 ```bgl
 object hall { "hall"; }
@@ -75,25 +59,13 @@ Pet rex { "rex", 3; owner = "Jim"; parent = hall; }
 object lamp { "brass lamp"; }        // the name, positional on every class (§11.5.4)
 ```
 
-The class an object instantiates is given in one of two equivalent ways. Using the class name as the
-type keyword (`ClassName Name { … }`) is the usual form. The inheritance form (`object Name : Base`)
-is required when the object inherits from more than one base. An object declared with neither
-(`object Name { … }`) is an instance of `object`.
+The class name as the type keyword (`ClassName Name { … }`) is the usual form; the inheritance form (`object Name : Base`) is required when the object inherits from more than one base.  An object declared with neither (`object Name { … }`) is an instance of `object`.
 
-An object declared with no base, or with a base that derives from `object`, is an instance of
-`object` and carries `parent`, `children` and `attributes` (§11.5). `object` is **not** added
-implicitly: an object whose bases do not derive from `object` is not assignable to an `object`
-variable and lacks the `object` members. Give such a declaration `object` as an explicit base when
-the world-model members are wanted.
+An object declared with no base, or with a base which derives from `object`, is an instance of `object` and carries `parent`, `children`, and `attributes` (§11.5).  `object` is **not** added implicitly; to get the world-model members for an object whose bases don't derive from `object`, give it `object` as an explicit base.
 
-**Every declared object is its own type**, whichever form declares it: a type with one instance,
-derived from the object's class. So `object lamp { … }` and `Room hall { … }` behave alike: members
-the body adds are members of that type (`lamp.brightness`, `hall.extra`), and the object fits
-wherever its class or an ancestor of it is expected — a parameter, a variable, an operator's operand
-— using the class's methods and operators. A verb object (§13) is the exception: its value is an
-action, typed by its verb class.
+**Every declared object is its own type**, regardless of which form declares it:  a type with one instance, derived from the object's class, which holds the members its body adds.  A verb object (§13) is the exception:  its value is an action, typed by its verb class.
 
-The optional `as i6name` clause names the object differently in the emitted I6 (§3.11).
+The optional `asI6` clause names the object differently in the emitted I6 (§3.11).
 
 **Example**
 
@@ -116,58 +88,40 @@ object dog : object, Animal, Robot {   // object listed explicitly: dog is a wor
 }
 ```
 
-**Notes**
+> ***Note:** `ClassName Name { … }` is equivalent to `object Name : ClassName { … }`.*
 
-`ClassName Name { … }` is equivalent to `object Name : ClassName { … }`.
+**See also** §11.4 (members and type inference); §11.11 (`extern object`).
 
-**See also** §11.4 — members and type inference; §11.11 — `extern object`.
-
-## 11.3 Inline Objects — `Type{ … }`
+## 11.3 Inline Objects: `Type{ … }`
 
 **Syntax**
 
 ```syntax
-⟨type⟩{ ⟨value⟩ , … }
-⟨type⟩{ ⟨name⟩ = ⟨value⟩ ; … }
-⟨type⟩{ ⟨value⟩ , … ; ⟨name⟩ = ⟨value⟩ ; … }
+TYPE{ VALUE , … }
+TYPE{ NAME = VALUE ; … }
+TYPE{ VALUE , … ; NAME = VALUE ; … }
 { … }
 ```
 
-The last form omits `⟨type⟩`; it is permitted only where the target type is known (§11.3.2).
+The last form omits `TYPE`; it can be used only where the target type is known (§11.3.2).
 
-**Description**
+An object declaration written in expression position without a name declares an *anonymous* object and evaluates to a reference to it.  It is the same declaration as the named form (`point p { x = 1; y = 2; }`) with the name left off, and it is a compile-time declaration, unrelated to `new` (§4.13), which allocates at run time.
 
-An object declaration written in expression position without a name declares an *anonymous* object
-and evaluates to a reference to it. It is the same declaration as the named form
-(`point p { x = 1; y = 2; }`) with the name omitted, and it is a compile-time declaration: nothing runs
-at startup, and it is unrelated to `new` (§4.13), which allocates at run time.
+The form is available for any class which can be declared as a named object; it has no meaning for namespace types (`emitter class`, `alias class`).  For a struct (§8.2.7) it is a value of that class with the given members:  a variable or argument receives a copy through the class's `operator =`, and an owned member takes it as its starting value (§8.3.4).
 
-The form is available for any class that can be declared as a named object. It has no meaning for
-namespace types (`emitter class`, `alias class`). For a struct (§8.2.7) it is a value of that class
-with the given members: a variable or argument receives a copy through the class's `operator =`, and a
-member initialized with it — the way to give an owned struct member its starting value, since a
-member initializer is fixed at compile time and can't run `operator =` — holds those values
-(`Item pebble { price = Coins{ cents = 5; }; }`). It may appear anywhere an
-expression may: an array-literal element, an `inject` element in `extend` for arrays (§12.11), a
-variable initializer, a call argument, or standing alone as a statement.
+An inline object can appear anywhere an expression can, including standing alone as a statement (§11.3.6).
 
 ### 11.3.1 Positional and Named Members
-
-**Description**
 
 A member is given *positionally* or *by name*, and the separators carry meaning:
 
 | Form | Separator | Fills |
 |---|---|---|
-| Positional: `{ 3, 4 }` | `,` | The next positional member (§8.3.5): the class's own `inline` and re-listed members, then its bases', subclass first. Only positional members participate. |
-| Named: `{ x = 1; y = 2; }` | `;` | The member named, `inline` or not. The `=` is required. |
+| Positional: `{ 3, 4 }` | `,` | The next positional member (§8.3.5):  the class's own `inline` and re-listed members, then its bases', subclass first.  Only positional members participate. |
+| Named: `{ x = 1; y = 2; }` | `;` | The member named, `inline` or not.  The `=` is required. |
 | Combined: `{ 5, 6; label = "p"; }` | `,` then a single `;` | Positional values first; the first `;` ends the positional section and begins the named section. |
 
-Supplying more positional values than there are `inline` members is a compile-time error. After the
-`;` that ends the positional section only named members may follow; a `,` before or among named
-members is a compile-time error, as is a named member before a positional one. A declaration body
-takes the same positional section (§11.2); a class body is `;`-only, and `,` is never a member
-separator there.
+Supplying more positional values than there are positional members is a compile-time error.  After the `;` which ends the positional section only named members can follow; a `,` before or among named members is a compile-time error, as is a named member before a positional one.  A declaration body takes the same positional section (§11.2); however, a class body is `;`-only, and `,` is never a member separator there.
 
 **Example**
 
@@ -183,24 +137,16 @@ array<point> pts = {
 
 ### 11.3.2 Type Inference from the Target
 
-**Description**
-
-Where the target type is already known, the leading `Type` may be omitted and a bare `{ … }` takes the
-target's type. Inference applies in six positions:
+Where the target type is already known, a bare `{ … }` takes it and the leading `Type` can be left off.  Inference applies in six positions:
 
 - an `array<T>` element;
 - an object-backed variable initializer (`Type name = { … }`);
 - the element of a declarative `inject` (§12.11);
 - a call argument whose parameter is an object-backed class;
-- an argument to an `array<T>` method whose parameter is `T`, when `T` is an object-backed class or a
-  struct with `inline` members (`pts.append({ 1, 2 })`);
-- a member's value inside an aggregate or object body, when the member's type is a struct with
-  `inline` members (`Pair{ { 1 }, { 2 } }`, `Panel p1 { fill = { 40, 200, 40 }; }`).
+- an argument to an `array<T>` method whose parameter is `T`, when `T` is an object-backed class or a struct with `inline` members (`pts.append({ 1, 2 })`);
+- a member's value inside an aggregate or object body, when the member's type is a struct with `inline` members (`Pair{ { 1 }, { 2 } }`, `Panel p1 { fill = { 40, 200, 40 }; }`).
 
-A bare `{ … }` produces an object only when the target type is an object-backed class. If the target
-is an `array<…>`, or a struct or collection type with an `operator =(initializerList)`, a bare
-`{ … }` is a braced list. An explicit `Type{ … }` is always available and also distinguishes a single
-element from a list.
+A bare `{ … }` produces an object only when the target type is an object-backed class.  If the target is an `array<…>`, or a struct or collection type with an `operator =(initializerList)`, a bare `{ … }` is a braced list.  An explicit `Type{ … }` is always available, and also distinguishes a single element from a list.
 
 **Example**
 
@@ -223,22 +169,11 @@ array<rule> book = {
 rule fallback = { Look, any, lookBody };
 ```
 
-**Notes**
-
-`Type name = { … };` is equivalent to the named object declaration
-`Type name { … }`.
+> ***Note:** `Type name = { … };` is equivalent to the named object declaration `Type name { … }`.*
 
 ### 11.3.3 Inline Objects as Arguments
 
-**Description**
-
-A `Type{ … }` or bare `{ … }` may be passed directly as a call argument, positionally or as a named
-argument (§6.3), and on a method call.
-
-For the bare form the parameter type must resolve unambiguously: the type is inferred only when every
-viable overload of that name expects the same aggregate-constructible class at that argument position
-(an object-backed class, or a struct declaring `inline` members). If the overloads disagree, or
-the parameter cannot take an aggregate, it is a compile-time error; write an explicit `Type{ … }`.
+For a bare `{ … }` argument (positional, named (§6.3), or on a method call) the parameter type must resolve unambiguously:  the type is inferred only when every viable overload of that name expects the same aggregate-constructible class at that argument position (an object-backed class, or a struct declaring `inline` members).  If the overloads disagree, or the parameter can't take an aggregate, it is a compile-time error; write an explicit `Type{ … }` instead.
 
 **Example**
 
@@ -252,14 +187,7 @@ obj.method({ x = 1; y = 2; });
 
 ### 11.3.4 Constant and Run-time Members
 
-**Description**
-
-When every member value is a compile-time constant, the expression denotes one *constant instance*,
-so repeated evaluations yield a reference to the *same* object. When a member value is a run-time
-expression (a local or parameter, as in `foo({ width, height })`), the expression denotes a per-site
-instance whose run-time members are populated immediately before each evaluation, so each evaluation
-sees freshly populated values. A recursive call that re-enters the same site repopulates that site's
-single instance, so after the inner call returns the outer activation sees the inner call's values.
+When every member value is a compile-time constant, the expression denotes one *constant instance*, so repeated evaluations will yield a reference to the *same* object.  When a member value is a run-time expression (a local or parameter, as in `foo({ width, height })`), the expression denotes a per-site instance whose run-time members are populated immediately before each evaluation.  A recursive call which re-enters the same site repopulates that site's single instance, so the outer call will see the inner call's values once it returns.
 
 **Example**
 
@@ -277,11 +205,7 @@ void Main() {
 
 ### 11.3.5 Nested Aggregates
 
-**Description**
-
-A member value may itself be a `{ … }` aggregate, whose shape is taken from the member's type: an
-`array<T>` member takes a braced array literal, and an object-backed member takes a nested inline
-object. An `array<T>` member may be declared `inline`, making it a positional slot like any other.
+A member value can itself be a `{ … }` aggregate, whose shape is taken from the member's type:  an `array<T>` member takes a braced array literal, and an object-backed member takes a nested inline object.  An `array<T>` member can be declared `inline`, which makes it a positional slot like any other.
 
 **Example**
 
@@ -298,12 +222,7 @@ menu child = { root, "a child", {.foo, .bar, .baz} };
 
 ### 11.3.6 Standalone Declarations
 
-**Description**
-
-An inline object may stand alone as a statement, with no name and no assignment. The reference is
-discarded, so the object is reachable only if it links itself, for example by setting a positional
-`parent` or `linkTo` that places it in the object tree. Without such a link it is an unreferenced
-object, reachable only by an object-tree walk (§21.9).
+An inline object can stand alone as a statement, with no name and no assignment.  The reference is discarded, so the object is reachable only through a link it sets itself (e.g., a positional `parent` or `linkTo` which places it in the object tree) or, without one, by an object-tree walk (§21.9).
 
 **Example**
 
@@ -317,15 +236,10 @@ menu{ root, "text to display", {.type, .kind} };
 **Syntax**
 
 ```syntax
-⟨class-type⟩ ⟨name⟩ { ⟨positional and named members⟩ } [ ; ]
+CLASS-TYPE NAME { POSITIONAL-AND-NAMED-MEMBERS } [ ; ]
 ```
 
-**Description**
-
-A member of a class type may be given its instance with a body, as a file-scope instance is (§11.2):
-`Pet dog { "rex", 3; }` in an object body means `Pet dog = Pet{ "rex", 3 };`. The body takes the same
-positional and named members as an inline object (§11.3.1). A member of any other type, or a `ref`
-member, takes its value with `=`.
+A member of a class type can be given its instance with a body, just as a file-scope instance is (§11.2):  `Pet dog { "rex", 3; }` in an object body means `Pet dog = Pet{ "rex", 3 };`.  A member of any other type, or a `ref` member, takes its value with `=`.
 
 **Example**
 
@@ -340,17 +254,9 @@ object house {
 
 ## 11.4 Members and Type Inference
 
-**Description**
+Members of an object body are declared with a type, as in a class body; however, when the object is an instance of a class, a member already declared on that class can be set without repeating the type.  The compiler searches the object's declared class first, then its base classes, and finally the base `object` class.  A typeless member name found on no class in the hierarchy is a compile-time error.
 
-Members of an object body are declared with a type, as in a class body. When the object is an instance
-of a class, a member already declared on that class may be set without repeating the type. The
-compiler searches the object's declared class first, then its base classes, and finally the base
-`object` class. A typeless member name that is found on no class in the hierarchy is a compile-time
-error.
-
-**Object references.** A member may hold a reference to another object. The assigned object must be
-type-compatible with the declared member type, and a declared object instance is stored as a direct
-reference; no `init()` is called.
+A member can also hold a reference to another object (§8.3.4), as `sys` does below.
 
 **Example**
 
@@ -374,36 +280,26 @@ object gameState {
 gameState.sys.activate();
 ```
 
-**See also** §8.3.4 — owned members; §3.7 — `ref` members; §11.8 — array members.
+**See also** §8.3.4 (owned members); §3.7 (`ref` members); §11.8 (array members).
 
 ## 11.5 Special Members: `parent`, `children`, `attributes`, `instanceName`
 
-Four members have compiler-level support. Three are declared on the base `object` class and tied to
-the world model: `parent` and `children` place objects in the object tree, and `attributes` sets the
-object's attribute flags. The fourth, `instanceName`, is declared on `_bglObject` (§21.5.8), so it is
-available on every object, world-model or not: it gives the object its name.
-
-`object` also declares `name`, a `rawArray<dictionaryWord>`: the dictionary words the parser matches for
-the object. It is Inform 6's own built-in `name` property, so it needs no binding, and any object may
-set it without a type: `name = {.brass, .key};`, or `name = .lamp;` for one word. It is additive (§11.7.2):
-the words a class gives and the words an instance gives are combined.
+Four members have compiler-level support.  `parent`, `children`, and `attributes` are declared on the base `object` class and tied to the world model.  `instanceName`, which gives the object its name, is declared on `_bglObject` (§21.5.8), so it is available on every object, world-model or not.
 
 ### 11.5.1 `parent`
 
 **Syntax**
 
 ```syntax
-object parent = ⟨container⟩ ;
-⟨object⟩ . parent = ⟨container⟩ ;
+object parent = CONTAINER ;
+OBJECT . parent = CONTAINER ;
 ```
 
 The first form appears in an object body; the second is a run-time statement.
 
-**Description**
+In an object body, `parent` places the object inside another object at game start.  At run time, assigning to `obj.parent` moves the object; assigning `null` takes it out of the object tree, so it is nowhere until it is moved again.
 
-In an object body, `parent` places the object inside another object at game start. At run time,
-assigning to `obj.parent` moves the object; assigning `null` takes it out of the object tree, so it is
-nowhere until it is moved again.
+Both library bindings (§23) make the object's name and its `parent` positional, in that order (§8.3.5).
 
 **Example**
 
@@ -413,49 +309,32 @@ object cloak {
 }
 ```
 
-**See also** §8.2.8 — `typesealed` members; §21.5.7 — `parentProp`, the type of `parent`.
+**See also** §8.3.7 (`typesealed` members); §21.5.7 (`parentProp`, the type of `parent`).
 
 ### 11.5.2 `children`
 
 **Syntax**
 
 ```syntax
-children = { ⟨object⟩ , … } ;
-⟨object⟩ . children += { ⟨object⟩ , … } ;
-for ( object ⟨name⟩ in ⟨object⟩ . children ) ⟨statement⟩
-⟨object⟩ . children . length
+children = { OBJECT , … } ;
+OBJECT . children += { OBJECT , … } ;
+for ( object NAME in OBJECT . children ) STATEMENT
+OBJECT . children . length
 ```
 
 The first form appears in an object body; the others are run-time expressions and statements.
 
-**Description**
+`children` is the inverse of `parent`:  the object's child collection in the object tree.
 
-`children` is the inverse of `parent`: the object's child collection in the object tree.
+**Placement.**  In an object body, `children = { a, b, c }` places each listed object inside this one at game start.  It is equivalent to setting `parent` on each child, and the container can be declared before or after its contents.  Since an object has exactly one parent, conflicting placement is a compile-time error:  listing an object in two containers' `children`, or listing it in one container's `children` while it sets `parent` to a different object.  Declaring the same link both ways (`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
 
-**Placement.** In an object body, `children = { a, b, c }` places each listed object inside this one
-at game start; it is equivalent to setting `parent` on each child, and the container may be declared
-before or after its contents. An object has exactly one parent, so conflicting placement is a
-compile-time error: listing an object in two containers' `children`, or listing it in one container's
-`children` while it sets `parent` to a different object. Declaring the same link both ways
-(`kitchen.children = { table }` and `table.parent = kitchen`) is accepted.
+**Reading.**  `obj.children` is a collection:  you iterate it with `for … in`, and `.length` (or its synonym `.size`) returns the number of direct children.  It is the live tree, not an array, so it can't initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
 
-**Reading.** `obj.children` is a collection: it is iterated with `for … in`, and `.length` (or its
-synonym `.size`) returns the number of direct children. It is the live tree, not an array, so it
-cannot initialize or be assigned to an `array<object>`; `bgl.world.inParent(obj)` returns one (§21.9).
+**Iterating while moving.**  `for … in obj.children` reads each child's next sibling before running the body, so the body can move the current child elsewhere.  A body which moves *other* children of `obj`, or adds new ones, changes what the remaining iterations see; to visit exactly the children present at the start, iterate the snapshot `bgl.world.inParent(obj)` instead.
 
-**Iterating while moving.** `for … in obj.children` reads each child's next sibling before running
-the body, so the body may move the current child elsewhere: `for (object o in kitchen.children)
-o.parent = bowl;` moves every child. A body that moves *other* children of `obj`, or adds new ones,
-changes what the remaining iterations see; to visit exactly the children present at the start, iterate
-the snapshot `bgl.world.inParent(obj)` instead.
+**First child and next sibling.**  `obj.child` is the object's first child, or `null`; `obj.sibling` is the next object with the same parent, or `null`.
 
-**First child and next sibling.** `obj.child` is the object's first child, or `null`; `obj.sibling` is
-the next object with the same parent, or `null`. They walk the tree one step at a time, as Inform 6's
-`child()` and `sibling()` do; `for … in obj.children` is the usual way to visit every child.
-
-**Run-time placement.** `obj.children += { … }` moves each listed object into `obj`. `=` on
-`children` is permitted only in an object body, and `-=` is not permitted; to remove an object, move
-it by assigning its `parent`.
+**Run-time placement.**  `obj.children += { … }` moves each listed object into `obj`.  `=` on `children` can be used only in an object body, and `-=` can't be used at all; to remove an object, move it by assigning its `parent`.
 
 **Example**
 
@@ -470,6 +349,7 @@ object bowl {}
 object apple {}
 object pear {}
 
+// … in a routine:
 for (object o in kitchen.children) { o.give(seen); }
 int n = kitchen.children.length;
 bowl.children += { apple, pear };
@@ -480,24 +360,15 @@ bowl.children += { apple, pear };
 **Syntax**
 
 ```syntax
-attributes = { [ ! ] ⟨attribute⟩ , … } ;
-attributes = [ ! ] ⟨attribute⟩ ;
+attributes = { [ ! ] ATTRIBUTE , … } ;
+attributes = [ ! ] ATTRIBUTE ;
 ```
 
-**Description**
+`attributes` is an `attributeList` member (§21.5.1) which declares the object's initial attributes.  Each entry names an attribute; a `!` prefix clears an attribute the object would otherwise inherit from its class.  The list is additive relative to the class:  attributes the class gives are kept unless negated, and `attributes = {}` clears nothing.  In an `extend` block, `attributes =` is allowed only when the object's own declaration has no `attributes` member; otherwise it is a compile-time error, even with `replace`.
 
-`attributes` is an `attributeList` member (§21.5.1) that declares the object's initial attributes.
-Each entry names an attribute; a `!` prefix explicitly clears an attribute the object would otherwise
-inherit from its class. The list is additive relative to the class: attributes the class gives are
-kept unless negated, and `attributes = {}` clears nothing. In an `extend` block, `attributes =` is
-permitted only when the object's own declaration has no `attributes` member; otherwise it is a
-compile-time error, even with `replace`.
+A single attribute needs no braces:  `attributes = light;` is `attributes = {light};`, the one-element form which every list-typed member accepts (§12.2).
 
-A single attribute needs no braces: `attributes = light;` is `attributes = {light};`. This is the
-one-element form every list-typed member accepts (§12.2): `name = .lamp;` is `name = {.lamp};`.
-
-`attributeList` accepts `=` only; `+=` and `-=` are not permitted. To change attributes at run time
-use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
+`attributeList` accepts `=` only; `+=` and `-=` are not allowed.  To change attributes at run time, use `give(attr)` and `ungive(attr)`, and test them with `has(attr)` (§21.5.1).
 
 **Example**
 
@@ -522,32 +393,21 @@ extend lampPost {
 **Syntax**
 
 ```syntax
-instanceName = ⟨string-literal⟩ ;
+instanceName = STRING-LITERAL ;
 ```
 
-The form appears only in an object body. The name is also positional (§8.3.5): `_bglObject` declares it
-`inline`, so it is the last positional member of every class. An object whose class adds no positional
-members of its own takes it alone, `object lamp { "brass lamp"; }`; otherwise it follows them,
-`point p { 3, 4, "origin"; }`. A class that adds positional members re-lists it
-(`inline instanceName;`) to put it first.
+The form appears only in an object body.  The name is also positional (§8.3.5):  `_bglObject` declares it `inline`, so it is the last positional member of every class (`object lamp { "brass lamp"; }`, `point p { 3, 4, "origin"; }`).  A class which adds positional members re-lists it (`inline instanceName;`) to put it first.
 
-**Description**
-
-`instanceName` is the object's name: what `print(obj)` prints, and what an interpolated `{obj}` prints.
-It becomes the name in the object's I6 header (`Object lamp "brass lamp"`), which I6's `(name)` rule
-prints with or without a library. An object without one prints as its identifier in parentheses,
-`(lamp)`.
+`instanceName` is the object's name:  what `print(obj)` prints, with or without a library.  An object without one will print as its identifier in parentheses, `(lamp)`.
 
 It is a `const string` member, fixed when the program is compiled:
 
 - its value must be a string literal;
 - assigning it anywhere else is a compile-time error (§8.3.2);
-- it can't be read as a value, since I6 can print a header name but not return it; `print(obj)`
-  prints it;
-- a class body can't set it: each object names itself.
+- it can't be read as a value;
+- a class body can't set it:  each object names itself.
 
-A library binding (§23.3.4) adds `short_name`. When an object has both, the library prints
-`short_name`, which may also be a routine that prints a name computed at run time.
+A library binding's `short_name` property can print a different name (§23.3.11).
 
 **Example**
 
@@ -559,8 +419,8 @@ class Pet : object { inline instanceName; inline int legs; }
 Pet rex { "rex", 3; }
 
 void Main(){
-    print(lamp);                   // → brass lamp
-    print($"You see {lamp}.");     // → You see brass lamp.
+    print(lamp);                   // -> brass lamp
+    print($"You see {lamp}.");     // -> You see brass lamp.
 }
 ```
 
@@ -569,16 +429,11 @@ void Main(){
 **Syntax**
 
 ```syntax
-attribute ⟨name⟩ [ asI6 ⟨i6name⟩ ] ;
-extern attribute ⟨i6name⟩ [ asBgl ⟨name⟩ ] ;
+attribute NAME [ asI6 I6NAME ] ;
+extern attribute I6NAME [ asBgl NAME ] ;
 ```
 
-**Description**
-
-An `attribute` declaration introduces a named flag that can be given to objects. An attribute must be
-declared before use. The `extern` form refers to an attribute defined in I6 (typically by the IF
-library binding, §23.3.4). Once declared, the name is an identifier of type `attribute` and may be
-used in `attributes` lists and passed to `give`, `ungive` and `has`.
+An `attribute` declaration introduces a named flag which can be given to objects.  An attribute must be declared before use.  The `extern` form refers to an attribute defined in I6 (typically by the IF library binding, §23.3.4).  Once declared, the name is an identifier of type `attribute`.
 
 **Example**
 
@@ -594,34 +449,19 @@ extern attribute light;
 **Syntax**
 
 ```syntax
-property ⟨name⟩ ;
-extern property ⟨name⟩ ;
+property NAME ;
+extern property NAME ;
 ```
 
-**Description**
+Every member name which appears in any class or object declaration is a property name, and `obj.provides(name)` (§21.5.2) tests at run time whether `obj` carries that property.  No declaration is needed for a member of a declared class.
 
-Every member name that appears in any class or object declaration is a property name, and
-`obj.provides(name)` (§21.5.2) tests at run time whether `obj` carries that property. No declaration
-is needed for a member of a declared class.
+A `property` declaration introduces a property name which is not a member of any Beguile class.  The plain form defines the property; the `extern` form refers to one defined in I6.  Both make the name available to `obj.provides(name)`.  A defined property is an Inform 6 *individual* property, which the Z-machine places no limit on; only an `additive` property (§11.7.2) is a common one.
 
-A `property` declaration introduces a property name that is not a member of any Beguile class,
-typically because it lives in I6 code, or because it is a run-time flag with no compile-time owner.
-The plain form defines the property; the `extern` form refers to one defined in I6. Both make the name
-available to `obj.provides(name)`. A defined property is an Inform 6 *individual* property, which the
-Z-machine places no limit on; only an `additive` property (§11.7.2) is a common one.
+A property declaration carries no type; every class or object member which contributes to the property declares its own.  A non-additive property is unconstrained, so the same property name can be a member of two unrelated classes with different types.
 
-A property declaration carries no type. The type lives at each use site: every class or object member
-that contributes to the property declares its own type there. A non-additive property is
-unconstrained; because an object's value overrides its class's, the contributions never share
-storage, and each may be whatever type it needs. The same property name may therefore be a member of
-two unrelated classes with different types.
+A `property` identifier has type `property` and is accepted wherever a `property` parameter is expected.  A free-standing declaration does not grant `obj.name` access; declare the name as a class member to read or write it.
 
-A `property` identifier has type `property` and is accepted wherever a `property` parameter is
-expected. A free-standing declaration does not grant `obj.name` access; declare the name as a class
-member to read or write it.
-
-In default mode, `obj.provides(unknownName)` on an undeclared name is a compile-time error. In loose
-mode (`#bgl` islands and precompiler mode, §15.3.3) the name passes through unchecked.
+In default mode, `obj.provides(unknownName)` on an undeclared name is a compile-time error.  In loose mode (`#bgl` islands and precompiler mode, §16.3.3) the name passes through unchecked.
 
 **Example**
 
@@ -644,47 +484,21 @@ void Main() {
 **Syntax**
 
 ```syntax
-additive property ⟨name⟩ ;
-extern additive property ⟨name⟩ ;
+additive property NAME ;
+extern additive property NAME ;
 ```
 
-**Description**
+By default, a property is overriding:  when an object and one of its ancestor classes both supply it, the object's value replaces the class's.  An `additive` property accumulates instead:  the object's contribution and all of its ancestors' are gathered into one contiguous run of words.  `additive` is meaningful only on a `property` declaration, not on a class or object member and not on a type declaration.  On an `extern property` it records that the I6 declaration is already additive.
 
-A property is normally overriding: when an object and one of its ancestor classes both supply it, the
-object's value replaces the class's. An `additive` property instead accumulates: the object's
-contribution and all of its ancestors' are gathered into one contiguous run of words. `additive` is
-meaningful only on a `property` declaration, not on a class or object member and not on a type
-declaration. On an `extern property` it records that the I6 declaration is already additive.
+`object` declares `name`, a `rawArray<dictionaryWord>` holding the dictionary words which the parser matches for the object, and any object can set it without a type (`name = {.brass, .key};`).  `name` is additive and always declared, so the rules below apply to it in every program; a program which repeats `extern property name;` is in error.  Every other additive property is declared by the IF library binding which defines it (§23.3.5).
 
-`name` is additive in I6 itself. The core BLR declares it, and the core is always loaded, so the rules
-below apply to `name` in every program; a program that repeats `extern property name;` is in error.
-Every other additive property is declared by the IF library binding that defines it (§23.3.5).
+**Contributions are raw arrays.**  An additive property has no length word, which is the `rawArray<T>` layout (§12.8.1), so every member which contributes to it must be a `rawArray<T>` or a routine.  The element type is fixed by the highest ancestor which declares the member, walking the class hierarchy root-first; every other contribution in that hierarchy must use the same element type.  Unrelated hierarchies can each fix their own.  A single value is a one-element list:  `rawArray<int> hook = 3;` contributes `{3}`, and where an ancestor declares the member, `hook = 3;` does the same.  A member declared `array<T>` or as a scalar (`int name`, `stringObj name`) on an additive property is a compile-time error.
 
-**Contributions are raw arrays.** An additive property has no length word, which is the
-`rawArray<T>` layout (§12.8.1), so every member that contributes to it must be a `rawArray<T>` or a
-routine. The element type is fixed by the highest ancestor that declares the member, walking the
-class hierarchy root-first; every other contribution in that hierarchy must use the same element type.
-Unrelated hierarchies may each fix their own. An inference-typed override (`name = {.wooden};`) takes
-the ancestor's type and is always consistent. A single value is a one-element list:
-`rawArray<int> hook = 3;` contributes `{3}`, and where an ancestor declares the member, `hook = 3;` does
-the same. A member declared `array<T>` or as a scalar (`int name`, `stringObj name`) on an additive
-property is a compile-time error, since the property is a list and the member reads it as one; so is
-an element type that disagrees with the hierarchy's.
+**Routine contributions add up too.**  A method bound to an additive property (`before`, `after`, …) contributes its routine alongside every ancestor's.  How the routines are called, and when the calling stops, is up to the code which reads the property (the IF library, for its hooks).
 
-**Routine contributions add up too.** A method bound to an additive property (`before`, `after`, …)
-contributes its routine alongside every ancestor's; how the routines are called, and when the calling
-stops, is up to the code that reads the property (the IF library, for its hooks).
+**Nothing is replaced.**  Every class's and object's contribution is kept, so `replace` on a contribution is a compile-time error.  A class or object can still replace its own earlier contribution in an `extend` body (`extend lamp { replace bool after() { … } }`).
 
-**Nothing is replaced.** Every class's and object's contribution is kept, so `replace` on a
-contribution is a compile-time error. A class or object may still replace its own earlier contribution
-in an `extend` body (`extend lamp { replace bool after() { … } }`).
-
-**Extent and operations.** A contributing member's extent is the total accumulated across every
-layer, so `size` and `length` on `r1.name` in the example both answer 3. `size`, `length`
-and subscripting work; every operation that needs a length word (assigning `length`, `clear`,
-`append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`,
-`popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort`) is a compile-time error on
-such a member.
+**Extent and operations.**  A contributing member's extent is the total accumulated across every layer.  `size`, `length`, and subscripting work; however, every operation which needs a length word (assigning `length`, `clear`, `append`, `insert`, `prepend`, `remove`, `removeValue`, `push`, `pop`, `dequeue`, `enqueue`, `popEnd`, `peek`, `peekEnd`, `indexOf`, `reverse`, `sort`) is a compile-time error on such a member.
 
 **Example**
 
@@ -694,30 +508,20 @@ object r1 : Room { name = {.wooden}; }                                 // matche
 object r2 : Room { name = .shed; }                                     // one word: {.shed}
 ```
 
-**See also** §12.8.3 — member `rawArray<T>`.
+**See also** §12.8.3 (member `rawArray<T>`).
 
 ### 11.7.3 Computed Property Access and `property` Parameters
 
 **Syntax**
 
 ```syntax
-⟨object⟩ . ⟨property-variable⟩
-⟨object⟩ . ⟨property-variable⟩ ( [ ⟨argument⟩ , … ] )
+OBJECT . PROPERTY-VARIABLE
+OBJECT . PROPERTY-VARIABLE ( [ ARGUMENT , … ] )
 ```
 
-**Description**
+A local or parameter declared `property` (or `var`) can be dereferenced against a receiver:  `obj.p` reads the property which `p` names, and `obj.m(2)` sends the message, binding `self` to `obj`.  The property is resolved at run time.  The name after the dot is treated this way only when it is such a local or parameter *and* it is not a real member of the receiver's type; a genuine member always wins.  A file-scope `property foo;` does not qualify.
 
-A local or parameter declared `property` (or `var`) may be dereferenced against a receiver: `obj.p`
-reads the property `p` names, and `obj.m(2)` sends the message, binding `self` to `obj`. The property
-is resolved at run time. The name after the dot is treated this way only when it is such a local or
-parameter *and* it is not a real member of the receiver's type; a genuine member always wins. A
-file-scope `property foo;` does not qualify.
-
-When a function or emitter parameter is typed `property`, a bare property-name argument is taken as
-the property identifier (an implicit `(property)` cast, §4.11) rather than as a value read. This
-holds inside an object method body, where a bare member name would otherwise mean `self.name`. Any
-known property name is accepted: a member of any class or object, or a free-standing `property` or
-`extern property` declaration. `obj.provides(property)` is the canonical consumer.
+When a function or emitter parameter is typed `property`, a bare property-name argument is taken as the property identifier (an implicit `(property)` cast, §4.11) rather than as a value read.  This holds inside an object method body, where a bare member name would otherwise mean `self.name`.  Any known property name is accepted:  a member of any class or object, or a free-standing `property` or `extern property` declaration.
 
 **Example**
 
@@ -740,21 +544,15 @@ achieved(taskGetBanana);        // passes the property identifier
 **Syntax**
 
 ```syntax
-array<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
-array<⟨type⟩> ⟨name⟩[⟨n⟩] ;
-array<char> ⟨name⟩ = "⟨text⟩" ;
-rawArray<⟨type⟩> ⟨name⟩ = { ⟨value⟩ , … } ;
+array<TYPE> NAME = { VALUE , … } ;
+array<TYPE> NAME[N] ;
+array<char> NAME = "TEXT" ;
+rawArray<TYPE> NAME = { VALUE , … } ;
 ```
 
-`<`, `>`, `[` and `]` are literal.
+`<`, `>`, `[`, and `]` are literal.
 
-**Description**
-
-A member may be an array. It has the same semantics as any other array: subscripting, `for … in`,
-`length` and the `<array>` methods (§22.4) behave identically, and element type checking follows
-the rules for global arrays (§12.2). A byte-array member (`array<char>`) accepts a string initializer
-or a brace initializer. Storage rules for member arrays, including `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3 and its
-use for additive properties in §11.7.2.
+A member can be an array, with the same semantics and element type checking as a global array (§12.2).  The storage rules for member arrays, including `ref` members, are given in §12.7; the `rawArray<T>` member form is covered in §12.8.3, and its use for additive properties in §11.7.2.
 
 **Example**
 
@@ -774,12 +572,10 @@ object foo {
 **Syntax**
 
 ```syntax
-⟨type⟩ ⟨name⟩ ( [ ⟨parameter⟩ , … ] ) { ⟨statement⟩ … }
+TYPE NAME ( [ PARAMETER , … ] ) { STATEMENT … }
 ```
 
-**Description**
-
-An object may define methods: functions that are members of the object rather than free functions.
+An object can define methods:  functions which are members of the object rather than free functions.
 
 **Example**
 
@@ -799,18 +595,12 @@ object bar {
 
 ### 11.9.1 Dispatch on Object Receivers
 
-**Description**
-
-When a method is called on an object, including `self.method()` from inside the object's own method
-body, the method is looked up in this order:
+When a method is called on an object, including `self.method()` from inside the object's own method body, the method is looked up in the following order:
 
 1. the object's own members (per-instance overrides);
 2. the object's class, then its base classes recursively.
 
-Every object that derives from `object` (§11.2) reaches the methods declared there
-(`give`, `ungive`, `has`, `provides`, `is`, …; §21.5) through the same walk. Per-instance methods
-shadow inherited ones. There is no special case for the `object` base
-class; it is an ordinary class reached through the ordinary hierarchy walk.
+There is no special case for the `object` base class, which is an ordinary class; an object which derives from it reaches its methods (§21.5) through the same walk.
 
 **Example**
 
@@ -823,19 +613,15 @@ Animal cat {
 }
 Animal cow { }
 
-cat.speak();            // Meow.        — the object's own member
-cow.speak();            // ...          — the class's method
+// … in a routine:
+cat.speak();            // Meow.        - the object's own member
+cow.speak();            // ...          - the class's method
 cat.give(light);        // from object, through the hierarchy walk
 ```
 
 ### 11.9.2 Overloads
 
-**Description**
-
-A class or object body may declare several methods with the same name and different parameter
-signatures. Overloads coexist and are dispatched by signature under the general resolution rule
-(§6.4). Overloads of `operator()`, `operator[]` and `operator[]=` follow the
-same rule; operator emitters may likewise be overloaded by parameter type.
+A class or object body can declare several methods with the same name and different parameter signatures, dispatched by signature under the general resolution rule (§6.4).  Overloads of `operator()`, `operator[]`, and `operator[]=` follow the same rule; operator emitters can likewise be overloaded by parameter type.
 
 **Example**
 
@@ -847,6 +633,8 @@ class Logger {
 }
 
 Logger lg { }
+
+// … in a routine:
 lg.log(5);          // log(int)
 lg.log("hi");       // log(string)
 lg.log(3, 7);       // log(int, int)
@@ -857,31 +645,23 @@ lg.log(3, 7);       // log(int, int)
 **Syntax**
 
 ```syntax
-extend ⟨object⟩ {
-    ⟨type⟩ ⟨name⟩ = ⟨value⟩ ;
-    replace ⟨type⟩ ⟨name⟩ = ⟨value⟩ ;
-    replace ⟨type⟩ ⟨name⟩ ( [ ⟨parameter⟩ , … ] ) { ⟨statement⟩ … }
-    ⟨name⟩ += { ⟨value⟩ , … } ;
-    ⟨name⟩ -= { ⟨value⟩ , … } ;
+extend OBJECT {
+    TYPE NAME = VALUE ;
+    replace TYPE NAME = VALUE ;
+    replace TYPE NAME ( [ PARAMETER , … ] ) { STATEMENT … }
+    NAME += { VALUE , … } ;
+    NAME -= { VALUE , … } ;
 }
 ```
 
-**Description**
-
-Any previously declared object may be extended. Inside the body:
+Any previously declared object can be extended.  Inside the body:
 
 - A new member is declared with `=`, as in an object body.
-- `replace` replaces an existing method or member value. Adding a duplicate member without `replace`
-  is a compile-time error; `replace` on a member that does not exist is a warning.
-- A replaced member keeps its kind: an accessor (`auto ⟨name⟩ = { … }`, §9.9) is replaced by an accessor,
-  and a value by a value. Changing the kind is a compile-time error.
-- `+=` appends to, and `-=` removes from, an existing collection member (`grammarRuleList` or
-  `array<T>`). The member must exist and be a collection type; otherwise it is a compile-time error.
-  `attributeList` accepts `=` only (§11.5.3). The grammar forms are specified in §13.5.
+- `replace` replaces an existing method or member value.  Adding a duplicate member without `replace` is a compile-time error; `replace` on a member which does not exist is a warning.
+- A replaced member keeps its kind:  an accessor (`auto NAME = { … }`, §9.9) is replaced by an accessor, and a value by a value.  Changing the kind is a compile-time error.
+- `+=` appends to, and `-=` removes from, an existing collection member (`grammarRuleList` or `array<T>`).  The member must exist and be a collection type; otherwise it is a compile-time error.  `attributeList` accepts `=` only (§11.5.3).  The grammar forms are covered in §13.5.
 
-Extending an `extern` object (§11.11) is restricted to its `grammar` member: `grammar += { … }`,
-`replace grammar = { … }` and `grammar -= { … }` are permitted (§13.5). Adding a member or method, or
-using `-=` on any other member of an extern object, is a compile-time error.
+Extending an `extern` object (§11.11) is restricted to its `grammar` member:  `grammar += { … }`, `replace grammar = { … }`, and `grammar -= { … }` are allowed (§13.5).  Adding a member or method, or using `-=` on any other member of an extern object, is a compile-time error.
 
 **Example**
 
@@ -899,39 +679,30 @@ extend myRoom {
 }
 ```
 
-**See also** §8.7.1 — `extend class`; §8.7.5 — `replace` matching rules; §12.11 — `extend` for arrays.
+**See also** §8.7.1 (`extend class`); §8.7.5 (`replace` matching rules); §12.11 (`extend` for arrays).
 
 ## 11.11 `extern object`
 
 **Syntax**
 
 ```syntax
-extern object ⟨name⟩ ;
-extern object ⟨name⟩ {
-    ⟨type⟩ ⟨method⟩ ( [ ⟨parameter⟩ , … ] ) ;
-    emitter ⟨type⟩ ⟨method⟩ ( [ ⟨parameter⟩ , … ] ) { ⟨i6-template⟩ }
-    ⟨type⟩ ⟨member⟩ ;
+extern object NAME ;
+extern object NAME {
+    TYPE METHOD ( [ PARAMETER , … ] ) ;
+    emitter TYPE METHOD ( [ PARAMETER , … ] ) { I6-TEMPLATE }
+    TYPE MEMBER ;
 }
 ```
 
-**Description**
+An object defined in I6 rather than Beguile is declared `extern`.  The bare form records only the name.  The body form also declares the types of the object's members, so calls and member reads against it will type-check.  The object is a referenceable file-scope name like any global object; however, no object is defined for it in the story file.
 
-An object defined in I6 rather than Beguile is declared `extern`. The bare form records only the name.
-The body form also declares the types of the object's members, so calls and member reads against it
-type-check. The object is a referenceable file-scope name like any global object, but no object is
-defined for it in the story file.
+An I6 object typed by its class is declared `extern const CLASS NAME;` (§3.5).
 
-`extern ⟨Class⟩ ⟨name⟩;` declares an I6 *variable* of that class's type, which a member initializer can't
-read. An I6 object typed by its class is declared `extern const ⟨Class⟩ ⟨name⟩;`, which an
-initializer can name (`parent = trayA;`).
+In the body:
 
-Rules for the body:
-
-- Methods are bodyless signatures; the implementation is in I6. A brace body on a non-emitter method
-  is a compile-time error. `emitter` members with a body are permitted.
+- Methods are bodyless signatures; the implementation is in I6.  A brace body on a non-emitter method is a compile-time error.  `emitter` members with a body are allowed.
 - Members are typed and carry no initializer; an initializer is a compile-time error.
-- Default parameter values are honored for arity and overload resolution at call sites, as for
-  ordinary methods (§6.3).
+- Default parameter values are honored for arity and overload resolution at call sites, as for ordinary methods (§6.3).
 
 **Example**
 
@@ -942,7 +713,8 @@ extern object playerCommands {
     object interrupt;
 }
 
+// … in a routine:
 playerCommands.pushCommand("say hello");
 ```
 
-**See also** §15.4.4 — extern objects at the I6 boundary; §8.2.2 — `extern class`.
+**See also** §16.4 (declaring I6 names); §8.2.2 (`extern class`).

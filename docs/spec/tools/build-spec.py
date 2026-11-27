@@ -29,7 +29,7 @@ TOP_ENTRY  = re.compile(r'^- \[(?P<title>[^\]]+)\]\((?P<file>[0-9A-K][^)#]*\.md)
 PART_RE    = re.compile(r'^\*\*(?P<label>[^*]+)\*\*\s*$')
 LINK_RE    = re.compile(r'\]\((?P<file>[0-9A-K][A-Za-z0-9_.-]*\.md)(?P<frag>#[^)]*)?\)')
 
-BANNER = """<!-- GENERATED FILE — do not edit.
+BANNER = """<!-- GENERATED FILE: do not edit.
      Built from docs/spec/ by docs/spec/tools/build-spec.py.
      Edit the chapter there and re-run the script; edits here are lost on the next build. -->
 
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     if '--check' in sys.argv:
         current = OUT.read_text() if OUT.exists() else ''
         if current != merged:
-            sys.exit(f'{OUT.name} is out of date — re-run {pathlib.Path(__file__).name}.')
+            sys.exit(f'{OUT.name} is out of date; re-run {pathlib.Path(__file__).name}.')
         print(f'{OUT.name} is up to date ({len(merged.splitlines())} lines).')
     else:
         OUT.write_text(merged)

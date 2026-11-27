@@ -27,27 +27,20 @@
 **Syntax**
 
 ```syntax
-.⟨word⟩
-..⟨word⟩
-dictionaryWord ⟨name⟩ = .⟨word⟩ ;
+.WORD
+..WORD
+dictionaryWord NAME = .WORD ;
 ```
 
-**Description**
+`dictionaryWord` is the type of a dictionary entry:  a token the parser matches against the player's input.  A singular word is written with a leading `.` and a plural word with a leading `..`; both have the type `dictionaryWord`.  The token form, including internal hyphens and apostrophes, is covered in §1.6.7.
 
-`dictionaryWord` is the type of a dictionary entry, a token the parser matches against player input.
-A singular word is written with a leading `.` and a plural word with a leading `..`; both forms have
-type `dictionaryWord`. The token form, including internal hyphens and apostrophes, is specified in
-§1.6.7.
-
-Dictionary words are compared with `==` and `!=`, and are the trigger and literal tokens of grammar
-patterns (§13.4.2). `print()` on a dictionary word prints the word's text; the `dictionaryWord`
-runtime type and its printing behavior are specified in §21.5.3.
+Dictionary words are compared with `==` and `!=`; the `dictionaryWord` runtime type and its printing behavior are covered in §21.5.3.
 
 **Example**
 
 ```bgl
 dictionaryWord w = .lamp;
-if (w == .lamp) print(w);      // → lamp
+if (w == .lamp) print(w);      // -> lamp
 ```
 
 **See also** §1.6.7, §21.5.3.
@@ -57,27 +50,18 @@ if (w == .lamp) print(w);      // → lamp
 **Syntax**
 
 ```syntax
-verb ⟨name⟩ {
-    grammar = { { ⟨pattern⟩ } , … } ;
+verb NAME {
+    grammar = { { PATTERN } , … } ;
     void handler() { … }
     [ meta = true ; ]
-    [ priority = ⟨n⟩ ; ]
-    [ ⟨member⟩ … ]
+    [ priority = N ; ]
+    [ MEMBER … ]
 }
 ```
 
-**Description**
+`verb` is an alias class for `object` (§21.5.4) whose members are `grammarRuleList grammar`, `bool meta`, `int priority`, `handler()`, and `perform()`.  A `verb` declaration creates a named instance of that class.  The body uses ordinary object member syntax (§11.4).
 
-`verb` is an alias class for `object` (`alias class verb for object { … }`, declared by the core BLR,
-§21.5.4) whose members are `grammarRuleList grammar`, `bool meta`, `int priority`, `handler()` and
-`perform()`. A `verb` declaration creates a named object that is an instance of that
-class. The body uses ordinary object member syntax (§11.4): the `grammar` member's type is inferred
-from the class, so `grammar = { … }` needs no type, and further members and methods may be declared
-as on any object.
-
-A class may derive from `verb` to share behavior among several verbs: members, `meta`, `priority`, and
-a `handler()` its verbs inherit. A verb is then declared through that class, `⟨class⟩ ⟨name⟩ { … }`,
-and is a verb in every respect. A verb that declares its own `handler()` or `meta` overrides the class's.
+A class can derive from `verb` to share behavior among several verbs.  A verb is then declared through that class, `CLASS NAME { … }`, and is a verb in every respect.
 
 ```bgl
 class chatVerb : verb {
@@ -91,15 +75,26 @@ class infoVerb : verb { meta = true; }
 infoVerb Credits { grammar = {.credits}; void handler() { print("Written by …"); } }
 ```
 
-A verb name follows the same resolution rules as any identifier: a local variable with the same name
-shadows the verb (§3.10).
+A variable, parameter, or array element of type `verb` can hold any verb, native or `extern`.  One typed as a subclass of `verb` holds a verb declared through that subclass, and can reach its members.
 
-In the generated Inform 6 the verb's action and its action routine keep the verb's name (`##Size`,
-`SizeSub`), and the object that carries `handler()` is named `_bglVerb_⟨name⟩`. Inform 6 keeps objects
-in one namespace with properties, so the object's own name would otherwise collide with any member of
-that name, the runtime library's included (`size`, `clear`, `copy`). I6 code that names the verb object
-reaches it through `$i6Name` (§7.3.3). A verb whose action routine would take the name of a routine
-the binding declares (`verb Multi` and the library's `MultiSub`) is a compile-time error.
+```bgl
+class ChatVerb : verb { string reply; void handler() { print(reply); } }
+ChatVerb Hum     { grammar = {.hum};     reply = "You hum."; }
+ChatVerb Whistle { grammar = {.whistle}; reply = "You whistle."; }
+array<ChatVerb> chats = { Hum, Whistle };
+
+ChatVerb v = chats[1];
+v.perform();                 // runs the Whistle action
+if (v == action) { … }
+verb any = v;                // any verb fits a `verb`
+print(v.reply);
+```
+
+A verb name resolves like any identifier:  a local variable of the same name will shadow the verb (§3.10).
+
+A verb named like a library verb (`verb Empty` beside the binding's `extern verb Empty`) is a compile-time error, and you extend the library verb instead (§13.5).  A program's own verb can't take a fake action's name either (§13.2.3).  A verb can share its name with a class (`verb Seal` beside `struct Seal`).
+
+In the generated Inform 6, the verb's action and its action routine keep the verb's name (`##Size`, `SizeSub`), while the object carrying `handler()` is named `_bglVerb_NAME`.  I6 code naming the verb object reaches it through `$i6Name` (§7.3.3).  A verb whose action routine would take the name of a routine the binding declares (`verb Multi` and the library's `MultiSub`) is a compile-time error.
 
 **Example**
 
@@ -115,16 +110,7 @@ verb Inspect {
 }
 ```
 
-**Notes**
-
-When the first token inside `grammar = { … }` is a dictionary-word literal, the
-outer braces are read as the braces of a single grammar line, so the inner braces may be omitted:
-`grammar = {.whistle, NOUN};` is equivalent to
-`grammar = { {.whistle, NOUN} };`. `|`-alternation is allowed in this form
-(`grammar = {.hum|.murmur, NOUN};`). It applies only when one line is being declared; several lines
-use the full form with one pair of braces per line. The single-line form is recognized wherever a
-grammar line list is accepted: verb declarations, `extend` blocks (`grammar += { … }`,
-`grammar -= { … }`, `replace grammar = { … }`), grammar objects, and extern verb bodies.
+> ***Note:** When the first token inside `grammar = { … }` is a dictionary-word literal, the outer braces are read as those of a single grammar line, so the inner braces can be omitted:  `grammar = {.whistle, NOUN};` is equivalent to `grammar = { {.whistle, NOUN} };`.  `|`-alternation is allowed in this form (`grammar = {.hum|.murmur, NOUN};`).  The single-line form is recognized wherever a grammar line list is accepted.*
 
 **See also** §11.2, §21.5.4.
 
@@ -136,12 +122,7 @@ grammar line list is accepted: verb declarations, `extend` blocks (`grammar += {
 void handler() { … }
 ```
 
-**Description**
-
-`handler()` is the verb's action body: it runs when the player enters a command matching the verb's
-grammar. The `verb` class declares it `required default` (§8.3.6): a verb declared in Beguile must
-give one, an ordinary `void handler()`, and omitting it is a compile-time error. The `default` body,
-which runs the verb's I6 routine, is used only by extern verbs (§13.2.3).
+`handler()` is the verb's action body:  it will run when the player enters a command matching the verb's grammar.  The `verb` class declares it `required default` (§8.3.6), so a verb declared in Beguile must provide one; omitting it is a compile-time error.  The `default` body, which runs the verb's I6 routine, is used only by extern verbs (§13.2.3).
 
 **Example**
 
@@ -157,19 +138,14 @@ verb Twirl {
 **Syntax**
 
 ```syntax
-⟨verb⟩.perform() ;
-⟨verb⟩.perform( ⟨noun⟩ ) ;
-⟨verb⟩.perform( ⟨noun⟩ , ⟨second⟩ ) ;
+VERB.perform() ;
+VERB.perform( NOUN ) ;
+VERB.perform( NOUN , SECOND ) ;
 ```
 
-**Description**
+`perform()` runs the verb's action from code.  It uses the active IF library's action runner, which saves and restores the current actor, action, noun, and second, and runs the surrounding before/after rules.  (The Inform 6 standard library skips the before rules while a `meta` verb is running.)
 
-`perform()` runs the verb's action from code. The active IF library's action runner is used: it saves
-and restores the current actor, action, noun and second, and runs the surrounding before/after rules
-(under the Inform 6 standard library, not the before rules while a `meta` verb is running: the library
-skips them for meta actions).
-`perform()` works on any verb, native or `extern`, whether or not it defines a `handler()`. To run an
-action and then return true from the enclosing function, follow the call with an explicit `rtrue;`.
+`perform()` works on any verb, native or `extern`, whether or not it defines a `handler()`.  To run an action and then return true from the enclosing function, follow the call with an explicit `rtrue;`.
 
 **Example**
 
@@ -185,43 +161,26 @@ Take.perform(coin); rtrue;
 **Syntax**
 
 ```syntax
-extern verb ⟨name⟩ { }
-extern verb ⟨name⟩ { .⟨word⟩ [ | .⟨word⟩ ] … }
-extern verb ⟨name⟩ { grammar = { { .⟨word⟩ [ | .⟨word⟩ ] … } , … } ; }
+extern verb NAME { }
+extern verb NAME { .WORD [ | .WORD ] … }
+extern verb NAME { grammar = { { .WORD [ | .WORD ] … } , … } ; }
 ```
 
 The `|` in these forms is the literal alternation token (§13.4.3), not notation.
 
-**Description**
+A verb whose behavior is defined by the I6 library is declared `extern verb` with a body:  its trigger words, or `{ }` for an action the player can't type.  An extern verb needs no `handler()`; it falls back to the `default` one from `verb`, which runs the I6 routine (`<name>Sub`).
 
-A verb whose behavior is defined by the I6 library is declared `extern verb` with a body: its trigger
-words, or `{ }` for an action the player can't type. The declaration registers the name for
-`switch (action)` comparisons, grammar lines, `perform()` and method calls. An extern verb needs no
-`handler()`: it falls back to `verb`'s `default` one, which runs the I6 routine (`<name>Sub`).
+Without a body, `extern verb NAME;` declares a *variable* of type `verb`, as any class-typed declaration without a body does (`extern object noun;`).  The library's `action` is declared this way.
 
-Without a body, `extern verb ⟨name⟩;` declares a *variable* of type `verb`, as any class-typed
-declaration without a body does (`extern object noun;`). The library's `action` is declared this way, so
-`action = Jump;` and `action == Jump` assign and compare actions.
+An I6 verb can claim several trigger words (`inventory`, `inv`, `i`).  Declaring them in the extern verb's body makes the claims visible, so a grammar line elsewhere using one of those words will extend the library verb rather than define a new one.  The body uses the same `grammar` syntax as a native verb, with these rules:
 
-An I6 verb may claim several trigger words (`inventory`, `inv`, `i`). Declaring them in the extern
-verb's body makes the claims visible, so that a grammar line elsewhere that uses one of those words
-extends the library verb rather than defining a new one. The body uses the same `grammar` syntax as a
-native verb, and these rules apply:
+- Several words are listed with `|`-alternation (§13.4.3).  Splitting them over several lines or listing them all in one yields the same claimed-word set.
+- Pattern tokens after the trigger word are ignored, and writing one is a warning.
+- The first word of the first grammar line is the verb's *primary trigger*, the word used as the target when the verb is extended (§13.5).  All listed words are equally claimed for collision detection.
 
-- Several words are listed with `|`-alternation (§13.4.3). Splitting the words over several lines or
-  listing them all in one line yields the same claimed-word set.
-- Pattern tokens after the trigger word are ignored, and writing one is a warning. No grammar is
-  defined for an extern verb from Beguile; only the words in first position contribute.
-- The first word of the first grammar line is the verb's *primary trigger*, the word used as the
-  target when the verb is extended (§13.5). All listed words are equally claimed for collision
-  detection.
+Extern verbs can't be marked `meta` and can't carry a `priority`.
 
-Extern verbs cannot be marked `meta` and cannot carry a `priority`.
-
-When an extern verb's body begins with a dictionary-word literal, the body is read
-as the trigger-word section of a single grammar line: `extern verb Inv { .inventory|.inv|.i }` is
-equivalent to `extern verb Inv { grammar = { {.inventory|.inv|.i} }; }`. This form accepts
-trigger words only; a body with several lines or other members uses the full form.
+When an extern verb's body begins with a dictionary-word literal, the body is read as the trigger-word section of a single grammar line:  `extern verb Inv { .inventory|.inv|.i }` is equivalent to `extern verb Inv { grammar = { {.inventory|.inv|.i} }; }`.  This form accepts trigger words only; a body with several lines or other members uses the full form.
 
 **Example**
 
@@ -231,7 +190,7 @@ extern verb Inv  { .inventory|.inv|.i }
 extern verb Quit { .q|.quit|.die }
 ```
 
-**See also** §15.4.2, §23.3.6.
+**See also** §16.4.2, §23.3.6.
 
 ### 13.2.4 Meta Verbs
 
@@ -241,17 +200,9 @@ extern verb Quit { .q|.quit|.die }
 meta = true ;
 ```
 
-**Description**
+Setting the `verb` member `meta` to `true` marks the verb as out-of-world:  it will run without advancing the turn or triggering daemons or timers.  `meta` is recognized only on `verb` instances and is not a run-time property.  Extern verbs can't be marked meta (§13.2.3).
 
-Setting the `verb` member `meta` to `true` marks the verb as out-of-world: it runs without advancing
-the turn and without triggering daemons or timers. `meta` is recognized only on `verb` instances and
-is not a run-time property. Extern verbs cannot be marked meta; the I6 declaration already carries
-the marking or does not.
-
-Inform 6 records meta-ness on the dictionary word, not on the action. A word the library's grammar
-already declares (`wipe`, `shut`) keeps the library's non-meta marking, so a meta verb that claims
-such a word still takes a turn when the player types it; the compiler warns. Give a meta verb words
-of its own.
+Inform 6 records meta-ness on the dictionary word, not on the action.  A word the library's grammar already declares (`wipe`, `shut`) keeps the library's non-meta marking, so a meta verb claiming such a word will still take a turn when the player types it; the compiler warns.  Give a meta verb words of its own.
 
 **Example**
 
@@ -268,40 +219,25 @@ verb Inventory {
 **Syntax**
 
 ```syntax
-priority = ⟨n⟩ ;
-extend ⟨verb⟩ { priority = ⟨n⟩ ; grammar += { … } ; }
-grammarRule ⟨name⟩ = { ⟨verb⟩ , { ⟨pattern⟩ } , ⟨n⟩ } ;
+priority = N ;
+extend VERB { priority = N ; grammar += { … } ; }
+grammarRule NAME = { VERB , { PATTERN } , N } ;
 ```
 
-**Description**
+Priority orders grammar lines which come from several sources and target the same trigger word; the parser tries a lower number earlier.  The `verb` member `priority` defaults to `10`; it is recognized only on `verb` instances and is not a run-time property.
 
-Priority orders grammar lines that come from several sources and target the same trigger word. A
-lower number is tried earlier by the parser. The `verb` member `priority` defaults to `10`; it is
-recognized only on `verb` instances and is not a run-time property.
-
-A verb's *anchor* is the priority declared in its own `verb` body, or `10` when none is declared
-(an extern verb always has the default anchor). A program verb whose own grammar uses a word a
-library verb already owns is placed against the library's lines by the `verb` member
-`libraryPriority`, `20` by default: with an anchor below it, the default, the program verb's lines are
-tried first, so `verb Press { grammar = {.press, NOUN}; … }` takes `press` ahead of the library's
-`Push`. Every other contribution to that verb's trigger
-words sorts relative to the anchor: a contribution with a lower priority is tried before the verb's
-own lines, a higher one after. The verb that a `synonyms` list attaches to (§13.5.4) is not an anchor
-in this sense.
+A verb's *anchor* is the priority declared in its own `verb` body, or `10` when none is declared (an extern verb always has the default anchor).  A program verb whose own grammar uses a word a library verb already owns is placed against the library's lines by the `verb` member `libraryPriority`, which is `20` by default; with an anchor below it (the default), the program verb's lines are tried first.  Every other contribution to that verb's trigger words sorts relative to the anchor (see **Ordering** below).  The verb a `synonyms` list attaches to (§13.5.4) is not an anchor in this sense.
 
 | Source | Syntax | Scope | Default |
 |---|---|---|---|
 | Verb body (the anchor) | `priority = N;` inside `verb V { … }` | The verb's own lines; stored on the verb | `10` |
-| `extend` block | `priority = N;` inside `extend V { … }` | Every line added by that block's `grammar +=`; not stored on the verb, so several `extend` blocks at different priorities coexist on one verb | `10` |
+| `extend` block | `priority = N;` inside `extend V { … }` | Every line added by that block's `grammar +=`; not stored on the verb | `10` |
 | Grammar-object rule | Third positional element of a `grammarRule` initializer, `{V, {pattern}, N}` | That one rule, sorted against its target verb's anchor; a grammar object has no block-level default, so the value is repeated per rule | `10` |
-| Inferred-verb line | none | A line written `{pattern}` takes the owning verb's anchor, or the enclosing `extend` block's priority | — |
+| Inferred-verb line | none | A line written `{pattern}` takes the owning verb's anchor, or the enclosing `extend` block's priority | - |
 
-Combining `priority = N;` with `replace grammar = { … }` in the same `extend` block is a compile-time
-error (§13.5.3). An extern verb cannot carry a `priority` in its declaration (§13.2.3).
+Combining `priority = N;` with `replace grammar = { … }` in the same `extend` block is a compile-time error (§13.5.3).  An extern verb can't carry a `priority` in its declaration (§13.2.3).
 
-**Ordering.** For each trigger word of a verb, lines with `priority < anchor` are tried before the
-verb's own lines; the verb's own lines come next; lines with `priority ≥ anchor` from other sources
-come last. Per-rule and block-local priorities participate in the same ordering.
+**Ordering.**  For each trigger word of a verb, lines with `priority < anchor` are tried before the verb's own lines, the verb's own lines come next, and lines with `priority >= anchor` from other sources come last.  Per-rule and block-local priorities take part in the same ordering.
 
 **Example**
 
@@ -335,15 +271,12 @@ grammar additions {
 **Syntax**
 
 ```syntax
-action == ⟨verb⟩
-action != ⟨verb⟩
-switch (action) { case ⟨verb⟩ : … }
+action == VERB
+action != VERB
+switch (action) { case VERB : … }
 ```
 
-**Description**
-
-The library variable `action` has type `verb`. It is compared against a verb name with `==` and `!=`,
-and a `switch` on `action` takes verb names as case values (§5.12).
+The library variable `action` has the type `verb`.  You can compare it against a verb name with `==` and `!=`, and a `switch` on `action` takes verb names as its case values (§5.12).
 
 **Example**
 
@@ -356,63 +289,38 @@ switch (action) {
 }
 ```
 
-**Verb values.** A variable, parameter or array element of type `verb` holds any verb, native or
-`extern`. One typed as a subclass of `verb` holds a verb declared through that subclass, and reaches its
-members. Both are performed and compared in the same way, and a subclass-typed value converts to `verb`
-wherever one is expected.
-
-A verb may share its name with a `#define` symbol. The name then means the symbol, except where a verb is
-expected: assigned to a `verb`, passed to a `verb` parameter, in an `array<verb>`, as a `case` label on an action, or on either
-side of `==` or `!=` with a verb.
-
-```bgl
-class ChatVerb : verb { string reply; void handler() { print(reply); } }
-ChatVerb Hum     { grammar = {.hum};     reply = "You hum."; }
-ChatVerb Whistle { grammar = {.whistle}; reply = "You whistle."; }
-array<ChatVerb> chats = { Hum, Whistle };
-
-ChatVerb v = chats[1];
-v.perform();                 // runs the Whistle action
-if (v == action) { … }
-verb any = v;                // any verb fits a `verb`
-print(v.reply);
-```
+A verb which shares its name with a `#define` symbol is still a verb where one is expected (§3.8.3).
 
 **See also** §5.12, §23.3.4.
 
 ## 13.4 Grammar
 
-Grammar lines define what the player may type and which verb they trigger. A line is declared either
-on a verb (§13.4.5) or in a grammar object, and both forms have the same effect.
+Grammar lines define what the player can type and which verb it will trigger.  A line is declared on a verb (§13.4.5) or in a grammar object, to the same effect.
 
 ### 13.4.1 Grammar Types
 
-**Description**
+The following types are used to declare grammar:
 
 | Type | Purpose |
 |---|---|
-| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, …. Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position. `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
-| `patternElement` | One element of a pattern: a dictionary word or a grammar token. A pattern is an `array<patternElement>`, written `{.examine, NOUN}`. A program writes patterns in a verb's `grammar`; declaring a variable or member of this type is a compile-time error. |
-| `grammarRule` | One verb-targeted pattern, with an optional priority: `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
+| `grammarToken` | An extern enum declared by the IF library binding (§23.3.6); its values are the parser tokens `NOUN`, `HELD`, `CREATURE`, ….  Both the bare value (`HELD`) and the qualified form (`grammarToken.HELD`) are valid in pattern position.  `NOUN(Routine)` and `SCOPE(Routine)` are its parameterized forms. |
+| `patternElement` | One element of a pattern:  a dictionary word, a grammar token, an attribute, or a general parsing routine (§13.4.2).  A pattern is an `array<patternElement>`, written `{.examine, NOUN}`.  A program writes patterns in a verb's `grammar`; declaring a variable or member of this type is a compile-time error. |
+| `grammarRule` | One verb-targeted pattern, with an optional priority:  `{Examine, {.examine, NOUN}}` or `{Examine, {.examine, NOUN}, 5}`. |
 | `grammarRuleList` | A list of grammar rules; the type of the `grammar` member on `verb` and of a grammar object. |
+
+`patternElement` is the base type of one element of a grammar pattern.  These types are the receivers of the grammar operators (`=`, `+=`, `-=`, `replace … =`).
 
 A `grammarRule` has two initializer forms:
 
-- **Explicit verb**: `{Verb, {pattern}[, priority]}`. Valid in any context.
-- **Inferred verb**: `{pattern}`. The verb is the owning object, which should be a `verb` or a
-  subclass of `verb`; otherwise a warning is issued. The priority is the owning verb's anchor or the
-  enclosing `extend` block's (§13.2.5).
+- **Explicit verb**:  `{Verb, {pattern}[, priority]}`.  Valid in any context.
+- **Inferred verb**:  `{pattern}`.  The verb is the owning object, which should be a `verb` or a subclass of `verb`; otherwise a warning is issued.  The priority is the owning verb's anchor or the enclosing `extend` block's (§13.2.5).
 
-A `grammarRule` member takes exactly one `{verb, {pattern}}` pair; an `array<grammarRule>` member
-takes a list of them. Any other shape is a compile-time error.
+A `grammarRule` member takes exactly one `{verb, {pattern}}` pair, while an `array<grammarRule>` member takes a list of them.  Any other shape is a compile-time error.
 
-**See also** §21.5.5.
 
 ### 13.4.2 Pattern Tokens
 
-**Description**
-
-Each element of a pattern is one of the following.
+Each element of a pattern is one of the following:
 
 | Token | Matches |
 |---|---|
@@ -425,35 +333,25 @@ Each element of a pattern is one of the following.
 | `TOPIC` | a topic phrase |
 | `MULTI` | one or more in-scope objects |
 | `MULTIHELD` | one or more held objects |
-| `MULTIEXCEPT` | one or more in-scope objects, excluding one already matched (used after a preposition: `MULTIEXCEPT, .in, NOUN`) |
-| `MULTIINSIDE` | one or more objects inside a specific container (used after a preposition: `MULTIINSIDE, .from, NOUN`) |
+| `MULTIEXCEPT` | one or more in-scope objects, excluding one already matched (used after a preposition:  `MULTIEXCEPT, .in, NOUN`) |
+| `MULTIINSIDE` | one or more objects inside a specific container (used after a preposition:  `MULTIINSIDE, .from, NOUN`) |
 | `NUMBER` | a number typed by the player, range-checked |
 | `ANYNUMBER` | any number, no range check |
 | `SPECIAL` | a number or a dictionary word |
 | *attributeName* | an object that has that attribute (`container`, `animate`) |
-| *RoutineName* | a general parsing routine: a global function the parser calls to consume input words (`NextWord()`, `wn`); it returns -1 for no match, 0 when it matched words but no value, 1 when it put a number in `parsed_number`, or the object it matched |
-| `NOUN(Routine)` | a noun filter: the parser matches nouns normally, puts each candidate object in `noun`, and calls the global `bool` routine, which accepts or rejects it |
-| `SCOPE(Routine)` | a scope setter: the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
+| *RoutineName* | a general parsing routine:  a global function the parser calls to consume input words (`NextWord()`, `wn`); it returns -1 for no match, 0 when it matched words but no value, 1 when it put a number in `parsed_number`, or the object it matched |
+| `NOUN(Routine)` | a noun filter:  the parser matches nouns normally, puts each candidate object in `noun`, and calls the global `bool` routine, which accepts or rejects it |
+| `SCOPE(Routine)` | a scope setter:  the global `bool` routine decides which objects are in scope for this line, using the library's scope routines (`PlaceInScope()`, `ScopeWithin()`) |
 
-A `NUMBER`, `ANYNUMBER` or `SPECIAL` token fills a noun slot like an object token does: the number
-becomes `noun` (or `second`, for the line's second value), which a handler reads with a cast,
-`(int)second`. The library's `parsed_number` holds the last number matched.
+A `NUMBER`, `ANYNUMBER`, or `SPECIAL` token fills a noun slot as an object token does:  the number becomes `noun` (or `second`, for the line's second value), which a handler can read with a cast, `(int)second`.  The library's `parsed_number` holds the last number matched.  A `TOPIC` token takes a slot too:  in `{.type, TOPIC, .on, NOUN}` the object is `second`, and `noun` is 0.
 
-These are Inform 6's own routine tokens, so the parser calls each routine with no arguments: a filter reads
-the candidate from `noun`, and a general parsing routine reads the input itself. A routine named in a
-pattern that declares parameters is a compile-time error.
+The parser calls each routine token with no arguments, so a routine named in a pattern which declares parameters is a compile-time error.
 
-Both bindings declare `scope_stage`, the pass (1, 2 or 3) the parser is making when it calls a scope
-routine; objects are placed in scope on pass 2, as `if (scope_stage == 2) { PlaceInScope(obj); }`.
+Both bindings declare `scope_stage`, the pass (1, 2, or 3) the parser is making when it calls a scope routine.  Objects are placed in scope on pass 2, as in `if (scope_stage == 2) { PlaceInScope(obj); }`.
 
-A bare identifier in a pattern must be declared as a `grammarToken`, an `attribute`, or a global
-function; any other declaration, or an undeclared name, is a compile-time error. In pattern position
-a bare `NOUN` resolves to the grammar token even when an `extern object noun` exists at file scope;
-outside a pattern the global wins, and `grammarToken.NOUN` selects the token explicitly.
+A bare identifier in a pattern must be declared as a `grammarToken`, an `attribute`, or a global function; any other declaration, or an undeclared name, is a compile-time error.  In pattern position a bare `NOUN` resolves to the grammar token even when an `extern object noun` exists at file scope; however, outside a pattern the global wins, and `grammarToken.NOUN` selects the token explicitly.
 
-Grammar tokens are written in uppercase by convention (`NOUN`, `HELD`, `REVERSE`), which sets them
-apart from dictionary words and from same-named variables such as the `noun` global. Beguile is
-case-insensitive (§1.3), so `noun` in a pattern is the same token.
+By convention, grammar tokens are written in uppercase (`NOUN`, `HELD`, `REVERSE`).  Beguile is case-insensitive (§1.3), so `noun` in a pattern is the same token.
 
 **Example**
 
@@ -468,7 +366,7 @@ verb Taste {
 int parseColor() { … }
 
 verb Paint {
-    grammar = { {.paint, NOUN, parseColor} };      // "paint <object> <color>"
+    grammar = { {.paint, NOUN, parseColor} };      // "paint OBJECT COLOR"
     void handler() { … }
 }
 
@@ -482,17 +380,9 @@ verb Chat {
 
 ### 13.4.3 Alternation and Multi-trigger Lines
 
-**Description**
+Dictionary words separated by `|` will match any one of them, and the group can be parenthesized.  Alternation is allowed in any position, including the first.
 
-Dictionary words separated by `|` match any one of them, and the group may be parenthesized.
-Alternation is allowed in any position, including the first.
-
-When alternation appears in the first position, the line declares one pattern that fires on any of
-the listed trigger words. The line behaves as one line per word: each trigger word is treated
-independently, so `grammar -=` (§13.5.2) can remove a single word's line, and each word is routed on
-its own. A new word defines that word's grammar; a word already claimed by another verb (a library
-verb through its claimed words, or an earlier Beguile verb) adds the line to that word's grammar. The
-same applies to multi-trigger lines inside `extend V { grammar += { … } }`.
+In the first position, alternation declares one pattern which fires on any of the listed trigger words.  The line behaves as one line per word, each treated independently (§13.5.2).  A new word defines that word's grammar, while a word already claimed by another verb (a library verb through its claimed words, or an earlier Beguile verb) adds the line to that word's grammar.  The same applies to multi-trigger lines inside `extend V { grammar += { … } }`.
 
 **Example**
 
@@ -516,30 +406,15 @@ verb TypeNum {                                     // three trigger words: one l
 **Syntax**
 
 ```syntax
-{ ⟨pattern⟩ [ , REVERSE ] [ , withI6Synonyms ] }
+{ PATTERN [ , REVERSE ] [ , withI6Synonyms ] }
 ```
 
-**Description**
+Two pseudo-tokens can end a grammar line, in the above order; neither is matched against input.  The dotted forms `.reverse` and `.withI6Synonyms` are ordinary dictionary words and are unaffected.
 
-Two pseudo-tokens may end a grammar line, in this order. Neither is matched against input.
-`withI6Synonyms`, when present, must be last. The dotted forms `.reverse` and `.withI6Synonyms` are
-ordinary dictionary words and are unaffected.
+- `REVERSE` swaps `noun` and `second` when the action receives its parsed arguments:  `{.give, CREATURE, HELD, REVERSE}`.
+- `withI6Synonyms` widens the line's effect on a library verb.  A library verb can group several synonym words under one grammar table; when a line's trigger word belongs to such a group, the line affects only that word and its synonyms are untouched.  With `withI6Synonyms`, the line applies to every word in the group.  On a native word, or a library word with no synonyms, the modifier has no effect.
 
-- `REVERSE` swaps `noun` and `second` when the action receives its parsed arguments:
-  `{.give, CREATURE, HELD, REVERSE}`.
-- `withI6Synonyms` widens the line's effect on a library verb. A library verb may group several
-  synonym words under one grammar table; when a line's trigger word belongs to such a group, the line
-  affects only that word and its synonyms are untouched. With `withI6Synonyms` the line applies to
-  every word in the group. On a native word, or a library word with no synonyms, the modifier has no
-  effect.
-
-In I6 terms: a line whose trigger word is a library word is emitted as `Extend only 'w'`, which
-splits `w` off its I6 `Verb`, keeps the library grammar it inherits and adds the line to `w` alone;
-with `withI6Synonyms` the line is emitted as `Extend 'w'`, which I6 applies to every word of the
-group. A new word is emitted as a fresh `Verb`. The compiler cannot know a library word's grouping
-(an included I6 extension may add synonyms), so it splits every library word; when `w` was its
-`Verb`'s only word, Inform 6 warns that the declaration is left with no words, a warning the compiler
-hides unless `filterVerbSplitWarnings` is `false` (§17.3). Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
+A line on a library word splits that word off its I6 `Verb`; when it was the only word of its `Verb`, Inform 6 warns that the declaration is left with no words; the compiler hides this warning unless `filterVerbSplitWarnings` is `false` (§15.3).  For background (not part of this specification), see [Verbs and Grammar](../Verbs-Grammar.md).
 
 **Example**
 
@@ -557,23 +432,17 @@ extend Take { grammar += { {.take, .all, .from, NOUN, withI6Synonyms} }; }   // 
 **Syntax**
 
 ```syntax
-verb ⟨name⟩ { grammar = { { ⟨pattern⟩ } , … } ; … }
+verb NAME { grammar = { { PATTERN } , … } ; … }
 
-grammar ⟨name⟩ {
-    grammarRule ⟨rule⟩ = { ⟨verb⟩ , { ⟨pattern⟩ } [ , ⟨priority⟩ ] } ;
-    array<grammarRule> ⟨rules⟩ = { { ⟨verb⟩ , { ⟨pattern⟩ } [ , ⟨priority⟩ ] } , … } ;
+grammar NAME {
+    grammarRule RULE = { VERB , { PATTERN } [ , PRIORITY ] } ;
+    array<grammarRule> RULES = { { VERB , { PATTERN } [ , PRIORITY ] } , … } ;
 }
 ```
 
-**Description**
+The `grammar` member of a verb is a `grammarRuleList` whose lines use the inferred-verb form; the verb is the owning object.
 
-The `grammar` member of a verb is a `grammarRuleList` whose lines use the inferred-verb form; the verb
-is the owning object.
-
-A `grammar` declaration declares an object of class `grammarRuleList`. A grammar object is
-cross-cutting: one object may carry rules targeting many verbs, each rule pairing a pattern with an
-explicit verb. Member types may be inferred, and an `array<grammarRule>` member holds several rules.
-Per-rule priority is the optional third element (§13.2.5).
+A `grammar` declaration declares an object of class `grammarRuleList`.  A grammar object is cross-cutting:  one object can carry rules which target many verbs, each pairing a pattern with an explicit verb.  Member types can be inferred, and an `array<grammarRule>` member holds several rules.  The per-rule priority is the optional third element (§13.2.5).
 
 **Example**
 
@@ -587,39 +456,30 @@ grammar customPatterns {
 }
 ```
 
-**See also** §13.2.5, §21.5.5.
+**See also** §13.2.5.
 
 ## 13.5 Extending Grammar
 
 **Syntax**
 
 ```syntax
-extend ⟨verb⟩ {
-    [ priority = ⟨n⟩ ; ]
-    grammar += { { ⟨pattern⟩ } , … } ;
-    grammar -= { { .⟨word⟩ , ⟨pattern⟩ } , … } ;
-    grammar -= { { .⟨word⟩ } , … } ;
-    replace grammar = { { ⟨pattern⟩ } , … } ;
-    synonyms = { .⟨word⟩ , … } ;
+extend VERB {
+    [ priority = N ; ]
+    grammar += { { PATTERN } , … } ;
+    grammar -= { { .WORD , PATTERN } , … } ;
+    grammar -= { { .WORD } , … } ;
+    replace grammar = { { PATTERN } , … } ;
+    synonyms = { .WORD , … } ;
 }
 ```
 
-The two `grammar -=` forms are the line-level and word-level shapes of §13.5.2; entries of both shapes
-may be mixed in one list.
+The two `grammar -=` forms are the line-level and word-level shapes of §13.5.2; entries of both shapes can be mixed in one list.
 
-**Description**
-
-Grammar is added to or removed from an existing verb, including an `extern verb`, inside an
-`extend V { … }` body (§11.10). An operator is required: bare `grammar = { … }` is valid only in the
-original `verb` or `extern verb` declaration and is a compile-time error inside an `extend`. A bare
-`priority = N;` in the block applies to the lines it appends (§13.2.5).
+Grammar is added to or removed from an existing verb, including an `extern verb`, inside an `extend V { … }` body (§11.10).  An operator is required:  a bare `grammar = { … }` is valid only in the original `verb` or `extern verb` declaration, and is a compile-time error inside an `extend`.  A bare `priority = N;` in the block applies to the lines it appends (§13.2.5).
 
 ### 13.5.1 `grammar +=`
 
-**Description**
-
-`grammar += { … }` appends lines to the verb's grammar. Multi-trigger lines (§13.4.3) and line
-modifiers (§13.4.4) are accepted.
+`grammar += { … }` appends lines to the verb's grammar.  It accepts multi-trigger lines (§13.4.3) and line modifiers (§13.4.4).
 
 **Example**
 
@@ -632,19 +492,12 @@ extend PutOn {
 
 ### 13.5.2 `grammar -=`
 
-**Description**
+`grammar -= { … }` removes grammar; how much depends on how much of the line you name:
 
-`grammar -= { … }` removes grammar. The grain of the removal is set by how much of the line is named:
+- **Line-level**:  `{.w, pattern…}` removes the one line which matches exactly:  same trigger word, same tokens, same `REVERSE` flag.
+- **Word-level**:  `{.w}` removes all of that word's grammar.
 
-- **Line-level** — `{.w, pattern…}` removes the one line that matches exactly: same trigger word,
-  same tokens, same `REVERSE` flag.
-- **Word-level** — `{.w}` removes all of that word's grammar.
-
-A `-=` entry must match a line exactly; a partial (prefix) pattern matches nothing:
-`-= { {.give, NOUN} }` removes only the line whose pattern is exactly `NOUN`, never
-`{.give, NOUN, .to, NOUN}`. An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each
-matched and warned separately. Removal is source-ordered: a `-=` sees only lines declared before it,
-so a later `+=` of the same line is unaffected. A `-=` that matches nothing is a warning.
+A partial (prefix) pattern matches nothing:  `-= { {.give, NOUN} }` removes only the line whose pattern is exactly `NOUN`, never `{.give, NOUN, .to, NOUN}`.  An alternation in a `-=` entry (`.a|.b|.c`) is one removal per word, each matched and warned separately.  Removal is source-ordered:  a `-=` sees only the lines declared before it, so a later `+=` of the same line is unaffected.  A `-=` which matches nothing is a warning.
 
 **Example**
 
@@ -654,19 +507,9 @@ extend TypeNum { grammar -= { {.dial, .into, NOUN} }; }   // that one dial line
 extend TypeNum { grammar -= { {.dial} }; }                // every dial line
 ```
 
-**Extern verbs.** For a library verb Beguile knows the words it claims and the lines Beguile itself
-added with `+=`, but the library's own patterns are opaque. A line-level `-=` therefore matches only
-Beguile-added lines; naming a claimed word with a pattern that matches none of them is a warning. A
-word-level `-=` on a claimed word *evicts* the word from the library verb: if a native verb also
-declares that word, its lines take the word over; otherwise the word is disabled. The word must be
-genuinely claimed by the library verb.
+**Extern verbs.**  For a library verb, Beguile knows the words it claims and the lines Beguile itself added with `+=`; however, the library's own patterns are opaque.  A line-level `-=` therefore matches only Beguile-added lines, and naming a claimed word with a pattern which matches none of them is a warning.  A word-level `-=` on a claimed word *evicts* the word from the library verb:  if a native verb also declares that word, its lines take the word over; otherwise the word is disabled.  The word must be genuinely claimed by the library verb.
 
-In I6 terms, eviction is emitted as `Extend only 'w' replace`: the one directive that reaches a
-library verb's opaque grammar, since it names no patterns. It detaches `w` from the library verb and
-discards the library's grammar for it; the lines a native verb declares for `w` are folded into that
-directive and become the word's complete grammar, and with no such lines the word matches nothing.
-Lines that another extern verb adds for `w` with `grammar +=` follow the directive, so they are kept.
-Background, non-normative: [Verbs and Grammar](../Verbs-Grammar.md).
+Eviction discards the library's grammar for the word.  The lines a native verb declares for it become its complete grammar, and lines another extern verb adds for it with `grammar +=` are kept.  For background (not part of this specification), see [Verbs and Grammar](../Verbs-Grammar.md).
 
 ```bgl
 extend Enter  { grammar -= { {.enter} }; }      // evict 'enter' from the library verb …
@@ -678,14 +521,7 @@ extend Disturb { grammar -= { {.xyzzy} }; }     // no reclaimer: 'xyzzy' is disa
 
 ### 13.5.3 `replace grammar =`
 
-**Description**
-
-`replace grammar = { … }` discards all of the verb's grammar, every trigger word and every prior `+=`
-and `-=`, whatever their source order, and the listed lines become its complete grammar. Trigger
-words not named in the replacement are dropped. Only this verb is affected; a word that another verb
-also uses keeps its grammar there. On an extern verb the replacement overrides the library's grammar
-for the named words. Combining `replace grammar =` with `priority = N;` in the same block is a
-compile-time error.
+`replace grammar = { … }` discards all of the verb's grammar (every trigger word and every prior `+=` and `-=`, regardless of their source order), and the listed lines become its complete grammar.  Only this verb is affected; a word which another verb also uses keeps its grammar there.  On an extern verb, the replacement overrides the library's grammar for the named words.  Combining `replace grammar =` with `priority = N;` in the same block is a compile-time error.
 
 **Example**
 
@@ -704,19 +540,11 @@ extend Take {
 
 ### 13.5.4 Synonyms
 
-**Description**
+`synonyms = { .word, … }` inside an `extend` makes the listed words true aliases of the extended verb:  they share the verb's grammar rather than copying it, so a later `extend` of the verb will reach every synonym.  By contrast, adding the words as separate trigger lines with `grammar +=` copies the pattern set at that point, and later extensions won't reach them.
 
-`synonyms = { .word, … }` inside an `extend` makes the listed words true aliases of the extended verb:
-they share the verb's grammar rather than copying it, so a later `extend` of the verb reaches every
-synonym. By contrast, adding the words as separate trigger lines with `grammar +=` copies the pattern
-set at that point, and later extensions do not reach them.
+The alias is attached to the verb's primary trigger word (i.e., its first claimed word, or its name if it declares none).  `synonyms` works on both extern and native verbs.  The one-letter and plural word conventions apply (§1.6.7).  An empty `synonyms = { }` is a compile-time error.
 
-The alias is attached to the verb's primary trigger word (its first claimed word, or its name if it
-declares none). `synonyms` works on both extern and native verbs. One-letter and plural word
-conventions apply (§1.6.7). An empty `synonyms = { }` is a compile-time error.
-
-There is no Beguile form for I6's `Extend 'w' only` directive; if needed, write it in an `#i6` island
-(§15.2).
+There is no Beguile form for I6's `Extend 'w' only` directive; if you need it, write it in an `#i6` island (§16.2).
 
 **Example**
 
@@ -725,4 +553,4 @@ extend Take { synonyms = {.steal, .grab, .pilfer}; }
 extend Take { grammar += { {.take, .quietly, NOUN} }; }   // also "steal quietly", "grab quietly"
 ```
 
-**See also** §13.2.3, §15.2.
+**See also** §13.2.3, §16.2.

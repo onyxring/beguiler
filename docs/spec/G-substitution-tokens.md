@@ -2,24 +2,21 @@
 
 ## G.1 Token Reference
 
-Every `$` token is replaced when an emitter body is substituted at a use site; every `##` form is
-processed at the same time. `$i6Name` and `$i6Expr` are also recognized in an `#i6` island (§15.2),
-where they are the only tokens that mean anything — an island has no receiver and no parameters. Anything else in an emitter body, including single-hash `#` directives
-and unrecognized `##name` text, passes through to the output unchanged. Full rules: §7.3 and §7.4.
+Every `$` token is replaced when an emitter body is substituted at a use site; every `##` form is processed at the same time.  `$i6Name` and `$i6Expr` are also recognized in an `#i6` island (§16.2), where they are the only tokens which mean anything.  Anything else in an emitter body, including single-hash `#` directives and unrecognized `##name` text, passes through to the output unchanged.  The full rules are in §7.3 and §7.4.
 
 | Token | Meaning | See |
 |---|---|---|
-| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length`). Not meaningful in a global emitter. | §7.3 |
-| `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise the same as `$self`. | §7.3 |
-| `$host` | The object a proxy member is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
+| `$self` | In an operator or assignment emitter, the receiver with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`container.children` for `container.children.length`).  Not meaningful in a global emitter. | §7.3 |
+| `$val` | The full receiver expression as written:  `obj.score` for `obj.score + 1`; otherwise the same as `$self`. | §7.3 |
+| `$host` | The object a proxy member is accessed on, the owner of the proxy:  the receiver with its trailing `.member` removed, in every kind of emitter (`container` for `container.children.length`); equals `$self` when the receiver is not a member access. | §7.3, §7.3.2 |
 | `$name` | The argument supplied for the parameter declared as `name`. | §7.3 |
-| `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position. Its presence makes the body responsible for the store. | §7.3.2 |
-| `$prop` | In an `array<T>` emitter, the property name of a member array that is its property's data (`array<dictionaryWord>`); `0` for every other array. | §7.3, §12.7 |
+| `$target` | The assignment target as a full lvalue path, or a compiler-supplied temporary in statement position.  Its presence makes the body responsible for the store. | §7.3.2 |
+| `$prop` | In an `array<T>` emitter, the property name of a class or object member array; `0` for a global or local array. | §7.3, §12.7, §12.12 |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (routine name for `static`, property name for an instance operator, `0` for an emitter or none); `T` selects an overload. | §7.3.1 |
 | `$oprefReq(op[, T])` | As `$opref`, with a compile-time warning when nothing is found. | §7.3.1 |
-| `$i6Expr(expr)` | The I6 a Beguile expression emits, expanded inline — how one emitter reaches another. Binds the body's tokens as typed values; one expression or one void call; cycles and chains deeper than eight are errors. | §7.3.4 |
-| `$i6Name(path[(types)])` | The identifier Inform 6 knows a declaration by: its `asI6` name, the `_bgl_<class>_<method>` mangling of a `static` method, or its plain name. `types` selects an overload. Naming an emitter is an error. | §7.3.3 |
-| `$selfsub` | In a `_bglGlobalDeclaration` body, the instance name with `sub` appended. | §15.8 |
-| `##if expr` / `##else` / `##endif` | Conditional inclusion of body text, with the `#if` expression syntax. `##ifdef`/`##ifndef` are errors. | §7.4 |
-| `##beguilerSettings.key` | The compile-time value of a `#beguilerSettings` property, in the raw-I6 bodies of `#emitfirst`, `#emitlast`, `#storedEmitFirst` and `#storedEmitLast` only. | §14.4.5, §17.7 |
-| `##Name` (other) | Not a token: passes through verbatim as I6 text (an I6 action constant such as `##Take`; `##$v` yields the action name of `$v`). | §7.4 |
+| `$i6Expr(expr)` | The I6 a Beguile expression emits, expanded inline.  Binds the body's tokens as typed values; one expression or one void call; cycles and chains deeper than eight are errors. | §7.3.4 |
+| `$i6Name(path[(types)])` | The identifier Inform 6 knows a declaration by:  its `asI6` name, the `_bgl_CLASS_METHOD` mangling of a `static` method, or its plain name.  `types` selects an overload.  Naming an emitter is an error. | §7.3.3 |
+| `$selfsub` | In a `_bglGlobalDeclaration` body, the instance name with `sub` appended. | §16.8 |
+| `##if expr` / `##else` / `##endif` | Conditional inclusion of body text, with the `#if` expression syntax.  `##ifdef`/`##ifndef` are errors. | §7.4 |
+| `##beguilerSettings.key` | The compile-time value of a `#beguilerSettings` property, in the raw-I6 bodies of `#emitfirst`, `#emitlast`, `#storedEmitFirst`, and `#storedEmitLast` only. | §14.4.5, §15.7 |
+| `##Name` (other) | Not a token:  passes through verbatim as I6 text (an I6 action constant such as `##Take`; `##$v` yields the action name of `$v`). | §7.4 |

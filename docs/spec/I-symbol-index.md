@@ -1,14 +1,8 @@
 # Appendix I Symbol and Method Index
 
-Every runtime and library name an author can write, alphabetically: functions, methods, members,
-objects, namespaces, types, constants and the symbols a library defines. *Kind* says what the name
-is; a method or member names the type it belongs to. *Provided by* is `core` (loaded without an
-include, §21), an extension (`<name>`, §22) or a binding (§23). *Section* is where the name is
-specified. Overloads share one row; a family of names that differ only in a suffix is listed once
-with the suffix spelled out. Names of the `bgl` namespace are listed under `bgl.…`.
+The following table lists every runtime and library name you can write, alphabetically:  functions, methods, members, objects, namespaces, types, constants, and the symbols a library defines.  *Kind* says what the name is; a method or member names the type it belongs to.  *Provided by* is `core` (loaded without an include, §21), an extension (`<name>`, §22), or a binding (§23).  *Section* is where the name is covered.  Overloads share one row; a family of names which differ only in a suffix is listed once with the suffix spelled out.  Names of the `bgl` namespace are listed under `bgl.…`.
 
-`size` and `length` are built in; assigning `length`, `clear()` and the methods marked `<array>`
-need `#include <array>`.
+`size` and `length` are built in; assigning `length`, `clear()`, and the methods marked `<array>` need `#include <array>`.
 
 | Name | Kind | Provided by | Section |
 | --- | --- | --- | --- |
@@ -39,7 +33,7 @@ need `#include <array>`.
 | `bgl.printRules.bold`, `italics`, `underline`, `reverse`, `fixed`, `roman` | print rule | core | §21.11 |
 | `bgl.printRules.img(image[, align[, width[, height]]])` | print rule | core (Glulx) | §21.11 |
 | `bgl.printRules.link(text, target)` | print rule | core (Glulx) | §21.11 |
-| `HandleGlkEvent(event, context, buffer)` | function (`extern default` entry point; author-overridable) | core (Glulx) | §21.11 |
+| `HandleGlkEvent(event, context, buffer)` | function (`extern default` entry point; author-overridable) | core (Glulx) | §6.7.1 |
 | `bgl.ui` | namespace | core | §21.10 |
 | `bgl.ui.hideCursor()`, `showCursor()` | function | `<ui>` | §22.6 |
 | `bgl.ui.mainWin` | object (root text-buffer window) | core | §21.10, §22.7.2 |
@@ -85,9 +79,9 @@ need `#include <array>`.
 | `bgl.world.instances(cls[, pred])` | function | core | §21.9 |
 | `bgl.zcode` | namespace | core (Z-machine) | §21.3 |
 | `bglAllocated` | type (mixin class) | core | §21.8 |
-| `bglAutoInitialize` | symbol (mirrors `autoInitialize`) | binding | §23.5 |
+| `bglAutoInitialize` | symbol (mirrors `autoInitialize`) | compiler | §14.2.4, §23.5, Appendix F |
 | `bglClass` | type | core | §21.5.6 |
-| `_bglGlobalDeclaration()` | emitter hook on a class (one top-level I6 declaration per instance; `$selfsub`) | core | §15.8 |
+| `_bglGlobalDeclaration()` | emitter hook on a class (one top-level I6 declaration per instance; `$selfsub`) | core | §16.8 |
 | `bglInit()` | function | core | §21.2, §18.8 |
 | `_bglObject` | type (emitter class) | core | §21.5.8 |
 | `_bglPrimitive` | type (emitter class) | core | §21.5.8 |
@@ -105,7 +99,7 @@ need `#include <array>`.
 | `children` | member on `object` | core | §11.5.2, §21.5.7 |
 | `childrenProp` | type | core | §21.5.7 |
 | `childStyles` | member on `window`, the roots (refers to a `styleSheet`) | `<glulxWindow>` | §22.7.7 |
-| `clear()` | method on `array<T>` | core; `<array>` | §12.3, §22.4 |
+| `clear()` | method on `array<T>` | `<array>` | §12.3, §22.4 |
 | `clear()` | method on the text window types, the roots | `<glulxWindow>` | §22.7.11 |
 | `close()` | method on `window` | `<glulxWindow>` | §22.7.6 |
 | `CLR_*` | constant (colors) | binding | §23.4 |
@@ -116,8 +110,8 @@ need `#include <array>`.
 | `contains(item)` | method on `array<T>` | `<array>` | §22.4 |
 | `copy(other)` | method on `bglAllocated` | core | §21.8 |
 | `count()` | method on `array<T>` | `<linq>` | §22.5 |
-| `create([p1[, p2[, p3]]])` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
-| `DEBUG` | symbol (defined by `--debug`; enables `bgl.output.log()` and the libraries' debug-only parts) | compiler | §20.3, §21.4, App. F |
+| `create(…)` | method on a pooled class (author-declared; run by `new`) | core | §8.2.6 |
+| `DEBUG` | symbol (defined by `--debug`) | compiler | §14.2.4, §20.3, §21.4, Appendix F |
 | `deinit()`, `static deinit(T v)` | lifecycle emitter / value-form method on a class | core | §8.5, §12.10 |
 | `delete(pos, count)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `destroy()` | method on a pooled class (author-declared; run by `delete`) | core | §8.2.6 |
@@ -129,7 +123,7 @@ need `#include <array>`.
 | `drawImage(img[, align[, width[, height]]])` | method on `textBufferWindow`, `bgl.ui.mainWin` | `<glulxWindow>` | §22.7.5 |
 | `eAssets` | type (named union) | core | §21.12 |
 | `eBool` | type (enum) | core | §2.7.4 |
-| `eErrorFormat` | type (enum) | core | §17.3, Appendix E |
+| `eErrorFormat` | type (enum) | core | §15.3, Appendix E |
 | `eGlulxImageAlign` | type (enum) | core (Glulx) | §22.7.10, §21.11 |
 | `eGlulxJustify` | type (enum) | `<glulxWindow>` | §22.7.10 |
 | `eGlulxStyleHint` | type (enum) | `<glulxWindow>` | §22.7.10 |
@@ -137,12 +131,12 @@ need `#include <array>`.
 | `eGlulxWindowType` | type (enum) | core (Glulx) | §22.7.10 |
 | `eCharOutput` | type (enum) | `<glulxWindow>` | §22.7.12 |
 | `eStyleCheck` | type (enum) | `<glulxWindow>` | §22.7.9 |
-| `eImages` | type (enum) | core | §17.6.1, §21.12 |
+| `eImages` | type (enum) | core | §15.6.1, §21.12 |
 | `enqueue(item)`, `dequeue()` | method on `array<T>` | `<array>` | §22.4 |
-| `eSounds` | type (enum) | core | §17.6.1, §21.12 |
-| `eTarget` | type (enum) | core | §17.3, Appendix E |
+| `eSounds` | type (enum) | core | §15.6.1, §21.12 |
+| `eTarget` | type (enum) | core | §15.3, Appendix E |
 | `eType` | type (enum) | core | §2.8.1, §21.5.9 |
-| `eUnknownAsset` | type (enum) | core | §17.6.1, §21.12 |
+| `eUnknownAsset` | type (enum) | core | §15.6.1, §21.12 |
 | `FAKE_*_OBJ` | constant (parser sentinels) | binding (`punyInform`) | §23.4 |
 | `filter(pred)` | method on `array<T>` | `<linq>` | §22.5 |
 | `first()`, `last()` | method on `array<T>` | `<linq>` | §22.5 |
@@ -153,8 +147,8 @@ need `#include <array>`.
 | `give(attr)`, `ungive(attr)` | method on `object`, `attributeList` | core | §21.5.1, §11.5.3 |
 | `glulxImage` | type (primitive class) | `<glulxImage>` | §22.8 |
 | `grammar` | member on `verb` | core | §13.2, §13.4.5 |
-| `grammarRule` | type | core | §13.4.1, §21.5.5 |
-| `grammarRuleList` | type | core | §13.4.1, §21.5.5 |
+| `grammarRule` | type | core | §13.4.1 |
+| `grammarRuleList` | type | core | §13.4.1 |
 | `grammarToken` | type (extern enum) | binding | §13.4.1, §23.3.6 |
 | `graphicsWindow` | type | `<glulxWindow>` | §22.7.1 |
 | `handler()` | method on `verb` | core | §13.2.1 |
@@ -171,11 +165,11 @@ need `#include <array>`.
 | `insert(pos, src)` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `int` | type | core | §2.2 |
 | `intLiteral`, `negativeIntLiteral`, `stringLiteral`, `charLiteral`, `dictionaryWordLiteral`, `interpolatedStringLiteral` | type (literal pseudo-type) | core | §2.4 |
-| `interpolatedString` | type (a routine that prints an interpolated string) | core | §2.4.3 |
-| `iString` | type (named union: `string \| interpolatedString`) | binding | §2.8.2, §21.5.10, §23.3.7 |
-| `iStringOrObject` | type (named union: `iString`'s members and `object`) | binding | §21.5.10, §23.3.7 |
-| `iStringOrRoutine` | type (named union: `iString`'s members and `func<void>`) | binding | §21.5.10, §23.3.7 |
-| `nullLiteral` | type (literal pseudo-type: the type of `null`) | core | §2.5 |
+| `interpolatedString` | type (a routine that prints an interpolated string) | core | §2.9.1 |
+| `iString` | type (named union:  `string \| interpolatedString`) | binding | §2.8.2, §21.5.10, §23.3.7 |
+| `iStringOrObject` | type (named union:  `iString`'s members and `object`) | binding | §21.5.10, §23.3.7 |
+| `iStringOrRoutine` | type (named union:  `iString`'s members and `func<void>`) | binding | §21.5.10, §23.3.7 |
+| `nullLiteral` | type (literal pseudo-type:  the type of `null`) | core | §2.5 |
 | `is(Class)` | method on `object` | core | §21.5.6 |
 | `isEmpty()` | method on `string`, `stringObj` | `<string>` | §22.3 |
 | `isLower()`, `isUpper()`, `isAlpha()`, `isNumeric()`, `isAlphaNumeric()`, `isVowel()`, `isConsonant()` | method on `char` | core | §21.7 |
@@ -208,7 +202,7 @@ need `#include <array>`.
 | `orderBy([compare])` | method on `array<T>` | `<linq>` | §22.5 |
 | `parent` | member on `object` | core | §11.5.1, §21.5.7 |
 | `parentProp` | type | core | §21.5.7 |
-| `patternElement` | type | core | §13.4.1, §21.5.5 |
+| `patternElement` | type | core | §13.4.1 |
 | `peekEnd()`, `popEnd()` | method on `array<T>` | `<array>` | §22.4 |
 | `perform([noun[, second]])` | method on `verb` | core | §13.2.2 |
 | `PlayerTo()`, `TestScope()`, `StartTimer()`, `StatusLineHeight()`, … | function (extern library routine) | binding | §23.3.4 |
@@ -234,7 +228,7 @@ need `#include <array>`.
 | `selected_direction`, `selected_direction_index` | variable (extern) | binding (`punyInform`) | §23.4 |
 | `setBackgroundColor(color)` | method on `graphicsWindow` | `<glulxWindow>` | §22.7.5 |
 | `setStyle(styleType, style {…})`, `clearStyle(styleType)` | method on the text window types, the roots, `bgl.ui.screen` | `<glulxWindow>` | §22.7.7 |
-| `short_name` | member on `object` | library bindings | §21.4, §23.3.4 |
+| `short_name` | member on `object` | library bindings | §21.4, §23.3.11 |
 | `instanceName` | member on `_bglObject` (`inline const string`) | core | §8.3.5, §11.5.4 |
 | `size` | property on `array<T>` (read-only) | core | §12.3 |
 | `size` | property on `glulxImage` (read-only); method `size()` on `eImages` | `<glulxImage>` | §22.8 |
@@ -247,11 +241,11 @@ need `#include <array>`.
 | `story`, `headline` | constant (I6) and `extern string` | binding | §23.3.2 |
 | `string` | type | core | §2.2, §22.3 |
 | `stringObj` | type | `<string>` | §22.3 |
-| `style` | emitter namespace (built-in; called as `style.⟨member⟩()`; the same word as the struct below) | core | §7.7 |
-| `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.10 |
+| `style` | emitter namespace (built-in; called as `style.MEMBER()`; the same word as the struct below) | core | §7.7 |
+| `styleFlag` | type (primitive class; `italics`, `fixedWidth`, `reverse`) | `<glulxWindow>` | §22.7.7 |
 | `styleSheet` | type (struct; one `style` per style type) | `<glulxWindow>` | §22.7.7 |
 | `style` | type (struct; written `style { … }`; the same word as the emitter namespace above) | `<glulxWindow>` | §22.7.7 |
-| `styleUnset` | constant | `<glulxWindow>` | §22.7.10 |
+| `styleUnset` | constant | `<glulxWindow>` | §22.7.9 |
 | `swap(pos1, pos2)` | method on `array<T>` | `<array>` | §22.4 |
 | `switchable`, `on`, `workflag`, `scored` | value (`attribute`) | binding (both) | §23.4 |
 | `reactive` | value (`attribute`) | binding (`punyInform`) | §23.4 |

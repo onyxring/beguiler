@@ -8,7 +8,7 @@
 
 ## C.1 Precedence
 
-The table is the one in §4.3; higher precedence binds more tightly.
+This is the table from §4.3; higher precedence binds more tightly.
 
 | Prec | Operators | Kind | Assoc | Meaning |
 |:---:|---|---|---|---|
@@ -28,26 +28,25 @@ The table is the one in §4.3; higher precedence binds more tightly.
 | 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
-
 ## C.2 Overloadable Operators
 
-The complete set of operators a class may overload, with the declaration shape of each, is the table
-in §9.1; the operators that must be declared as emitters are listed in §9.8. `?.`, `??`, `=>`, `:=` and
-`:==` are operator tokens that are not overloadable.
+The complete set of operators which a class can overload, with the declaration shape of each, is the table in §9.1; the operators which must be declared as emitters are listed in §9.8.  `?.`, `??`, `=>`, `:=`, and `:==` are operator tokens which can't be overloaded.
 
 ## C.3 Operator-to-Section Index
+
+The following table points to the sections covering each operator:
 
 | Operator(s) | Role | See |
 |---|---|---|
 | `+` `-` `*` `/` `%` | Arithmetic | §4.5 |
 | `+=` `-=` `*=` `/=` `%=` | Compound arithmetic assignment | §5.6, §9.7 |
-| `==` `!=` `<` `>` `<=` `>=` | Comparison (result `eBool`) | §4.5 |
-| `?=` | Type-defined comparison; no built-in meaning | §4.5, §9.5 |
-| `<=>` | Three-way comparison (result `int`: negative / 0 / positive) | §4.5, §9.6 |
-| `=~` | Content / case-insensitive equality (core `char`; `<string>`) | §4.5, §21.7, §22.3 |
-| `:==` | Identity: the same instance; never calls `operator ==`; not overloadable | §4.6 |
-| `&&` `\|\|` `!` | Logical (result `eBool`) | §4.5, §9.5 |
-| `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.5, §9.1 |
+| `==` `!=` `<` `>` `<=` `>=` | Comparison (result `eBool`) | §4.6 |
+| `?=` | Type-defined comparison; no built-in meaning | §4.6, §9.5 |
+| `<=>` | Three-way comparison (result `int`:  negative / 0 / positive) | §4.6, §9.6 |
+| `=~` | Content / case-insensitive equality (`char`; `<string>`) | §4.6, §21.7, §22.3 |
+| `:==` | Identity:  the same instance; never calls `operator ==` | §4.6 |
+| `&&` `\|\|` `!` | Logical (result `eBool`) | §4.7, §9.5 |
+| `&` `\|` `^` `<<` `>>` | Bitwise and shift | §4.8, §9.1 |
 | `&=` `\|=` `^=` `<<=` `>>=` | Compound bitwise assignment | §5.6 |
 | `++` `--` | Increment / decrement | §5.7, §9.7 |
 | `=` | Assignment | §5.5, §2.10.1 |
@@ -57,7 +56,7 @@ in §9.1; the operators that must be declared as emitters are listed in §9.8. `
 | `?.` | Optional chaining | §4.10 |
 | `??` | Null coalescing | §4.10 |
 | `(Type)x` | Type cast and conversion | §4.11, §9.4 |
-| `&x` (prefix) | Address-of: raw machine address as `int` (`(int)x`) | §4.12 |
+| `&x` (prefix) | Address-of:  raw machine address as `int` (`(int)x`) | §4.12 |
 | `=>` | Lambda literal | §4.14 |
 | `[]` `[]=` | Subscript read / write | §9.3, §12.3 |
 | `::name` | Global-scope qualifier | §3.9 |

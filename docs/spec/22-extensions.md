@@ -21,30 +21,32 @@
   - [22.7.11 Window Output](#22711-window-output)
   - [22.7.12 Capabilities](#22712-capabilities)
 - [22.8 `<glulxImage>`](#228-glulximage)
-- [22.9 `<archive/string>`](#229-archivestring)
+- [22.9 Library-specific Extensions](#229-library-specific-extensions)
 <!-- /toc -->
 
 ## 22.1 Overview
 
-An *extension* is a file in the `beguiLib` folder that a program enables with `#include <name>` (§14.1.1). Extensions build on the runtime core (§21) and are library-agnostic: each works with any IF library binding or with none. Nothing in an extension is available until it is included, and a program that doesn't include one carries none of its code.
+An *extension* is a file in the `beguiLib` folder which your program enables with `#include <name>` (§14.1.1).  Extensions build on the runtime core (§21) and are library-agnostic:  each works with any IF library binding, or with none.  The exceptions are the library-specific extensions (§22.9), which work only with the library they name.  Nothing in an extension is available until you include it, and a program which doesn't include one carries none of its code.
+
+This chapter covers the following extensions:
 
 | Extension | Include | Adds | Requires `bglInit()` | Also includes | Target |
 |---|---|---|---|---|---|
-| Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | — | both |
-| Strings | `#include <string>` | content comparison on `string`; the `stringObj` type | yes | `<buf>` | both |
-| Arrays | `#include <array>` | search, mutation, deque and sort methods on `array<T>`; `copyFrom` | no | — | both |
+| Tracked character buffers | `#include <buf>` | `array<char>` length tracking, `bgl.util.buf` | yes (length headers of sized arrays) | - | both |
+| Strings | `#include <string>` | the `stringObj` type; text methods on `string` | yes | `<buf>` | both |
+| Arrays | `#include <array>` | search, mutation, deque, and sort methods on `array<T>`; `copyFrom` | no | - | both |
 | LINQ chains | `#include <linq>` | fluent chain operations on `array<T>` | no | `<array>` | both |
-| Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | — | both |
+| Key input | `#include <ui>` | `bgl.ui.waitForKey()`, `hideCursor()`, `showCursor()` | no | - | both |
 | Glulx windows | `#include <glulxWindow>` | window types, splitting, sizing, styles, colors | no | `<glulxImage>` when `generateBlorb` is true | Glulx |
-| Glulx images | `#include <glulxImage>` | the `glulxImage` handle; `eImages` metadata | no | — | Glulx |
+| Glulx images | `#include <glulxImage>` | the `glulxImage` handle; `eImages` metadata | no | - | Glulx |
 
-Including an extension more than once is harmless. The names `uint`, the `char` utilities, `bgl.util.math`, `bgl.util.random`, `bglAllocated` and `bgl.world` are part of the core and need no include (§21).
+Including an extension more than once is harmless.  The names `uint`, the `char` utilities, `bgl.util.math`, `bgl.util.random`, `bglAllocated`, and `bgl.world` are part of the core and need no include (§21).
 
-Every entry below has the same shape: purpose, include line, what it adds, the settings it reads, and notes.
+Every entry below has the same shape:  purpose, include line, what it adds, the settings it reads, and notes.
 
 ## 22.2 `<buf>`
 
-**Purpose.** Length-tracked character buffers. With `<buf>` included, a sized `array<char>` is a *tracked buf*: it records its capacity and its current length, and the buffer operations below apply to it.
+**Purpose.**  Length-tracked character buffers.  With `<buf>` included, a sized `array<char>` is a *tracked buf*:  it records its capacity and current length, and the buffer operations below apply to it.
 
 **Include**
 
@@ -52,23 +54,17 @@ Every entry below has the same shape: purpose, include line, what it adds, the s
 #include <buf>
 ```
 
-**Description**
+A tracked buf is laid out as a standard I6 hybrid buffer (the length word first, then the characters), so you can pass it directly to an I6 routine which expects one.  `buf[i]` reads and writes character `i` (§12.4), and doesn't change the length.
 
-A tracked buf's value behaves as a standard I6 hybrid buffer — the length word first, then the characters — so it can be passed directly to I6 library routines that expect one (`print_to_array`, `glk_put_buffer`, …). `buf[i]` reads and writes character `i` (§12.4). Length and capacity are read and written through the methods below. Writing `buf[i]` does not change the length.
+An untracked `array<char>` (one created without the tracked layout) answers `size` and `length` from the buffer's length word (§12.4), and `isTracked()` returns false.  An array which Inform 6 declares, such as the standard library's input `buffer`, is declared `extern rawArray<char>` (§12.8), not `array<char>`.
 
-An `array<char>` that is not tracked (an `extern` I6 array, or one created without the tracked layout) answers `size` and `length` from the buffer's length word (§12.4), and `isTracked()` returns false.
-
-A buf, and the `stringObj` built on one (§22.3), holds one byte per character, so it holds only the
-characters of Latin-1 (codes 0 to 255). This is so on Glulx too, where string literals and `char`
-values may be any Unicode character (§D.5): a character beyond Latin-1 captured or appended into a
-buf is stored as `?`. An `array<char>` initialized from such text is a compile-time error. Text that
-needs those characters is printed from a string literal rather than built in a buffer.
+A buf, and the `stringObj` built on one (§22.3), holds one byte per character, so it holds only the characters of Latin-1 (codes 0 to 255).  This is true on Glulx too, where string literals and `char` values can be any Unicode character (§D.5):  a character beyond Latin-1 captured or appended into a buf will be stored as `?`.  An `array<char>` initialized from such text is a compile-time error.
 
 **Methods on `array<char>`**
 
 | Method | Returns | Description |
 |---|---|---|
-| `buf.size` | `int` | Capacity in characters; `-1` for an untracked buffer. |
+| `buf.size` | `int` | Capacity in characters; an untracked buffer's is its length word, and `-1` for `null`. |
 | `buf.length` | `int` | Current number of characters. |
 | `buf.length = n` | | Set the current length, limited to `size` on a tracked buffer. |
 | `buf.isTracked()` | `bool` | True for a tracked buf. |
@@ -76,7 +72,7 @@ needs those characters is printed from a string literal rather than built in a b
 
 **Buffer operations, `bgl.util.buf`**
 
-Every operation takes the buffer as its first argument. Operations that return `array<char>` return the buffer they modified.
+Operations which return `array<char>` return the buffer they modified.
 
 | Operation | Returns | Description |
 |---|---|---|
@@ -87,17 +83,17 @@ Every operation takes the buffer as its first argument. Operations that return `
 | `delete(buf, pos, count)` | `array<char>` | Remove `count` characters at `pos`, closing the gap. |
 | `mid(to, from, fromPos, n)` / `left(to, from, n)` / `right(to, from, n)` | `array<char>` | Copy a substring of `from` into `to`; `n == -1` in `mid` means to the end, and a position or count outside `from` is clamped to it. |
 | `indexOf(buf, search[, start])` | `int` | Position of the first occurrence at or after `start`, or `-1`. |
-| `indexOfFirstTrue(buf, pred[, start])` / `indexOfFirstFalse` | `int` | Position of the first character for which `pred(c)` is true / false, or `-1`. `pred` is `func<bool, char>`. |
+| `indexOfFirstTrue(buf, pred[, start])` / `indexOfFirstFalse` | `int` | Position of the first character for which `pred(c)` is true / false, or `-1`.  `pred` is `func<bool, char>`. |
 | `replace(buf, search, repl)` / `replaceAll(buf, search, repl[, start])` | `array<char>` | Replace the first / every occurrence in place. |
 | `equals(a, b[, caseInsensitive])` | `bool` | Content equality. |
-| `compare(a, b[, caseInsensitive])` | `int` | `-1`, `0` or `1`, by character code; a shorter buffer that matches sorts first. |
+| `compare(a, b[, caseInsensitive])` | `int` | `-1`, `0`, or `1`, by character code; a shorter buffer which matches sorts first. |
 | `startsWith(buf, prefix[, caseInsensitive])` / `endsWith(buf, suffix[, caseInsensitive])` | `bool` | Prefix / suffix test. |
 | `toUpper(buf)` / `toLower(buf)` / `reverse(buf)` | `array<char>` | In-place transforms. |
 | `trim(buf)` / `trimLeft(buf)` / `trimRight(buf)` | `array<char>` | Remove leading and/or trailing spaces in place. |
 | `getChar(buf, pos)` / `setChar(buf, pos, c)` | `int` / `void` | Bounds-checked character access; `getChar` returns `-1` out of range. |
 | `print(buf[, len])` | `array<char>` | Print the first `len` characters, or all when `len` is omitted or `-1`. |
-| `capture(buf[, maxBytes])` | `void` | Redirect subsequent `print` output into `buf`. Captures nest to a depth of 16. |
-| `release()` | `array<char>` | End the most recent capture, restore the previous output target and set the buffer's length to what was written. |
+| `capture(buf[, maxBytes])` | `void` | Redirect subsequent `print` output into `buf`.  Captures nest to a depth of 16. |
+| `release()` | `array<char>` | End the most recent capture, restore the previous output target, and set the buffer's length to what was written. |
 | `stackLen()` | `int` | The current capture depth. |
 | `isTracked(buf)` / `size(buf)` / `length(buf)` / `setLength(buf, n)` | | The function forms of the methods above. |
 
@@ -115,33 +111,28 @@ void Main() {
     bgl.util.buf.append(line, word);   // a buffer
     bgl.util.buf.append(line, "!");    // or a string
     bgl.util.buf.toUpper(line);
-    bgl.util.buf.print(line);          // → HELLO WORLD!
-    print(line.length);                // → 12
+    bgl.util.buf.print(line);          // -> HELLO WORLD!
+    print(line.length);                // -> 12
 }
 ```
 
 **Settings**
 
-`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer and for the pool buffers of `<string>`. It is an I6 constant; the runtime core loads `<buf>` before your code, so set it in an `#emitfirst` block (§14.4.2):
+`bglStringDefaultSize` (default `500`) is the capacity used for capture into an untracked buffer; `<string>` doesn't use it.  It is an I6 constant; since `<buf>` is processed before your code, set it in an `#emitfirst` block (§14.4.2):
 
 ```bgl
 #emitfirst { Constant bglStringDefaultSize 800; }
 ```
 
-**Notes**
+> ***Note:** `<buf>` requires `bglInit()` (§21.2).  A local sized buffer is tracked from its declaration until its routine returns.  The registry of tracked buffers has room for the `<string>` pool's buffers plus `bglTrackedBufferReserve` more (default `116`; an I6 constant set before the include, like `bglStringPoolReserve`).*
 
-Requires `bglInit()`, which writes the length headers of sized tracked buffers (§21.2). A local sized
-buffer is tracked from its declaration until its routine returns. `<buf>` keeps a registry of tracked
-buffers with room for the `<string>` pool's buffers plus `bglTrackedBufferReserve` more (default `116`,
-an I6 constant set before the include, like `bglStringPoolReserve`). `compare()` orders by character code, not by locale: on the Z-machine every uppercase letter sorts before every lowercase one; pass `caseInsensitive` for dictionary order.
-
-> **[Glulx]** Capture uses a Glk memory stream. `<buf>` supplies the constants it needs (`filemode_Write`, `gg_arguments`) when no IF library defines them.
+> ***[Glulx]:** `<buf>` defines `filemode_Write` and `gg_arguments` when no IF library does.*
 
 **See also** §12.4, §22.3.
 
 ## 22.3 `<string>`
 
-**Purpose.** Content semantics for text: comparison and ordering by content on `string`, and a second type, `stringObj`, that owns a mutable buffer.
+**Purpose.**  Text you can build and compare:  a second type, `stringObj`, which owns a mutable buffer and compares by content, and text methods and ordering on `string`.
 
 **Include**
 
@@ -149,16 +140,22 @@ an I6 constant set before the include, like `bglStringPoolReserve`). `compare()`
 #include <string>        // includes <buf>
 ```
 
-**Description**
-
-Two types, for two different things:
+The extension has two types, for two different things:
 
 | Type | The slot holds | Mutable | Lifecycle |
 |---|---|---|---|
 | `string` | a reference to static text (a literal) | no | none; nothing is owned |
 | `stringObj` | a buffer of its own, a block in the string heap | yes | allocated on declaration, released at scope exit |
 
-A string literal is a `string`. Use `string` for text that is only read and `stringObj` for text that is built or changed. Both compare, order, `switch` and print by content, and they mix freely in expressions. Every operation that *produces* text returns a `stringObj`, so a `stringObj` is what must receive it. Assigning a `string` or a literal to a `stringObj` copies the text into the object's own buffer; assigning a `stringObj` to a `string` is a compile-time error, because the `string` would alias a buffer it does not own, and so is passing a `stringObj` where a `string` parameter is expected: the parameter takes `stringObj`, or `string | stringObj` for either. `stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7). A `stringObj` parameter is a copy too — it gets its own buffer at entry, released on return (§8.5) — so changing it doesn't reach the caller; a `ref stringObj` parameter shares the caller's. Results may be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`): each is held until the call returns (§8.5). A `stringObj` global is allocated at startup.
+A string literal is a `string`.  The two types mix freely in expressions, and every operation which *produces* text returns a `stringObj`.
+
+Assigning a `stringObj` to a `string` is a compile-time error, and so is passing a `stringObj` where a `string` parameter is expected:  the parameter takes `stringObj`, or `string | stringObj` for either.
+
+`stringObj a = b;` copies `b`'s value; `ref stringObj a := b;` binds a reference (§3.7).  A `stringObj` parameter is a copy too (§8.5); a `ref stringObj` parameter shares the caller's.  Results can be passed straight into a call or an operator, several at once (`join(s.left(3), s.right(4))`, `a.left(1) + b.right(1)`):  each is held until the call returns (§8.5.1).  A `stringObj` global is allocated at startup.
+
+A `stringObj` which a string operation returns is *ephemeral*:  its block has already been released when the caller receives it (§8.5), and its text stays intact only until the next string is allocated.  Used at once, as an operand or an argument, it is held for that call as above.  To keep it any longer, assign it to a `stringObj`, which copies it.
+
+`==` and `!=` between two `string`s (literals included) compare addresses, as they do without the extension (§2.2):  two equal literals are different strings.  `a.equals(b)` compares their text.  When either side is a `stringObj`, `==` and `!=` compare text.
 
 `s == null` and `s != null` remain identity tests on both types (there is no content to compare against `null`).
 
@@ -166,24 +163,21 @@ A string literal is a `string`. Use `string` for text that is only read and `str
 
 | Operator | Description |
 |---|---|
-| `s = "text"` / `s = other` | Assign. On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer. `stringObj` also accepts an interpolated string, capturing its output. |
-| `s + v` | Concatenation; `s` and `v` are each a literal, a `string` or a `stringObj`, in either order (a `stringObj` also takes a `char` on either side: `s + '!'`, `'#' + s`). Returns a new `stringObj`; neither operand is changed. |
-| `s += v` | **`stringObj` only.** Append in place. `v` may also be an interpolated string, whose output is appended (`s += $" {n} left";`). |
-| `s == v` `s != v` `s < v` `s <= v` `s > v` `s >= v` | Content comparison and lexicographic ordering by character code. |
+| `s = "text"` / `s = other` | Assign.  On a `string` the slot now refers to the text; on a `stringObj` the text is copied into its buffer.  `other` is a literal, a `string` or a `stringObj`; an `array<char>` is not (append it instead, `s = s.append(buf)`).  `stringObj` also accepts an interpolated string, capturing its output. |
+| `s + v` | Concatenation; `s` and `v` are each a literal, a `string`, or a `stringObj`, in either order (a `stringObj` also takes a `char` on either side: `s + '!'`, `'#' + s`).  Returns a new `stringObj`; neither operand is changed. |
+| `s += v` | **`stringObj` only.**  Append in place.  `v` can also be an interpolated string, whose output is appended (`s += $" {n} left";`). |
+| `s == v` `s != v` | Content comparison when either side is a `stringObj`; between two `string`s, address comparison. |
+| `s < v` `s <= v` `s > v` `s >= v` | Lexicographic ordering by character code. |
 | `s =~ v` | Content comparison ignoring case. |
-| `s <=> v` | Three-way comparison: negative, `0` or positive as `s` sorts before, with or after `v` (§4.5). |
+| `s <=> v` | Three-way comparison: negative, `0`, or positive as `s` sorts before, with, or after `v` (§4.6). |
 | `switch (s) { case "a": … }` | Content comparison. |
 | `s[i]` | The character at position `i`. |
-| `s[i] = c` | **`stringObj` only.** Replace the character at position `i`. |
+| `s[i] = c` | **`stringObj` only.**  Replace the character at position `i`. |
 | `s?` | True when the slot is not `null` (§4.10). |
 
 **Methods (both types)**
 
-A method's string argument may be a literal, a `string`, a `stringObj` or an `array<char>` (`append`,
-`prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `compareTo`), and may be another method's
-result (`s.append(t.trim())`). `append`, `prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`,
-`insert`, `replace`, `replaceAll` (its search text), `==` and `!=` also take a `char`, which stands for
-the one-character string.
+A method's string argument can be a literal, a `string`, a `stringObj`, or an `array<char>` (`append`, `prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `compareTo`).  `append`, `prepend`, `contains`, `indexOf`, `startsWith`, `endsWith`, `insert`, `replace`, `replaceAll` (its search text), `==`, and `!=` also take a `char`, which stands for the one-character string.
 
 | Method | Returns | Description |
 |---|---|---|
@@ -193,13 +187,14 @@ the one-character string.
 | `s.toUpper()` / `s.toLower()` | `stringObj` | Case conversion. |
 | `s.trim()` / `s.trimLeft()` / `s.trimRight()` | `stringObj` | Without leading and/or trailing spaces. |
 | `s.reverse()` | `stringObj` | Characters in reverse order. |
-| `s.mid(start, count)` / `s.left(count)` / `s.right(count)` | `stringObj` | Substrings. A position or count outside the text is clamped to it: `left(-1)` is empty and `left(99)` is the whole text. |
+| `s.mid(start, count)` / `s.left(count)` / `s.right(count)` | `stringObj` | Substrings.  A position or count outside the text is clamped to it: `left(-1)` is empty and `left(99)` is the whole text. |
 | `s.insert(pos, src)` | `stringObj` | With `src` inserted at `pos` (a position past the end appends). |
 | `s.delete(pos, count)` | `stringObj` | With `count` characters removed at `pos`. |
 | `s.replace(search, repl)` / `s.replaceAll(search, repl)` | `stringObj` | With the first / every occurrence replaced. |
 | `s.format(pattern[, p1[, p2]])` | `stringObj` | `pattern` with `$0` replaced by `s` and `$1`, `$2` by the arguments, each a `string` or `stringObj`. |
 | `s.length` | `int` | Number of characters. |
-| `s.compareTo(other[, caseInsensitive])` | `int` | `-1`, `0` or `1`; the form a sort comparator needs. |
+| `s.compareTo(other[, caseInsensitive])` | `int` | `-1`, `0`, or `1`. |
+| `s.equals(other)` | `bool` | True when both hold the same text.  Between two `string`s this is the content comparison `==` doesn't make. |
 | `s.indexOf(search)` | `int` | Position of the first occurrence, or `-1`. |
 | `s.startsWith(prefix)` / `s.endsWith(suffix)` / `s.contains(search)` | `bool` | Substring tests. |
 | `s.isEmpty()` | `bool` | True when the length is `0`. |
@@ -224,13 +219,13 @@ void Main() {
     name = title;                        // copies the text into name's buffer
     name = name + " of Darkness";        // a new stringObj, assigned back
     name += "!";
-    if (name.startsWith("Cloak")) print(name.toUpper());   // → CLOAK OF DARKNESS!
+    if (name.startsWith("Cloak")) print(name.toUpper());   // -> CLOAK OF DARKNESS!
 }
 ```
 
 **Storage**
 
-A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors. A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function that returns `stringObj` can return null, so `??` gives a fallback for those:
+A `stringObj` always holds a string, so `null` can't be stored in one or passed to a `stringObj` parameter; both are compile-time errors.  A `ref stringObj` can be bound to null (`ref stringObj r := null;`), null can be passed to a `ref stringObj` parameter, and a function returning `stringObj` can return null; for those, `??` gives a fallback:
 
 <!-- doctest: skip -->
 ```bgl
@@ -239,47 +234,43 @@ ref stringObj r := null;             // fine: r refers to no string
 print(r ?? "none");                  // none
 ```
 
-Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`). A new string starts with room for 16 characters; writing more grows its block by half again. A block that can't grow in place is copied to a new one, so for that moment the heap holds both. There is no per-string limit: a string can hold as much text as the heap has room for.
+Each string's characters live in a block of the string heap, a single array of `stringHeapSize` bytes (default `5120`).  A new string starts with room for 16 characters; writing more grows its block by half again.  A block which can't grow in place is copied to a new one, so for that moment the heap holds both.  There is no per-string limit beyond the heap's room.
 
-Text that is captured, by assigning an interpolated string to a `stringObj` or by `capture()`, is written into the string's block as it is printed. On the Z-machine the length isn't known until printing ends, so the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends. A string whose block is already larger keeps its size, so `stringCaptureSize` is the least room a capture has. Captured text longer than the room is cut short to it, and the program runs on. On Glulx the rest is simply not written. On the Z-machine it has already been written past the block: where the heap's free end lay there for the whole capture nothing is lost but that text, and anywhere else (a block with others after it, a temporary buffer, a capture that changed the heap as it ran, text past the heap's end) it has overwritten memory in use, so the program stops with a run-time error naming the setting. A literal assigned to a `stringObj` runs no code as it prints, so it may use all of the heap's free room, and is kept whole when it fits. Text built with `+=` and the other operators has no such limit.
+Text captured by assigning an interpolated string to a `stringObj`, or by `capture()`, is written into the string's block as it is printed.  On the Z-machine the block is first grown to `stringCaptureSize` characters (default `512`), and the room the text didn't use is given back when the capture ends; a block which is already larger keeps its size.  Captured text longer than the room is cut short to it, and the program runs on.  On Glulx the rest is simply not written.  On the Z-machine it has already been written past the block:  where the heap's free end lay there for the whole capture nothing is lost but that text, and anywhere else it has overwritten memory in use, so the program stops with a run-time error naming the setting.  A literal assigned to a `stringObj` can use all of the heap's free room, and text built with `+=` and the other operators has no such limit.
 
-A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of `stringCaptureSize` characters, so on the Z-machine they stop with the run-time error above, and on Glulx they see only its first `stringCaptureSize` characters. Copy it into a `stringObj` first.
+A `string` (a literal) longer than `stringCaptureSize` can be printed and assigned to a `stringObj`; however, other operations on it (`length`, comparisons, `+`) print it into a temporary buffer of that size.  On the Z-machine they will stop with the above run-time error, and on Glulx they will see only its first `stringCaptureSize` characters.  Simply copy it into a `stringObj` first.
 
-Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a little over twice that before any string is stored.
+Two temporary buffers of `stringCaptureSize` characters are taken from the heap when the program starts, so the heap needs a bit over twice that before any string is stored.
 
-When the heap is full, it is compacted: the strings still in use slide together, then free strings give up their blocks, then strings in use give up their spare room. A string that still can't grow by being copied is moved to the end of the heap and grows in place. If there is still no room, the string takes what room is left and the rest of the text is dropped; the program runs on, and a string made while the heap is full is empty. A Z-machine capture is the exception: it can't be held to less than `stringCaptureSize` characters, so with no room for one the program stops. Each capture under way keeps `stringCaptureSize` characters in use, so deeply nested captures need a larger heap.
+When the heap is full, it is compacted.  If there is still no room, the string takes what room is left and the rest of the text is dropped; the program runs on, and a string made while the heap is full will be empty.  A Z-machine capture is the exception:  it can't be held to less than `stringCaptureSize` characters, so with no room for one the program stops.  Each capture under way keeps `stringCaptureSize` characters in use.
 
 In a debug build (§20.3), text that is cut short prints a run-time warning naming the setting to raise; a release build cuts it short silently.
 
 **Settings**
 
-Both sizes are settings that `<string>` declares (§17.4); unset or `0`, they take the defaults above:
+Both sizes are settings which `<string>` declares (§15.4).  Left unset or at `0`, they take the above defaults:
 
 ```bgl
 #beguilerSettings { stringHeapSize = 8192; stringCaptureSize = 1024; }
 #include <string>
 ```
 
-In a debug build of a program with a library binding, the `heap` verb also reports the string heap: its size, the bytes in use, and the most the run has needed. That figure allows for compaction and growth, so a `stringHeapSize` set to it holds the same run; set it from a debug playthrough to shrink the heap for release.
+In a debug build of a program with a library binding, the `heap` verb also reports the string heap (§20.3).
 
-The string objects themselves come from a pool of `bglStringPoolReserve` (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance. Some operations also borrow working copies for as long as they run: `toUpper()`/`toLower()` two, `format()` up to four. Exhausting the pool stops the program with a runtime error (§19). It is an I6 constant, set before the include:
+The string objects themselves come from a pool of `bglStringPoolReserve` (default `10`); every live `stringObj` occupies one, including each `stringObj` member of each object instance.  Some operations also borrow working copies for as long as they run:  `toUpper()`/`toLower()` two, `format()` up to four.  Exhausting the pool stops the program with a runtime error (§19).  The reserve is an I6 constant, set before the include:
 
 ```bgl
 #i6 { Constant bglStringPoolReserve 32; }
 #include <string>
 ```
 
-`bglStringPoolReserve` is unrelated to `framePoolSize` (§17.4), which sizes the Z-machine local-variable overflow pool.
+> ***Note:** `<string>` requires `bglInit()`.  With it included, `print()` accepts a literal, a `stringObj`, a buffer, or a routine (which it runs).  As an array element type, a `stringObj` slot allocates on first write and is released when the element is dropped (§12.10).*
 
-**Notes**
-
-Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by a printer that accepts a literal, a `stringObj`, a buffer or a routine (which it runs). For use of `stringObj` as an array element type — the slot allocates on first write and is released when the element is dropped — see §12.10.
-
-**See also** §2.2, §12.10, §21.2, §22.2, §22.9.
+**See also** §2.2, §12.10, §21.2, §22.2.
 
 ## 22.4 `<array>`
 
-**Purpose.** Searching, mutation, deque and sort operations on `array<T>`, and value-semantic assignment.
+**Purpose.**  Searching, mutation, deque, and sort operations on `array<T>`.
 
 **Include**
 
@@ -287,29 +278,25 @@ Requires `bglInit()`, which initializes the pool. `print(string)` is replaced by
 #include <array>
 ```
 
-**Description**
+Subscripting, `size`, `length`, and assignment need no include (§12.3, §12.5); the methods below do.
 
-The built-in part of the surface is subscripting, `size`, `length` and assignment (§12.3, §12.5); the rest needs `#include <array>`, which adds the methods below.
-
-Methods that take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`: an argument of an incompatible type is a compile-time error. Where a method needs an operation of `T` — equality, ordering, assignment, release — it uses the one `T` publishes, or the plain word semantics when `T` publishes none; the contract is specified in §12.10.
+Methods which take an element (`indexOf`, `contains`, `append`, …) are type-checked against `T`:  an argument of an incompatible type is a compile-time error.  Where a method needs an operation of `T` (equality, ordering, assignment, or release), it uses the one `T` publishes, or plain word semantics when it publishes none (§12.10).
 
 **Methods**
 
 | Method | Returns | Description |
 |---|---|---|
-| `length` | `int` | The number of elements in use. It is set at allocation (the element count for a list initializer, `0` for a sized declaration) and changed only by the operations below. On an untracked `extern` array it reads as `size`. |
-| `length = n` | | Set the length, at most `size`. A negative `n` is a runtime error. No effect on an untracked array. |
 | `isTracked()` | `bool` | True for a Beguile-declared array with length tracking; false for an I6-native `extern` array. |
 | `copyFrom(src)` | `void` | Copy `src`'s elements and length into this array's own storage, up to `size`; elements of an owning type are copied through their `operator =`. |
 | `indexOf(item)` / `find(item)` | `int` | First index of `item` in `0..length-1`, or `-1`. |
 | `contains(item)` | `bool` | True when `item` is present. |
 | `clear()` | `void` | Zero every slot up to `size`, releasing owned elements, and set the length to `0`. |
-| `swap(pos1, pos2)` | `void` | Exchange two elements. Indices must be in range. |
+| `swap(pos1, pos2)` | `void` | Exchange two elements.  Indices must be in range. |
 | `reverse()` | `void` | Reverse the elements `0..length-1` in place. |
-| `append(item)` | `bool` | Add at position `length`. False when the array is full. |
-| `prepend(item)` | `bool` | Insert at position `0`, shifting the rest right. False when full. |
-| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length`), shifting the rest right. False when full or `pos` is out of range. |
-| `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left. Out of range: no effect. |
+| `append(item)` | `bool` | Add at position `length`.  False when the array is full. |
+| `prepend(item)` | `bool` | Insert at position `0`, shifting the rest right.  False when full. |
+| `insert(pos, item)` | `bool` | Insert at `pos` (`0..length`), shifting the rest right.  False when full or `pos` is out of range. |
+| `remove(pos)` | `void` | Remove the element at `pos`, shifting the rest left.  Out of range: no effect. |
 | `removeValue(item)` | `void` | Remove every element equal to `item`. |
 | `arr = { a, b }` | `void` | Replace the contents: `clear()`, then append each element of the list. |
 | `arr += item` / `arr += { a, b }` | `void` | Append one element, or each element of a list. |
@@ -322,9 +309,9 @@ Methods that take an element (`indexOf`, `contains`, `append`, …) are type-che
 | `peekEnd()` | `T` | The back element without removing it; `0` when empty. |
 | `popEnd()` | `T` | Remove and return the back element; `0` when empty. |
 | `sort()` | `void` | Sort `0..length-1` ascending in place, by `T`'s ordering operator or, when it has none, by signed word value. |
-| `sort(compare)` | `void` | Sort with a comparator `func<int, T, T>` returning `-1`, `0` or `1`. |
+| `sort(compare)` | `void` | Sort with a comparator `func<int, T, T>` returning `-1`, `0`, or `1`. |
 
-`push`, `peek` and `pop` operate at the front of the array; `enqueue`, `peekEnd` and `popEnd` at the back. The sort is stable.
+The sort is stable.
 
 **Example**
 
@@ -337,22 +324,17 @@ void Main() {
     scores += { 40, 10, 30 };
     scores.append(20);
     scores.sort();                       // 10 20 30 40
-    print(scores.indexOf(30));           // → 2
+    print(scores.indexOf(30));           // -> 2
     scores.sort((int a, int b) => b - a);   // descending
     int top = scores.pop();              // 40
 }
 ```
 
-**Notes**
-
-Writing `arr[i] = v` never changes the length.
-
 **See also** §12.3, §12.10, §22.5.
 
 ## 22.5 `<linq>`
 
-**Purpose.** Chainable, LINQ-style transformations on `array<T>`. They walk word arrays, so an
-`array<char>` doesn't take them (a compile-time error).
+**Purpose.**  Chainable, LINQ-style transformations on `array<T>`.  An `array<char>` doesn't take them (a compile-time error).
 
 **Include**
 
@@ -360,29 +342,27 @@ Writing `arr[i] = v` never changes the length.
 #include <linq>          // includes <array>
 ```
 
-**Description**
-
-Operations are *non-terminals*, which return a typed array and may be chained further, and *terminals*, which reduce a chain to one value. Calling a chain operation without `<linq>` is a compile-time error.
+Operations are either *non-terminals*, which return a typed array and can be chained further, or *terminals*, which reduce a chain to one value.  Calling a chain operation without `<linq>` is a compile-time error.
 
 | Method | Returns | Description |
 |---|---|---|
-| `filter(pred)` | `array<T>` | The elements for which `pred(elem)` is true. `pred` is `func<bool, T>`. |
-| `map(f)` | `array<var>` | `f(elem)` for each element. `f` is `func<var, T>`; the result is `array<var>` because the mapper's result type is not tracked. A mapper returning a struct with fields is a compile-time error: the elements would share one instance. |
-| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`. `n` is limited to `0..length`. |
+| `filter(pred)` | `array<T>` | The elements for which `pred(elem)` is true.  `pred` is `func<bool, T>`. |
+| `map(f)` | `array<var>` | `f(elem)` for each element.  `f` is `func<var, T>`.  A mapper returning a struct with fields is a compile-time error. |
+| `take(n)` / `skip(n)` | `array<T>` | The first `n` elements / all but the first `n`.  `n` is limited to `0..length`. |
 | `takeWhile(pred)` / `skipWhile(pred)` | `array<T>` | Elements up to the first for which `pred` is false / from that element on. |
 | `distinct()` | `array<T>` | The first occurrence of each value. |
-| `orderBy()` | `array<T>` | A sorted copy, by signed word value; the source is unchanged. |
+| `orderBy()` | `array<T>` | A sorted copy, by `T`'s ordering (its `<=>`), or by signed word value when `T` has none; the source is unchanged. |
 | `orderBy(compare)` | `array<T>` | A sorted copy using `func<int, T, T>`. |
 | `first()` / `last()` | `T` | The first / last element; `0` when empty, or a run-time error for a struct, which has no `0`. |
 | `count()` | `int` | The same as `length`. |
 | `any(pred)` | `bool` | True when some element satisfies `pred`; false on an empty array. |
 | `all(pred)` | `bool` | True when every element satisfies `pred`; true on an empty array. |
 
-**Chain results.** Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given, so a result assigned back (`held = held.filter(…)`) has the room `held` had. A step's input that was itself a step's result is freed as soon as the step has read it, so only the chain's final result remains; it is freed like any other array once nothing refers to it.
+**Chain results.**  Each non-terminal returns a new array from the heap (§12.6), with the capacity of the array it was given.  Intermediate results are freed as the chain runs; the final result is freed like any other array once nothing refers to it.
 
-**Struct elements.** A result over an array of a struct holds the source's instances (§12.10): changing an element through it changes the source. Assigning a result into an array with a capacity of its own (`kept = hand.filter(…);`) copies the elements into that array's instances.
+**Struct elements.**  How a result over an array of a struct shares the source's instances, and when they are copied, is covered in §12.10.1.
 
-**Nesting.** A chain may run inside another chain's predicate or mapper — `arr.filter((Room r) => r.exits.any(isOpen))` — to any depth.
+**Nesting.**  A chain can run inside another chain's predicate or mapper, to any depth:  `arr.filter((Room r) => r.exits.any(isOpen))`.
 
 **Example**
 
@@ -393,23 +373,21 @@ array<int> nums = { 3, -1, 4, -1, 5 };
 void Main() {
     bglInit();
     array<int> positives = nums.filter((int x) => x > 0).distinct();   // captured: 3 4 5
-    print(nums.map((var y) => y * 2).first());                          // → 6
+    print(nums.map((var y) => y * 2).first());                          // -> 6
 }
 ```
 
 **Settings**
 
-Results come from the heap, sized by `heapSize` (§17.4).
+Results come from the heap, sized by `heapSize` (§15.4).
 
-**Notes**
+> ***Note:** `orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order.  `distinct()` matches elements through `T`'s `operator ==` when it has one.*
 
-`orderBy()` with no comparator orders by `T`'s `operator <=>` when it publishes one (a `string` by its text), and otherwise by signed word value; pass `compare` for any other order. `distinct()` matches elements through `T`'s `operator ==` when it has one.
-
-**See also** §4.14, §12.6, §17.4, §22.4.
+**See also** §4.14, §12.6, §15.4, §22.4.
 
 ## 22.6 `<ui>`
 
-**Purpose.** Single-key input and cursor placement, on both targets, through `bgl.ui`.
+**Purpose.**  Single-key input and cursor placement, on both targets, through `bgl.ui`.
 
 **Include**
 
@@ -417,13 +395,13 @@ Results come from the heap, sized by `heapSize` (§17.4).
 #include <ui>
 ```
 
-**Description**
+The extension adds three members to `bgl.ui`:
 
 | Member | Returns | Description |
 |---|---|---|
-| `bgl.ui.waitForKey([separator])` | `char` | Wait for a key press and return it. When `separator` (a `string`) is given, it is printed, followed by a blank line, before waiting. |
-| `bgl.ui.hideCursor()` | `int` | Move the text cursor out of the prose ahead of a key read: to the last cell of the status window when `bgl.ui.statusBar.height` is positive. Returns the window the caller should request input on (Glulx), or `0` when the main window should be used. |
-| `bgl.ui.showCursor()` | `void` | Undo `hideCursor()`. On the Z-machine, returns output to the main window; on Glulx there is nothing to undo. |
+| `bgl.ui.waitForKey([separator])` | `char` | Wait for a key press and return it.  When `separator` (a `string`) is given, it is printed, followed by a blank line, before waiting. |
+| `bgl.ui.hideCursor()` | `int` | Move the text cursor out of the prose ahead of a key read: to the last cell of the status window when `bgl.ui.statusBar.height` is positive.  Returns the window the caller should request input on (Glulx), or `0` when the main window should be used. |
+| `bgl.ui.showCursor()` | `void` | Undo `hideCursor()`.  On the Z-machine, returns output to the main window; on Glulx there is nothing to undo. |
 
 `waitForKey()` calls `hideCursor()` and `showCursor()` itself.
 
@@ -438,19 +416,15 @@ void Main() {
 }
 ```
 
-**Notes**
+> ***Note:** `<ui>` does not require `bglInit()`.*
 
-Does not require `bglInit()`.
-
-> **[Glulx]** `waitForKey()` requests a character event on the status window when `statusBar.height` is positive and `statusBar.id` is a real window, otherwise on `bgl.ui.mainWin.id`; it discards other events until the key arrives. `mainWin.id` must therefore hold the main window's handle, which a binding provides (§23.3.8).
-
-> **[Z-machine]** `hideCursor()` switches to the upper window and positions the cursor at its last row and column; `waitForKey()` reads with the character-input opcode and then switches back.
+> ***[Glulx]:** `waitForKey()` requests a character event on the status window when `statusBar.height` is positive and `statusBar.id` is a real window, and otherwise on `bgl.ui.mainWin.id`; it discards other events until the key arrives.  `mainWin.id` must therefore hold the main window's handle, which a binding provides (§23.3.8).*
 
 **See also** §21.10, §23.3.8.
 
 ## 22.7 `<glulxWindow>`
 
-**Purpose.** Typed access to the Glk window tree: window types with compile-time subtype safety, splitting, sizing, image drawing, styles and colors.
+**Purpose.**  Typed access to the Glk window tree:  window types with compile-time subtype safety, splitting, sizing, image drawing, styles, and colors.
 
 **Include**
 
@@ -458,15 +432,13 @@ Does not require `bglInit()`.
 #include <glulxWindow>   // includes <glulxImage> when generateBlorb is true
 ```
 
-> **[Glulx]** This extension is Glulx-only. Including it in a Z-machine build is a compile-time error; guard the include and all window code with `#if TARGET_GLULX` in a source shared between targets.
+> ***[Glulx]:** This extension is Glulx-only.  Including it in a Z-machine build is a compile-time error; in a source shared between targets, guard the include and all window code with `#if TARGET_GLULX`.*
 
-**Description**
-
-Glk arranges the screen as a binary tree of windows: a window is never resized directly; instead an existing window is *split* to create a child. The extension models each window as a reference-semantic object (§21.5.8) and gives a graphics-only or grid-only operation on the wrong kind of window a compile-time error.
+Glk arranges the screen as a binary tree of windows.  A window is never resized directly; instead, an existing window is *split* to create a child.  The extension models each window as a reference-semantic object (§21.5.8), and a graphics-only or grid-only operation on the wrong kind of window is a compile-time error.
 
 ### 22.7.1 Window Types
 
-**Description**
+The extension provides a base `window` type and one type for each kind of window:
 
 | Type | Kind | Members beyond `window` |
 |---|---|---|
@@ -475,33 +447,33 @@ Glk arranges the screen as a binary tree of windows: a window is never resized d
 | `textGridWindow` | fixed character grid | `moveCursor(col, line)` (§22.7.6), `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()` |
 | `graphicsWindow` | pixels | `drawImage(img, x, y, …)`, `setBackgroundColor(color)` |
 
-The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow` and `bgl.glulx.graphicsWindow`. Windows derive from `_bglObject`, not from `object`: they are not world-tree objects and have no `parent`, `children` or attributes.
+The types are also reachable as `bgl.glulx.window`, `bgl.glulx.textBufferWindow`, `bgl.glulx.textGridWindow`, and `bgl.glulx.graphicsWindow`.  Windows are not world-tree objects:  they have no `parent`, `children`, or attributes.
 
-Child windows are pooled: at most 8 text-buffer, 8 text-grid and 8 graphics windows may exist at once. A split beyond the pool fails as `new` does (§4.13), and so does a split the interpreter refuses (a graphics window where it has no graphics) or one from a window that isn't open (a status bar never given a height): in each case the result is `null`, so `?.` or a `null` test guards the window's use.
+Child windows are pooled:  at most 8 text-buffer, 8 text-grid, and 8 graphics windows can exist at once (§22.7.3).
 
 ### 22.7.2 Roots
 
-The core objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§21.10) are the roots of the tree; the extension adds the window API to those same objects.
+The objects `bgl.ui.mainWin` and `bgl.ui.statusBar` (§21.10) are the roots of the tree; the extension adds the window API to those same objects.
 
 | Object | Window kind | Added by this extension |
 |---|---|---|
 | `bgl.ui.mainWin` | text buffer | `width`, `height`, the split family, `childStyles`, `drawImage()`, `setStyle()`, `clearStyle()`, `print()`, `printLine()`, `clear()`, `supports` |
-| `bgl.ui.statusBar` | text grid | `width`, the split family, `childStyles`, `setStyle()`, `clearStyle()`, `print()`, `clear()`, `moveCursor()`, `supports` (`height` is the core's, or the binding's, §23.3.8) |
+| `bgl.ui.statusBar` | text grid | `width`, the split family, `childStyles`, `setStyle()`, `clearStyle()`, `print()`, `clear()`, `moveCursor()`, `supports` (`height` is already there, §21.10, §23.3.8) |
 | `bgl.ui.screen` | not a window | `setStyle()`, `clearStyle()` for both text window types at once (§22.7.7) |
 
-The roots are objects, not `window` instances: `close()`, the move family, `measureStyle()`, `styleHonored()`, `checkStyle()` and `distinguishes()` are not available on them.
+The roots are objects, not `window` instances:  `close()`, the move family, `measureStyle()`, `styleHonored()`, `checkStyle()`, and `distinguishes()` are not available on them.
 
 ### 22.7.3 Splitting
 
 **Syntax**
 
 ```syntax
-⟨view⟩ = ⟨win⟩.split⟨direction⟩⟨kind⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] [ , styles: ⟨sheet⟩ ] ) ;
+VIEW = WIN.splitDirectionKind( SIZE [ , SCALE [ , BORDER ] ] [ , styles: SHEET ] ) ;
 ```
 
-⟨direction⟩ is `Up`, `Down`, `Left` or `Right`; ⟨kind⟩ is `Grid`, `Graphics` or `Buffer`; every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …). ⟨size⟩ is a number of lines (grid, buffer) or pixels (graphics) when ⟨scale⟩ is `fixed` (the default), or a percentage when it is `proportional`. ⟨border⟩ is `border` or `noBorder` (the default). ⟨sheet⟩ is a `styleSheet` giving the new window its own look (§22.7.7). Any window, root or child, can be split.
+`Direction` is `Up`, `Down`, `Left`, or `Right`; `Kind` is `Grid`, `Graphics`, or `Buffer`.  Every combination exists, spelled as one method name (`splitUpGrid`, `splitLeftGraphics`, …).  `SIZE` is a number of lines (grid, buffer) or pixels (graphics) when `SCALE` is `fixed` (the default), or a percentage when it is `proportional`.  `BORDER` is `border` or `noBorder` (the default).  `SHEET` is a `styleSheet` which gives the new window its own look (§22.7.7).  Any window, root or child, can be split.
 
-**Description**
+A split beyond the pool (§22.7.1) fails as `new` does (§4.13), and so does a split the interpreter refuses (e.g., a graphics window where it has no graphics) or one from a window which isn't open (a status bar never given a height).  In each case the result is `null`.
 
 The kind fixes the returned type; the direction fixes its *orientation view*:
 
@@ -510,7 +482,7 @@ The kind fixes the returned type; the direction fixes its *orientation view*:
 | `Up`, `Down` | `textGridWindowHorz`, `graphicsWindowHorz` or `textBufferWindowHorz` |
 | `Left`, `Right` | `textGridWindowVert`, `graphicsWindowVert` or `textBufferWindowVert` |
 
-An orientation view is an `alias class` of the content type (§8.2.4) that hides the assignment to the axis a window of that orientation cannot resize (§22.7.4). Holding the result with `auto` keeps the view; holding it as the plain content type (`textGridWindow hud = …`) or casting to it drops to the permissive surface.
+An orientation view is an `alias class` of the content type (§8.2.4) which hides the assignment to the axis a window of that orientation can't resize (§22.7.4).  Holding the result with `auto` keeps the view; holding it as the plain content type (`textGridWindow hud = …`), or casting to it, drops to the permissive surface.
 
 **Example**
 
@@ -530,23 +502,21 @@ void Main() {
 **Syntax**
 
 ```syntax
-⟨win⟩.width
-⟨win⟩.height
-⟨win⟩.width = ⟨n⟩ ;
-⟨win⟩.height = ⟨n⟩ ;
-⟨win⟩.move⟨direction⟩( ⟨size⟩ [ , ⟨scale⟩ [ , ⟨border⟩ ] ] ) ;
+WIN.width
+WIN.height
+WIN.width = N ;
+WIN.height = N ;
+WIN.moveDirection( SIZE [ , SCALE [ , BORDER ] ] ) ;
 ```
 
-⟨direction⟩ is `Up`, `Down`, `Left` or `Right`, spelled as one method name (`moveUp`, …).
+`Direction` is `Up`, `Down`, `Left`, or `Right`, spelled as one method name (`moveUp`, …).
 
-**Description**
+`width` and `height` can be read on every window and root; reading queries the live window.  Writing re-arranges the window within its parent pair.  Only the axis which a window was split *along* can be written (`height` for an `Up`/`Down` split, `width` for a `Left`/`Right` split).  This is enforced at two levels:
 
-`width` and `height` are readable on every window and root; reading queries the live window. Writing re-arranges the window within its parent pair. Only the axis a window was split *along* can be written — `height` for an `Up`/`Down` split, `width` for a `Left`/`Right` split — because the other dimension is dictated by the sibling window. This is enforced at two levels:
+- **At compile time**, when the window is held as its orientation view:  a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
+- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast):  writing the fixed axis has no effect, and reports it through `bgl.output.log()` (§21.4).
 
-- **At compile time**, when the window is held as its orientation view: a `…Horz` view hides `width.operator =`, a `…Vert` view hides `height.operator =`, and writing the hidden axis is a compile-time error.
-- **At run time**, on the permissive surface (a content-typed or `window`-typed value, or a cast): writing the fixed axis has no effect, and reports it through `bgl.output.log()` (§21.4).
-
-`moveUp`, `moveDown`, `moveLeft` and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size. Glk keeps a split's axis, so a window split `Up` or `Down` moves only up or down, and one split `Left` or `Right` only left or right: a `…Horz` view hides `moveLeft` and `moveRight`, a `…Vert` view hides `moveUp` and `moveDown`, and on the permissive surface a move across the axis does nothing and reports a programming error. They are not available on the roots.
+`moveUp`, `moveDown`, `moveLeft`, and `moveRight` re-arrange an *existing* child window within its parent pair, changing its placement and size.  A window split `Up` or `Down` moves only up or down, and one split `Left` or `Right` only left or right.  A `…Horz` view hides `moveLeft` and `moveRight`, a `…Vert` view hides `moveUp` and `moveDown`, and on the permissive surface a move across the axis does nothing and reports a programming error.  They are not available on the roots.
 
 **Example**
 
@@ -564,14 +534,12 @@ bgl.ui.statusBar.height = 2;         // roots are writable on both axes
 **Syntax**
 
 ```syntax
-⟨graphicsWin⟩.drawImage( ⟨image⟩ [ , ⟨x⟩ [ , ⟨y⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] ] ) ;
-⟨textBufferWin⟩.drawImage( ⟨image⟩ [ , ⟨align⟩ [ , ⟨width⟩ [ , ⟨height⟩ ] ] ] ) ;
-⟨graphicsWin⟩.setBackgroundColor( ⟨color⟩ ) ;
+GRAPHICS-WIN.drawImage( IMAGE [ , X [ , Y [ , WIDTH [ , HEIGHT ] ] ] ] ) ;
+TEXT-BUFFER-WIN.drawImage( IMAGE [ , ALIGN [ , WIDTH [ , HEIGHT ] ] ] ) ;
+GRAPHICS-WIN.setBackgroundColor( COLOR ) ;
 ```
 
-**Description**
-
-Image drawing needs blorb assets, so these methods exist only when `generateBlorb` is true (§17.6). ⟨image⟩ is an `eImages` value; a `glulxImage` (§22.8) converts to one, and a raw resource id is passed as `(eImages)id`. Every other parameter is optional and may be passed by name, as with the `img` print rule (§21.11). A graphics window draws at pixel position `(x, y)`, default `(0, 0)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`). When both `width` and `height` are `0` the image is drawn at its natural size; when one is given the other is computed to preserve the aspect ratio; when both are given they are used as is.
+These methods exist only when `generateBlorb` is true (§15.6).  `IMAGE` is an `eImages` value; a `glulxImage` (§22.8) converts to one, and a raw resource id is passed as `(eImages)id`.  Every other parameter is optional and can be passed by name, as with the `img` print rule (§21.11).  A graphics window draws at pixel position `(x, y)`, default `(0, 0)`; a text-buffer window (including `bgl.ui.mainWin`) draws inline with an `eGlulxImageAlign` (default `inlineCenter`).  When both `width` and `height` are `0`, the image is drawn at its natural size; when one is given, the other is computed to preserve the aspect ratio; when both are given, they are used as is.
 
 `setBackgroundColor(color)` sets a graphics window's background to an `$RRGGBB` value and clears the window to it.
 
@@ -586,16 +554,16 @@ bgl.ui.mainWin.drawImage(eImages.icon, eGlulxImageAlign.marginLeft, 48, 48);
 
 ### 22.7.6 Cursor and Lifecycle
 
-**Description**
+Closing a window returns it to its class's pool (§8.2.6).  The windows split from it stay open:  the window beside it takes over its space.
 
-A text-grid window positions its cursor explicitly; any child window can be closed. Closing a window returns it to its class's pool (§8.2.6), so a program can open and close more windows than the pool holds. The windows split from it stay open: the window beside it takes over its space.
+After a restore, undo or restart, `bgl.ui.recoverWindows()` (§21.10) brings Glk's windows back in line with the program's.  A window the program has open and Glk still has is kept as it is.  A window Glk has which the program has closed, or never opened, is closed.  A window the program has open which Glk no longer has is opened again from the window it was split from, with its split, its size and that window's `childStyles` (not a sheet passed to the split); it comes back empty, since Glk can't restore what a window showed.  Windows split from a closed window are opened again from the window it was split from.
 
 **Methods**
 
 | Member | On | Description |
 |---|---|---|
 | `win.moveCursor(col, line)` | `textGridWindow`, `bgl.ui.statusBar` | Place the cursor at column `col`, line `line`, both counted from 0. |
-| `win.close()` | any child window | Close the window and return it to the pool. Closing it again has no effect until another window is split, which may reuse its slot. |
+| `win.close()` | any child window | Close the window and return it to the pool.  Closing it again has no effect until another window is split, which can reuse its slot. |
 
 **Example**
 
@@ -611,15 +579,13 @@ hud.close();                                // hud is gone; its slot is free for
 **Syntax**
 
 ```syntax
-⟨target⟩.setStyle( ⟨styleType⟩ , style { ⟨member⟩ = ⟨value⟩ ; … } ) ;
-⟨target⟩.clearStyle( ⟨styleType⟩ ) ;
+TARGET.setStyle( STYLE-TYPE , style { MEMBER = VALUE ; … } ) ;
+TARGET.clearStyle( STYLE-TYPE ) ;
 ```
 
-**Description**
+Glk styles are hints set per window kind and style type, and a hint affects only windows of that kind created *after* it is set, never those already open.  `TARGET` is `bgl.ui.screen` (both text kinds at once), `bgl.ui.mainWin` or a `textBufferWindow` (the text-buffer kind), or `bgl.ui.statusBar` or a `textGridWindow` (the text-grid kind).  `STYLE-TYPE` is an `eGlulxStyleType` (§22.7.10).
 
-Glk styles are hints set per window kind and style type; a hint affects windows of that kind created *after* it is set. A style applied after a split does not affect windows already created. ⟨target⟩ is `bgl.ui.screen` (both text kinds at once), `bgl.ui.mainWin` or a `textBufferWindow` (the text-buffer kind), or `bgl.ui.statusBar` or a `textGridWindow` (the text-grid kind). ⟨styleType⟩ is an `eGlulxStyleType` (§22.7.10).
-
-`style` is a struct whose members default to "leave the interpreter's setting". Build one with the named inline-object form (§11.3.1) giving only the members to change; `clearStyle()` resets every hint of that style type to the interpreter's default.
+`style` is a struct whose members default to "leave the interpreter's setting".  Build one with the named inline-object form (§11.3.1), giving only the members to change.  `clearStyle()` resets every hint of that style type to the interpreter's default.
 
 | `style` member | Type | Meaning |
 |---|---|---|
@@ -628,11 +594,13 @@ Glk styles are hints set per window kind and style type; a hint affects windows 
 | `paragraphIndentation` | `int` | Additional first-line indent. |
 | `sizeAdjustment` | `int` | Text size relative to the base size (`…, -1, 0, 1, …`). |
 | `fontWeight` | `int` | `-1` lighter, `0` normal, `1` bold. |
-| `italics` | `bool` | Italic or oblique text. |
-| `fixedWidth` | `bool` | Fixed-pitch font. |
+| `italics` | `styleFlag` | Italic or oblique text. |
+| `fixedWidth` | `styleFlag` | Fixed-pitch font. |
 | `foreColor` | `int` | Text color, `$RRGGBB`. |
 | `backColor` | `int` | Background color, `$RRGGBB`. |
-| `reverse` | `bool` | Swap foreground and background. |
+| `reverse` | `styleFlag` | Swap foreground and background. |
+
+The members `italics`, `fixedWidth`, and `reverse` are `styleFlag`s:  they take `true` or `false`, and stay unset (`styleUnset`, §22.7.9) until given one.
 
 **Example**
 
@@ -646,11 +614,11 @@ hud.clearStyle(eGlulxStyleType.alert);
 
 **A look for one window**
 
-`setStyle()` changes a style type for every later window of that kind. To give one window its own look, describe it as a `styleSheet` — a struct with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`) — and pass it to the split as `styles:`. The sheet's hints are set just before the window opens and the previous hints are put back just after, so no other window is affected. A style left unset in the sheet leaves that style type as it was.
+`setStyle()` changes a style type for every later window of that kind.  To give one window its own look, describe it as a `styleSheet`, a struct with one `style` member per style type (`normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2`), and pass it to the split as `styles:`.  No other window is affected.  A style left unset in the sheet leaves that style type as it was.
 
-A window's `childStyles` is a sheet that every window split *directly* from it gets. It refers to the sheet, so changing the sheet later changes what the next split gets; assigning `null` removes it. A sheet passed to the split takes precedence over the parent's `childStyles`, style type by style type, and both take precedence over `setStyle()`. To give a window's children the same look as its parent's children, assign the parent's sheet: `notes.childStyles = bgl.ui.mainWin.childStyles;`.
+A window's `childStyles` is a sheet which every window split *directly* from it gets.  It refers to the sheet, so changing the sheet later changes what the next split gets; assigning `null` removes it.  A sheet passed to the split takes precedence over the parent's `childStyles`, style type by style type, and both take precedence over `setStyle()`.
 
-Hints are read only when a window opens: neither `styles:` nor `childStyles` restyles a window that is already open.
+Hints are read only when a window opens:  neither `styles:` nor `childStyles` restyles a window that is already open.
 
 **Example**
 
@@ -670,15 +638,13 @@ void Main() {
     auto notes = bgl.ui.mainWin.splitRightBuffer(25);                  // panelLook
     auto log   = bgl.ui.mainWin.splitDownBuffer(5, styles: logLook);   // logLook, then panelLook for the rest
     notes.childStyles = bgl.ui.mainWin.childStyles;                    // notes' children look the same
-    print(notes != null && log != null);   // → true
+    print(notes != null && log != null);   // -> true
 }
 ```
 
 ### 22.7.8 Colors
 
-**Description**
-
-`bgl.glulx.color` provides `$RRGGBB` values: `color.rgb(r, g, b)` composes one from `0..255` channels, and the members `black`, `white`, `red`, `green`, `blue`, `yellow`, `cyan`, `magenta`, `gray`, `lightGray` and `darkGray` are ready-made values. All are plain `int`s and are accepted wherever a color is.
+`bgl.glulx.color` provides `$RRGGBB` values:  `color.rgb(r, g, b)` composes one from `0..255` channels, and the members `black`, `white`, `red`, `green`, `blue`, `yellow`, `cyan`, `magenta`, `gray`, `lightGray`, and `darkGray` are ready-made values.  All are plain `int`s, accepted wherever a color is.
 
 **Example**
 
@@ -691,15 +657,13 @@ bgl.ui.screen.setStyle(eGlulxStyleType.normal, style { foreColor = color.white; 
 
 ### 22.7.9 Style Validation
 
-**Description**
+Interpreters can ignore style hints, and many can't report what they use.  On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset`, a `const int`, when it reports none (`fixedWidth` reads `1` for fixed-pitch, as it is set); `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all.  `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members.
 
-Interpreters may ignore style hints, and many cannot report what they use. On a child window, `measureStyle(styleType, hint)` returns the value the interpreter actually uses for that style and hint, or `styleUnset` when it reports none (`fixedWidth` reads `1` for fixed-pitch, as it is set); `styleHonored(styleType, hint)` is true when the interpreter reports the hint at all. `hint` is an `eGlulxStyleHint`, whose members are named after the `style` members.
+`checkStyle(styleType, s)` compares every hint `s` sets with what the interpreter reports and returns an `eStyleCheck`:  `applied` when every reported hint matches, `differs` when at least one reported hint does not, and `unknown` when the interpreter reports none of them.  Interpreters built on Quixe (Lectrote, Parchment) report no hints, so there the answer is `unknown`.  The enum also reads as a `bool` three ways:  `r.known` (it could report), `r.isApplied`, and `r.isDiffering`.
 
-`checkStyle(styleType, s)` compares every hint `s` sets with what the interpreter reports and returns an `eStyleCheck`: `applied` when every reported hint matches, `differs` when at least one reported hint does not, and `unknown` when the interpreter reports none of them. Interpreters built on Quixe (Lectrote, Parchment) report no hints, so there the answer is `unknown`. The enum also reads as a `bool` three ways: `r.known` (it could report), `r.isApplied` and `r.isDiffering`.
+`distinguishes(a, b)` is true when the interpreter shows style types `a` and `b` differently in that window; it is false when they look the same or it can't tell.
 
-`distinguishes(a, b)` is true when the interpreter shows style types `a` and `b` differently in that window; it is false when they look the same or it cannot tell.
-
-All of these query the live window, so they are called after the window exists.
+All of these query the live window.
 
 **Example**
 
@@ -715,9 +679,7 @@ bool useMarkers = r.isDiffering || !hud.distinguishes(eGlulxStyleType.normal, eG
 
 ### 22.7.10 Enums
 
-**Description**
-
-Provided by the Glulx core or by this extension. Each core enum is also reachable through a short alias under `bgl.glulx` (§21.3); the alias names the type, and members may be written through either name (`bgl.glulx.eWinType.textGrid` or `eGlulxWindowType.textGrid`).
+The following enums come from the Glulx core or from this extension.  Each core enum is also reachable through a short alias under `bgl.glulx` (§21.3); the alias names the type, and members can be written through either name (`bgl.glulx.eWinType.textGrid` or `eGlulxWindowType.textGrid`).
 
 | Enum or bnum | Values | Provided by | `bgl.glulx` alias |
 |---|---|---|---|
@@ -728,26 +690,22 @@ Provided by the Glulx core or by this extension. Each core enum is also reachabl
 | `eGlulxImageAlign` | `inlineUp`, `inlineDown`, `inlineCenter`, `marginLeft`, `marginRight` | core | `eImgAlign` |
 | `eGlulxImageDimension` | `original`, `scaled` | core | `eImgDimension` |
 | `eGlulxStyleType` | `normal`, `emphasized`, `fixed`, `header`, `subheader`, `alert`, `note`, `blockQuote`, `input`, `user1`, `user2` | core | `eStyleType` |
-| `eGlulxJustify` | `left`, `full`, `centered`, `right` | `<glulxWindow>` | — |
-| `eGlulxStyleHint` | `indentation`, `paragraphIndentation`, `justify`, `sizeAdjustment`, `fontWeight`, `italics`, `fixedWidth`, `foreColor`, `backColor`, `reverse` | `<glulxWindow>` | — |
-| `eStyleCheck` | `unknown`, `applied`, `differs`; emitter values `known`, `isApplied`, `isDiffering` | `<glulxWindow>` | — |
-| `eCharOutput` | `none`, `approximate`, `exact` | `<glulxWindow>` | — |
-
-`styleUnset` is the `const int` returned by `measureStyle()` for an unreported hint. The `style` members `italics`, `fixedWidth` and `reverse` are `styleFlag`s: they take `true` or `false`, and stay unset (`styleUnset`) until given one.
+| `eGlulxJustify` | `left`, `full`, `centered`, `right` | `<glulxWindow>` | - |
+| `eGlulxStyleHint` | `indentation`, `paragraphIndentation`, `justify`, `sizeAdjustment`, `fontWeight`, `italics`, `fixedWidth`, `foreColor`, `backColor`, `reverse` | `<glulxWindow>` | - |
+| `eStyleCheck` | `unknown`, `applied`, `differs`; emitter values `known`, `isApplied`, `isDiffering` | `<glulxWindow>` | - |
+| `eCharOutput` | `none`, `approximate`, `exact` | `<glulxWindow>` | - |
 
 ### 22.7.11 Window Output
 
 **Syntax**
 
 ```syntax
-⟨win⟩.print( ⟨value⟩ ) ;
-⟨win⟩.printLine( [ ⟨value⟩ ] ) ;
-⟨win⟩.clear() ;
+WIN.print( VALUE ) ;
+WIN.printLine( [ VALUE ] ) ;
+WIN.clear() ;
 ```
 
-**Description**
-
-`print` and `printLine` write to one window and then return output to wherever it was going, so they can be used in the middle of other output. They print a value exactly as `print()` and `printLine()` do (§21.4), interpolated strings included. They are members of the text windows and of `bgl.ui.mainWin` (`bgl.ui.statusBar` has `print` and `moveCursor`): writing to a graphics window is a compile-time error. `clear()` empties the window.
+`print` and `printLine` write to one window and then return output to wherever it was going.  They print a value exactly as `print()` and `printLine()` do (§21.4).  They are members of the text windows and of `bgl.ui.mainWin` (`bgl.ui.statusBar` has `print`, `clear`, and `moveCursor`); writing to a graphics window is a compile-time error.  `clear()` empties the window.
 
 **Example**
 
@@ -760,17 +718,15 @@ void Main() {
     panel?.printLine("Rooms seen:");
     panel?.printLine($"  {1 + 1} so far");
     panel?.clear();
-    print("main");   // → main
+    print("main");   // -> main
 }
 ```
 
 ### 22.7.12 Capabilities
 
-**Description**
+`bgl.glulx.supports` answers what the interpreter can do.  Each member is a property, read without parentheses:  `version` (the Glk version, `0xMMmmrr`), and the `bool`s `timer`, `graphics`, `graphicsTransparency`, `sound`, `soundMusic`, `soundVolume`, `soundNotify`, `hyperlinks`, `unicode`, `dateTime`, `lineTerminators`, and `resourceStream`.  The ones which take an argument are routines:  `charOutput(c)` returns an `eCharOutput` (`none`, `approximate`, or `exact`), `charInput(c)` is true when the player can type `c`, and `images(t)`, `mouse(t)`, and `hyperlinkInput(t)` ask about windows of type `t` (an `eGlulxWindowType`).
 
-`bgl.glulx.supports` answers what the interpreter can do. Each member is a property, read without parentheses: `version` (the Glk version, `0xMMmmrr`), and the `bool`s `timer`, `graphics`, `graphicsTransparency`, `sound`, `soundMusic`, `soundVolume`, `soundNotify`, `hyperlinks`, `unicode`, `dateTime`, `lineTerminators` and `resourceStream`. The ones that take an argument are routines: `charOutput(c)` returns an `eCharOutput` (`none`, `approximate` or `exact`), `charInput(c)` is true when the player can type `c`, and `images(t)`, `mouse(t)` and `hyperlinkInput(t)` ask about windows of type `t` (an `eGlulxWindowType`).
-
-Every window, and both roots, also has `supports` for its own kind: `win.supports.images`, `win.supports.mouse` and `win.supports.hyperlinks`.
+Every window, and both roots, also has a `supports` for its own kind:  `win.supports.images`, `win.supports.mouse`, and `win.supports.hyperlinks`.
 
 **Example**
 
@@ -781,16 +737,16 @@ Every window, and both roots, also has `supports` for its own kind: `win.support
 void Main() {
     if (bgl.glulx.supports.timer) print("timer ");
     bool canShow = bgl.glulx.supports.charOutput('e') != eCharOutput.none;
-    print(canShow);                                   // → true
-    print(bgl.ui.mainWin.supports.hyperlinks || true);   // → true
+    print(canShow);                                   // -> true
+    print(bgl.ui.mainWin.supports.hyperlinks || true);   // -> true
 }
 ```
 
-**See also** §8.2.4, §8.7.4, §11.3.1, §17.6, §21.4, §21.10, §22.8, §23.3.8.
+**See also** §8.2.4, §8.7.4, §11.3.1, §15.6, §21.4, §21.10, §22.8, §23.3.8.
 
 ## 22.8 `<glulxImage>`
 
-**Purpose.** A typed handle to a Glulx image resource that answers "how big is this picture?".
+**Purpose.**  A typed handle to a Glulx image resource which answers "how big is this picture?".
 
 **Include**
 
@@ -798,18 +754,16 @@ void Main() {
 #include <glulxImage>
 ```
 
-> **[Glulx]** Glulx-only; including it in a Z-machine build is a compile-time error.
+> ***[Glulx]:** Glulx-only; including it in a Z-machine build is a compile-time error.*
 
-**Description**
-
-`glulxImage` is a primitive class over the resource id (§8.2.5): it adds a type and methods but no storage, and it converts implicitly to `eImages`, so a `glulxImage` is accepted wherever an image asset is (`drawImage`, `bgl.printRules.img`). It is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
+`glulxImage` is a primitive class over the resource id (§8.2.5).  It converts implicitly to `eImages`, is assigned from an `eImages` value or a raw `int` id, and converts to `int` with `(int)img`.
 
 | Member | Returns | Description |
 |---|---|---|
 | `img.width` / `img.height` | `int` | Natural pixel dimensions. |
 | `img.size` | `bglSize` | Both dimensions (§21.12). |
 
-The same three are added to the `eImages` enum (§7.9), so `eImages.logo.width` works without a handle.
+The same three are added to the `eImages` enum (§7.8), so `eImages.logo.width` works without a handle.
 
 **Example**
 
@@ -824,35 +778,57 @@ void Main() {
 }
 ```
 
-**Notes**
+> ***Note:** `<glulxImage>` does not require `bglInit()`.  It does not require `generateBlorb` either; however, without packaged assets there are no images to measure.*
 
-Does not require `bglInit()`. Does not require `generateBlorb`, but without packaged assets there are no images to measure.
+**See also** §15.6, §21.12, §22.7.
 
-**See also** §17.6, §21.12, §22.7.
+## 22.9 Library-specific Extensions
 
-## 22.9 `<archive/string>`
-
-**Purpose.** The earlier `<string>`, kept for comparison: the same types, operators and methods as `<string>` (§22.3), but each `stringObj` has a buffer of fixed size.
+**Purpose.**  Lets an extension change what the standard library does inside its own routines without replacing those routines.  Each hook is a call that a patch (§14.1.6) merges into the library.  An object defining the hook's method answers it.
 
 **Include**
 
-```bgl
-#include <archive/string>   // in place of <string>; includes <buf>
+```syntax
+#include <extensions/stdlib/hooks>               // every group
+#include <extensions/stdlib/hooks/GROUP>       // one group
 ```
 
-**Description**
+The hooks come in seven groups, one per area of the library.  Each group is its own extension, with its own patch.  Each group includes `<bindings/i6StandardLibrary>`, and the groups can be included in any combination and order.
 
-Each `stringObj` holds at most `bglStringDefaultSize` characters (default `500`, §22.2), in a buffer from a pool of `bglStringPoolReserve` (default `10`); the buffer's own header is allocated on top of that. The operators drop text that would go past that; text *printed* into a string that runs past it (a capture, or a literal assigned to it) is cut short on Glulx, and on the Z-machine stops the program with a run-time error, since printing there can't be stopped at a buffer's end and the rest has already been written past it. Both sizes are I6 constants: `bglStringPoolReserve` is set before the include, and `bglStringDefaultSize` in an `#emitfirst` block (§22.2), since the runtime core already uses it:
+| Group | Routines it hooks | Hooks |
+|---|---|---|
+| `informLibrary` | `InformLibrary.play` (the play loop) | `ext_afterGamePrologueNotify`, `ext_playLoopRewriteParsedCommands`, `ext_playLoopAssignObjectVariables`, `ext_playLoopPerformSingleObjectAction`, `ext_playLoopPerformMultiObjectAction` |
+| `keyboard` | `KeyboardPrimitive`, `Keyboard` | `ext_keyboardPrimitiveNotify`, `ext_keyboardPrimitive`, `ext_keyboardGetInput`, `ext_beforePrompt`, `ext_keyboardPrepInput`, `ext_keyboardHandleComment`, `ext_keyboardHandleUndo`, `ext_keyboardHandleOops` |
+| `parser` | `Parser__parse`, `Adjudicate`, `R_Process` | `ext_forceLookAhead`, `ext_suppressParsingImplicitTake`, `ext_adjudicate`, `ext_redirectActionNotify` |
+| `standardLibrary` | `Identical`, `NounWord`, `NextWord`, `AfterRoutines`, `DisplayStatus`, `ActionPrimitive` | `ext_identical`, `ext_nounWord`, `ext_nextWord`, `ext_beforeAction`, `ext_afterAction`, `ext_afterRoutines`, `ext_displayStatus` |
+| `verbs` | `PlayerTo`, `GoSub`, `LookSub`, `ExamineSub` | `ext_lookSub`, `ext_examineSub`, `ext_preDescription`, `ext_postDescription`, `ext_goSub`, `ext_goSubNoDir`, `ext_playerToNotify` |
+| `writeAfterEntry` | `WriteAfterEntry` | `ext_sdPartInvBit`, `ext_sdFullInvBit`, `ext_sdConcealBit`, `ext_sdAlwaysBit`, `ext_sdRecurseBit`, `ext_sdIsOrAre`, `ext_sdNewLineBit`, `ext_sdDoList` |
+| `writeList` | `WriteListR` | `ext_forceSingular`, `ext_wlrPluralMany` |
 
+Each hook is an `extern property`, documented where its group declares it.  The `verbs` group also declares `orSuppressNewlineAfterDescription`.  The `writeAfterEntry` group also declares `_WAE_recurse_flag`, `_WAE_parenth_flag`, `_WAE_child_count`, and `_WAE_eldest_child`, which describe the entry being written.
+
+A **library extension** is an object whose parent is the library's `LibraryExtensions` object; it answers a hook by defining a method with the hook's name.  Extensions are asked in the order they are declared:
+
+- A hook which returns a value is asked of each extension in turn until one answers.  False (or 0) lets the library carry on as it would without the hook.  `ext_identical` is the exception:  true leaves it to the library, and false says the two objects differ.
+- A hook whose name ends in `Notify`, and `ext_afterAction`, `ext_preDescription`, and `ext_postDescription`, are only told.  Every extension is told, and what it returns is ignored.
+- A `keyboard` hook can also return -1, which starts reading the command again.
+
+**Example**
+
+<!-- doctest: compile -->
 ```bgl
-#i6 { Constant bglStringPoolReserve 32; }
-#include <archive/string>
+#include <extensions/stdlib/hooks/verbs>
+
+object darkHooks {
+    parent = LibraryExtensions;
+    bool ext_lookSub(){ print("It's too dark to make anything out.^"); rtrue; }
+}
 ```
 
-> **[Z-machine]** The buffers are one array of `bglStringDefaultSize × (bglStringPoolReserve + 2)`
-> bytes, which must fit Inform 6's array limits; with the default buffer size, a reserve of 64 is too
-> large.
+> ***Note:** The hooks exist only for the standard library, and the patches are made against version 6.12.8 (§23.2).  A patch which no longer matches the library is a compile-time error (§14.1.6).*
 
-`<archive/string>` and `<string>` both provide `stringObj`: a program includes one of them, and including both is a compile-time error.
+> ***Note:** An included group costs space even when nothing answers it.  On the Z-machine each group adds between 88 and 344 bytes; all seven add about 1.7 KB.*
 
-**See also** §22.2, §22.3.
+> ***Note:** A group defines a hook's property only when Inform 6 code has not already defined it, and an Inform 6 object in `LibraryExtensions` answers a hook just as a Beguile one does.*
+
+**See also** §14.1.6, §16.4, §16.6.

@@ -175,8 +175,8 @@ def main():
         readme = ROOT / 'README.md'
         rl = readme.read_text(encoding='utf-8').split('\n')
         block = ['<!-- toc -->']
-        PARTS = [(None, '**Front matter**'), ('1', '**Part I — The Beguile Language**'), ('16', '**Part II — The Beguiler Compiler**'),
-                 ('21', '**Part III — The Beguile Language Runtime (BLR)**'), ('A', '**Appendices**')]
+        PARTS = [(None, '**Front matter**'), ('1', '**Part I: The Beguile Language**'), ('17', '**Part II: The Beguiler Compiler**'),
+                 ('21', '**Part III: The Beguile Language Runtime (BLR)**'), ('A', '**Appendices**')]
         shown = set()
         for p, (cid, lines, heads) in parsed.items():
             top = next((h for h in heads if h[1] == 1), None)

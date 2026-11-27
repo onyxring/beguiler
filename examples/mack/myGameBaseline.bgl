@@ -1,0 +1,292 @@
+//===================================================================================================
+// myGameBaseline.bgl — the starting point for my Beguile games
+//---------------------------------------------------------------------------------------------------
+// Things I do for every game, collected into a single include:
+//   sets US dialect, serial commas, death mentions undo
+//   the library extensions I use
+//   base classes: place, thing, bigThing, setting, person
+//   added grammar synonyms and a few common verbs (pet, dance, laugh, untie, ...)
+//   SEARCH examines, unless the object is searchable
+//   EXAMINE works on groups of objects
+//   a MENU verb (menu, help, about, credits, hint, hints) that opens HelpSys
+//   USE explains that the game doesn't support it
+//   default magic words: xyzzy, ezlwot, plugh, plover (extend the verb to give a game its own)
+//   a slightly better right side of the status line
+//   a few library message overrides
+//   with orBetaDev defined, a fixed random seed for repeatable runs
+//
+// The Beguile translation of myGameBaseline.h and myExtendedGrammar.h, which stay for the I6 games.
+//
+// Include it in place of the library's parser and verblib, which it includes itself: its classes and
+// hook objects need the library. The game's grammar include follows it as usual.
+//===================================================================================================
+#once
+
+// Library options, read by the standard library when it is included.
+const int DIALECT_US = 0;
+const int SERIAL_COMMAS = 0;
+const int DEATH_MENTION_UNDO = 0;
+
+// The library properties these games set. Typed on object, so a class that doesn't use one leaves
+// it unset: the library reads a set-but-empty found_in, short_name or initial as a real value.
+extend class object {
+    iString description;
+    iString cant_go;
+    iStringOrObject n_to;  iStringOrObject s_to;  iStringOrObject e_to;  iStringOrObject w_to;
+    iStringOrObject ne_to; iStringOrObject nw_to; iStringOrObject se_to; iStringOrObject sw_to;
+    iStringOrObject u_to;  iStringOrObject d_to;  iStringOrObject in_to; iStringOrObject out_to;
+    rawArray<var> describe;
+    iString initial;
+    iString preImpression;              // firstImpressions: shown before the description on first look
+    iString postImpression;             // firstImpressions: shown after it
+    array<dictionaryWord> adjective;    // <extensions/stdlib/adjective>
+    bool requireNoun;                   // <extensions/stdlib/adjective>
+}
+
+#includeI6 "parser";
+
+//===================================================================================================
+// Base classes
+//===================================================================================================
+class place    : object { attributes = {light}; }     // locations characters can be in
+class thing    : object { }                           // things characters can pick up and use
+class bigThing : object { attributes = {static}; }    // things which cannot be moved
+class setting  : object { attributes = {scenery}; }   // described only by the room; cannot be moved
+class person   : object { attributes = {animate}; }
+
+attribute searchable;           // SEARCH searches this object, rather than examining it
+property pluralDescription;     // describes a group of these, examined together
+
+superposed const string bdItsOutOfReach     = "It's out of reach, too far away to interact with.";
+superposed const string bdTheyreOutOfReach  = "They are out of reach, too far away to interact with.";
+
+// Prints str with no newline after it and returns true, for description hooks.
+bool noLf(string str) {
+    if (str != null) print(str);
+    rtrue;
+}
+
+//===================================================================================================
+// Library hooks
+//===================================================================================================
+object _myBaselineInits {
+    parent = LibraryExtensions;
+    bool ext_bannerText() {
+        print($"^{bgl.printRules.bold}{bgl.printRules.underline}New players should type MENU to access this game's documentation.{bgl.printRules.roman}");
+        rtrue;
+    }
+    void ext_initialise() {
+        #if orBetaDev
+            bgl.util.random.seed(1234);
+        #endif
+    }
+    // TAKE ALL FROM something that can't hold anything, instead of "<it> can't contain things".
+    bool ext_parsererror(int erType, rawArray<var> results) {
+        if (erType != (int)eParserError.nothingToDo || (verb)results[0] != Remove) rfalse;
+        var from = results[3];
+        #i6 { if (metaclass(from) ~= Object) rfalse; }
+        object o = (object)from;
+        if (o.has(animate) || o.has(container) || o.has(supporter)) rfalse;
+        rtrue("There is nothing to take.^");
+    }
+    bool ext_messages(int n, int x1, int x2) {
+        x1 = lm_o; x2 = lm_s; n = lm_n;
+        switch (action) {
+            case Miscellany:
+                switch (n) {
+                    case 39: rtrue("There isn't much you can do with it.");
+                    case 37: rtrue("That would make more sense if it were alive.^");
+                }
+            case Attack: rtrue($"Attacking {bgl.printRules.the((object)x1)} doesn't seem like a mature act.^");
+        }
+        rfalse;
+    }
+}
+
+// EXAMINE for a group of like objects: the first one's pluralDescription, if it has one.
+object _examineMulti {
+    parent = LibraryExtensions;
+    int ext_playLoopPerformMultiObjectAction() {
+        if (action != ExamineMulti || multiple_object[0] < 2) return 0;
+        object obj = (object)multiple_object[1];
+        if (obj.provides(pluralDescription)) PrintOrRun(obj, pluralDescription);
+        else print("You consider the objects, but they are hard to describe as a group. You can examine them individually, though.^");
+        return 2;
+    }
+    void ext_initialise() {
+        backdropEngine.registerDescriptionVerb(ExamineMulti);
+    }
+}
+
+#if !gameStateTracker
+    extern int MAX_SCORE;   // the library's; gameStateTracker declares its own
+#endif
+
+#includeI6 "verblib";
+#include <extensions/stdlib/backdrop>
+#include <extensions/stdlib/distinctRead>
+#include <extensions/stdlib/firstImpressions>
+#include <extensions/stdlib/review>
+#include <extensions/stdlib/stateDescriptors>
+#include <extensions/stdlib/betterChoice>
+#include <extensions/stdlib/menu>
+#include <extensions/stdlib/statusLine>
+#include <extensions/stdlib/implicitCommands>
+#include <extensions/stdlib/dialogue>
+#include <extensions/stdlib/vagueQuantity>
+#include <extensions/stdlib/uniqueMultiMessage>
+#include <extensions/stdlib/adjective>   // last: the parser hooks above answer first
+
+// The right side of the status line, sized to the screen.
+replace void statusRight() {
+    int width = bgl.ui.statusBar.width;
+    if (width >= 60) {          // Score: 20/100 in 40 Turns
+        print($"Score: {score}/{MAX_SCORE} in {turns} Turn");
+        if (turns != 1) print("s");
+        return;
+    }
+    if (width >= 30) {          // 20/100 in 40
+        print($"{score}/{MAX_SCORE} in {turns}");
+        return;
+    }
+    print($"{score}/{MAX_SCORE}");    // 20/100
+}
+
+//===================================================================================================
+// Verbs
+//===================================================================================================
+verb RootMenu {
+    meta = true;
+    grammar = {.menu|.about|.help|.hint|.hints|.credits|.credit};
+    void handler() { HelpSys.show(); }
+}
+
+// I never support USE, so tell the player.
+verb NoUse {
+    grammar = { {.use}, {.use, TOPIC} };
+    void handler() { print("This game does not support the USE command. Try a more specific verb.^"); }
+}
+
+// EXAMINE and LOOK AT work on groups of objects; a bare EXAMINE looks around.
+verb ExamineMulti {
+    priority = 5;
+    grammar = {
+        {.examine, MULTIHELD, withI6Synonyms},
+        {.examine, MULTI, withI6Synonyms},
+        {.look, .at, MULTIHELD, withI6Synonyms},
+        {.look, .at, MULTI, withI6Synonyms},
+        {.inspect, NOUN},
+    };
+    void handler() {
+        if (multiple_object[0] == 0) { Examine.perform(noun); return; }
+        print("You consider the objects, but they are hard to describe as a group. You can examine them individually, though.^");
+    }
+}
+extend Look {
+    priority = 5;
+    grammar += {
+        {.examine, withI6Synonyms},
+        {.look, withI6Synonyms},
+        {.look, .around, withI6Synonyms},
+        {.look, .at, .room, withI6Synonyms},
+    };
+}
+
+replace var SearchSub() {
+    if (noun.has(searchable)) return replaced();
+    Examine.perform(noun);
+    rtrue;
+}
+
+// The default magic words. Every game ought to have its own: extend the verb and replace its handler.
+verb Ezlwot { meta = true; grammar = {.ezlwot}; void handler() { print("Xyzzy.^"); } }
+verb Xyzzy  { meta = true; grammar = {.xyzzy};  void handler() { print("Ezlwot.^"); } }
+verb Plover {
+    meta = true;
+    grammar = {.plover};
+    void handler() { print("Yes, the crocodile's dentist. But there don't seem to be any of those around at the moment.^"); }
+}
+verb Plugh {
+    meta = true;
+    grammar = {.plugh};
+    int reply = 0;
+    void handler() {
+        switch (reply) {
+            case 0: print("Maybe. Try again.^");
+            case 1: print("Yes.^");
+            default: print("No.^");
+        }
+        reply = (reply + 1) % 3;
+    }
+}
+
+//===================================================================================================
+// Extended grammar: synonyms and verbs that come up in beta testing
+//===================================================================================================
+verb Pet {
+    grammar = {.pet|.pat|.tickle, animate};
+    void handler() { print($"You start to pet {bgl.printRules.the(noun)}, but think better of it.^"); }
+}
+verb Dance { grammar = {.dance};        void handler() { print("You do a little jig.^"); } }
+verb Laugh { grammar = {.laugh|.giggle}; void handler() { print("You let out a hearty laugh. Perhaps a little too hearty.^"); } }
+
+verb GoUp   { grammar = {.ascend};  void handler() { Go.perform(u_obj); } }
+verb GoDown { grammar = {.descend}; void handler() { Go.perform(d_obj); } }
+
+// Goes along with the standard library's TIE.
+verb Untie {
+    grammar = { {.untie|.detach|.disconnect, NOUN}, {.untie|.detach|.disconnect, NOUN, .from, NOUN} };
+    void handler() { print("That doesn't seem possible.^"); }
+}
+
+verb KissThing {
+    priority = 30;      // after the library's KISS <creature>
+    grammar = {.kiss, NOUN, withI6Synonyms};
+    void handler() { print("There doesn't seem to be much point in kissing that.^"); }
+}
+
+// SHOW with nothing to show, for when the parser matches a rule but no noun was given.
+verb ShowNothing {
+    grammar = {.show, withI6Synonyms};
+    void handler() { print("I'm not sure what you would like to show.^"); }
+}
+
+grammar extendedGrammar {
+    array<grammarRule> rules = {
+        {Pet,     {.rub, animate}, 30},
+        {PutOn,   {.stick, HELD, .on, NOUN}},
+        {Insert,  {.stick, HELD, .in, NOUN}},
+        {Climb,   {.descend, NOUN}},
+        {Climb,   {.descend, .down, NOUN}},
+        {Climb,   {.ascend, NOUN}},
+        {Climb,   {.ascend, .up, NOUN}},
+        {Climb,   {.go, .up|.down, NOUN, withI6Synonyms}},
+        {GoUp,    {.climb, withI6Synonyms}, 5},
+        {Go,      {.climb, NOUN(ADirection), withI6Synonyms}, 5},
+        {Climb,   {.climb, .up|.down, NOUN, withI6Synonyms}, 5},
+        {Enter,   {.climb, .on|.in|.onto|.into, NOUN, withI6Synonyms}, 5},
+        {Attack,  {.attack, NOUN, .with, NOUN, withI6Synonyms}},
+        {Attack,  {.kick, NOUN}},
+        {Attack,  {.knock, .on, NOUN}},
+        {Attack,  {.knock, NOUN}},
+        {Take,    {.grab, NOUN}},
+        {Pull,    {.tug, .on|.at, NOUN}},
+        {Pull,    {.tug, NOUN}},
+        {Pull,    {.pull, .on, NOUN, withI6Synonyms}},
+    };
+}
+
+// THROW, TOSS and CAST take only held things, at or into something.
+extend ThrowAt {
+    replace grammar = {
+        {.throw|.toss|.cast, HELD},
+        {.throw|.toss|.cast, HELD, .at|.against|.on|.onto|.to|.through|.in|.around, NOUN},
+    };
+}
+
+// WAVE only waves things you are holding.
+extend Wave      { replace grammar = { {.wave, HELD}, {.wave, HELD, .at, NOUN} }; }
+extend WaveHands { priority = 5; grammar += { {.wave}, {.wave, .at, NOUN} }; }
+
+extend PutOn { synonyms = {.place}; }
+extend Push  { synonyms = {.shove, .nudge}; }

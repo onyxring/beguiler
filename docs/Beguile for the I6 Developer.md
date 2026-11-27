@@ -2,6 +2,67 @@
 
 This document serves as an introduction to the Beguile programming language for developers already experienced with Inform 6.
 
+**Contents**
+
+- [Beguile for the I6 Developer](#beguile-for-the-i6-developer)
+  - [Key concepts](#key-concepts)
+    - [Terms: Beguile, Beguiler, Beguilex](#terms-beguile-beguiler-beguilex)
+    - [Language Affinity](#language-affinity)
+    - [Design Goals](#design-goals)
+    - [Pipeline](#pipeline)
+  - [An Overview: Cloak of Darkness](#an-overview-cloak-of-darkness)
+    - [Comments](#comments)
+    - [The `#beguilerSettings` Directive](#the-beguilersettings-directive)
+      - [1. `includePaths`](#1-includepaths)
+      - [2. `target`](#2-target)
+      - [3. `title` \& `headline`](#3-title--headline)
+      - [4. Other Settings](#4-other-settings)
+    - [Constants](#constants)
+    - [Global Routines](#global-routines)
+    - [`#includeI6`](#includei6)
+    - [`#include`](#include)
+    - [Binding Files](#binding-files)
+    - [Declaring Objects](#declaring-objects)
+    - [Member Type Inference](#member-type-inference)
+      - [The Object's Name](#the-objects-name)
+    - [Analyzing `Before` as an Example Member Routine](#analyzing-before-as-an-example-member-routine)
+    - [The `cloak` Object](#the-cloak-object)
+      - [Positioning in the World Map](#positioning-in-the-world-map)
+      - [Dictionary Words](#dictionary-words)
+      - [Adjusting Attributes](#adjusting-attributes)
+    - [Interpolated Strings](#interpolated-strings)
+    - [Conditional Operators](#conditional-operators)
+    - [The `Initialise` Routine](#the-initialise-routine)
+    - [Extending Verbs](#extending-verbs)
+  - [Select Additional Topics](#select-additional-topics)
+    - [Function Overloading](#function-overloading)
+    - [Operator Overloading](#operator-overloading)
+    - [Classes and Structs](#classes-and-structs)
+    - [Enumerations: `enum` and `bnum`](#enumerations-enum-and-bnum)
+    - [Lambdas](#lambdas)
+    - [Null Safety](#null-safety)
+    - [The Beguile Language Runtime](#the-beguile-language-runtime)
+      - [Namespaces](#namespaces)
+    - [Strings](#strings)
+      - [Without `<string>`](#without-string)
+      - [With `<string>`](#with-string)
+        - [Which one do I declare?](#which-one-do-i-declare)
+        - [A Smattering of Examples](#a-smattering-of-examples)
+      - [`print` is a routine, not a statement](#print-is-a-routine-not-a-statement)
+      - [Interpolation revisited](#interpolation-revisited)
+    - [Arrays](#arrays)
+      - [`for`... `in`](#for-in)
+      - [With `<array>`](#with-array)
+        - [`size` vs. `length`](#size-vs-length)
+        - [Additional `array` features](#additional-array-features)
+          - [Searching](#searching)
+          - [Sorting](#sorting)
+        - [Fluent chains: `#include <linq>`](#fluent-chains-include-linq)
+        - [Arrays of your own classes](#arrays-of-your-own-classes)
+        - [Array Life cycle](#array-life-cycle)
+    - [Declaring a Verb from Scratch](#declaring-a-verb-from-scratch)
+      - [Launching an Action](#launching-an-action)
+
 ## Key concepts
 
 ### Terms: Beguile, Beguiler, Beguilex
@@ -12,10 +73,13 @@ First, some clarification of terms:
 * **Beguiler** is the compiler for the Beguile language.  It also serves double duty as a language server for Beguilex.
 * **Beguilex** is the Beguile extension (for VS Code) which enables syntax colorization, code-completion, and runtime debugging.
 
-  > ***YES**: Beguile supports runtime debugging of your resulting story file.*  
+  > ***YES**: Beguile supports runtime debugging of your resulting story file.*
+  >
+
 ### Language Affinity
 
 Beguile's syntax is closely aligned with other C-like languages.  If you've worked with Typescript, C#, or C++, you'll be comfortable with the language, but for those fluent in Inform 6,  Beguile code will *also* be familiar in a different way: Beguile is closely related to I6 and you'll see Inform's fingerprints all over it.  Reading Beguile will feel like you are reading a variant of I6.
+
 ### Design Goals
 
 A handful of principles guided the design of the language:
@@ -31,27 +95,28 @@ A handful of principles guided the design of the language:
 
 ### Pipeline
 
-The same Inform 6 compilation pipeline you are familiar with remains with only minor additions at either end:
+The same Inform 6 compilation pipeline you are familiar with remains with only minor additions at either end: 
 
 ```
-    <idea>      ->  Author    ->  game.bgl
-    game.bgl    ->  Beguiler  ->  game.inf
-    game.inf    ->  Inform 6  ->  game.ulx (or .z3/.z5/.z8)
-    game.ulx    ->  Beguiler  ->  game.gblorb (or .zblorb)
+    <idea>      →  Author    →  game.bgl
+    game.bgl    →  Beguiler  →  game.inf
+    game.inf    →  Inform 6  →  game.ulx (or .z5/.z8)
+    game.ulx    →  Beguiler  →  game.gblorb (or .zblorb)
 ```
 
 Beguiler orchestrates all compilation steps, making them transparent to users, including the final blorb-packaging step, which Beguiler performs via its built-in blorb tool (no separate utility required).  The golden path: A single run of Beguiler produces a playable game, blorbified at your discretion.  Managing I6 becomes Beguile's responsibility, unless you choose to do it yourself, making the effective pipeline:
 
 ```
-    <idea>      ->  Author    ->  game.bgl
-    game.bgl    ->  Beguiler  ->  game.gblorb (or .zblorb)
+    <idea>      →  Author    →  game.bgl
+    game.bgl    →  Beguiler  →  game.gblorb (or .zblorb)
+
 ```
 
 > ***Note**: actually, the full name of the intermediate Inform file, listed above as `game.inf` for brevity, is actually `game.bgl.transpiled.inf`. Curious minds can look at it to see what `Beguiler` has produced. The compilation process leaves it in place for this reason, as well as to enable source-code debugging.*
 
 ## An Overview: Cloak of Darkness
 
-Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily available for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.
+Arguably, the fastest way to familiarize yourself with a language is to review a working example.  The canonical Cloak of Darkness game is perfect for this since it is well-known and there are Inform 6 versions readily available for comparison against.  The following is a straight-forward port of that work, ported to Beguile and using Puny Inform.  After it, [Select Additional Topics](#select-additional-topics) goes further into the language.
 
 > ***Note**: The version of Cloak Of Darkness which I started with worked for both the I6 Standard Library and Puny Inform.  In the interest of clarity, I've stripped down the cross-library support.  Additionally, the code reflects decisions which favor the explanation, rather than the **best** way of doing things.*
 
@@ -76,7 +141,7 @@ Here we  present the whole file first, for reference...
 //settings for the compiler...
 #beguilerSettings { 
     includePaths="../../inform6/puny/lib"; 
-    target=Z5;    
+    target=Z5;  
     title="Cloak of Darkness"; 
     headline = "\nA basic IF demonstration.\n";
 }
@@ -132,7 +197,7 @@ object bar{
                         rtrue("Blundering around in the dark isn't a good idea!"); 
                     }
             default: if (bar.hasnt(light)) {
-                        message.number++;                           
+                        message.number++;                         
                         rtrue("In the dark? You could easily disturb something!");
                     }
         }
@@ -164,7 +229,7 @@ object cloak {
         }
         rfalse;
     }
-    bool after() {        
+    bool after() {      
         if(action==Take) bar.ungive(light);
         rfalse;
     }
@@ -232,7 +297,7 @@ The `#beguilerSettings` directive is a block of compile-time settings.  It is si
 ```
 #beguilerSettings { 
     includePaths="../../inform6/puny/lib"; 
-    target=Z5;    
+    target=Z5;  
     title="Cloak of Darkness"; 
     headline = "\nA basic IF demonstration.\n";
 }
@@ -247,9 +312,11 @@ Generally, individual settings retain the first value assigned.  Attempts to rea
 #### 1. `includePaths`
 
 The `includePaths` setting tells the compilers where to search for files. This...
+
 ```
 includePaths="../../inform6/puny/lib";
 ```
+
 ...will output to I6 in the ICL as a fully qualified path.  Something like...
 
 ```
@@ -277,7 +344,7 @@ There are some things to note about the way Beguile processes paths.
 - The order paths are emitted is in _reverse_ of the order they are declared. This is due to how I6 manages the `++include_path` ICL setting, which is to prepend the path to its running list of paths.
 
   > ***In other words**: The order you write paths in Beguile is the order I6 searches them. The reverse emission just makes this work as expected.*
-
+  >
 - Beguile converts path delimiters to whatever your current OS expects, so if you are compiling source written on Windows (e.g., `..\..\folder`), Beguile will still process this on a Linux box.
 - If the path you are specifying cannot be found, Beguile will throw an error and tell you what folder it was looking for:
 
@@ -384,9 +451,10 @@ There's quite a bit of substance to Beguile routines which will become more appa
 - The name of a Beguile routine is usually emitted to I6 exactly as it is written in Beguile, as `DeathMessage` is here.
 
   > ***Note**: There are a few cases where it isn't, each because I6 couldn't accept the name as written.  Beguile supports signature overloading, allowing you to define two routines with the same name, but taking different parameters; I6 doesn't, so Beguiler employs a technique called "name mangling", emitting each under a name of its own (`greet(int)` and `greet(string)` become `greet_1_int` and `greet_1_string`).  I6 also keeps routines, globals, objects and properties in a single namespace, so a routine named like a property, whether the library declares it (`describe`) or one of your own classes or objects does, is emitted as `_g_describe`; one named like an I6 statement (`box`) is emitted as `_box`.*
+  >
 
   > ***Note**: Your Beguile code never notices any of this: calls follow the emitted name automatically.  It matters only in raw I6 (an `#i6` block, or an emitter's body), where `$i6Name(describe)` supplies the emitted name.  Naming a routine renamed for a property directly in raw I6 is a compile-time error, rather than a silent call to the wrong thing.*
-
+  >
 - Notice the single statement in `DeathMessage`. In Beguile, `print` is a global routine, not a language construct.  This distinction has more nuance than it may seem at first glance.  We'll see some of this when we revisit `print` in a bit.
 
 ### `#includeI6`
@@ -516,6 +584,7 @@ A few additional key differences between Beguile objects and I6 objects become a
 I wrote `cloakroom` the long way on purpose: every member typed, every value named.  Beguile doesn't require most of that, and the rooms and objects that follow use the briefer syntax.
 
 ### Member Type Inference
+
 The next section introduces the `extend` keyword:
 
 ```
@@ -589,6 +658,7 @@ extend class object {
 > ***Note**: From the sequencing of the above examples, you might suspect that objects declared *before* `object` was `extend`-ed  would still require member types to be specified.  This is actually untrue.  Beguile supports declarations in any order, so the presence of `extend object` affects all instances of `object` across all files, regardless of the order declarations appear in.  I presented it in this fashion for the purpose of illustration.*
 
 ### Analyzing `Before` as an Example Member Routine
+
 Among its other members, the `bar` object contains a member *routine*, specifically the `before` routine, which the Puny Inform and the I6 Standard Library both use:
 
 ```
@@ -602,7 +672,7 @@ object bar{
                         rtrue("Blundering around in the dark isn't a good idea!"); 
                     }
             default: if (bar.hasnt(light)) {
-                        message.number++;                           
+                        message.number++;                         
                         rtrue("In the dark? You could easily disturb something!");
                     }
         }
@@ -621,6 +691,7 @@ There are a few things in the above example to take note of...
   ```
 
   > ***Note**: Unlike the previous, `DeathMessage` example, `before` specifies a return type of `bool`.  Beguile requires every path which exits this routine to `return` a `true` or `false` value.*
+  >
 - The `switch` statement, which tests the current `action`, must be called out explicitly.  I6's magic implied `switch` is not supported by design:
 
   ```
@@ -725,7 +796,7 @@ object cloak {
         }
         rfalse;
     }
-    bool after() {        
+    bool after() {      
         if(action==Take) bar.ungive(light);
         rfalse;
     }
@@ -824,7 +895,7 @@ object hook {
     name = {.small, .brass, .hook, .peg};
     description = $"It's just a small brass hook, {cloak.parent == hook ? "with a cloak hanging on it.^" : "screwed to the wall.^"}";
     attributes = {scenery, supporter}; 
-}       
+}     
 ```
 
 Specifically, the value assigned to `description` is an interpolated string:
@@ -939,41 +1010,203 @@ Notice that the `grammarRule` itself is just one element in an enclosing, `gramm
 ```
 
 ---
+
 ## Select Additional Topics
 
-While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.  
+While Cloak of Darkness serves as a gentle introduction to Beguile, it only scratches the surface of the language.  In this section, I'll go over select topics which are meaningful to the I6 developer.
 
-***Note:** this overview covers high-level enhanced features, letting you know some of the features available to you when using the language.  For deeper details, see the Language Reference.*
+> ***Note:** this overview covers high-level enhanced features, letting you know some of the features available to you when using the language.  For deeper details, see the Language Reference.*
+
+### Function Overloading
+
+In I6, a routine which should accept different kinds of values has to work out for itself what it was handed, usually with `metaclass()`:
+
+```i6
+[ Report x;
+    switch (metaclass(x)) {
+        String: print "The message is: ", (string) x, "^";
+        Object: print "You notice ", (name) x, ".^";
+        default: print "The count is ", x, ".^";
+    }
+];
+```
+
+...and even then, a number which happens to equal a string's address prints as a string.  In Beguile, you write one routine per kind, under the same name, and the compiler picks the right one from the argument's type:
+
+```bgl
+void report(int n)    { print($"The count is {n}.^"); }
+void report(string s) { print($"The message is: {s}^"); }
+void report(gadget g) { print($"The gadget is {g.charge}% charged.^"); }
+
+report(3);         // The count is 3.
+report("hello");   // The message is: hello
+report(lamp);      // The gadget is 80% charged.
+```
+
+The choice is made at compile time, so nothing is tested while the game runs.
+
+Parameters can also have defaults, and an argument can be passed by name, in any order:
+
+```bgl
+void spawn(string name, int count = 1, bool hostile = false) { … }
+
+spawn("bat");                    // spawn("bat", 1, false)
+spawn("goblin", hostile: true);  // spawn("goblin", 1, true)
+spawn("rat", 6);                 // spawn("rat", 6, false)
+```
+
+### Operator Overloading
+
+Your own types can give meaning to the operators, so a type of your own reads like a built-in one.   Here a small `money` type adds, compares, and prints:
+
+```bgl
+struct money {
+    int cents;
+    money operator + (money other) { money m; m.cents = cents + other.cents; return m; }
+    eBool operator == (money other) { return cents == other.cents; }
+    eBool operator != (money other) { return cents != other.cents; }
+    void print() { print($"${cents / 100}.{cents % 100 < 10 ? "0" : ""}{cents % 100}"); }
+}
+
+money total = wallet + price;
+print($"Total: {total}");                       // Total: $2.25
+if (wallet == price + price) print("exact");
+```
+
+Arithmetic, comparison (including the three-way `<=>`, which sorting uses), `[]` for subscripts, `++` and `--`, conversions, and even `switch` can be overloaded.  This is how the BLR itself is built:  `stringObj` comparing its text with `==`, and `array<T>` checking its bounds on `[]`, are ordinary operator overloads.
+
+### Classes and Structs
+
+You know classes from I6, and Beguile's are the same idea with types:  members declared with their types, methods, single inheritance, and `replace` for overriding a method.  A pooled class (`class coin[10]`) is I6's class with a count, created and destroyed with `new` and `delete`.
+
+Beguile also has `struct`, a **value type**, as in C#.  A struct variable owns its own instance, and assigning one copies it:
+
+```bgl
+struct point { int x; int y; }
+
+point a;
+a.x = 1;
+point b = a;      // a copy, not a second name for a
+b.x = 5;
+print($"{a.x} {b.x}");   // 1 5
+```
+
+### Enumerations: `enum` and `bnum`
+
+Where I6 has a run of `Constant` declarations, Beguile has an `enum`:  a named set of constants which the compiler knows belong together, and checks:
+
+```bgl
+enum mood { calm, nervous, angry }    // 1, 2, 3
+
+mood guard = calm;
+guard = mood.angry;
+if (guard == angry) print("The guard glares.");
+```
+
+A `bnum` is the same for bit flags:  its members are powers of two, and combine with `|`:
+
+```bgl
+bnum lockState { locked, jammed, rusted }    // 1, 2, 4
+
+lockState door = locked | rusted;
+if (door & rusted) print("rusted");
+```
+
+Combining flags from two unrelated `bnum`s is a compile-time error, which catches a mixed-up flag before it reaches the game.
+
+### Lambdas
+
+I6 lets you pass a routine's address, but the routine has to be declared somewhere else, by name, and anything it needs from the caller has to travel through globals.  A Beguile **lambda** is a function written where it's used, which can read the caller's locals:
+
+```bgl
+void each(array<int> list, func<void, int> fn) { for (int v in list) fn(v); }
+
+int bonus = 5;
+each(scores, (int s) => print($"{s + bonus} "));   // 45 95 20
+```
+
+`func<void, int>` is the type of a function which takes an `int` and returns nothing; the first type is the return type.  A function value can be kept in a variable and called like any function:
+
+```bgl
+func<int, int> twice = (int n) => n * 2;
+print($"Twice four is {twice(4)}.");   // Twice four is 8.
+```
+
+Lambdas are what make the array methods below, such as `filter()` and `sort()`, comfortable to use.
+
+### Null Safety
+
+Many I6 run-time errors come down to reading a property of `nothing`.  Beguile has three operators for the "this might be null" case.  In the following, Bob has a boss and Ann doesn't:
+
+```bgl
+class person { string office = "the mailroom"; person boss = null; }
+person ann { office = "the corner office"; }
+person bob { boss = ann; }
+```
+
+**`?.`** reads a member only when the left side isn't null.  If it is null, the whole expression is null, rather than an error:
+
+```bgl
+string where = bob.boss?.office;    // "the corner office"
+string none  = ann.boss?.office;    // Ann has no boss: null, and no error
+```
+
+With a plain `.`, Ann's line is the familiar run-time error:
+
+```bgl
+string bad = ann.boss.office;       // [** Programming error: nothing (object number 0)  has no property office to read **]
+```
+
+**`??`** supplies a fallback for when the left side is null:
+
+```bgl
+string room = ann.boss?.office ?? "no office";    // Ann has no boss: "no office"
+```
+
+**A trailing `?`** is the null test itself:  `bob.boss?` means `bob.boss != null`.
+
+```bgl
+if (bob.boss?) print("Bob has a boss.");
+```
+
+The I6 equivalent of the `??` line is the familiar guard:
+
+```i6
+if (ann.boss ~= nothing) room = ann.boss.office; else room = "no office";
+```
 
 ### The Beguile Language Runtime
 
-I've referenced the **Beguile Language Runtime** (the BLR) multiple times already.  Before going further, it's worth pausing to look at what it actually is:
+I've referenced the **Beguile Language Runtime** (the BLR) multiple times already.  Before going further, it's worth pausing to look at what it actually is...
 
-The BLR is Beguile's library of language extensions, written almost entirely in Beguile itself.  It is part of the standard install.
+The BLR is the part of the language which is written in Beguile itself, rather than built into the compiler.  It ships with the compiler, alongside the bindings and the extensions, and is made of two layers:
 
-Conceptually, the BLR is divided into three kinds of content:
-
-- **Core types** - the language's core runtime.  The `object` class, `attribute` and `attributeList`, `array<T>`, and so on.  These are pulled in automatically; you never need to `#include` by name.
-- **Language Extensions** - opt-in features which extend the language.  You `#include` these manually when you want them:
+- **Core** - the language's core runtime.  The `object` class, `attribute` and `attributeList`, `array<T>`, and so on.  These are pulled in automatically; you never need to `#include` these yourself.
+- **Language Extensions** - opt-in features which extend Beguile.  These are still considered part of the language, they just carry some overhead so they are kept separate.  You `#include` them manually when you want them:
 
 ```
   #include <string>      // mutation, content equality, concatenation
   #include <linq>        // LINQ-style operations on arrays
-  #include <float>       // IEEE-754 arithmetic (Glulx only)
+  #include <array>       // searching, sorting, inserting and removing elements
 ```
 
-  Each extension adds members to existing types or introduces new types entirely.  I'll cover  some of these as we proceed.
-- **Bindings** - The default wrappers around the two foundational I6 libraries: `i6StandardLibrary` and `punyInform`.  We saw the latter in the Cloak example.
+Each language extension adds members to existing types or introduces new types entirely.  I'll cover some of these as we proceed.
+
+Two more layers ship with the compiler and sit on top of the BLR, but aren't part of it:
+
+- **Bindings** - the wrappers around the two foundational I6 libraries: `i6StandardLibrary` and `punyInform`.  We saw the latter in the Cloak example.
+- **Functional Extensions** - these don't change the language; they add something to the *game*: a verb, a smarter parser, a new way to describe things.  They are covered in [Beguile Extensions](extensions.md).
 
 > ***Note**: I designed the BLR to be opt-in by default.  A program that includes nothing, pays nothing.*
 
 #### Namespaces
 
-The BLR is organized under a set of namespace objects rooted at `bgl`.  You'll see these expressed in lines such as... `bgl.world.getAll()` and `bgl.glulx.createMainWindow()`.
+The BLR is organized under a set of namespace objects rooted at `bgl`.  You'll see these expressed in lines such as... `bgl.world.getAll()` and `bgl.ui.statusBar.height = 2`.
 
 Other namespaces follow the same pattern: `bgl.zcode` for Z-Machine-specific helpers, `bgl.util` for general-purpose routines, and so on.  You'll see some of these in the sections that follow.
 
-You can use the `#using` directive to auto resolve namespace names.  So `#using bgl.glulx` allows you to simply type `createMainWindow()`, without specifying the prefixes. 
+You can use the `#using` directive to auto resolve namespace names.  So `#using bgl.ui` allows you to simply type `statusBar.height = 2`, without specifying the prefixes.
+
 ### Strings
 
 I6's support for strings is austere: a literal like `"hello"` evaluates to a memory address; you can `print` it, but you can't modify it. When you compare it, you are comparing memory addresses for equality, not string values themselves.  Real I6 string work (e.g., comparing content, building values at runtime, accumulating text) requires careful use of memory buffers.
@@ -999,10 +1232,7 @@ For example,
 ```
 string a = "hello";
 string b = "hello";
-if(a == b) 
-     print("MATCHED."); 
-else 
-     print("Unmatched."); 
+if(a == b) print("MATCHED."); else print("Unmatched."); 
 ```
 
 Counterintuitively, the above outputs...
@@ -1019,31 +1249,23 @@ The moment you write...
 #include <string>
 ```
 
-...two things happen. `string` keeps its meaning but gains content comparison, and a **second type appears**: `stringObj`.
+...two things happen. `string` keeps its meaning but gains helper methods, and a **second type appears**: `stringObj`.
 
-The split is the part worth slowing down for, because it has no I6 equivalent:
+Unlike `string`, `stringObj` is a *mutable* type.  `stringObj`s manage their values in buffers, so the content can change during runtime.  An important difference to remember: a `stringObj` compares **content**, instead of addresses, with `==`.  
 
-| Type | What the slot holds | Mutable? | Costs |
-|---|---|---|---|
-| `string` | a **pointer** to static text — exactly I6's address-of-literal | no | nothing |
-| `stringObj` | a **buffer it owns**, a block in the string heap that grows as text is written | yes | a pool slot |
-
-An I6 dev already knows the first one: it is the packed literal address. `stringObj` is the thing I6 makes you hand-roll with buffers, given a type.
-
-The most important shift to remember: `==` now compares **content**, for both types. The earlier example now matches by value...
+To do the same with a the text of two `string`s, you can call the new `equals()` routine which `<string>` attaches to the type, or put a `stringObj` on either side...
 
 ```bgl
 string a = "hello";
 string b = "hello";
-if(a == b)
-     print("MATCHED.");
-else
-     print("Unmatched.");
+stringObj c = "hello";
+
+if(a == b)      print("MATCHED."); else print("Unmatched."); 
+if(a.equals(b)) print("MATCHED."); else print("Unmatched."); 
+if(a == c)      print("MATCHED."); else print("Unmatched."); 
 ```
 
-> MATCHED.
-
-That holds whether `a` and `b` are literals, runtime values, or one of each — and whether they are `string` or `stringObj`.
+> Unmatched.MATCHED. MATCHED.
 
 ##### Which one do I declare?
 
@@ -1060,15 +1282,16 @@ name = name + " of Darkness";   // name is "Cloak of Darkness"; title unchanged
 name += "!";                    // name is "Cloak of Darkness!"
 ```
 
-`stringObj` allocates on declaration and frees itself when the routine returns, so there is no explicit lifecycle to manage in ordinary code. It does need `bglInit()` to have run once, to set up the pool.
+`stringObj` allocates on declaration and frees itself when the routine returns, so there is no explicit lifecycle to manage in ordinary code. It does need `bglInit()` to have run once, to set up the pool, but this done for you by the language bindings so you shouldn't normally need to worry about this.
 
 > ***Note for I6 authors**: assignment between `stringObj` values copies the text, not the address. `b = a` gives `b` its own buffer holding the same characters, so changing `b` later leaves `a` alone. That is the opposite of what a bare I6 pointer assignment does, and it is deliberate.*
 
 Beguile adds routine members and operators to both types (`replace`, `toUpper`, …). With few exceptions these **return a new value and leave the original untouched** — so the result is a `stringObj`, and reading it into a `string` will not compile.
 
+ ##### A Smattering of Examples
 I won't cover the surface exhaustively, but the following are representative:
 
-**`switch` on string values** — cases compare by content, exactly like `==`, mixing literals and runtime values freely:
+**`switch` on string values** — cases compare by content, mixing literals and runtime values freely:
 
 ```bgl
 switch(command){
@@ -1107,11 +1330,11 @@ char first = s[0];               // 'H'
 s[0] = 'J';                      // s is now "Jello"
 ```
 
-> ***Note**: unlike the routines above, which return a new value, writing a character changes the string in place. It needs a `stringObj` — a `string` points at static text and has nothing to write into.*
+> ***Note**: unlike the preceeding routines, which return a new value, writing a character changes the string in place. It needs a `stringObj` — a `string` points at static text and has nothing to write into.*
 
 **Format strings** via `format(pattern, args...)`:
 
-``` bgl
+```bgl
 stringObj who; who = "world";
 who.format("Hi $0, arg=$1", "extra")   // "Hi world, arg=extra"
 ```
@@ -1139,24 +1362,31 @@ print(score);             // int overload prints decimal
 print(noun);              // object overload prints short_name
 ```
 
-Each call takes a single argument of a known type.  If you want to print three things, that's three calls - or, much more commonly, one interpolated string.
+Each overload takes a single argument of a known type, but you can still hand `print` several at once.  `print` is declared as a **distributor** routine, a special kind of routine which handles several arguments as individual calls, each picking their own overload *(see the language spec for more detail on `distributors`)*.
 
-> ***Note**: This differs sharply from I6's `print` statement, which takes comma-separated arguments and uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce them.  Beguile relies on the type system instead; the right overload runs because the argument carries its type.*
+```bgl
+print("You have ", score, " points.");   // print("You have "); print(score); print(" points.");
+```
+
+
+> ***Note**: The above resembles I6's `print` statement, but Inform uses keyword tokens like `(string)`, `(name)`, `(the)` to coerce each argument.  Beguile relies on the type system instead; the right overload runs because each argument carries its type.*
+
+So printing three things can be one call, or, just as often, one interpolated string.
 
 #### Interpolation revisited
 
 The CoD walkthrough introduced interpolated strings; here's the I6-dev mental model for them:
 
-- Interpolation is a *compile-time* expansion. The compiler walks the literal, finds each `{...}` expression, and emits a sequence of `print` calls with the right overload for each piece.  
+- Interpolation is a *compile-time* expansion. The compiler walks the literal, finds each `{...}` expression, and emits a sequence of `print` calls with the right overload for each piece.
 - Because each `{...}` expression resolves to its natural type and `print` is overloaded, you can interpolate ints, objects, strings, and any other type with a `print` overload without explicit conversion:
 
-``` bgl
+```bgl
 print($"You picked up {count} {item}.");
 ```
 
 The above translates into the following I6:
 
-``` I6
+```I6
 print "You picked up ";
 print count;
 print " ";
@@ -1166,7 +1396,7 @@ print ".";
 
 - What receives the interpolated string decides what it becomes.  Passed to `print`, it prints right there, as above.  Assigned to a `stringObj`, it's captured: the string holds the text as it was at that moment.  Assigned to something which can hold a routine (an `iString` or `interpolatedString` variable or member, such as `description`), it becomes a routine which prints the text, its braces evaluated each time it's printed, as the hook's description was.
 
-``` bgl
+```bgl
 int watts = 60;
 stringObj snap          = $"{watts}W";   // the text, now
 interpolatedString live = $"{watts}W";   // a routine which prints it
@@ -1177,11 +1407,12 @@ print(live);                             // 100W
 
 - Escape sequences (`\n`, `\t`, `\"`) work inside interpolated strings.  I6's `^` for newline passes straight through to I6 (which translates it into a new line).
 
-## Arrays
-Beguile's approach to arrays differs sharply from I6's.  In I6, an `array table` is just a named pointer to memory.  The allocated size fills in the first element, but the width of each element and the run-time length are left to you to manage: 
+### Arrays
 
-``` i6
-array table primes --> 2 3 5 7 11;      
+Beguile's approach to arrays differs from I6's.  In I6, an `array table` is just a named pointer to memory.  The allocated size fills in the first element, but the width of each element and the run-time length are left to you to manage:
+
+```i6
+array table primes --> 2 3 5 7 11;    
 for (i=0: i < primes-->0: i++) print primes-->(i+1); 
 ```
 
@@ -1192,7 +1423,7 @@ array<int>  primes = {2, 3, 5, 7, 11};
 for (int i=0; i<primes.size; i++) print(primes[i]); 
 ```
 
-As shown above, the element **type** is mandatory and rides inside angle brackets, and you pre-populate an array with a brace-enclosed initializer list.  Also note that the index is automatically adjusted to compensate for the `size`, so `primes[0]` points to the 1st element, and *not* the size of the array (unlike i6 `table`arrays).
+As shown above, the element **type** is mandatory and rides inside angle brackets.  You can  pre-populate an array with a brace-enclosed initializer list.  Also note that the index is automatically adjusted to compensate for the `size`, so `primes[0]` points to the 1st element, and *not* the size of the array (unlike i6 `table`arrays).
 
 You can also declare an array with a fixed size (a sized array).  The following does this, then subsequently assigns values to it:
 
@@ -1204,17 +1435,18 @@ for(int i = 0; i<primes.size; i++){
 }
 ```
 
-> ***Note**: `calcNthprime()` is NOT an actual routine provided by Beguile or the BLR.  This is included for demonstration purposes only.
+> ***Note**: `calcNthprime()` is NOT an actual routine provided by Beguile or the BLR.  This is included for demonstration purposes only.*
 
 > ***Note**: The two forms combine.  `array<int> primes[10] = {2, 3, 5};` reserves 10 slots and seeds the first three: `size` is 10 and `length` is 3, so the array still has room to grow through `append()`/`enqueue()` (below).  An initializer longer than the declared size is a compile error.*
 
-The type is enforced everywhere.  An `array<int>` will not accept a `string`.  The correct `print` overload, operators, and member access all follow from the declared type.  
+The type is enforced everywhere.  An `array<int>` will not accept a `string`.  The correct `print` overload, operators, and member access all follow from the declared type.
 
 > ***Note**: `array<char>` compiles to an I6 byte array under the hood.  Iterating over a char array works as expected, regardless of the length of a byte vs `WORDSIZE`.*
 
-> ***Note**: The same declaration form works at global scope, as an object property, and as a class member; however, object-property arrays inherit the Z-machine's property-size ceiling (32 on Z5/Z8).*
+> ***Note**: The same declaration form works at global scope, as an object property, and as a class member.  On the Z-machine a property holds at most 32 words; a member array larger than that is moved into a table of its own, with the property holding its address.  It behaves the same in Beguile, but I6 code reading the property will find the address, not the elements.  A `rawArray` member is held to the limit.*
 
 #### `for`... `in`
+
 Beguile also supports an additional iteration pattern which keeps you from having to worry about tracking indexes...
 
 ```bgl
@@ -1223,17 +1455,21 @@ for(int p in primes) print(p);
 
 This approach uses the `length` if available or the `size` otherwise *(see "Size() vs. Length" below)*.
 
-### With `<array>`
+#### With `<array>`
+
 The core Beguile language gives you declaration, subscripting, `size` and `length`.  The BLR's `<array>` extension adds the rest; enable it with `#include <array>`.  A program that doesn't include it carries none of its code.
-#### `size` vs. `length`
+
+##### `size` vs. `length`
 
 I6 `table` arrays gives you one number: the allocated size.  Beguile gives you two:
 
 - **`size`** is *capacity*: the slots reserved at compile time.  It never changes.
-- **`length`** is the live count of in-use entries.  A list-initialized array starts with `length` and `size` being equal.  An empty, size-declared array, starts at `length` equal to 0.  
+- **`length`** is the live count of in-use entries.  A list-initialized array starts with `length` and `size` being equal.  An empty, size-declared array, starts at `length` equal to 0.
 
-The distinction matters because **a plain slot write does not move the cursor**.  `scores[3] = 90;` stores the word but leaves `length` at `0`.  An `array<T>` is a memory block, and only explicit operations (assigning `length`, `clear`, `append`, …) change its length.  
-#### Additional `array` features
+The distinction matters because **a plain slot write does not move the cursor**.  `scores[3] = 90;` stores the word but leaves `length` at `0`.  An `array<T>` is a memory block, and only explicit operations (assigning `length`, `clear`, `append`, …) change its length.
+
+##### Additional `array` features
+
 Beguile arrays are more than just arrays.  They additionally provide the functionality of the `stack`, `queue`, and `deque` containers from other languages...
 
 ```bgl
@@ -1254,6 +1490,7 @@ print(superHeroes.popEnd());        // prints Wonder Woman   (popEnd removes fro
 
 **`push()` inserts at the *front*.**  This is the one place where Beguile's naming is likely to surprise you: it follows the deque convention of the orLibrary (and of C++'s `push_front`), *not* JavaScript's `Array.push`, which appends.  The full set is symmetric once you see the two ends:
 
+
 | Operation | Front of the array | Back of the array |
 | --------- | ------------------ | ----------------- |
 | insert    | `push()`           | `enqueue()`       |
@@ -1264,7 +1501,7 @@ print(superHeroes.popEnd());        // prints Wonder Woman   (popEnd removes fro
 
 Note also that these are the *only* operations that move the cursor.  A sized array starts at `length` 0, so the `enqueue()` calls above are what grow it - had the example written `superHeroes[0] = "Batman";` instead, `length` would still be `0`.
 
-##### Searching
+###### Searching
 
 `indexOf()` returns the position of a value, or `-1` when it isn't found; `contains()` is the same test as a `bool`:
 
@@ -1274,17 +1511,17 @@ print(scores.indexOf(90));          // prints 1
 print(scores.contains(7));          // prints false
 ```
 
-Searching an `array<string>` compares **text**, not addresses, so a literal matches an equal-but-distinct literal:
+With `<string>` included, searching an `array<string>` compares **text**, not addresses, so a literal matches an equal-but-distinct literal:
 
 ```bgl
 print(superHeroes.indexOf("Superman"));   // prints 2
 ```
 
-> ***Note**: content comparison for strings arrives with `#include <string>`.  With only `<array>`, elements are compared as raw words - which is exactly right for `int`, `char`, and object ids, and is what a program that never asked for string handling should pay for.  The same applies to `contains()`, `removeValue()`, and `-=`.*
+> ***Note**: content comparison for strings arrives with `#include <string>`.  Without it `array` elements are compared as raw words, correct for `int`, `char`, and object ids, but not usually what you'd want for string.  The same applies to `contains()`, `removeValue()`, and `-=`.*
 
-##### Sorting
+###### Sorting
 
-`sort()` orders the array in place.  Called with no argument it uses a default ascending comparator - a signed word comparison, which is what you want for `int`, `char`, and object ids:
+`sort()` orders the array in place.  Called with no argument it sorts ascending, by the element type's own ordering (its `<=>`), or by signed word value when the type has none:
 
 ```bgl
 scores.sort();                      // 15, 40, 90
@@ -1296,17 +1533,17 @@ For any other ordering, pass a comparator: a `func<int, T, T>` returning a negat
 scores.sort((int a, int b) => b - a);    // descending
 ```
 
-To sort strings alphabetically, use `compareTo()`, which returns exactly the `-1`/`0`/`+1` a comparator wants:
+With `<string>` included, `string` has an ordering, so `names.sort()` is alphabetical by character code.  For another text ordering, `compareTo()` returns exactly the `-1`/`0`/`+1` a comparator wants; here, ignoring case:
 
 ```bgl
-names.sort((string a, string b) => a.compareTo(b));
+names.sort((string a, string b) => a.compareTo(b, true));
 ```
 
 > ***Caution**: a comparator must return a **signed ordering**, not a `bool`.  `(int a, int b) => a < b` compiles - a `bool` widens to `int` - but it yields only `0` or `1` and never a negative, so it sorts *backwards*.  This is the one place the comparison operators are the wrong tool: use `compareTo()` in a comparator and save `<` for ordinary tests.*
 
-> ***Note**: the no-argument `sort()` uses a signed word comparison, so on an `array<string>` it orders by address rather than alphabetically.  Pass the `compareTo()` comparator above when you want dictionary order.*
+> ***Note**: without `<string>`, `string` has no ordering, so the no-argument `sort()` on an `array<string>` orders by address rather than alphabetically.*
 
-#### Fluent chains: `#include <linq>`
+##### Fluent chains: `#include <linq>`
 
 For query-style transformations, `<linq>` adds chainable, C#-flavored operations on top of the `<array>` extension (which it includes automatically):
 
@@ -1317,7 +1554,7 @@ array<int> bigEvens = nums.filter((int x) => x > 100 && x%2 == 0).orderBy();
 
 The above starts with a list of `int` values stored in  the `nums` array, filters down to just those elements which are greater than 100 and which are even, then sorts them.
 
-`orderBy()` mirrors `sort()`: called bare it uses the same default ascending comparator, and it also accepts one of your own for any other ordering.
+The `orderBy()` syntax mirrors that of `sort()`: called bare it uses the same default ascending comparator, and it also accepts one of your own for any other ordering.
 
 ```bgl
 array<int> desc = nums.orderBy((int a, int b) => b - a);
@@ -1325,7 +1562,7 @@ array<int> desc = nums.orderBy((int a, int b) => b - a);
 
 The difference between the two is what they touch.  `sort()` reorders the receiver in place and returns nothing; `orderBy()` leaves the receiver alone and yields a sorted copy, which is what lets it sit in the middle of a chain.
 
-#### Arrays of your own classes
+##### Arrays of your own classes
 
 An `array<T>` where `T` is a class you declared works out of the box for storing, reading, appending and removing. Two operations, though, ask the element type a question it may not have answered.
 
@@ -1342,7 +1579,7 @@ bag.indexOf(twin);      // -1 — same weight, different object
 
 That is usually the sensible default for objects, so nothing warns.
 
-`sort()` is the one to watch. Without an `operator <=>`, ordering falls back to comparing the underlying words — and for a class instance the word is its **object address**, which is where I6 happened to place it in the story file. The result is deterministic and completely unrelated to any field, so a bare `sort()` looks like it worked. Beguile warns at compile time rather than letting that pass:
+`sort()` is the one to watch. Without an `operator <=>`, ordering falls back to comparing the underlying words — and for a class instance the word is its **object address**, which is where I6 happened to place it in the story file. The result is completely unrelated to any field, so `sort()` produces a sequence unlikely to be meaningful. Beguile warns at compile time rather than letting that pass:
 
 ```
 warning: 'Item' publishes no 'operator <=>', so 'sort()' falls back to word semantics
@@ -1360,7 +1597,7 @@ class Item {
 }
 ```
 
-Or pass a comparator for a one-off ordering, which never warns:
+Or instead pass a comparator for a one-off ordering:
 
 ```bgl
 bag.sort((Item a, Item b) => { return a.weight - b.weight; });
@@ -1368,13 +1605,13 @@ bag.sort((Item a, Item b) => { return a.weight - b.weight; });
 
 None of this applies to `int`, `char`, `object` or the built-in types: for those the word *is* the value, so the default ordering is the right answer.
 
-#### Array Life cycle
+##### Array Life cycle
 
-Assigning one array to another **copies its elements**: `array<int> keep = build();` snapshots the source into `keep` (value semantics, not pointer aliasing).  This is also how you preserve a LINQ result or a returned **local** array beyond its lifetime: a local array's storage is reclaimed when its routine returns, so capture it into a typed local before it escapes.  File-scope arrays live in permanent storage and may be returned freely.
+Assigning one array to another **copies its elements**: `array<int> keep = build();` snapshots the source into `keep`.  This is also how you preserve a LINQ result or a returned **local** array beyond its lifetime: a local array's storage is reclaimed when its routine returns, so capture it into a typed local before it escapes.  File-scope arrays live in permanent storage and may be returned freely.
 
 ### Declaring a Verb from Scratch
 
-By extending an already defined  `verb` object, we can add patterns to it.  If your game needs a brand-new verb, the syntax mirrors object declaration: a `verb` block with its own `grammar` and a `handler` routine that fires when the verb matches:
+By extending an already defined  `verb` object, we can add patterns to it, but if your game needs a brand-new command you create the `verb` object yourself, declaring its `grammar` and a `handler` routine that fires when the verb is used:
 
 ```
 verb Flip {
@@ -1390,7 +1627,7 @@ verb Flip {
 
 This declares a `Flip` action and binds both `flip` and `toggle` as trigger words; either matches a `HELD` noun and runs `handler`.
 
-`handler()` is the action body; its contents become the I6 `<verbName>Sub` routine (here, `FlipSub`).  A from-scratch (non-`extern`) verb **must** define `handler()`; omitting it is a compile error.  An `extern verb` is exempt - its `Sub` already lives in the library - which is exactly why the binding's `extern verb PutOn { ... }` carries grammar but no `handler`.
+`handler()` is the action body; its contents are emitted to I6 as the `<verbName>Sub` routine (here, `FlipSub`).  A from-scratch (non-`extern`) verb **must** define `handler()`; omitting it is a compile error.  An `extern verb` is exempt - its `Sub` already lives in the library - which is exactly why the binding's `extern verb PutOn { ... }` carries grammar but no `handler`.
 
 #### Launching an Action
 
@@ -1402,5 +1639,6 @@ Take.perform(noun, second);     // I6:  <Take noun second>
 Take.perform(noun); rtrue;      // I6:  <<Take noun>> 
 ```
 
-----
-That's it for now; however, there's more to come on this document.  
+---
+
+That's it for now; however, there's more to come on this document.

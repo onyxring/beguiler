@@ -10,12 +10,11 @@
 - [D.7 Character Literals](#d7-character-literals)
 <!-- /toc -->
 
-
-This appendix completes §1.6.3 and §1.6.6. Every escape below is
-valid in a string literal, an interpolated string literal and a character literal; none is processed
-in a raw string literal, which recognizes only `\"`.
+This appendix completes §1.6.3 and §1.6.6.  Every escape below is valid in a string literal, an interpolated string literal, and a character literal; none is processed in a raw string literal, which recognizes only `\"`.
 
 ## D.1 Basic Escapes
+
+The basic escapes are the following:
 
 | Escape | Character |
 |---|---|
@@ -28,10 +27,7 @@ in a raw string literal, which recognizes only `\"`.
 | `\{` | `{` |
 | `\}` | `}` |
 
-In an interpolated string (§1.6.5) `\{` is a brace that opens no span. A backslash followed by any
-character this appendix doesn't list is a compile-time error.
-
-An unescaped `^` in a string is a newline and an unescaped `~` is a double quote, as in I6.
+In an interpolated string (§1.6.5) `\{` is a brace which opens no span.  A backslash followed by any character this appendix doesn't list is a compile-time error.
 
 <!-- doctest: skip -->
 ```bgl
@@ -42,19 +38,18 @@ An unescaped `^` in a string is a newline and an unescaped `~` is a double quote
 
 ## D.2 Numeric Escapes
 
+A numeric escape names a character by its code:
+
 | Escape | Meaning |
 |---|---|
 | `\`*NNN* | the character with decimal code *NNN* |
 | `\$`*XX* | the character with hexadecimal code *XX* |
 
-Both forms consume every consecutive digit (or hexadecimal digit) after the prefix. In a string
-literal the code is a Unicode code point: Glulx renders any code point; the Z-machine renders only the
-characters in its character set (§D.5), and any other code is a compile-time error. In a character
-literal the two forms differ, as §D.7 describes.
+Both forms consume every consecutive digit (or hexadecimal digit) after the prefix.  In a string literal the code is a Unicode code point:  Glulx will render any code point; however, the Z-machine renders only the characters in its character set (§D.5), and any other code is a compile-time error.  In a character literal the two forms differ, as §D.7 describes.
 
 ```bgl
-"na\239ve"     // → naïve
-"na\$EFve"     // → naïve
+"na\239ve"     // -> naïve
+"na\$EFve"     // -> naïve
 ```
 
 ## D.3 Diacritical Shorthands
@@ -82,24 +77,19 @@ A named escape is `\` followed by a two-character name:
 
 ## D.4 Context-Sensitive `\^` and `\~`
 
-`\^` and `\~` are both a basic escape (§D.1) and an accent mark (§D.3). When the escape is followed
-by a letter in its accent set it produces the accented letter; otherwise it produces a literal `^` or
-`~`. To force the literal character before a letter that would otherwise take the accent, double it:
-`\^^` or `\~~`.
+`\^` and `\~` are both a basic escape (§D.1) and an accent mark (§D.3).  When the escape is followed by a letter in its accent set it will produce the accented letter; otherwise it produces a literal `^` or `~`.  To force the literal character before a letter which would otherwise take the accent, double it:  `\^^` or `\~~`.
 
 ```bgl
-"\^a"      // → â
-"\^^a"     // → ^a
-"\~n"      // → ñ
-"\~~n"     // → ~n
-"\^z"      // → ^z   (z is not in the accent set)
+"\^a"      // -> â
+"\^^a"     // -> ^a
+"\~n"      // -> ñ
+"\~~n"     // -> ~n
+"\^z"      // -> ^z   (z is not in the accent set)
 ```
 
 ## D.5 Directly Typed Characters
 
-Accented characters may be typed directly into a string literal, an interpolated string literal, a
-character literal or a dictionary word. The source file may be UTF-8 or Latin-1. Each character must
-be one of the ZSCII extended characters (codes 155 to 224):
+You can type accented characters directly into a string literal, an interpolated string literal, a character literal, or a dictionary word.  The source file can be UTF-8 or Latin-1.  Each character must be one of the ZSCII extended characters (codes 155 to 224):
 
 | Group | Characters |
 |---|---|
@@ -112,8 +102,7 @@ be one of the ZSCII extended characters (codes 155 to 224):
 | ligatures and letters | æ Æ ç Ç þ Þ ð Ð œ Œ ß |
 | punctuation | £ ¡ ¿ « » |
 
-Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on
-Glulx, the characters described below.
+Any other non-ASCII character is a compile-time error, except the typographic quotes of §D.6 and, on Glulx, the characters described below.
 
 <!-- doctest: skip -->
 ```bgl
@@ -122,33 +111,22 @@ Glulx, the characters described below.
 .café
 ```
 
-> **[Glulx]** Glulx text is Unicode, so any character may be typed directly into a string literal, an
-> interpolated string literal or a character literal: `"© 2027 — ✓"`, `'Ω'`. A dictionary word still
-> takes only the characters in the table above.
+> ***[Glulx]:** Glulx text is Unicode, so any character can be typed directly into a string literal, an interpolated string literal, or a character literal:  `"© 2027 ✓"`, `'Ω'`.  A dictionary word still takes only the characters in the above table.*
 
 ## D.6 Typographic Quotes and the Backtick
 
-The curly double quotes `“` `”`, the curly single quotes `‘` `’` and the backtick `` ` `` are accepted
-in string literals and rendered according to the target.
+The curly double quotes `“` `”`, the curly single quotes `‘` `’`, and the backtick `` ` `` are accepted in string literals and rendered according to the target.
 
-> **[Glulx]** Each curly quote is rendered as its own glyph; the backtick is rendered as a backtick.
+> ***[Glulx]:** Each curly quote is rendered as its own glyph; the backtick is rendered as a backtick.*
 
-> **[Z-machine]** The Z-machine has no typographic glyphs: curly double quotes fold to a straight
-> double quote, and curly single quotes and the backtick fold to a straight apostrophe `'`.
+> ***[Z-machine]:** The Z-machine has no typographic glyphs:  curly double quotes fold to a straight double quote, and curly single quotes and the backtick fold to a straight apostrophe `'`.*
 
-The target is the resolved build target (§17); Glulx is the default. Only directly typed characters
-are folded: a numeric escape such as `\$201C` always denotes that code point.
+The target is the resolved build target (§15); Glulx is the default.  Only directly typed characters are folded:  a numeric escape such as `\$201C` always denotes that code point.
 
 ## D.7 Character Literals
 
-A character literal (§1.6.6) holds exactly one character, written directly or with any escape above. Its
-value is the character's code — its ZSCII code on the Z-machine, its Unicode code point on Glulx (`'ä'`
-is 155 on the Z-machine and 228 on Glulx; an accent escape or a ZSCII `\NNN` names the same character on
-either) — so a character literal may be compared numerically: `c >= 'ä'` compares against the code of ä.
+A character literal (§1.6.6) holds exactly one character, written directly or with any escape above.  Its value is the character's code:  its ZSCII code on the Z-machine, its Unicode code point on Glulx (`'ä'` is 155 on the Z-machine and 228 on Glulx).
 
-The numeric escapes read differently here than in a string (§D.2). `\NNN` is a ZSCII code, and names
-the same character on either target: `'\155'` is ä, 155 on the Z-machine and 228 on Glulx. `\$XX` is
-the character's code as written, on either target, with no translation.
+The numeric escapes read differently here than in a string (§D.2).  `\NNN` is a ZSCII code, and names the same character on either target:  `'\155'` is ä, 155 on the Z-machine and 228 on Glulx.  `\$XX` is the character's code as written, on either target, with no translation.
 
-`\'` followed by a letter in the acute-accent set (§D.3) is the acute accent: `'\'e'` is é. A `\'`
-not followed by such a letter is an escaped single quote.
+`\'` followed by a letter in the acute-accent set (§D.3) is the acute accent:  `'\'e'` is é.  A `\'` not followed by such a letter is an escaped single quote.

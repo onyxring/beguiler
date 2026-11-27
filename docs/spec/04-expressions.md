@@ -18,22 +18,15 @@
 - [4.15 Operator References](#415-operator-references)
 <!-- /toc -->
 
-
 ## 4.1 Evaluation
 
-Every expression has a **resolved type**, which drives operator resolution, type-checking and emitter
-dispatch. Operators of equal precedence group left to right, and each binary operator resolves in
-turn using the resolved type of the expression to its left. `&&` and `||` evaluate the right operand
-only when the left operand does not decide the result; `??` evaluates its right operand only when the
-left is null (§4.10); a ternary evaluates only the selected branch (§4.9).
+Every expression has a **resolved type**.  `&&` and `||` evaluate the right operand only when the left operand doesn't decide the result; `??` evaluates its right operand only when the left is null (§4.10); and a ternary evaluates only the selected branch (§4.9).
 
-Apart from those, the order in which an expression's operands are evaluated is unspecified, as in
-C++: in `f() + g()`, either call may run first, and so may the arguments of one call. When the order
-matters, evaluate the operands in separate statements.
+Apart from those, the order in which an expression's operands are evaluated is unspecified, as in C++:  in `f() + g()`, either call can run first, and so can the arguments of one call.
 
 ## 4.2 Operands
 
-An expression is one or more operands joined by operators. An operand is one of:
+An expression is one or more operands joined by operators.  An operand is one of the following:
 
 | Operand | Resolved type |
 |---|---|
@@ -50,12 +43,9 @@ An expression is one or more operands joined by operators. An operand is one of:
 | `new Type(args)` | `Type` (§4.13) |
 | Lambda literal | `func<…>` (§4.14) |
 
-A literal may have emitter methods called on it directly: `"hello".print()`, `42.someMethod()`.
-
 ## 4.3 Operator Precedence
 
-Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10` is
-`(a > 0) && (b < 10)`; `a <=> b < 0` is `(a <=> b) < 0`.
+Higher levels bind more tightly.
 
 | Prec | Operators | Kind | Assoc | Meaning |
 |:---:|---|---|---|---|
@@ -75,23 +65,20 @@ Higher levels bind more tightly. `a + b * c` is `a + (b * c)`; `a > 0 && b < 10`
 | 1 | `??` | infix | right | Null coalescing (§4.10) |
 | 0 | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` `:=` | infix | right | Assignment (§5.5), compound assignment (§5.6), reference binding (§3.7) |
 
-There is no unary bitwise-not operator. Inform 6's `~` and `~~` are not Beguile operators: write `!` for logical not.
+There is no unary bitwise-not operator, and Inform 6's `~` and `~~` are not Beguile operators; write `!` for logical not.
 
 ## 4.4 Binary Operator Resolution
 
-A binary operator is resolved against the resolved type of its left operand:
+A binary operator is resolved against the resolved type of its left operand, in these steps:
 
-1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type:
-   its exact type, a literal's base type, a type it converts to, or a class it derives from (§9.2).
-2. Otherwise, if the left type has a conversion operator (`operator()`) to the right type, fall back
-   to the built-in operator.
-3. Otherwise, if the right type has a conversion operator to a type for which the left type does
-   declare `operator op`, apply that conversion and use the operator.
-4. Otherwise, if the left type is known, it is a compile-time error. A `var` operand falls back to the
-   built-in operator.
+1. Look for `operator op` (emitter or method) on the left type whose parameter accepts the right type:  its exact type, a literal's base type, a type it converts to, or a class it derives from.
+2. Otherwise, if the left type has a conversion operator (`operator()`) to the right type, fall back to the built-in operator.
+3. Otherwise, if the right type has a conversion operator to a type for which the left type does declare `operator op`, apply that conversion and use the operator.
+4. Otherwise, if the left type is known, it is a compile-time error.  A `var` operand falls back to the built-in operator.
 
-Assignment and arithmetic operators keep the left operand's type. The overloadable operators are
-listed in §9.1; the declaration forms are specified in §9.
+Assignment and arithmetic operators keep the left operand's type, except that a `float` operand on either side of an arithmetic operator makes the result `float` (§2.3).  The overloadable operators are listed in §9.1.
+
+> ***Note:** When a type declares several overloads of one operator, the right-hand operand selects between them in four passes:  the operand's **exact** type; the **base type of a literal** (`intLiteral` gives `int`); a type the base is **convertible** to, or an **ancestor** of the operand's class; and finally a parameter declared `var`.  Each pass looks at the type's own operators before the inherited ones.  An operand whose type is itself `var`, or whose type is unknown, still matches in the first pass.*
 
 **Example**
 
@@ -108,44 +95,31 @@ int  sum  = a + five;     // 2: no operator + on Money; a converts to int, built
 
 ## 4.5 Arithmetic Operators
 
-The built-in operators are declared by the runtime core, need no `#include`, and are ordinary
-overloadable operators (§9.1) that a type may declare for itself. The table lists every built-in
-binary and prefix operator by the types that define it; the compound-assignment forms follow the
-binary operator they are built from (§5.6), and the postfix query, optional chaining and null
-coalescing are in §4.10.
+The built-in operators need no `#include`.  They are ordinary overloadable operators (§9.1), which a type can declare for itself.  The compound-assignment forms are in §5.6, and the postfix query, optional chaining, and null coalescing are in §4.10.
 
 | Operators | Built in for | Result | Example |
 |---|---|---|---|
-| `+` `-` `*` `/` `%` | `int`, `uint` (§21.6.1), `float` (§2.3); `+` and `-` also for `char` with a `char` or `int` right operand (§21.7) | The left operand's type | `7 / 2` → `3`; `7 % 2` → `1`; `'a' + 1` → `'b'` |
-| `==` `!=` `<` `>` `<=` `>=` | `int`, `uint`, `float`, `char`; `==` and `!=` also for `bool`, `string` (identity of the text) and `object` | `eBool` | `score >= 50`; `noun == lamp` |
-| `?=` | No built-in type; it exists so that a type may give it a meaning (§9.5) | `eBool` | — |
-| `=~` | `char`: case-insensitive equality (§21.7); `string` with `<string>` (§22.3) | `eBool` | `'A' =~ 'a'` → `true` |
-| `<=>` | No built-in type; `<string>` declares it for `string` (§22.3). A type provides it as `operator <=>`, `static` with both operands as parameters or as an instance operator (§9.6); generic containers use it to obtain an ordering | `int`: negative, `0` or positive | `(a <=> b) < 0` |
-| `&&` `\|\|` `!` | `bool` and `eBool` (§2.2); `!` on a type that declares `operator !()` uses that emitter (§9.5) | `eBool` | `a > 0 && b < 10` |
-| `&` `\|` `^` `<<` `>>` | `int`, `uint`; `&`, `\|` and `^` also combine `bnum` values that share a base (§2.7.2) | The left operand's type | `flags & lit`; `1 << 4` → `16` |
+| `+` `-` `*` `/` `%` | `int`, `uint` (§21.6.1), `float` (§2.3); `+` and `-` also for `char` with a `char` or `int` right operand (§21.7) | The left operand's type; `float` when either operand is a `float` (§2.3) | `7 / 2` gives `3`; `7 % 2` gives `1`; `'a' + 1` gives `'b'` |
 
-A leading `-` on an integer literal forms a negative literal, whose pseudo-type is
-`negativeIntLiteral` (§2.4.1). `<=>` binds more tightly than the relational operators (§4.3).
-
-**`int` arithmetic.** An `int` is a signed word: 16 bits on the Z-machine (−32768 to 32767), 32 bits
-on Glulx. Arithmetic that leaves the range wraps (`32767 + 1` → `-32768` on the Z-machine), on literals as on variables. `/`
-truncates toward zero (`-7 / 2` → `-3`) and `%` takes the sign of the left operand (`-7 % 2` → `-1`,
-`7 % -2` → `1`). `>>` on an `int` is arithmetic, keeping the sign (`-256 >> 4` → `-16`); on a `uint`
-it fills with zeros (§21.6.1). Dividing by zero, with `/` or `%`, is a run-time error of the virtual
-machine.
+**`int` arithmetic.**  Arithmetic which leaves the range of an `int` (§2.2) wraps (`32767 + 1` gives `-32768` on the Z-machine), on literals as on variables.  `/` truncates toward zero (`-7 / 2` gives `-3`) and `%` takes the sign of the left operand (`-7 % 2` gives `-1`, `7 % -2` gives `1`).  Dividing by zero, with `/` or `%`, is a run-time error of the virtual machine.
 
 ## 4.6 Comparison Operators
 
-`== != < > <= >= ?= =~ <=>` are tabulated in §4.5.
+The comparison operators are built in for these types:
 
-**Identity.** `a :== b` is true when `a` and `b` are the same instance. It compares references and never
-calls an `operator ==`, so it tells "the same object" apart from a class's own equality, as `:=` bypasses its
-`operator =` (§3.7). Both operands are instances: objects, instances of any class (structs and
-`stringObj` included), arrays, or `null`. On a primitive it is a compile-time error ("use '=='"). `:==`
-can't be overloaded, and neither can `:=`.
+| Operators | Built in for | Result | Example |
+|---|---|---|---|
+| `==` `!=` `<` `>` `<=` `>=` | `int`, `uint`, `float`, `char`; `==` and `!=` also for `bool`, `string` (identity of the text), and `object` | `eBool` | `score >= 50`; `noun == lamp` |
+| `?=` | None; a type gives it its meaning (§9.5) | `eBool` | - |
+| `=~` | `char`:  case-insensitive equality (§21.7); `string` with `<string>` (§22.3) | `eBool` | `'A' =~ 'a'` gives `true` |
+| `<=>` | None; `<string>` declares it for `string` (§22.3), and any type can declare it (§9.6) | `int`:  negative, `0`, or positive | `(a <=> b) < 0` |
+
+**Identity.**  `a :== b` is true when `a` and `b` are the same instance.  It compares references and never calls an `operator ==`, just as `:=` bypasses `operator =` (§3.7).  Both operands are instances:  objects, instances of any class (structs and `stringObj` included), arrays, or `null`.  On a primitive it is a compile-time error ("use '=='").  `:==` can't be overloaded, and neither can `:=`.
 
 ```bgl
 #include <string>
+
+// … in a routine:
 stringObj s = "hi";
 stringObj t = "hi";
 ref stringObj u := s;
@@ -156,42 +130,37 @@ print(u :== s);      // true: u refers to s
 
 ## 4.7 Logical Operators
 
-`&&`, `||` and prefix `!` are tabulated in §4.5.
+`&&`, `||`, and prefix `!` are built in for these types:
 
-An operand of `&&` or `||` that is a reference (an object, a class instance, a `ref`, a string or a
-function value) is its null test, as it is when it stands alone as a condition: `if (ready && door.lock)`
-is `if (ready && door.lock?)`.
+| Operators | Built in for | Result | Example |
+|---|---|---|---|
+| `&&` `\|\|` `!` | `bool` and `eBool` (§2.2); `!` on a type that declares `operator !()` uses that emitter (§9.5) | `eBool` | `a > 0 && b < 10` |
+
+An operand of `&&` or `||` which is a reference (an object, a class instance, a `ref`, a string, or a function value) is its null test, as it is when it stands alone as a condition:  `if (ready && door.lock)` is `if (ready && door.lock?)`.
 
 ## 4.8 Bitwise and Shift Operators
 
-`& | ^ << >>` are tabulated in §4.5; the compound forms `&= |= ^= <<= >>=` are in §5.6.
+`& | ^ << >>` are built in for these types:
+
+| Operators | Built in for | Result | Example |
+|---|---|---|---|
+| `&` `\|` `^` `<<` `>>` | `int`, `uint`; `&`, `\|`, and `^` also combine `bnum` values which share a base (§2.7.2) | The left operand's type; for two `bnum` values, their shared ancestor's type (§2.7.2) | `flags & lit`; `1 << 4` gives `16` |
+
+`>>` on an `int` is arithmetic, keeping the sign (`-256 >> 4` gives `-16`); on a `uint` it fills with zeros (§21.6.1).  The compound forms `&= |= ^= <<= >>=` are in §5.6.
 
 ## 4.9 Ternary Operator
 
 **Syntax**
 
 ```syntax
-⟨condition⟩ ? ⟨trueExpr⟩ : ⟨falseExpr⟩
+CONDITION ? TRUE-EXPR : FALSE-EXPR
 ```
 
-**Description**
+The ternary operator selects one of two values, and only the selected branch is evaluated.
 
-Selects one of two values. A ternary may appear as a call argument, on the right-hand side of an
-assignment, in a parenthesized sub-expression, and in the condition and increment parts of a `for`
-loop. Several may appear in one statement, and one may be nested in another's condition or branches.
-Only the branch selected is evaluated, nested ternaries included: `a ? (f() ? 1 : 2) : 3` calls `f()` only
-when `a` is true.
+**Type of the result.**  When the branches have the same type, that is the type.  When one branch's type is assignable to the other's (e.g., a derived class and its base), the result takes the more general of the two, regardless of which side it is written on.  A literal counts as the type it denotes, and a branch typed `var` imposes nothing.
 
-**Type of the result.** When the branches have the same type, that is the type. When one branch's
-type is assignable to the other's — a derived class and its base, for instance — the result takes the
-more general of the two, whichever side it is written on. A literal counts as the type it denotes,
-so `-1` and `0` are both `int`. A branch typed `var` imposes nothing.
-
-When the branches have unrelated types, the result is the **union** of the two (§2.8): a ternary over
-a string and a routine is what `string | func<void>` describes, and a union value occupies one word
-either way. The destination then decides whether the expression is legal — a union-typed target
-accepts it and discriminates with `typeof` (§2.8.1), while a target of one branch's type rejects it
-as the mistyping it is.
+When the branches have unrelated types, the result is the **union** of the two (§2.8).  A union-typed target accepts it (§2.8.1); a target of one branch's type rejects it.
 
 **Example**
 
@@ -209,32 +178,19 @@ int wrong = cond ? 1 : "text";   // error: 'int|string' is not assignable to 'in
 **Syntax**
 
 ```syntax
-⟨expr⟩?.⟨member⟩
-⟨expr⟩?.⟨method⟩(⟨args⟩)
-⟨expr⟩ ?? ⟨fallback⟩
-⟨expr⟩?
+EXPR?.MEMBER
+EXPR?.METHOD(ARGS)
+EXPR ?? FALLBACK
+EXPR?
 ```
 
-**Description**
+All three operators are type-driven:  the operand's type must declare an `operator ?()` emitter (§9.5), whose result is the null test.  For `object` the test is "not `null`", and for `string` it is "non-zero handle".
 
-All three operators are type-driven: the operand's type must declare an `operator ?()` emitter, whose
-result is the null test (the declaration is specified in §9.5; the BLR defines it for `object` as
-"not `null`" and for `string` as "non-zero handle"). Using them on a type without `operator ?()`
-is a compile-time error.
+**`?.`** accesses a member or calls a method only if the left operand is non-null.  In an expression, each `?.` step tests the value so far, and if it is null the whole chain yields `null`.  As a statement (`x?.remove();`), the target can be any expression, such as a call or an element (`find()?.remove();`, `a[i]?.remove();`).  Note that a plain `.` after a `?.` adds no guard:  if the preceding `?.` yielded null, the member access runs on `null`, and the result is undefined.
 
-**`?.`** accesses a member or calls a method only if the left operand is non-null. In an expression,
-each `?.` step tests the value so far; if it is null the whole chain yields `null`, otherwise the
-step proceeds. As a statement (`x?.remove();`) the operation runs only if the target is non-null; the
-target may be any expression, such as a call or an element (`find()?.remove();`, `a[i]?.remove();`). A
-plain `.` after a `?.` adds no guard: if the preceding `?.` yielded null, the member access runs on
-`null`; the result is undefined.
+**`??`** yields the left operand if it is non-null, otherwise the right operand, which is evaluated only in that case.  The left operand's type must have a null test:  a `?.` chain which ends in an `int` or another primitive can't take `??`.
 
-**`??`** yields the left operand if it is non-null, otherwise the right operand, which is evaluated only
-in that case. A chain groups to the right: `a ?? b ?? c` is `a ?? (b ?? c)`, the first of the three that isn't null.
-
-**Postfix `?`** yields the null test as an `eBool`; `noun?` is `noun != null` for objects, and `!noun?`
-negates it. A function value (`func<…>`) is tested the same way. Where a `?` could begin a ternary, as the right operand of a binary operator, it is the
-ternary; the postfix query applies only when the `?` ends the expression.
+**Postfix `?`** yields the null test as an `eBool`; `noun?` is `noun != null` for objects.  A function value (`func<…>`) is tested the same way.  Where a `?` could begin a ternary, as the right operand of a binary operator, it is the ternary; the postfix query applies only when the `?` ends the expression.
 
 **Example**
 
@@ -250,47 +206,25 @@ if (noun?) print("something is here");
 **Syntax**
 
 ```syntax
-(⟨type⟩)⟨expr⟩
-(⟨instanceName⟩)⟨expr⟩
+(TYPE)EXPR
+(INSTANCE-NAME)EXPR
 ```
 
-**Description**
+A cast applies to the whole operand which follows it, member accesses and calls included, as in C++ and C#:  `(Dog)a.barks` casts the value of `a.barks`.  To treat the receiver as another type, parenthesize the cast and the receiver together:  `((Dog)a).barks` reads `Dog`'s member.  The result of a cast is not assignable, so `(Dog)a.barks = 9` is a compile-time error; however, `(T)name = v;` assigns through `T`'s `operator =`.
 
-A cast applies to the whole operand that follows it, member accesses and calls included, as in C++
-and C#: `(Dog)a.barks` casts the value of `a.barks`. To treat the receiver as another type, the cast and
-the receiver are parenthesized: `((Dog)a).barks` reads `Dog`'s member. The result of a cast is not
-assignable, so `(Dog)a.barks = 9` is a compile-time error; `((Dog)a).barks = 9` assigns the member, and
-`(T)name = v;` assigns through `T`'s `operator =`. A cast has four uses.
+> ***Note:** `(float)(314 / 100)` divides the integers first and then converts the result, giving `3.0`.*
 
-**Ancestor-qualified dispatch.** Method dispatch is dynamic: `myDog.speak()` runs the most-derived
-override. Casting the receiver to a strict ancestor of its static type selects that ancestor's version:
-`((Animal)myDog).speak()`. On `self` inside an override this calls the overridden method without
-recursion. An identity cast, a downcast or a cast to an unrelated type keeps dynamic dispatch. The
-receiver must be a class or object with real methods; an ancestor cast on an `emitter` method is a
-compile-time error. On a member variable the receiver cast resolves the member against the cast type,
-which reaches a member the subtype hides (§8.7.4). A base-typed *variable* stays dynamic:
-`Animal a = myDog; a.speak();` runs `Dog`'s override.
+A cast has four uses.
 
-> **Compared with C#.** In C#, `((Animal)myDog).Speak()` still runs `Dog`'s override; the base version
-> is reached only through `base.Speak()` inside the class. C++ writes `myDog.Animal::speak()`.
+**Ancestor-qualified dispatch.**  Casting the receiver to a strict ancestor of its static type selects that ancestor's version:  `((Animal)myDog).speak()`.  On `self` inside an override, this calls the overridden method without recursion.  An identity cast, a downcast, or a cast to an unrelated type keeps dynamic dispatch.  The receiver must be a class or object with real methods; an ancestor cast on an `emitter` method is a compile-time error.  On a member variable the receiver cast resolves the member against the cast type, which reaches a member the subtype hides (§8.7.4).  A base-typed *variable* stays dynamic:  `Animal a = myDog; a.speak();` will run `Dog`'s override.
 
-**Explicit conversion.** A conversion operator declared `explicit` fires only under a cast:
-`string s = (string)myValue;` (§9.4). A cast also forces resolution through a specific type when the
-inferred type would resolve differently.
+> ***Note:** In C#, `((Animal)myDog).Speak()` still runs `Dog`'s override; the base version is reached only through `base.Speak()` inside the class.  C++ writes `myDog.Animal::speak()`.*
 
-**Reinterpretation.** Between a reference type and a primitive (`object` and `dictionaryWord`, `int` and
-`object`), or between two primitives without a conversion operator, a cast changes only the type: the
-value is the same word, read as the target type. It is unchecked, like `(var)`. This is how a library
-value declared with one type and holding another is read: `(dictionaryWord)second` for the topic of an
-Ask (§23.3.11).
+**Explicit conversion.**  A conversion operator declared `explicit` fires only under a cast:  `string s = (string)myValue;` (§9.4).  A cast also forces resolution through a specific type when the inferred type would resolve differently.
 
-**Class vs. instance.** The target may be a class or a named object. Casting to a class exposes the
-class's members; casting to an instance also exposes members declared on that object alone. This is
-the way to reach members through a dynamically-typed value such as `.parent`, which is statically
-`object`. The cast is an unchecked downcast: the member name is checked against the target at compile
-time, but the runtime object is assumed to be of that type. Reaching a member that `object` does not
-have through an `object`-typed value without a cast is a compile-time error. `(var)` gives an
-untyped read with no member check.
+**Reinterpretation.**  Between a reference type and a primitive (`object` and `dictionaryWord`, `int` and `object`), or between two primitives without a conversion operator, a cast changes only the type:  the value is the same word, read as the target type.  It is unchecked, like `(var)`.
+
+**Class vs. instance.**  The target can be a class or a named object.  Casting to a class exposes the class's members; casting to an instance also exposes members declared on that object alone.  The cast is an unchecked downcast:  the member name is checked against the target at compile time; however, the runtime object is assumed to be of that type.  Reaching a member which `object` doesn't have through an `object`-typed value without a cast is a compile-time error.  `(var)` gives an untyped read with no member check.
 
 **Example**
 
@@ -310,103 +244,71 @@ int b = ((Room)obj.parent).lit;            // class member
 **Syntax**
 
 ```syntax
-&⟨expr⟩
+&EXPR
 ```
 
-**Description**
-
-Prefix `&⟨expr⟩` yields the raw machine address of its operand as an `int`; it is exactly
-`(int)⟨expr⟩`. On an array, buffer or object it gives the base address; on a scalar it yields the
-value itself. It does not compute the storage address of a variable or property; Beguile has no
-pointer types. A `&` with a left operand is the bitwise and (§4.8).
+Prefix `&EXPR` yields the raw machine address of its operand as an `int`; it is exactly `(int)EXPR`.  On an array, buffer, or object it gives the base address; on a scalar it yields the value itself.  It never gives the storage address of a variable or property.  A `&` with a left operand is the bitwise and (§4.8).
 
 **Example**
 
 <!-- doctest: compile -->
 ```bgl
 extern void FillBuffer(int address, int length);   // an I6 routine
+
+// … in a routine:
 array<char> buf[32];
 FillBuffer(&buf, 32);                              // the base address of buf
 int n = 7;
-int m = &n;                                        // → 7: a scalar yields its value
+int m = &n;                                        // -> 7: a scalar yields its value
 ```
 
-**See also** §15.4.1 (`extern` functions).
+**See also** §16.4.1 (`extern` functions).
 
 ## 4.13 `new`
 
 **Syntax**
 
 ```syntax
-new ⟨type⟩(⟨args⟩)
+new TYPE(ARGS)
 ```
 
-**Description**
-
-Allocates an instance of a pooled class and yields a reference to it, or `null` if the pool is
-exhausted; the result must be checked before use. The arguments are passed to the class's `create()`
-method; if the class declares no `create`, `new ⟨type⟩()` is the only valid form. `new` on a class
-that is not pooled is a compile-time error. Pooled classes, pool size and the `create`/`destroy`
-lifecycle are specified in §8.2.6; the `delete` statement in §5.15.
+`new` allocates an instance of a pooled class and yields a reference to it, or `null` if the pool is exhausted; the result must be checked before use.  The arguments are passed to the class's `create()` method; if the class declares no `create`, `new TYPE()` is the only valid form.  `new` on a class which is not pooled is a compile-time error.  Pooled classes, pool size, and the `create`/`destroy` lifecycle are covered in §8.2.6; the `delete` statement is in §5.15.
 
 **Example**
 
 ```bgl
 class Marble[10] : object { }
+
+// … in a routine:
 Marble m = new Marble();
 if (m == null) print("The pool is exhausted.");
 ```
 
-**Notes**
-
-`create()` argument limit: see §8.2.6.
+> ***Note:** For the `create()` argument limit, see §8.2.6.*
 
 ## 4.14 Lambdas
 
 **Syntax**
 
 ```syntax
-(⟨type⟩ ⟨param⟩, …) => { ⟨body⟩ }
-(⟨type⟩ ⟨param⟩, …) => ⟨expr⟩
-() => { ⟨body⟩ }
-=> { ⟨body⟩ }
-=> ⟨expr⟩
+(TYPE PARAM, …) => { BODY }
+(TYPE PARAM, …) => EXPR
+() => { BODY }
+=> { BODY }
+=> EXPR
 ```
 
-**Description**
+A lambda is an anonymous function literal, whose type is a `func<>` (§2.9).  The return type is inferred:  from the expression of a `return expr;` in the body, or `void` if the body has no `return`.  A lambda in argument position is passed by reference, like a named `func<>` value.
 
-A lambda is an anonymous function literal. It may be assigned to a `func<>` variable or member,
-passed as an argument, or stored in a collection (`func<>` is specified in §2.9). The return type is
-inferred: from the expression of a `return expr;` in the body, or `void` if the body has no `return`.
-A lambda in argument position is passed by reference, like a named `func<>` value.
+The expression-bodied form `(PARAMS) => EXPR` is equivalent to `(PARAMS) => { return EXPR; }`.  In both forms every parameter is typed; `x => …` is not a lambda.  A lambda with no parameters can omit the empty parameter list:  `=> BODY` is equivalent to `() => BODY`.
 
-The expression-bodied form `(⟨params⟩) => ⟨expr⟩` is equivalent to
-`(⟨params⟩) => { return ⟨expr⟩; }`; the return type is inferred from the expression. In both forms
-every parameter is typed; `x => …` is not a lambda. A lambda with no parameters may omit the empty
-parameter list: `=> ⟨body⟩` is equivalent to `() => ⟨body⟩`. An expression body with no value, such as
-a call to a `void` function, is the lambda's body rather than its return value; this includes a call
-passing an interpolated string (§1.6.5), such as `=> print($"Hello, {name}.")`. An assignment has no
-value either, so a lambda whose expression body is an assignment (`=> hits += 10`) is `void`
-(`func<void>`), as in C#.
+An expression body with no value, such as a call to a `void` function, is the lambda's body rather than its return value.  An assignment has no value either, so a lambda whose expression body is an assignment (`=> hits += 10`) is `void` (`func<void>`), as in C#.
 
-**Capture.** A lambda body may use locals and parameters of the enclosing function, wherever in that
-function the lambda appears, including inside loop and `if` bodies. Each captured variable's value is
-copied when the lambda is created. For a lambda passed directly as an argument, changes the body makes
-to a captured variable are visible in the enclosing scope after the call returns. A lambda that
-captures nothing costs nothing extra. Inside a method, a lambda that reads a member captures `self`.
+**Capture.**  A lambda body can use locals and parameters of the enclosing function, wherever in that function the lambda appears.  Each captured variable's value is copied when the lambda is created.  For a lambda passed directly as an argument, changes the body makes to a captured variable will be visible in the enclosing scope after the call returns, and in the `catch` when the call throws (§5.16).  Inside a method, a lambda which reads a member captures `self`.
 
-Captures are for callbacks that run before the enclosing function moves on. A lambda that captures a
-variable may not outlive it, so it is a compile-time error to return one, to store one in a global or
-a member, or to pass one to a `literal` parameter (§6.3). Storing one in a local is allowed, except
-inside a loop: a lambda created on each pass is one lambda with one copy of what it captures, so the
-lambdas a loop stores in a local declared outside it would all read the last pass's values. Storing a
-capturing lambda there (assigning it, writing it to an element, or passing it to an array method that
-keeps its argument, such as `push`) is a compile-time error. A lambda used during the statement, such
-as a predicate passed to `filter`, may capture loop variables freely. A capture of a `const` local
-initialized from a compile-time value is exempt from all of these: every copy is the same value.
+Captures are for callbacks which run before the enclosing function moves on.  A lambda which captures a variable can't outlive it, so it is a compile-time error to return one, to store one in a global or a member, or to pass one to a `literal` parameter (§6.3).  Storing one in a local is allowed, except inside a loop, where storing a capturing lambda (assigning it, writing it to an element, or passing it to an array method which keeps its argument, such as `push`) is a compile-time error.  A lambda used during the statement, such as a predicate passed to `filter`, can capture loop variables freely.  A capture of a `const` local initialized from a compile-time value is exempt from all of these.
 
-**Constraints.** A lambda literal may not be invoked immediately (`((int n) => { … })(42)`); assign it
-or pass it first.
+**Constraints.**  A lambda literal can't be invoked immediately (`((int n) => { … })(42)`); assign it or pass it first.
 
 **Example**
 
@@ -428,16 +330,11 @@ void test(int multiplier) {
 **Syntax**
 
 ```syntax
-⟨type⟩::operator ⟨op⟩
-⟨type⟩::operator ⟨op⟩(⟨type⟩)
+TYPE::operator OP
+TYPE::operator OP(TYPE)
 ```
 
-**Description**
-
-Names an operator that `⟨type⟩` declares, yielding its address for use wherever a `func<>` is
-expected. Only a `static` operator is referenceable; referencing an instance operator is a
-compile-time error. When a type declares several static overloads of the operator, the parenthesized
-operand type selects one. The rules for declaring static operators are in §9.6.
+An operator reference names an operator which `TYPE` declares, yielding its address for use wherever a `func<>` is expected.  Only a `static` operator is referenceable; referencing an instance operator is a compile-time error.  When a type declares several static overloads of the operator, the parenthesized operand type selects one.  The rules for declaring static operators are in §9.6.
 
 **Example**
 
@@ -448,6 +345,8 @@ class Money {
     int cents = 0;
     static bool operator == (Money a, int b) { return a.cents == b; }
 }
+
+// … in a routine:
 array<string> names = {"cherry", "apple"};
 
 names.sort(string::operator <=>);

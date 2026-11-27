@@ -20,72 +20,51 @@
 - [5.16 `try` / `catch` / `throw`](#516-try-catch-throw)
 <!-- /toc -->
 
-
 ## 5.1 Statements
 
-The body of a function, method or emitter is a sequence of statements executed in order. A statement
-ends with a semicolon unless it ends with a closing brace. A stray `;` is an empty statement and is
-discarded, so a trailing semicolon after a directive, a declaration, a class body or a block is
-accepted at every statement boundary and at file scope.
+The body of a function, method, or emitter is a sequence of statements executed in order.  A statement ends with a semicolon unless it ends with a closing brace.  A stray `;` is an empty statement and is discarded, at every statement boundary and at file scope.
 
 ## 5.2 Block Statement
 
 **Syntax**
 
 ```syntax
-{ ⟨statement⟩ … }
+{ STATEMENT … }
 ```
 
-**Description**
-
-A block groups statements and introduces a scope: a variable declared in the block is visible from
-its declaration to the block's closing brace (§3.6). A block may stand wherever a statement may.
+A block groups statements and introduces a scope:  a variable declared in the block is visible from its declaration to the block's closing brace (§3.6).
 
 ## 5.3 Expression Statement
 
 **Syntax**
 
 ```syntax
-⟨expression⟩ ;
+EXPRESSION ;
 ```
 
-**Description**
-
-An expression followed by a semicolon is a statement. The expressions that may stand alone are
-function and method calls, including chained calls (`str.trim().print();`), optional-chained calls
-(`x?.remove();`), increment and decrement (§5.7), and assignment (§5.5, §5.6). Arguments and arity
-are checked at compile time, and a method call is resolved against the declared type of its receiver;
-each call in a chain is resolved against the return type of the previous call.
+An expression followed by a semicolon is a statement.  The expressions which can stand alone are function and method calls (chained and optional-chained calls included), increment and decrement (§5.7), and assignment (§5.5, §5.6).
 
 ## 5.4 Declaration Statement
 
 **Syntax**
 
 ```syntax
-⟨type⟩ ⟨name⟩ [ = ⟨expression⟩ ] ;
+TYPE NAME [ = EXPRESSION ] ;
 ```
 
-**Description**
-
-A local variable declaration is a statement. The forms, including `auto`, are specified in §3.6;
-`ref` and `:=` in §3.7.
+A local variable declaration is a statement.  The forms, including `auto`, are covered in §3.6; `ref` and `:=` are in §3.7.
 
 ## 5.5 Assignment
 
 **Syntax**
 
 ```syntax
-⟨lvalue⟩ = ⟨expression⟩ ;
+LVALUE = EXPRESSION ;
 ```
 
-**Description**
+The left-hand side is a declared variable or a dotted member path.  The assignment is allowed when the right-hand type is compatible with the left-hand type (§2.10.1).  Reference binding (`:=`) is covered in §3.7.
 
-The left-hand side is a declared variable or a dotted member path. The assignment is permitted when
-the right-hand type is compatible with the left-hand type; the compatibility rules, tested in order,
-are in §2.10.1. Reference binding (`:=`) is specified in §3.7.
-
-An assignment is a statement and has no value: chaining one, `a = b = c;`, or using one as a
-condition, `if(a = 3)`, is a compile-time error.
+An assignment is a statement and has no value:  chaining one, `a = b = c;`, or using one as a condition, `if(a = 3)`, is a compile-time error.
 
 **Example**
 
@@ -100,24 +79,19 @@ lamp.parent = library;
 **Syntax**
 
 ```syntax
-⟨lvalue⟩ ⟨op⟩= ⟨expression⟩ ;
+LVALUE OP= EXPRESSION ;
 ```
 
-`⟨op⟩` is one of `+ - * / % & | ^ << >>`.
+`OP` is one of `+ - * / % & | ^ << >>`.
 
-**Description**
-
-`+= -= *= /= %= &= |= ^= <<= >>=` modify the variable in place. When the left type declares the
-compound operator, that operator runs. When it declares none, `n op= v` is `n = n op (v)` (§9.7), so
-the type's own `op` and `=` apply; it is a compile-time error only when that assignment is. The BLR
-defines all of them for `int` (§2.2) and `uint` (§21.6.1).
+A compound assignment modifies the variable in place.  When the left type declares the compound operator, that operator runs.  When it declares none, `n op= v` is `n = n op (v)` (§9.7), and it is a compile-time error only when that assignment is.  All of them are defined for `int` (§2.2) and `uint` (§21.6.1).
 
 **Example**
 
 ```bgl
 int n = 5;
-n += 2;      // → 7
-n <<= 1;     // → 14
+n += 2;      // -> 7
+n <<= 1;     // -> 14
 ```
 
 ## 5.7 Increment and Decrement
@@ -125,23 +99,17 @@ n <<= 1;     // → 14
 **Syntax**
 
 ```syntax
-⟨variable⟩++ ;   ⟨variable⟩-- ;   ++⟨variable⟩ ;   --⟨variable⟩ ;
+VARIABLE++ ;   VARIABLE-- ;   ++VARIABLE ;   --VARIABLE ;
 ```
 
-**Description**
-
-An increment or decrement uses the type's `operator ++` / `operator --`. A prefix form uses
-`operator prefix++` / `operator prefix--` if the type declares it and otherwise falls back to the
-postfix operator, so a type that declares only `operator ++` supports both `n++` and `++n`. A type
-that declares neither takes `n = n + 1` (or `n = n - 1`) instead (§9.7); if that is not available
-either, it is a compile-time error.
+An increment or decrement uses the type's `operator ++` / `operator --`.  A prefix form uses `operator prefix++` / `operator prefix--` if the type declares it; otherwise, it falls back to the postfix operator.  A type which declares neither takes `n = n + 1` (or `n = n - 1`) instead (§9.7); if that isn't available either, it is a compile-time error.
 
 **Example**
 
 ```bgl
 int n = 5;
-n++;         // → 6
---n;         // → 5
+n++;         // -> 6
+--n;         // -> 5
 ```
 
 ## 5.8 `if` / `else`
@@ -149,17 +117,14 @@ n++;         // → 6
 **Syntax**
 
 ```syntax
-if (⟨condition⟩) ⟨statement⟩
-if (⟨condition⟩) { … } else { … }
-if (⟨condition⟩) { … } else if (⟨condition⟩) { … } else { … }
+if (CONDITION) STATEMENT
+if (CONDITION) { … } else { … }
+if (CONDITION) { … } else if (CONDITION) { … } else { … }
 ```
 
-**Description**
+The body can be a single statement or a block, and `else` is optional.
 
-The body may be a single statement or a block. `else` is optional.
-
-`else if (⟨condition⟩) { … }` is equivalent to `else { if (⟨condition⟩) { … } }`:
-an `else if` chain is an `if` nested in the `else`.
+`else if (CONDITION) { … }` is equivalent to `else { if (CONDITION) { … } }`.
 
 **Example**
 
@@ -174,19 +139,15 @@ else                 print("Well done!");
 **Syntax**
 
 ```syntax
-for (⟨initializer⟩; ⟨condition⟩; ⟨increment⟩) ⟨statement⟩
+for (INITIALIZER; CONDITION; INCREMENT) STATEMENT
 ```
 
-**Description**
-
-All three parts are required. The initializer may declare a new variable or assign to an existing
-one; it may not redeclare a variable that already exists, including one declared in the initializer
-of an earlier `for`. A ternary is permitted in the condition and increment parts (§4.9).
+All three parts are required.  The initializer can declare a new variable or assign to an existing one; however, it can't redeclare a variable which is still in scope (§3.10).  A later loop can declare the same name again.  A ternary can be used in the condition and increment parts (§4.9).
 
 **Example**
 
 ```bgl
-for (int i = 0; i < 3; i++) print(i);    // → 012
+for (int i = 0; i < 3; i++) print(i);    // -> 012
 ```
 
 ### 5.9.1 `for-in`
@@ -194,35 +155,26 @@ for (int i = 0; i < 3; i++) print(i);    // → 012
 **Syntax**
 
 ```syntax
-for (⟨type⟩ ⟨v⟩ in ⟨source⟩) ⟨statement⟩
-for (⟨v⟩ in ⟨source⟩) ⟨statement⟩
-for (⟨type⟩ ⟨v⟩ in ⟨first⟩ to ⟨last⟩) ⟨statement⟩
+for (TYPE V in SOURCE) STATEMENT
+for (V in SOURCE) STATEMENT
+for (TYPE V in FIRST to LAST) STATEMENT
 ```
 
-In the second form `⟨v⟩` is a variable declared earlier.
+In the second form, `V` is a variable declared earlier.
 
-**Description**
-
-Iterates over every element of `⟨source⟩`, which is one of:
+A `for-in` loop iterates over every element of `SOURCE`, which is one of the following:
 
 | Source | Element type |
 |---|---|
 | A declared array variable | The array's element type |
 | An inline list `{a, b, …}` | The type of the first element; each element is checked against `v` |
-| A call expression returning an array | `var`: any declared type for `v` is accepted |
+| A call expression returning an array | `var`:  any declared type for `v` is accepted |
 | A range `first to last` | Integer; inclusive at both ends; the bounds are any expressions |
-| An object's `children` | The class that declares `children`; the body may move the current child (§11.5.2) |
+| An object's `children` | The class which declares `children`; the body can move the current child (§11.5.2) |
 
-The loop variable may be declared in the loop head or beforehand. One declared in the head belongs to
-the loop: after it, the name means what it meant before, and a later loop may declare it again with
-another type. Its type must be compatible with
-the element type or it is a compile-time error; `var` matches any element type, and `auto` infers the
-element type from the source, including through `operator auto()` (§7.8). Any other source expression
-is a compile-time error. Loops nest; each keeps its own iteration state.
+A loop variable declared in the head belongs to the loop:  after the loop, the name means what it meant before, and a later loop can declare it again with another type.  Its type must be compatible with the element type or it is a compile-time error; `var` matches any element type, and `auto` infers the element type from the source, including through `operator auto()` (§9.5.1).  Any other source expression is a compile-time error.
 
-A loop variable of a struct owns its instance, as any local of the class does (§8.2.7): each
-element is copied into it, so a write to the variable doesn't change the array. To change the
-elements, index the array (`ps[i].col = 0`).
+A loop variable of a struct owns its instance, as any local of the class does (§8.2.7):  each element is copied into it, so a write to the variable won't change the array.
 
 **Example**
 
@@ -231,9 +183,9 @@ array<int> primes = {2, 3, 5, 7};
 int start = 10;
 int count = 3;
 
-for (auto p in primes) print(p);                        // → 2357
+for (auto p in primes) print(p);                        // -> 2357
 for (object o in bgl.world.getAll()) print(o);
-for (int i in start to start + count - 1) print(i);     // → 101112
+for (int i in start to start + count - 1) print(i);     // -> 101112
 ```
 
 **See also** §21.9 (`bgl.world`).
@@ -243,18 +195,16 @@ for (int i in start to start + count - 1) print(i);     // → 101112
 **Syntax**
 
 ```syntax
-while (⟨condition⟩) ⟨statement⟩
+while (CONDITION) STATEMENT
 ```
 
-**Description**
-
-The condition is evaluated before each iteration; if it is false on entry the body does not run.
+The condition is evaluated before each iteration.
 
 **Example**
 
 ```bgl
 int n = 3;
-while (n > 0) { print(n); n--; }    // → 321
+while (n > 0) { print(n); n--; }    // -> 321
 ```
 
 ## 5.11 `do` / `while` and `do` / `until`
@@ -262,21 +212,18 @@ while (n > 0) { print(n); n--; }    // → 321
 **Syntax**
 
 ```syntax
-do { … } while (⟨condition⟩) ;
-do { … } until (⟨condition⟩) ;
+do { … } while (CONDITION) ;
+do { … } until (CONDITION) ;
 ```
 
-**Description**
-
-The body runs at least once and the condition is evaluated after each iteration. `do`/`while`
-repeats while the condition is true; `do`/`until` repeats until it becomes true.
+The body runs at least once, and the condition is evaluated after each iteration.  `do`/`while` repeats while the condition is true; `do`/`until` repeats until it becomes true.
 
 **Example**
 
 ```bgl
 int n = 0;
-do { n++; } while (n < 3);    // n → 3
-do { n--; } until (n == 0);   // n → 0
+do { n++; } while (n < 3);    // n -> 3
+do { n--; } until (n == 0);   // n -> 0
 ```
 
 ## 5.12 `switch`
@@ -284,43 +231,27 @@ do { n--; } until (n == 0);   // n → 0
 **Syntax**
 
 ```syntax
-switch (⟨expression⟩) {
-    case ⟨value⟩ [, ⟨value⟩ …] :   ⟨statements⟩
-    case ⟨low⟩ to ⟨high⟩ :           ⟨statements⟩
-    case ⟨op⟩ ⟨value⟩ :              ⟨statements⟩
-    default :                        ⟨statements⟩
+switch (EXPRESSION) {
+    case VALUE [, VALUE …] :   STATEMENTS
+    case LOW to HIGH :           STATEMENTS
+    case OP VALUE :              STATEMENTS
+    default :                        STATEMENTS
 }
 ```
 
-`⟨op⟩` is one of `>`, `>=`, `<`, `<=`.
+`OP` is one of `>`, `>=`, `<`, `<=`.
 
-**Description**
+A case lists one or more values separated by commas.  Cases don't fall through, so an empty case written straight before another (`case Take: case Drop: …`) does nothing and draws a warning.
 
-A case lists one or more values separated by commas. Cases do not fall through, so an empty case
-written straight before another (`case Take: case Drop: …`) does nothing and draws a warning; list the
-values in one case instead (`case Take, Drop:`). A `break` in a case
-body leaves the `switch` — at the top of the body or nested in a block within it, and whichever
-lowering the switch takes. Because cases do not fall through, a `break` as the last statement of a
-case body does nothing; a `break` before the end of the body ends the case there, leaving the rest of
-it unreachable. A `break` inside a loop within a case body belongs to that loop. Case values
-are type-checked against the switch expression (§2.10.1): integer literals match an `int`, and an enum
-value must be of the switch expression's enum type. When the switch expression is a `verb`, case
-values are verb names (§13.2). A case value is a constant: a literal, an enum value, a `#define`, a
-`const`, an object or a verb. A variable (a local, a global variable, a member) is a compile-time error;
-test it with `if`. A type with `operator switch` (§9.5) compares any value it takes.
+A `break` in a case body leaves the `switch`, whether it is at the top of the body or nested in a block within it; however, a `break` inside a loop within a case body belongs to that loop.
 
-**Ranges.** `low to high` matches the inclusive range and may be mixed with single values in one case:
-`case 1, 3, 5 to 10:`.
+Case values are type-checked against the switch expression (§2.10.1):  integer literals match an `int`, and an enum value must be of the switch expression's enum type.  When the switch expression is a `verb`, case values are verb names (§13.2).  A case value is a constant:  a literal, an enum value, a `#define`, a `const`, an object, or a verb.  A variable (a local, a global variable, a member) is a compile-time error.
 
-**Comparison guards.** `case >= 50:` tests the switch value against a comparison. When any case in a
-switch is a guard, the switch expression is evaluated once and the cases are tested in order; values
-and ranges in the same switch become equality and range tests.
+**Ranges.**  `low to high` matches the inclusive range and can be mixed with single values in one case:  `case 1, 3, 5 to 10:`.
 
-**Type-driven comparison.** When the switch expression's type declares `operator switch()`, that
-operator performs each case comparison; with `#include <string>`, `string` declares one so that
-`case "north":` compares content. Overloads for different case-value types may coexist. The operator
-tests one case value, so a range or a guard case in such a switch is a compile-time error, and a
-string literal case on a type that declares no `operator switch()` is one as well. The declaration form is in §9.5.
+**Comparison guards.**  `case >= 50:` tests the switch value against a comparison.  When any case in a switch is a guard, the switch expression is evaluated once and the cases are tested in order.
+
+**Type-driven comparison.**  When the switch expression's type declares `operator switch()`, that operator performs each case comparison; with `#include <string>`, `string` declares one so that `case "north":` compares content.  Overloads for different case-value types can coexist.  A range or a guard case in such a switch is a compile-time error, and a string literal case on a type which declares no `operator switch()` is one as well.  The declaration form is in §9.5.
 
 **Example**
 
@@ -342,13 +273,7 @@ break ;
 continue ;
 ```
 
-**Description**
-
-`break` exits the innermost enclosing `for`, `while` or `do` loop, or the innermost enclosing
-`switch` when that is nearer (§5.12). A `break` in neither is reported by the Inform 6 stage.
-`continue` skips the rest of the current iteration of the innermost `for`, `while` or `do` and
-re-evaluates the loop condition; a `switch` inside the loop does not intercept it. `continue` outside
-a loop is a compile-time error.
+`break` exits the innermost enclosing `for`, `while`, or `do` loop, or the innermost enclosing `switch` when that is nearer (§5.12).  A `break` in neither is reported by the Inform 6 stage.  `continue` skips the rest of the current iteration of the innermost `for`, `while`, or `do` and re-evaluates the loop condition; a `switch` inside the loop doesn't intercept it.  `continue` outside a loop is a compile-time error.
 
 **Example**
 
@@ -357,7 +282,7 @@ for (int i = 0; i < 10; i++) {
     if (i == 3) break;            // leaves the loop
     if (i % 2 == 0) continue;     // skips the even values
     print(i);
-}                                 // → 1
+}                                 // -> 1
 ```
 
 ## 5.14 `return`, `rtrue` and `rfalse`
@@ -366,33 +291,18 @@ for (int i = 0; i < 10; i++) {
 
 ```syntax
 return ;
-return ⟨expression⟩ ;
+return EXPRESSION ;
 rtrue ;   rfalse ;
-rtrue(⟨expression⟩) ;   rfalse(⟨expression⟩) ;
+rtrue(EXPRESSION) ;   rfalse(EXPRESSION) ;
 ```
 
-**Description**
+`return` exits the function, with a value if given, which is type-checked against the declared return type.  In a `void` function `return expr;` is a compile-time error unless `expr` is itself of type `void`, in which case it is equivalent to `expr; return;`.  In loose mode (`#bgl` islands and precompiler mode, §16.3.3) an expression of type `var` is also accepted there.
 
-`return` exits the function, with a value if given. The value may be any expression and is
-type-checked against the declared return type. In a `void` function `return expr;` is a compile-time
-error unless `expr` is itself of type `void`. In loose mode (`#bgl` islands and precompiler mode,
-§15.3.3) an expression of type `var` is also accepted there.
+In a function whose return type is `bool`, `rtrue;` is equivalent to `return true;` and `rfalse;` to `return false;`.
 
-In a `void` function, `return expr;` where `expr` is of type `void` is equivalent to
-`expr; return;`.
+`rtrue(expr)` and `rfalse(expr)` print `expr` as `print()` would (§21.4), and then return.
 
-In a function whose return type is `bool`, `rtrue;` is equivalent to `return true;`
-and `rfalse;` to `return false;`.
-
-`rtrue(expr)` and `rfalse(expr)` print `expr`, with full `print()` overload dispatch including `$"…"`
-strings (§21.4), and then return.
-
-**Return-path analysis.** A non-`void` function must return on every path; a path that can reach the
-end of the body without returning is a compile-time error. A path is satisfied by an unconditional
-`return` or `throw` (§5.16) at the top level of the body; by an `if`/`else` whose two branches are both
-satisfied; by a `switch` with a `default` whose every case body is satisfied (a `switch` without
-`default` is not); by a `try`/`catch` whose `try` body and `catch` body are both satisfied; or by an
-`#i6` island that returns (§15.2). A loop body alone does not satisfy it.
+**Return-path analysis.**  A non-`void` function must return on every path; a path which can reach the end of the body without returning is a compile-time error.  A path is satisfied by an unconditional `return` or `throw` (§5.16) at the top level of the body; by an `if`/`else` whose two branches are both satisfied; by a `switch` with a `default` whose every case body is satisfied (a `switch` without `default` is not); by a `try`/`catch` whose `try` body and `catch` body are both satisfied; or by an `#i6` island which returns (§16.2).  A loop body alone doesn't satisfy it.
 
 If a local's type declares a `deinit` emitter, it fires before the function returns (§8.5).
 
@@ -412,15 +322,10 @@ bool isOpen(object door) {
 **Syntax**
 
 ```syntax
-delete ⟨identifier⟩ ;
+delete IDENTIFIER ;
 ```
 
-**Description**
-
-Returns a pooled-class instance to its pool, calling the class's `destroy()` method first if one is
-declared. The instance leaves the object tree (it is in no room or container), and the slot is free
-for the next `new`, which starts it again from its members' declared values. `delete` on a variable whose type is not a pooled class is a compile-time error. Pooled
-classes are specified in §8.2.6; allocation with `new` in §4.13.
+`delete` returns a pooled-class instance to its pool, calling the class's `destroy()` method first if one is declared.  The instance leaves the object tree, and the slot is free for the next `new`, which will start it again from its members' declared values.  `delete` on a variable whose type is not a pooled class is a compile-time error.  Pooled classes are covered in §8.2.6; allocation with `new` is in §4.13.
 
 **Example**
 
@@ -435,29 +340,19 @@ if (m != null) delete m;       // destroy() runs; the slot returns to the pool
 **Syntax**
 
 ```syntax
-try { … } catch (⟨type⟩ ⟨name⟩) { … }
-throw ⟨expression⟩ ;
+try { … } catch (TYPE NAME) { … }
+throw EXPRESSION ;
 ```
 
-**Description**
+If `throw` executes anywhere during the `try` block, including inside called functions at any depth, execution unwinds to the nearest enclosing `catch` and the thrown value is assigned to the catch variable.  The thrown value is one word:  an integer, an object reference, or any other word-sized value.  `try` blocks nest; a `throw` inside a `catch` re-throws to the next enclosing `catch`.  If `throw` executes with no active `try` on the call stack, the program will print an error and halt.
 
-If `throw` executes anywhere during the `try` block, including inside called functions at any depth,
-execution unwinds to the nearest enclosing `catch` and the thrown value is assigned to the catch
-variable. The thrown value is one word: an integer, an object reference or any other word-sized value.
-`try` blocks nest; a `throw` inside a `catch` re-throws to the next enclosing `catch`. If `throw`
-executes with no active `try` on the call stack, the program prints an error and halts.
-
-Before it unwinds, a `throw` releases the owning locals (§8.5) of the blocks it leaves in its own
-routine. A routine that the throw passes through on its way to a `catch` in a caller does not release
-its locals. The routine that catches it releases the owning locals of its own `try` block before the
-`catch` body runs. Where a routine in between matters, the routine can wrap the call in its own `try` and re-throw from the
-`catch`: the re-throw releases its locals.
+Before it unwinds, a `throw` releases the owning locals (§8.5) of the blocks it leaves in its own routine, as far as the `try` there which catches it, or all of the routine's when nothing in the routine catches it.  A routine which the throw passes through on its way to a `catch` in a caller doesn't release its locals.  The routine which catches it releases the owning locals of its own `try` block before the `catch` body runs.
 
 **Example**
 
 ```bgl
 void deep() { throw 7; }
-try { deep(); } catch (int e) { print(e); }    // → 7
+
+// … in a routine:
+try { deep(); } catch (int e) { print(e); }    // -> 7
 ```
-
-

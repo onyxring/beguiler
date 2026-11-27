@@ -1,0 +1,76 @@
+//===================================================================================================
+// gameStateTracker.bgl — the game's tasks and states, and the score they earn.
+//---------------------------------------------------------------------------------------------------
+// The game lists its tasks and states as members of `gameState`, each valued with the points it is
+// worth (0 for a state); `maxScore` is the most the game awards:
+//     extend gameState {
+//         int maxScore = 3;
+//         int taskOpenGate = 1;        // a task worth 1 point
+//         int stateGateLocked = 0;     // a state: true or false, no points
+//         array<var> taskReadSign = {0, "^[The sign is in an old dialect.]^"};   // prints instead of scoring
+//     }
+// Include it before the library's parser, so `MAX_SCORE` comes ahead of the library's default.
+// `achieved(task)` makes a task true and scores it, once; `gameState.setTrue/setFalse/isTrue/isFalse`
+// work on any member. Achieving a task notifies the score at once unless `waitToNotify` is given.
+//
+// Ported from my orGameState (orGameState.h).
+//===================================================================================================
+#once
+#include <array>
+
+// Tells myGameBaseline.bgl that MAX_SCORE is declared here.
+#declare gameStateTracker
+
+/// The game's tasks and states, and the bookkeeping for them.
+object gameState {
+    /// The most points the game awards; the library's SCORE and FULL SCORE report it.
+    int maxScore = 0;
+
+    /// Whether the member is true now.
+    bool isTrue(property task)      { return _value(task) >= 2000; }
+    /// Whether the member is false now.
+    bool isFalse(property task)     { return _value(task) < 2000; }
+    /// Whether the member has ever been true.
+    bool hasBeenTrue(property task) { return _value(task) > 1000; }
+    /// The points the member is worth.
+    int getTaskPoints(property task) { return _value(task) % 1000; }
+
+    /// Make the member false.
+    void setFalse(property task) {
+        if(isFalse(task)) return;
+        _setValue(task, getTaskPoints(task) + 1000);
+    }
+
+    /// Make the member true. The first time, it scores its points, or prints its note if it has one.
+    bool setTrue(property task, bool waitToNotify = false) { return _gameStateSetTrue(task, waitToNotify); }
+
+    // A member's word: its points, plus 1000 once it has been true and 2000 while it is true.
+    int  _value(property task)           { return _bglArray.get(self, task, 0); }
+    void _setValue(property task, int v) { _bglArray.set(self, task, 0, v); }
+}
+
+// Emitted at the end of the program, after the library's globals it uses.
+superposed bool _gameStateSetTrue(property task, bool waitToNotify) {
+    if(gameState.isTrue(task)) rfalse;
+    bool before = gameState.hasBeenTrue(task);
+    gameState._setValue(task, gameState.getTaskPoints(task) + 2000);
+    if(before) rfalse;
+    if(_bglArray.size(gameState, task) >= 2) {
+        print((string)_bglArray.get(gameState, task, 1));
+        rtrue;
+    }
+    score = score + gameState.getTaskPoints(task);
+    if(last_score != score && !waitToNotify) {
+        NotifyTheScore();
+        last_score = score;
+    }
+    rtrue;
+}
+
+/// The game's maximum score, which the library reads; taken from `gameState.maxScore`.
+int MAX_SCORE = gameState.maxScore;
+
+/// Make a task true and score it, once. The score is notified at once unless `waitToNotify` is given.
+replace void achieved(property task, bool waitToNotify = false) { gameState.setTrue(task, waitToNotify); }
+/// Whether a task has been achieved.
+bool isAchieved(property task) { return gameState.isTrue(task); }

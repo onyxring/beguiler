@@ -90,30 +90,27 @@ That's it.  If an extension depends on another, it includes that one itself, so 
 
 ### Where the include goes
 
-The general extensions can be included anywhere before you use them.
-
-The Standard Library extensions go **after the library's `verblib`**, and before your game's own objects.  A typical game looks like this:
+Anywhere.  I put them all at the top of the game, where I can see at a glance what a game uses:
 
 ```bgl
 #beguilerSettings { target = z5; includePaths = "path/to/inform6/stdlib"; }
 #include <bindings/i6StandardLibrary>
 
-#includeI6 "parser"
-#includeI6 "verblib"
-
 #include <extensions/stdlib/firstImpressions>
 #include <extensions/stdlib/backdrop>
-#include <extensions/stdlib/adjective>      // last; see below
+#include <extensions/stdlib/adjective>
+
+#includeI6 "parser"
+#includeI6 "verblib"
 
 // ...the game...
 
 #includeI6 "grammar"
 ```
 
-There are only two exceptions, and both are called out again where they apply:
+Inform 6 is fussier than that: an extension's code has to reach it after the piece of the library it builds on.  The extensions see to this themselves.  Each one names the library file it follows, and its code is written out there no matter where your `#include` sits.
 
-- **adjective** goes after the other extensions, so theirs get the first say when the parser is choosing between objects.
-- **dialogue** comes in two files.  The second, `dialogueGrammar`, goes after the library's `grammar`.
+> **Note.** An extension of your own can do the same with one line at its top, `#emitAfterI6Include "verblib"`.  The language specification covers it in §14.1.8.
 
 ## General extensions
 
@@ -179,10 +176,9 @@ object clearing {
 
 verb Hint {
     meta = true;
-    grammar = { {.hint} };
+    grammar = {.hint};
     void handler() {
-        print((string)bgl.util.loopArray.getNext(clearing, (property)hints, loopEnd.repeatLast));
-        print("^");
+        print((string)bgl.util.loopArray.getNext(clearing, (property)hints, loopEnd.repeatLast), "^");
     }
 }
 ```
@@ -383,7 +379,7 @@ These change how the player's input is turned into a command.
 ### adjective
 
 ```bgl
-#include <extensions/stdlib/adjective>      // after the other extensions
+#include <extensions/stdlib/adjective>
 ```
 
 **Normal behavior.**  The Standard Library doesn't distinguish nouns from adjectives.  Give a drinking glass and a glass marble the words they need, and the parser can't tell which one "glass" means:
@@ -670,10 +666,7 @@ Set the library's `no_implicit_actions` to true to turn all of this off.
 ### dialogue
 
 ```bgl
-#include <extensions/stdlib/dialogue>               // after verblib
-// ...
-#includeI6 "grammar"
-#include <extensions/stdlib/dialogueGrammar>        // right after the library's grammar
+#include <extensions/stdlib/dialogue>
 ```
 
 Conversation, through ASK, TELL and SAY, about topics the characters know.
@@ -781,7 +774,7 @@ menu creditsItem { "Credits", helpMenu; void rawDescription() { bgl.output.cente
 
 verb Help {
     meta = true;
-    grammar = { {.help} };
+    grammar = {.help};
     void handler() { helpMenu.show(); }
 }
 ```
@@ -948,7 +941,7 @@ Each hook's own file says what it is given and what its answer means.
 | adjective | `<extensions/stdlib/adjective>` | Words which describe an object without naming it. |
 | backdrop | `<extensions/stdlib/backdrop>` | Scenery listed in rows on a room. |
 | betterChoice | `<extensions/stdlib/betterChoice>` | Smarter choices between objects. |
-| dialogue | `<extensions/stdlib/dialogue>` and `<extensions/stdlib/dialogueGrammar>` | ASK, TELL and SAY about topics. |
+| dialogue | `<extensions/stdlib/dialogue>` | ASK, TELL and SAY about topics. |
 | distinctRead | `<extensions/stdlib/distinctRead>` | READ as its own action. |
 | firstImpressions | `<extensions/stdlib/firstImpressions>` | Text shown with a description the first time only. |
 | hooks | `<extensions/stdlib/hooks>` | Entry points into the Standard Library's routines. |

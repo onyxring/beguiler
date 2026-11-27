@@ -8,6 +8,7 @@
 | [`operators.bgl`](operators.bgl) | nothing | Yes: transpile-only |
 | [`floats.bgl`](floats.bgl) | nothing | Yes: transpile-only, Glulx target |
 | [`cloakOfDarknessPuny.bgl`](cloakOfDarknessPuny.bgl) | [PunyInform](https://github.com/johanberntsson/PunyInform) | No: you must have PunyInform installed |
+| [`mack/_mack.bgl`](mack/_mack.bgl) | Inform 6 and its Standard Library | No: you must have both installed |
 
 Each library-free example transpiles with beguiler alone:
 
@@ -31,3 +32,16 @@ Four tiny, library-free programs, each showing one modern feature. They set `inf
 ## cloakOfDarknessPuny.bgl
 
 A port of Roger Firth's *Cloak of Darkness*, the canonical IF benchmark, written against **PunyInform**. This is the version used in the documentation. It demonstrates a complete, playable game, but it is **not** self-contained: you need PunyInform to build a story file from it.
+
+## mack
+
+*Monkeys and Car Keys*, a full game: an entry in the 2025 IFComp, ported to Beguile from its Inform 6 original. It is here as a reference to compile and read, not as a tutorial. It is written against the **Inform 6 Standard Library** and uses a good number of the [extensions](../docs/extensions.md).
+
+Build it from its own folder:
+
+```
+cd examples/mack
+beguiler _mack.bgl
+```
+
+The `includePaths` line at the top of `_mack.bgl` is a placeholder: change it to where the Standard Library sits on your own machine. `myGameBaseline.bgl` and `gameStateTracker.bgl`, beside the game, are the author's own support files, and `assets/` holds the cover art.

@@ -7,7 +7,6 @@
 - [2.4 Literal Pseudo-Types](#24-literal-pseudo-types)
   - [2.4.1 `negativeIntLiteral`](#241-negativeintliteral)
   - [2.4.2 `interpolatedStringLiteral`](#242-interpolatedstringliteral)
-  - [2.4.3 `interpolatedString`](#243-interpolatedstring)
 - [2.5 `null`](#25-null)
 - [2.6 The `var` Type](#26-the-var-type)
 - [2.7 Enumerations](#27-enumerations)
@@ -20,68 +19,46 @@
   - [2.8.1 `typeof` and `eType`](#281-typeof-and-etype)
   - [2.8.2 Named Unions](#282-named-unions)
 - [2.9 Function Types](#29-function-types)
+  - [2.9.1 `interpolatedString`](#291-interpolatedstring)
 - [2.10 Type Rules](#210-type-rules)
   - [2.10.1 Type Compatibility](#2101-type-compatibility)
   - [2.10.2 Conversion](#2102-conversion)
-  - [2.10.3 Primitive, Reference and Value Types](#2103-primitive-reference-and-value-types)
+  - [2.10.3 Primitive, Reference, and Value Types](#2103-primitive-reference-and-value-types)
 - [2.11 `selfType`](#211-selftype)
 <!-- /toc -->
 
-
 ## 2.1 Overview
 
-Beguile is statically typed: every variable, parameter and return value has a type known at compile
-time. Types fall into four categories: primitive types (§2.2), literal pseudo-types (§2.4),
-user-defined types (enumerations §2.7, unions §2.8, classes §8) and the `var` escape type (§2.6).
-Arrays are covered in §12. §2.10 then gives the rules that apply across types: when one type may be
-used where another is expected, how values convert, and what assigning a class-typed value does.
+Beguile is statically typed:  every variable, parameter, and return value has a type known when you compile.  Types fall into four categories:  primitive types (§2.2), literal pseudo-types (§2.4), user-defined types (enumerations §2.7, unions §2.8, classes §8), and the `var` escape type (§2.6).  The `array` type gets a chapter of its own (§12).
+
+§2.10 covers the rules which apply across all types.
 
 ## 2.2 Primitive Types
 
-**Description**
-
-The primitive types are declared by the runtime core (§21) and need no `#include`.
+The primitive types are built in; there is nothing to `#include`.
 
 | Type | Description |
 |---|---|
-| `int` | Signed integer, one native word. |
-| `uint` | Unsigned integer, the same width as `int`. A non-negative integer literal converts to it implicitly; any other conversion between `int` and `uint` is an explicit cast (§2.4.1). Its operators are specified in §21.6.1. |
-| `float` | IEEE 754 single-precision floating point. `[Glulx]` See §2.3. |
-| `bool` | Boolean value, `true` or `false`. The comparison and logical operators and `operator ?()` yield `eBool`, the enumeration `{ true, false }` (§2.7.4); `eBool` and `bool` interoperate, so a comparison may be stored in a `bool` and a `bool` tested where an `eBool` is expected. Tables elsewhere in this specification write `bool` for either. |
-| `char` | A single character: its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). A `char` converts implicitly to `int`, and so does a character literal (`int n = 'a';`, `3 + 'a'`, `f('a')` for an `f(int)`). An `int` converts implicitly to `char` too, as the character with that code: `char c = n;`, and `s += n` on a `stringObj` appends that one character, not the digits (write `s += $"{n}"` for the digits). The runtime core (§21.7) adds case-conversion and inspection methods. |
-| `string` | A reference to static text. The core provides printing, equality and literal assignment; the `<string>` extension (§22.3) compares content and adds `stringObj` for text that is built or changed. |
-| `object` | The base class of every world object in the IF model (§11.1). |
-| `verb` | The class from which verbs are declared (§13.2). |
-| `void` | Not a value type: the return type of a function that returns nothing. |
+| `int` | Signed integer, one native word:  16 bits on the Z-machine (-32768 to 32767), 32 bits on Glulx. |
+| `uint` | Unsigned integer (§21.6.1). |
+| `float` | IEEE 754 single-precision floating point.  `[Glulx]` See §2.3. |
+| `bool` | A true/false type, backed by the enumeration `eBool` (§2.7.4). |
+| `char` | A single character:  its ZSCII code on the Z-machine, its Unicode code point on Glulx (Appendix D). |
+| `string` | A reference to static text. |
 
-`object`, `string`, `array` and `verb` share their names with I6 constructs and compile to them, but
-are used with Beguile syntax and typing.
+`object` (§11.1) and `verb` (§13.2) are classes, and `void` is a return type (§6.2).
 
-**Notes**
-
-Beyond the primitive types, the library provides `array<T>` and `rawArray<T>` (§12.2, §12.8) and,
-with `#include <string>`, `stringObj` for text that is built or changed (§22.3).
+`==` and `!=` between two `string`s (a literal included) compare the references, not the text:  two literals with the same text are two strings, and compare unequal.  The compiler warns about such a comparison, unless the program has replaced `string`'s operator (§8.7.2).  Comparing their values as integers (`(int)a == (int)b`) asks for the references on purpose, without the warning.  `<string>` adds `equals()` to compare text (§22.3).
 
 ## 2.3 The `float` Type
 
-**Description**
+A `float` occupies one native word, the same width as `int`, holding an IEEE 754 single-precision value.  It supports the arithmetic operators `+` `-` `*` `/` `%` and their compound-assignment forms, the comparisons `==` `!=` `<` `<=` `>` `>=`, and `print()`.
 
-A `float` occupies one native word, the same width as `int`, holding an IEEE 754 single-precision
-value. It supports the arithmetic operators `+` `-` `*` `/` `%` and their compound-assignment forms,
-the comparisons `==` `!=` `<` `<=` `>` `>=`, and `print()`.
+A `float` is initialized from a float literal (§1.6.2) or from an `int`, which converts implicitly, preserving its value (`5` becomes `5.0`); an `int` is never reinterpreted bit-for-bit as a `float`.  Converting a `float` to an `int` always requires a cast, `(int)f`, which truncates toward zero.
 
-A `float` is initialized from a float literal (§1.6.2) or from an `int`. Assigning an `int` to a
-`float` converts it implicitly, preserving its value (`5` becomes `5.0`). Converting a `float` to an
-`int` always requires a cast, `(int)f`, which truncates toward zero. An `int` is never reinterpreted
-bit-for-bit as a `float`.
+**Mixed arithmetic.**  If either operand of an arithmetic operator is a `float`, the other is converted to `float` and the result will be a `float`; two `int` operands give an `int`.  The comparison operators convert the same way, although they yield `bool`.
 
-**Mixed arithmetic.** If at least one operand of an arithmetic operator is a `float`, the other is
-converted to `float` and the result is a `float`. If both operands are `int`, the result is an
-`int`. So `314 / 100` is `3`, while `(float)314 / 100` is `3.14`: one `float` operand, on either side,
-is enough. The comparison operators convert the same way but yield `bool`.
-
-`print()` writes a `float` as a decimal rounded to four places: `2.0 / 3` prints `0.6667`, and `0.99999`
-prints `1.0000`.
+`print()` writes a `float` as a decimal rounded to four places:  `2.0 / 3` prints `0.6667`, and `0.99999` prints `1.0000`.
 
 **Example**
 
@@ -90,31 +67,20 @@ prints `1.0000`.
 
 void Main() {
     float a = 2.5;
-    float b = 5;                    // → 5.0
-    float c = (float)314 / 100;     // → 3.14: one float operand makes the division float
-    int   d = 314 / 100;            // → 3: two ints divide as integers
-    print(b / a);                   // → 2.0000
+    float b = 5;                    // -> 5.0
+    float c = (float)314 / 100;     // -> 3.14: one float operand makes the division float
+    int   d = 314 / 100;            // -> 3: two ints divide as integers
+    print(b / a);                   // -> 2.0000
     if(b > a) print("^bigger^");
-    int n = (int)c;                 // → 3
+    int n = (int)c;                 // -> 3
 }
 ```
 
-**Notes**
-
-> **Where the cast goes.** A cast applies to the operand it is written on. `(float)(314 / 100)`
-> divides the integers first and converts the result, giving `3.0`.
-
-> **[Glulx]** `float` is available only when the target is Glulx; the Z-machine has no floating-point
-> support. It is part of the core and needs no `#include`.
+> ***[Glulx]:** `float` is available only when the target is Glulx; the Z-machine simply has no floating-point support.*
 
 ## 2.4 Literal Pseudo-Types
 
-**Description**
-
-A literal has a **pseudo-type**, which the compiler infers from how the literal is written. No
-variable is declared with a pseudo-type; the names are written only to extend one or to declare an
-overload that accepts one. Pseudo-types take part in operator and overload resolution independently
-of the runtime types they correspond to.
+A literal has a **pseudo-type**, which the compiler infers from the way it is written.  The names are written mostly to extend one, or to declare an overload which accepts one.  `auto` infers a pseudo-type's corresponding type when the pseudo-type declares `operator auto()` (§9.5.1); `stringLiteral` doesn't, so `auto s = "hello";` declares a `stringLiteral` (§3.6).  Pseudo-types take part in operator and overload resolution independently of the runtime types they correspond to.
 
 | Pseudo-type | Written | Corresponding type |
 |---|---|---|
@@ -125,110 +91,47 @@ of the runtime types they correspond to.
 | `dictionaryWordLiteral` | `.cloak`, `..cloaks` | `dictionaryWord` (§21.5.3) |
 | `interpolatedStringLiteral` | `$"hello {x}"` | none; see §2.4.2 |
 
-A pseudo-type converts to its corresponding type only through operators that the runtime core
-declares: a conversion operator on the pseudo-type (`intLiteral` declares one to `int`), or an
-`operator =` on the target type that accepts it (`float` declares `operator = (intLiteral)`). These
-rules are not built into the compiler (§2.10.1). Pseudo-types are first-class types, declared as
-`primitive class` (§8.2.5) in the core and extensible with `extend` (§8.7.1), so a method defined
-against one may be called directly on a literal.
+A pseudo-type converts to its corresponding type only through a conversion operator on the pseudo-type (`intLiteral` declares one to `int`) or an `operator =` on the target type which accepts it (`float` declares `operator = (intLiteral)`); §2.10.1 gives the order.
+
+Pseudo-types are first-class types, declared as `primitive class` (§8.2.5) and extensible with `extend` (§8.7.1).  As such, a method defined against one can be called directly on a literal.
 
 **Example**
 
 ```bgl
-"hello".print();       // a method on stringLiteral
-
 extend class intLiteral {
     emitter void twice(){ print $val * 2; }
 }
-42.twice();            // → 84
+
+// … in a routine:
+"hello".print();       // a method on stringLiteral
+42.twice();            // -> 84
 ```
 
 ### 2.4.1 `negativeIntLiteral`
 
-**Description**
-
-A negated integer literal such as `-1` has the pseudo-type `negativeIntLiteral` rather than
-`intLiteral`. It converts to `int` implicitly but is not compatible with `uint` (§2.2); assigning
-one to a `uint` requires an explicit cast.
+A negated integer literal such as `-1` has the pseudo-type `negativeIntLiteral` rather than `intLiteral`.  It converts to `int` implicitly; however, it is not compatible with `uint` (§2.2), and assigning one to a `uint` requires an explicit cast.
 
 **Example**
 
 ```bgl
-int  x = -5;         // → -5
+int  x = -5;         // -> -5
 uint u = -1;         // compile-time error
 uint v = (uint)-1;   // the largest unsigned value
 ```
 
 ### 2.4.2 `interpolatedStringLiteral`
 
-**Description**
-
-An interpolated string (§1.6.5) contains several segments that cannot be reduced to a single value, so
-it has no corresponding runtime type. It may be passed only to an emitter that declares an
-`interpolatedStringLiteral` parameter, where it expands into a block of statements; passing it to a
-non-emitter function is a compile-time error. The core `print()` and `bgl.output.log()` accept it (§21.4); with the
-`<string>` extension a `stringObj` may be assigned one, `stringObj s = $"…";` (§22.3). Where a routine is
-expected, it becomes one: see `interpolatedString` (§2.4.3).
-
-### 2.4.3 `interpolatedString`
-
-**Description**
-
-An `interpolatedString` is a routine that prints an interpolated string: assigning `$"…"` to one makes the
-routine. Its spans are evaluated each time it prints, not when it is assigned. The routine returns true and
-prints no line break; nothing in Beguile reads the return, which is for Inform 6 callers such as a
-library's `short_name`.
-
-An interpolated string used as a value becomes a routine that prints it, unless what receives it says otherwise:
-
-| Receives it | It becomes | Its spans are evaluated |
-|---|---|---|
-| `stringObj` (`=`, `+=`) | the text, captured into the string (§22.3) | once, at the assignment |
-| `interpolatedString`, `func<void>`, a union holding one and no `stringObj` (`iString`, `iStringOrRoutine`), `var`, `auto`, or an element of an initializer list | a routine that prints it | each time it prints |
-| an emitter's `interpolatedStringLiteral` parameter (`print($"…")`) | statements, in place | there |
-| `string`, or another type that holds neither | a compile-time error | — |
-
-An `interpolatedString` converts to `func<void>`, so it goes wherever a `func<void>` does. `print()` and
-`printLine()` print one.
-
-As a member of an object or a class, the routine is the object's own: its spans read the object's members
-(`{watts}` is `self.watts`), and a class's default serves every instance. It reads them when printed through
-the member, `print(lamp.label)`; a copy of the value held elsewhere is a plain routine, which has no
-object. In a routine's body it is a lambda (§4.14): it captures the locals it reads, with their values when
-it is made, so one kept past its routine can't read them (a compile-time error).
-
-**Example**
-
-```bgl
-#include <string>
-int watts = 60;
-stringObj snap          = $"{watts}W";   // the text now: "60W"
-interpolatedString live = $"{watts}W";   // a routine that prints it
-watts = 100;
-print(snap);   // 60W
-print(live);   // 100W
-
-object lamp {
-    int watts = 60;
-    short_name = $"{watts}W lamp";        // a library property that takes a string or a routine
-}
-```
+An interpolated string (§1.6.5) has no corresponding runtime type.  Its literal type, `interpolatedStringLiteral`, can only be passed to an emitter which declares a parameter of that type, where it expands in place into a block of statements; passing it to a non-emitter function's `interpolatedStringLiteral` parameter is a compile-time error.  Passed to a parameter which takes a routine (`func<void>`, `var`, or `interpolatedString`), it becomes a routine instead (§2.9.1).  `print()` and `bgl.output.log()` accept it (§21.4).  The call must be a statement of its own; a call inside an expression is a compile-time error.  An expression-bodied lambda whose body is such a call, `=> print($"…")`, *is* that statement (§4.14).
 
 ## 2.5 `null`
 
-**Description**
+`null` is the absent or unset value, numerically `0`.
 
-`null` is the absent or unset value, numerically `0`. For a reference it is the absent state (a failed
-`new` on a pooled class, §8.2.6; an unset member; a missing parent); for an integer it is `0`. Its
-resolved type (§4.1) is the literal pseudo-type `nullLiteral`, which is compatible with every type.
-In an operator it takes the base type `_bglObject` (§21.5.8), as `intLiteral` takes `int`, so
-`x == null` uses an operator taking `_bglObject`: the root's identity comparison on any object, and
-the ones `string` and `obj.parent` declare.
+Its type (§4.1) is the literal pseudo-type `nullLiteral`, which is compatible with every type.
 
-A variable of a struct owns its instance (§8.2.7), so it can't hold `null`: assigning `null` to
-one, or returning `null` from a routine that returns one, is a compile-time error. A `ref` of the class
-can be bound to `null` (`r := null;`). Inform 6's `nothing` is not a Beguile word; Beguile writes
-`null`.
+A struct can't hold `null` (§8.2.7).
+
+> ***Note:** Inform 6's `nothing` is not a Beguile word; Beguile writes `null`.*
 
 **Example**
 
@@ -241,22 +144,13 @@ marbleClass m = new marbleClass();
 if(m == null) print("pool exhausted");
 ```
 
-**Notes**
-
-> **Emitted form.** `null` is emitted as the Inform 6 constant `nothing`, which is what appears in
-> generated code and is written in emitter bodies (§7). `nothing` is not a Beguile word: in Beguile
-> source it is an undeclared identifier.
+> ***Note:** `null` is emitted as the Inform 6 constant `nothing`, which is what you will see in generated code and what is written in emitter bodies (§7).*
 
 ## 2.6 The `var` Type
 
-**Description**
+`var` is a universal escape type which bypasses static type checking in both directions:  any value can be assigned to a `var`, and a `var` can be assigned to any type.
 
-`var` is a universal escape type that bypasses static type checking in both directions: any value may
-be assigned to a `var`, and a `var` may be assigned to any type. The author is responsible for the
-underlying value being meaningful; the compiler catches no mismatch involving `var`.
-
-In overload resolution an overload with `var` parameters is a fallback, selected only when no typed
-overload matches (§6.4).
+In overload resolution an overload with `var` parameters is a fallback, selected only when no typed overload matches (§6.4).
 
 **Example**
 
@@ -273,24 +167,22 @@ object o = x;     // no type check
 **Syntax**
 
 ```syntax
-enum ⟨name⟩ { ⟨member⟩ [ = ⟨integer⟩ ] [ , ⟨member⟩ [ = ⟨integer⟩ ] … ] }
+enum NAME { MEMBER [ = INTEGER ] [ , MEMBER [ = INTEGER ] … ] }
 ```
 
-**Description**
+An `enum` declares a named set of integer constants.  Values start at 1 and automatically increment by 1.  A member can be given an explicit value, including a negative one, and numbering resumes from the last assigned value.  Two members can hold the same value, although they are then indistinguishable at run time.
 
-An `enum` declares a named set of integer constants. Values start at 1 and increment by 1. A member
-may be given an explicit value, including a negative one; numbering resumes from the last assigned
-value. Two members may hold the same value, but they are then indistinguishable at run time.
+Enumerations can carry emitter methods, declared in the body or added with `extend enum` (`extend bnum` for a bnum); §7.8 covers the form.
 
 **Example**
 
 ```bgl
-enum direction { north, south, east, west }   // → 1, 2, 3, 4
+enum direction { north, south, east, west }   // -> 1, 2, 3, 4
 
 enum myPhase {
     setup  = 0,
     play   = 10,
-    ending           // → 11
+    ending           // -> 11
 }
 ```
 
@@ -299,28 +191,19 @@ enum myPhase {
 **Syntax**
 
 ```syntax
-bnum ⟨name⟩ [ : ⟨base bnum⟩ ] { ⟨member⟩ [ = ⟨integer⟩ ] [ , ⟨member⟩ [ = ⟨integer⟩ ] … ] }
+bnum NAME [ : BASE-BNUM ] { MEMBER [ = INTEGER ] [ , MEMBER [ = INTEGER ] … ] }
 ```
 
-**Description**
+A `bnum` is a bit-flag enumeration.  Values start at 1 and double with each member, so the members are non-overlapping powers of two, suitable for combining as flags.  An explicit value must be a non-negative power of two, and numbering resumes by doubling from it.  `0` is always a legal value.
 
-A `bnum` is a bit-flag enumeration. Values start at 1 and double with each member, so members are
-non-overlapping powers of two suitable for combination as flags. An explicit value must be a
-non-negative power of two, and numbering resumes by doubling from it. `0` is always a legal value.
+**Shared base.**  A `bnum` can name a base `bnum`, declaring that it occupies a sub-field of the same packed integer.  The base must itself be a `bnum`.  Within a shared base the power-of-two rule is relaxed, since a sub-field's members need not be single bits.
 
-**Shared base.** A `bnum` may name a base `bnum`, declaring that it occupies a sub-field of the same
-packed integer. The base must itself be a `bnum`; naming a plain `enum` as the base is a compile-time
-error. Within a shared base the power-of-two rule is relaxed, since a sub-field's members need not be
-single bits.
-
-**Combining values.** Bitwise `|`, `&` and `^` between two `bnum` values are permitted only when the
-operands share a common `bnum` ancestor (one may be the other's ancestor, or both the same type). The
-result has the shared ancestor's type. Combining values with no common base is a compile-time error.
+**Combining values.**  Bitwise `|`, `&`, and `^` between two `bnum` values are allowed only when the operands share a common `bnum` ancestor (one can be the other's ancestor, or both the same type).  The result has the shared ancestor's type.  Combining values with no common base is a compile-time error.
 
 **Example**
 
 ```bgl
-bnum itemFlag { portable, fragile, lit, locked }   // → 1, 2, 4, 8
+bnum itemFlag { portable, fragile, lit, locked }   // -> 1, 2, 4, 8
 
 bnum winMethodFlags { }                          // empty base: defines the bit-field space
 bnum windowPlacement : winMethodFlags { left = 0, right = 1, above = 2, below = 3 }
@@ -331,18 +214,11 @@ int winMethod = left | fixed | noBorder;    // all share winMethodFlags
 int bad       = left | itemFlag.portable;   // compile-time error
 ```
 
-**Notes**
-
-> **[Z-machine/Glulx difference]** A `bnum` may have at most 16 distinct values on the Z-machine and
-> 32 on Glulx.
+> ***[Z-machine/Glulx difference]:** A `bnum` can have at most 16 distinct values on the Z-machine and 32 on Glulx.*
 
 ### 2.7.3 Widening to `int`
 
-**Description**
-
-A `bnum` value converts implicitly to `int`. The reverse, `int` to a `bnum`, requires an explicit
-cast. A plain `enum` does not widen in either direction; converting between an `enum` and `int`
-requires an explicit cast.
+A `bnum` value converts implicitly to `int`; the reverse requires an explicit cast.  A plain `enum` does not automatically widen:  converting between an `enum` and `int`, in either direction, always requires an explicit cast.
 
 **Example**
 
@@ -350,9 +226,9 @@ requires an explicit cast.
 bnum itemFlag { portable, fragile }
 enum direction { north, south }
 
-int a = fragile;               // → 2: a bnum widens to int
+int a = fragile;               // -> 2: a bnum widens to int
 itemFlag f = (itemFlag)2;      // int to bnum: explicit cast
-int b = (int)south;            // → 2: enum to int: explicit cast
+int b = (int)south;            // -> 2: enum to int: explicit cast
 direction d = north;
 int c = d;                     // compile-time error: an enum does not widen
 ```
@@ -362,19 +238,13 @@ int c = d;                     // compile-time error: an enum does not widen
 **Syntax**
 
 ```syntax
-extern enum ⟨name⟩ { ⟨member⟩ [ , ⟨member⟩ … ] }
-extern bnum ⟨name⟩ { ⟨member⟩ [ , ⟨member⟩ … ] }
+extern enum NAME { MEMBER [ , MEMBER … ] }
+extern bnum NAME { MEMBER [ , MEMBER … ] }
 ```
 
-**Description**
+An ordinary `enum` or `bnum` exists only in Beguile:  each use of a member is emitted as its number, and the enumeration itself never appears in the generated Inform 6.
 
-An ordinary `enum` or `bnum` exists only in Beguile: each use of a member is emitted as its number, and
-the enumeration itself does not appear in the generated Inform 6.
-
-An `extern` enumeration names values that are defined in I6, not by Beguile. Its members have no
-values in Beguile, so each use of a member is emitted as its name, and Inform 6 supplies the value. The
-declaration registers the names for type checking and produces no output. `eBool`, Beguile's
-boolean-result type (§2.2), is declared this way by the runtime core.
+An `extern` enumeration instead names values defined in I6.  Its members have no values in Beguile; each use of one is emitted as its name, and Inform 6 supplies the value.  `eBool`, Beguile's boolean-result type (§2.2), is declared this way.
 
 **Example**
 
@@ -386,54 +256,29 @@ extern enum eErrorFormat { E1, E2 }
 
 ### 2.7.5 Naming Members
 
-**Description**
+An enumeration member can be referenced by its bare name (`north`, `true`) or qualified by its type (`direction.north`, `eBool.true`).
 
-An enumeration member may be referenced by bare name (`north`, `true`) or qualified by its type
-(`direction.north`, `eBool.true`). Where a value of an enumeration type is expected (an initializer,
-an assignment, an argument, an array element of that type), a bare name that is both a member of that
-enumeration and some other global, such as the attribute `door`, is the member. Elsewhere the
-qualified form is required when two enumeration types, or an enumeration and another global, share
-the name.
-
-Enumerations may carry emitter methods, declared in the body or added with `extend enum` (`extend bnum`
-for a bnum); the form is given in §7.9.
+Where a value of an enumeration type is expected (an initializer, an assignment, an argument, an array element of that type), a bare name which is both a member of that enumeration and some other global, such as the attribute `door`, is the member.  Elsewhere the qualified form is required when two enumeration types, or an enumeration and another global, share the name.
 
 ## 2.8 Union Types
 
 **Syntax**
 
 ```syntax
-⟨type⟩ | ⟨type⟩ [ | ⟨type⟩ … ]
+TYPE | TYPE [ | TYPE … ]
 ```
 
 The `|` here is the union type operator, a literal token.
 
-**Description**
+A union type declares that a value is one of several types, distinguished at run time.  It is valid at every type position:  parameter, local, return type, class or object member, and array element type.
 
-A union type declares that a value is one of several types, distinguished at run time. It is valid at
-every type position: parameter, local, return type, class or object member, and array element type.
+A union type is also *inferred* in one place:  a ternary whose two branches have unrelated types resolves to their union (§4.9).
 
-A union complements overloading rather than replacing it: an overload dispatches on the caller's
-static type at compile time, whereas a union carries a value whose type is known only at run time (one
-read from a member or an array) and is discriminated with `typeof` (§2.8.1).
+**Canonical form.**  Members are order-independent and de-duplicated:  `string | func<void>` and `func<void> | string` name the same type, and a union of a type with itself is simply that type.
 
-A union type is also *inferred* in one place: a ternary whose two branches have unrelated types
-resolves to their union (§4.9).
+**Operations.**  A union value can be assigned, passed, returned, and compared with `==` and `!=`.  It can't be called, printed, member-accessed, or used in arithmetic while it is still a union; doing so is a compile-time error.  The value must first be **narrowed** with an ordinary cast, `(MEMBER)x`, which retypes the value without converting or checking it; discriminate it first with `typeof` (§2.8.1).
 
-**Canonical form.** Members are order-independent and de-duplicated: `string | func<void>` and
-`func<void> | string` name the same type, and a union of a type with itself is that type. Members may be listed in any order.
-
-**Operations.** A union value may be assigned, passed, returned and compared with `==` and `!=`. It
-may not be called, printed, member-accessed or used in arithmetic while it is still a union; doing so
-is a compile-time error. The value is first **narrowed** with an ordinary cast `(⟨member⟩)x`. Because
-every member shares one machine word, the cast retypes the value without converting it; it is an
-assertion, and the author is responsible for having discriminated correctly.
-
-**Compatibility.** A value fits a union when it fits one of the union's members: a `string` may be
-stored in a `string | func<void>`. One union fits another when each of its members fits the other: a
-`string | int` may be stored in a `string | int | func<void>`. A union does not fit one of its member
-types directly; narrow it first with a cast. When overloads compete, one that takes a union is chosen
-only if no more specific overload matches.
+**Compatibility.**  A value fits a union when it fits one of the union's members:  a `string` can be stored in a `string | func<void>`.  One union fits another when each of its members fits the other:  a `string | int` can be stored in a `string | int | func<void>`.  A union does not fit one of its member types directly; narrow it first with a cast.  §6.4 ranks an overload which takes a union.
 
 **Example**
 
@@ -458,30 +303,22 @@ void describe(string | func<void> x) {
 **Syntax**
 
 ```syntax
-typeof( ⟨expression⟩ )
+typeof( EXPRESSION )
 ```
 
-**Description**
+`typeof` returns the run-time machine category of any value, including a `var`, as an `eType`.  It needs no `#include` and works on both targets.
 
-`typeof` returns the run-time machine category of any value, including a `var`, as an `eType`. It is
-a function declared in the core, needs no `#include`, and works on both targets.
+Note that `typeof` reports machine categories, *not* source types:
 
-`typeof` reports machine categories, not source types:
+- `bool`, `char`, and enumeration values are represented as `int` and report `eType.int`.
+- A scalar which happens to equal a valid object number, or a string or routine address, is reported as that reference category.  A union mixing a scalar with a reference type (e.g., `int | string`) must be discriminated by a test of your own, then narrowed with a cast.
+- `null` reports `eType.unknown`, as does any value whose category can't be determined.
 
-- `bool`, `char` and enumeration values are represented as `int` and report `eType.int`. Two union
-  members that share a representation, such as `int | bool`, cannot be told apart by `typeof`. An
-  argument declared `int`, `bool` or `char` reports `eType.int` without a run-time test.
-- A scalar that happens to equal a valid object number, or a string or routine address, is reported as
-  that reference category. A union mixing a scalar with a reference type, such as `int | string`, must
-  be discriminated by the author's own test, then narrowed with a cast.
-- `null` reports `eType.unknown`, as does any value whose category cannot be determined.
-
-Objects and classes report `eType.object` and `eType.class`; a value's class is tested with
-`x.is(SomeClass)` (§21.5.6).
+Objects and classes report `eType.object` and `eType.class`.  To test a value's class, use `x.is(SomeClass)` (§21.5.6).
 
 **Example**
 
-The core declares `eType` as follows; it is shown for reference, and a program does not declare it.
+`eType` is declared as follows (shown for reference; a program does not declare it).
 
 <!-- doctest: skip -->
 ```bgl
@@ -500,25 +337,18 @@ switch(typeof(x)) { case eType.string: …  case eType.object: … }
 **Syntax**
 
 ```syntax
-union ⟨name⟩ = ⟨type⟩ | ⟨type⟩ [ | ⟨type⟩ … ] ;
-union ⟨name⟩ = ⟨type⟩ | ⟨type⟩ [ | ⟨type⟩ … ] { ⟨member⟩ … }
-extend ⟨name⟩ { ⟨member⟩ … }
+union NAME = TYPE | TYPE [ | TYPE … ] ;
+union NAME = TYPE | TYPE [ | TYPE … ] { MEMBER … }
+extend NAME { MEMBER … }
 ```
 
 The `|` here is the union type operator, a literal token.
 
-**Description**
+A named union gives a union a name and a place for members.  It must have at least two distinct member types and takes no qualifiers.  The form without a body can be given members later, with `extend`.
 
-A named union gives a union a name and a place for members. It must have at least two distinct member
-types and takes no qualifiers. The bodyless form may be given members later with `extend`.
+Compatibility is a bit of a hybrid.  For assignment and passing, a named union is transparent (a `textOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for member lookup it is nominal (only a value statically typed as the named union sees its members).
 
-Compatibility is hybrid: for assignment and passing, a named union is transparent (a
-`textOrRoutine` is a `string | func<void>`, and satisfies a parameter of that anonymous type); for
-member lookup it is nominal (only a value statically typed as the named union sees its members).
-
-Members are emitters (§7.2), inlined by static type, or `static` methods. Printing a named union is
-provided by a global `print(⟨name⟩)` overload rather than a member, because `print` dispatches on the
-argument's static type (§21.4).
+Members are emitters (§7.2), inlined by static type, or `static` methods.  A named union is printed through a global `print(NAME)` overload, not a member (§21.4).
 
 **Example**
 
@@ -531,46 +361,25 @@ void show(textOrRoutine v) {              // also accepts a string | func<void>
 }
 ```
 
-**Notes**
-
-> **In the library.** The library bindings ship `iString` and `iStringOrObject`, with a `print`
-> overload and members reporting which type a value holds, for the properties the library prints, such
-> as `description` (§21.5.10, §23.3.7).
+> ***Note:** The library bindings ship `iString` and `iStringOrObject`, with a `print` overload and members reporting which type a value holds, for the properties the library prints, such as `description` (§21.5.10, §23.3.7).*
 
 ## 2.9 Function Types
 
 **Syntax**
 
 ```syntax
-func< ⟨return type⟩ [ , ⟨parameter type⟩ … ] >
+func< RETURN-TYPE [ , PARAMETER-TYPE … ] >
 ```
 
 The `<` and `>` here are literal tokens enclosing the type arguments.
 
-**Description**
+`func<>` is the type of a value which refers to a function.  The first type argument is the return type; the remaining arguments are the parameter types, in order.  A function with no parameters has type `func<RETURN-TYPE>`; one returning nothing has `func<void, …>`.
 
-`func<>` is the type of a value that refers to a function. The first type argument is the return
-type; the remaining arguments are the parameter types in order. A function with no parameters has type
-`func<⟨return type⟩>`; one returning nothing has `func<void, …>`.
+`func<>` is valid wherever a type is, including nested forms such as `array<func<T>>`.  A `func<>` value is called like a function, wherever it is held, and so is any parenthesized expression:  `((func<void>)v)()` narrows a `var` or union value to a function and calls it.
 
-`func<>` is valid wherever a type is: a variable, parameter, return or member type, and the element
-type of a collection, including nested forms such as `array<func<T>>`. A `func<>` value is called
-like a function, by writing the arguments after it, whether the value is held in a variable, a member
-or a loop variable. Any parenthesized expression is called the same way: `((func<void>)v)()`
-narrows a `var` or union value to a function and calls it, as a statement or within an expression.
+The name of a function, written without a call, is a function value whose type is the function's signature:  `int twice(int n)` gives a `func<int, int>`.  It can be stored in, passed to, or returned as a `func<…>` of that signature; a different signature is a compile-time error.  A lambda (§4.14) is checked the same way:  its parameter types are as written, and its return type is inferred from its body.  A bare function name used as a value (`func<int,int> f = twice;`) must name exactly one routine, so an overloaded name is a compile-time error.  Simply wrap the overload you want in a function of its own and reference that.
 
-The name of a function, written without a call, is a function value whose type is the function's
-signature: `int twice(int n)` gives a `func<int, int>`. It may be stored in, passed to or returned as a
-`func<…>` of that signature; a different signature is a compile-time error. A lambda (§4.14) is
-checked the same way: its parameter types are as written, and its return type is inferred from its
-body. An overloaded name denotes several signatures and is not checked against the target.
-
-A global function or a `static` method is a function value; a non-static method of an object or class
-is not, because it needs its object. Naming one without a call is a compile-time error, and the
-compiler suggests a lambda that supplies the object: `(int n) => fx.succ(n)`.
-
-Function values are written as named functions (§6.1) or as lambda literals; lambda syntax and
-variable capture are in §4.14.
+A global function or a `static` method is a function value (`func<int, int> f = Calc.twice;`).  A non-static method of an object or class is not, since it needs its object.  Naming one without a call is a compile-time error, and the compiler will suggest a lambda which supplies the object:  `(int n) => fx.succ(n)`.
 
 **Example**
 
@@ -581,133 +390,149 @@ func<void>      callback;   // takes nothing, returns nothing
 
 int twice(int n) { return n * 2; }
 doubler = twice;            // a function name is a func value
-int x = doubler(4);         // → 8: called through a variable
+int x = doubler(4);         // -> 8: called through a variable
 obj.handler(3);             // called through a member
 
 array<func<eVerdict>> rulebook = { ruleA, ruleB };
 for(func<eVerdict> r in rulebook) { eVerdict v = r(); … }   // called through a loop variable
 ```
 
-## 2.10 Type Rules
+### 2.9.1 `interpolatedString`
 
-The sections above describe individual types. The rules here apply across them: when a value of one
-type may be used where another is expected (§2.10.1), how a value converts from one type to another
-(§2.10.2), and what assigning a class-typed value does (§2.10.3).
+Under the covers, an `interpolatedString` is code which evaluates and prints values at runtime:  a string literal prefixed with `$` defines one.  Conceptually, it's a string with values which are reevaluated each time it prints, *not* when it is defined, so printing the same `interpolatedString` multiple times may produce different results.  The parts print left to right as they are reached, so a call in a span which prints output of its own will print it at that point.
 
-### 2.10.1 Type Compatibility
+Used as a value anywhere but an emitter's `interpolatedStringLiteral` parameter (§2.4.2), an interpolated string becomes a routine which prints it each time it runs:  a `var`, an `interpolatedString`, a `func<void>`, or a type which holds one will take it that way.  Interpolated strings may be assigned to variables or properties; in such cases the actual assignment is usually a `func<void>` routine.  An `interpolatedString` is printed, not called:  `print(live)` runs it, and `live()` is a compile-time error.  Assigned or added (`+=`) to a `stringObj`, its output is captured instead, at the time it is assigned (§22.3).
 
-**Description**
+As a member of an object, an interpolated string has access to all of the object's members.  It reads them when printed, `print(lamp.label)`.
 
-Compatibility is checked at every assignment, declaration initializer and function-call argument. A
-value of type `A` is compatible with a target of type `B` when any of the following holds, tested in
-order:
-
-1. **`var`** — either side is `var` (§2.6).
-2. **`null`** — the value is `null` (§2.5).
-3. **Assignment operator** — `B` declares an `operator =` that accepts `A`. Candidates are tried in
-   this order, and the first found is used:
-   1. an emitter whose parameter type is exactly `A`;
-   2. an emitter whose parameter type is `var`;
-   3. an emitter whose parameter type is the same generic type as `A` with different type arguments
-      (`operator = (array<T>)` accepts an `array<int>`);
-   4. a non-emitter whose parameter type is exactly `A`;
-   5. a non-emitter whose parameter type is `var`;
-   6. an emitter whose parameter type is a base class of `A`;
-   7. only when `A` is not otherwise compatible with `B`: an emitter, then a non-emitter, whose
-      parameter type `A` is compatible with under these rules (this is how a literal reaches an
-      `operator = (int)`).
-4. **Exact match** — `A` and `B` are the same type.
-5. **Class hierarchy** — `A` inherits from `B`, directly or through a chain of base classes and
-   aliases. The reverse is not compatible.
-6. **Conversion operator** — `A` declares an implicit `operator()` returning `B` (§2.10.2); an emitter
-   conversion is preferred to a non-emitter one.
-7. **Generic types** — a function name is compatible with a `func<…>` type of the same signature
-   (§2.9); an `array<T>` is compatible with an `array<U>` when `T` is compatible with `U`.
-8. **`bnum` widening** — `A` is a `bnum` and `B` is `int` (§2.7.3).
-9. **Unions** — `B` is a union with a member compatible with `A`, or both are unions and every member
-   of `A` is compatible with some member of `B` (§2.8).
-
-If none holds, the assignment or call is a compile-time error.
+In a routine's body, an interpolated string is a lambda, and captures the locals it reads as a lambda does (§4.14).
 
 **Example**
 
-Each rule, with a value it accepts and one it rejects.
+```bgl
+#include <string>
+
+int watts = 60;
+
+object lamp {
+    int watts = 60;
+    short_name = $"{watts}W lamp";        // a library property that takes a string or a routine
+}
+
+// … in a routine:
+stringObj snap          = $"{watts}W";   // the text now: "60W"
+interpolatedString live = $"{watts}W";   // a routine that prints it
+watts = 100;
+
+print(snap);   // -> 60W
+print(live);   // -> 100W
+```
+
+## 2.10 Type Rules
+
+The rules here apply across all types:  when a value of one type can be used where another is expected (§2.10.1), how a value converts from one type to another (§2.10.2), and what assigning a class-typed value does (§2.10.3).
+
+### 2.10.1 Type Compatibility
+
+Compatibility is checked at every assignment, declaration initializer, and function-call argument.  A value of type `A` is compatible with a target of type `B` when any of the following rules holds, tested in order.  If none of them holds, the assignment or call is a compile-time error.
+
+**1. `var`:**  either side is `var` (§2.6).
 
 ```bgl
-// 1. var — either side
 var any = 5;
 int a = any;
+```
 
-// 2. null — compatible with every type
+**2. `null`:**  the value is `null` (§2.5).
+
+```bgl
+class Dog : object { }
 Dog d = null;
+```
 
-// 3. assignment operator — float declares operator = (intLiteral)
-float n = 42;
+**3. Assignment operator:**  `B` declares an `operator =` which accepts `A`.  Candidates are tried in this order, and the first one found is used:
+
+1. an emitter whose parameter type is exactly `A`;
+2. an emitter whose parameter type is `var`;
+3. an emitter whose parameter type is the same generic type as `A` with different type arguments (`operator = (array<T>)` accepts an `array<int>`);
+4. a non-emitter whose parameter type is exactly `A`;
+5. a non-emitter whose parameter type is `var`;
+6. an emitter whose parameter type is a base class of `A`;
+7. only when `A` is not otherwise compatible with `B`:  an emitter, then a non-emitter, whose parameter type `A` is compatible with under these rules (this is how a literal reaches an `operator = (int)`).
+
+```bgl
+float n = 42;                    // float declares operator = (intLiteral)
 uint u = -1;                     // compile-time error: uint accepts no negative literal (§2.4.1)
+```
 
-// 4. exact match
+**4. Exact match:**  `A` and `B` are the same type.
+
+```bgl
 bnum itemFlag { portable, fragile }
 enum direction { north, south }
 itemFlag f = fragile;
 itemFlag g = f;
 itemFlag h = north;              // compile-time error: a different enumeration
+```
 
-// 5. class hierarchy
+**5. Class hierarchy:**  `A` inherits from `B`, directly or through a chain of base classes and aliases.  The reverse is not compatible.
+
+```bgl
 class Animal : object { }
 class Dog : Animal { }
 Dog rex { }
 Animal pet = rex;                // a Dog is an Animal
-Dog d2 = pet;                    // compile-time error: an Animal need not be a Dog
+Dog d = pet;                     // compile-time error: an Animal need not be a Dog
+```
 
-// 6. conversion operator
+**6. Conversion operator:**  `A` declares an implicit `operator()` returning `B` (§2.10.2); an emitter conversion is preferred to a non-emitter one.
+
+```bgl
 class Celsius { int degrees = 0; int operator () { return degrees * 9 / 5 + 32; } }
 Celsius t { }
 int degrees = t;                 // Celsius converts to int
 string s = t;                    // compile-time error: no conversion to string
+```
 
-// 7. generic types
+**7. Generic types:**  a function name is compatible with a `func<…>` type of the same signature (§2.9); an `array<T>` is compatible with an `array<U>` when `T` is compatible with `U`.
+
+```bgl
 void tick() { }
 func<void> callback = tick;      // tick's signature is func<void>
 func<int, int> bad = tick;       // compile-time error: a different signature
 array<int> numbers = { 1, 2 };
 array<string> words = numbers;   // compile-time error: int does not fit string
+```
 
-// 8. bnum widening
+**8. `bnum` widening:**  `A` is a `bnum` and `B` is `int` (§2.7.3).
+
+```bgl
+bnum itemFlag { portable, fragile }
 int bits = portable | fragile;   // a bnum widens to int
 itemFlag back = bits;            // compile-time error: int to bnum needs a cast (§2.7.3)
+```
 
-// 9. unions
+**9. Unions:**  `B` is a union with a member compatible with `A`, or both are unions and every member of `A` is compatible with some member of `B` (§2.8).
+
+```bgl
+class Dog : object { }
+Dog rex { }
 string | func<void> v = "hello"; // a string is one of the members
-string | func<void> w = t;       // compile-time error: Celsius fits no member
+string | func<void> w = rex;     // compile-time error: Dog fits no member
 ```
 
 ### 2.10.2 Conversion
 
-**Description**
+A type can declare a **conversion operator**, `operator()`, returning another type (§9.4 covers the declaration syntax).  A conversion is **implicit** by default; one qualified `explicit` is applied only under a cast, as in `(string)t` below.
 
-A type may declare a **conversion operator**, `operator()`, returning another type; the declaration
-syntax is in §9.4. A conversion is **implicit** by default: the compiler applies it during
-assignment, argument matching and operator resolution. A conversion qualified `explicit` is applied
-only when the value is explicitly cast, as in `(string)t` below.
-
-A **pass-through conversion**, declared without a body, leaves the value unchanged and merely retypes it.
-A conversion written as a regular method rather than an emitter also fires on a bare read of a member
-of that type, which is the basis of property accessors (§9.9).
-
-Beyond conversion operators, a cast is required to narrow a union (§2.8), to convert `int` to a
-`bnum` or an `enum` to `int` (§2.7.3), and to convert a `float` to an `int` (§2.3). An `int` converts
-to a `float` implicitly. The full cast syntax is in §4.11.
-
-**Priority.** The order in which an assignment operator, a conversion operator and the other
-compatibility rules are tried is described in §2.10.1. Among overloads, an exact match wins over a
-conversion match, which wins over a `var` fallback (§6.4).
+The other casts (narrowing a union, `int` to `bnum`, `float` to `int`) are covered with their types; the full cast syntax is in §4.11.  §2.10.1 gives the order in which conversions are tried, and §6.4 the order among overloads.
 
 **Example**
 
 ```bgl
 class Celsius {
     int degrees = 0;
-    int operator () { return degrees * 9 / 5 + 32; }          // implicit: Celsius → int
+    int operator () { return degrees * 9 / 5 + 32; }          // implicit: Celsius -> int
     explicit string operator () { return "a temperature"; }   // explicit: only under a cast
 }
 
@@ -717,12 +542,9 @@ string s = t;           // compile-time error
 string u = (string)t;   // explicit cast
 ```
 
-### 2.10.3 Primitive, Reference and Value Types
+### 2.10.3 Primitive, Reference, and Value Types
 
-**Description**
-
-Every type can have methods (`3.print()` is valid); what differs is what a variable of the type holds.
-There are four kinds:
+Every type can have methods (§2.4); what differs is what a variable of the type holds:
 
 | Declaration | Kind | A variable holds | `=` | Passing and returning | `ref` |
 |---|---|---|---|---|---|
@@ -732,30 +554,12 @@ There are four kinds:
 | `array<int> a[4]` | object that copies | its own storage | copies into its own storage | shares the array | a reference, empty until bound |
 | `struct Vec2` | struct (value) | its own instance | copies into its own instance | copies | shares one instance |
 
-- **Primitive types** (§8.2.5) — `int`, `uint`, `bool`, `char`, `float`, `string` (the address of
-  fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass`, the literal pseudo-types, `glulxImage`, and
-  every enum. A variable holds the value; there is no instance,
-  so nothing is allocated and there is nothing for `ref` to refer to.
-- **Objects** — instances of a class. A global, member or local declared with
-  no value has an object of its own: at file scope the declaration is that object (`Room hall;` is
-  `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry. One
-  declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do
-  parameters and loop variables. Assignment and passing make a slot refer to the assigned instance,
-  through the root assignment that `_bglObject` declares (§21.5.8). A slot that may be empty is
-  declared `ref` (§3.7).
-- **Objects that copy** — a class that declares a copy operator copies on `=` into the slot's own
-  instance; parameters and returns still share (§8.2.9). Arrays behave the same way: an array with storage
-  owns it, `=` copies into it, parameters and returns share, and only a `ref array` re-points (§12.5).
-- **Structs** (§8.2.7) — a global, local, member or parameter owns an instance of its own, whose
-  members are zeroed (a local's at routine entry, and again by its declaration on each pass of a loop
-  it is declared in). Assignment, passing and returning copy, through
-  the struct's copy operator, which it gets automatically when it declares none. A struct is never
-  null and has no subclasses. A `ref` variable of a struct shares an instance instead (§3.7). A
-  routine that calls itself keeps each call's locals and parameters its own across the inner call.
+- **Primitive types** (§8.2.5):  `int`, `uint`, `bool`, `char`, `float`, `string` (the address of fixed text), `dictionaryWord`, `attribute`, `property`, `bglClass` (a class name's value), the literal pseudo-types, `glulxImage`, and every enum.
+- **Objects:**  instances of a class.  A global, member, or local declared with no value has an object of its own:  at file scope the declaration is that object (`Room hall;` is `Room hall { }`), a member's is created with its host, and a local's is reset at routine entry.  One declared with a value (`Room r = hall;`) refers to that instance and creates nothing; so do parameters and loop variables.  A slot which may be empty is declared `ref` (§3.7).
+- **Objects that copy:**  a class which declares a copy operator (§8.2.8), and an array with storage (§12.5).
+- **Structs** (§8.2.7):  a global, local, member, or parameter owns an instance of its own, whose members are zeroed (a local's at routine entry, and again by its declaration on each pass of a loop it is declared in).  A struct is never null and has no subclasses.
 
-Classes that manage their own storage through `init`/`deinit` emitters — `stringObj`, `array<T>` —
-follow their own emitters: a local gets storage from `init` and releases it through `deinit`, a
-parameter is given its own copy (§8.5), and a `ref` variable aliases storage owned elsewhere.
+Classes which manage their own storage through `init`/`deinit` emitters (e.g., `stringObj`, `array<T>`) follow their own emitters (§8.5).
 
 **Example**
 
@@ -768,11 +572,11 @@ Vec2 unit;
 void compare() {
     Vec2 v;              // its own instance: x = 0, y = 0 on entry
     unit.x = 1;
-    v = unit;            // copies the members: v.x → 1
+    v = unit;            // copies the members: v.x -> 1
     v.x = 5;             // unit.x is still 1
 
     Marker m = home;     // m and home are the same instance
-    m.x = 5;             // home.x → 5
+    m.x = 5;             // home.x -> 5
 }
 ```
 
@@ -784,24 +588,16 @@ void compare() {
 selfType
 ```
 
-**Description**
+`selfType` is written in a class's member declarations, including those of a class which other classes list as a parent (§8.2.1), to mean "the class this member is used on".  At each use it is the static class of the receiver:  the class of the variable the member is called or read through, or an object's class.  Inside the declaring class's own body it is that class.
 
-`selfType` is written in a class's member declarations, including those of a class other classes list
-as a parent (§8.2.1), to mean "the class this member is used on". At each use it is the static class of the receiver: the class of the variable
-the member is called or read through, or an object's class. Inside the declaring class's own body it is
-that class. It can be a parameter type, a return type, a member's type or an array's element type, and
-it only affects type checking: nothing changes in the generated code.
+It can be a parameter type, a return type, a member's type, or an array's element type.  It affects type checking only.
 
-- A **parameter** of type `selfType` accepts the receiver's class or a subclass of it:
-  `bglAllocated.copy(selfType src)` (§21.8) copies a subclass into a base class but not the reverse.
-- A **return type** keeps the subclass's type through a method a base class declares, so a chain can
-  go on to the subclass's own methods.
+- A **parameter** of type `selfType` accepts the receiver's class or a subclass of it:  `bglAllocated.copy(selfType src)` (§21.8) copies a subclass into a base class but not the reverse.
+- A **return type** keeps the subclass's type through a method a base class declares, so a chain can go on to the subclass's own methods.
 - An **operator's parameter** (`int operator <=> (selfType o)`) compares a class with its own kind.
-- A **member or element type** (`selfType next; array<selfType> kids[4];`) is the subclass's class on
-  a subclass instance.
+- A **member or element type** (`selfType next; array<selfType> kids[4];`) is the subclass's class on a subclass instance.
 
-The name pairs with `self`, the instance; `Self` would be the same word, since Beguile is
-case-insensitive. TypeScript's polymorphic `this` type is the nearest equivalent.
+If you know TypeScript, its polymorphic `this` type is the nearest equivalent.
 
 **Example**
 
@@ -819,6 +615,6 @@ Room2 r2 { area = 3; }
 void Main() {
     ok.wide(5).color(3);    // wide() returns Button here, so color() is found
     r1.next = r2;
-    print(r1.next.area);    // → 3: next is a Room2 on a Room2
+    print(r1.next.area);    // -> 3: next is a Room2 on a Room2
 }
 ```

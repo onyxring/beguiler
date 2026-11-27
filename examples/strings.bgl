@@ -38,8 +38,9 @@ void main() {
     print(s.length, "^");                  // 17
     print(s.contains("DARK") ? "found^" : "missing^");
 
-    // Comparison is by content across both types.
-    print(("cloak" == title) ? "literal == string^" : "mismatch^");
+    // A stringObj compares its text; two strings compare addresses, so ask for their text with equals().
+    print((s == "CLOAK OF DARKNESS") ? "stringObj == literal^" : "mismatch^");
+    print(title.equals("cloak") ? "string equals literal^" : "mismatch^");
 
     // In a container, stringObj slots allocate and release themselves: write text,
     // not allocations. Dropping an element, or leaving this scope, frees the buffer.

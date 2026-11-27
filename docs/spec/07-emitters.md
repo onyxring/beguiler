@@ -12,54 +12,33 @@
 - [7.5 Global Emitters](#75-global-emitters)
 - [7.6 Emitter Values](#76-emitter-values)
 - [7.7 Emitter Namespaces](#77-emitter-namespaces)
-- [7.8 `operator auto()`](#78-operator-auto)
-- [7.9 Emitter Members on Enums and Bnums](#79-emitter-members-on-enums-and-bnums)
-- [7.10 Emitters and Functions Compared](#710-emitters-and-functions-compared)
+- [7.8 Emitter Members on Enums and Bnums](#78-emitter-members-on-enums-and-bnums)
+- [7.9 Emitters and Functions Compared](#79-emitters-and-functions-compared)
 <!-- /toc -->
 
 ## 7.1 What an Emitter Is
 
-An **emitter** is a function-like declaration whose body is an Inform 6 template rather than Beguile
-statements. No routine exists for it: at every use site the body text is substituted in place, with
-its **substitution tokens** (`$self`, `$paramName`, …) replaced by the expressions at that site. The
-use site itself is ordinary, type-checked Beguile: an emitter has a return type and typed parameters,
-and its result participates in expressions like any other value.
+An **emitter** is a function-like declaration whose body is an Inform 6 template rather than Beguile statements.  No routine exists for it:  the body text is substituted in place at every use site, with its **substitution tokens** (`$self`, `$paramName`, …) replaced by the expressions at that site.  The use site itself is ordinary, type-checked Beguile:  an emitter has a return type and typed parameters, and its result takes part in expressions like any other value.
 
-Emitters are the mechanism by which library code gives a Beguile type precise control over the
-generated I6 without giving up type safety. They may be declared at global scope (§7.5), as members
-of any class, as members of an enum or bnum (§7.9), or grouped in an emitter namespace (§7.7).
+Emitters can be declared at global scope (§7.5), as members of any class, as members of an enum or bnum (§7.8), or grouped in an emitter namespace (§7.7).
 
-Unlike functions, emitters may be **overloaded**: several emitters with the same name and different
-parameter types may coexist, and the best match is chosen from the argument types at each use site.
-
-Class-member emitters that have their own rules — operator emitters, `init`/`deinit`, conversion and
-accessor operators — are specified in §8.5 and §9; this chapter covers the emitter mechanism itself.
+Like functions, emitters can be **overloaded** (§6.4).  Class-member emitters with rules of their own (operator emitters, `init`/`deinit`, and the conversion and accessor operators) are covered in §8.5 and §9.
 
 ## 7.2 Emitter Functions
 
 **Syntax**
 
 ```syntax
-emitter ⟨returnType⟩ ⟨name⟩( [ ⟨type⟩ ⟨param⟩ [, …] ] ) { ⟨i6-template⟩ }
+emitter RETURN-TYPE NAME( [ TYPE PARAM [, …] ] ) { I6-TEMPLATE }
 ```
 
-**Description**
+`emitter` is a declaration qualifier (§3.2) and can appear in any order with the other qualifiers.  The body between the braces is raw I6 text:  it is not parsed as Beguile, and only substitution tokens (§7.3) and `##` directives (§7.4) are recognized in it.  Everything else, including single-hash directives such as `#ifdef`, passes through to the output unchanged.
 
-`emitter` is a declaration qualifier (§3.2) and may appear in any order with the other qualifiers. The
-body between the braces is raw I6 text: it is not parsed as Beguile, and only substitution tokens
-(§7.3) and `##` directives (§7.4) are recognized inside it. Everything else, including single-hash
-directives such as `#ifdef`, passes through unchanged to the output.
-
-- The return type is the type of the substituted expression at the use site. An `emitter void`
-  function may be used only as a statement.
-- Parameters are referenced in the body as `$name`. The bare name is *not* substituted, so a body may
-  freely mention an I6 identifier that happens to share a parameter's name.
-- An emitter always has a body. The one exception is the bodiless conversion operator
-  `emitter T operator();`, which is a pass-through (§9.4).
-- `static` and `emitter` cannot be combined: an emitter has no routine to make static.
-- Recursion is meaningless; an emitter body cannot refer to itself as a routine. A body may
-  reach another emitter through `$i6Expr` (§7.3.4), and a chain that comes back round to a body
-  already being expanded is a compile-time error rather than an unbounded expansion.
+- The return type is the type of the substituted expression at the use site.  An `emitter void` function can be used only as a statement.
+- Parameters are referenced in the body as `$name`.  The bare name is *not* substituted, so a body can freely mention an I6 identifier which happens to share a parameter's name.
+- An emitter always has a body.  The one exception is the bodiless conversion operator `emitter T operator();`, which is a pass-through (§9.4).
+- `static` and `emitter` can't be combined.
+- Recursion is meaningless; an emitter body can't refer to itself as a routine, and a `$i6Expr` chain which comes back around to a body already being expanded is a compile-time error (§7.3.4).
 
 **Example**
 
@@ -70,6 +49,8 @@ class Counter {
 }
 
 Counter c { }
+
+// … in a routine:
 c.increment();      // the body is substituted here with $self = c
 ```
 
@@ -77,59 +58,43 @@ c.increment();      // the body is substituted here with $self = c
 
 ## 7.3 Substitution Tokens
 
-Every substitution token begins with `$`, which keeps it distinct from any raw I6 identifier. The
-tokens below are recognized in every emitter body; a feature may add a feature-local token, which is
-documented with that feature (`$selfsub`, §15.8). Appendix G is the one-page index.
+Every substitution token begins with `$`.  The tokens below are recognized in every emitter body; a feature can add a token of its own, documented with that feature (`$selfsub`, §16.8).  Appendix G is the one-page index.
 
 | Token | Replaced with |
 |---|---|
-| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner. Not meaningful in a global emitter. |
-| `$val` | The full receiver expression as written: `obj.score` for `obj.score + 1`; otherwise identical to `$self`. |
-| `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy: the receiver with its trailing `.member` removed, in every kind of emitter. For a receiver that is not a member access, `$host` equals `$self`. |
+| `$self` | In an operator or assignment emitter, the receiver expression with its trailing `.member` removed when the receiver is a member access (`obj` for `obj.score + 1`); otherwise, and in a method emitter, the receiver itself (`x` for `x + 1`, `container.children` for `container.children.length`); a method emitter on `parent` or `attributes` (§11.5) is the exception and receives the owner.  Not meaningful in a global emitter. |
+| `$val` | The full receiver expression as written:  `obj.score` for `obj.score + 1`; otherwise identical to `$self`. |
+| `$host` | The object a proxy member (§7.3.2) is accessed on, the owner of the proxy:  the receiver with its trailing `.member` removed, in every kind of emitter.  For a receiver that is not a member access, `$host` equals `$self`. |
 | `$paramName` | The argument expression supplied for the parameter of that name. |
 | `$target` | The assignment target as a full lvalue path (`obj.prop`, or `x`); see below. |
-| `$prop` | In an `array<T>` emitter, the property name when the array is an object member; `0` for a global array. Using it in any other emitter is a compile-time error. |
+| `$prop` | In an `array<T>` emitter, the property name when the array is a class or object member (§12.7); `0` for a global or local array.  Using it in any other emitter is a compile-time error. |
 | `$opref(op[, T])` | A callable reference to the receiver type's `operator op` (§7.3.1). |
 | `$oprefReq(op[, T])` | As `$opref`, but a missing operator is a compile-time warning (§7.3.1). |
 | `$i6Name(path)` | The identifier Inform 6 knows the named declaration by (§7.3.3). |
-| `$i6Expr(expr)` | The I6 that a Beguile expression emits, expanded inline (§7.3.4). |
+| `$i6Expr(expr)` | The I6 which a Beguile expression emits, expanded inline (§7.3.4). |
 
-**`$self` and `$host`.** The two differ in which emitters strip the trailing member: `$self` strips
-it only in an operator or assignment emitter, whereas `$host` strips it in a method emitter as well,
-which is how a method on a proxy member reaches the owner. For `container.children.length`, `$self`
-and `$val` are `container.children` and `$host` is `container`.
-
-**`$target`.** When the emitter's result is assigned (`int r = f();`), `$target` is the left-hand
-side; when the emitter is used as a bare statement it is a compiler-supplied temporary. A body that
-mentions `$target` performs the store itself: the usual `lhs = body` assignment is suppressed.
+**`$target`.**  When the emitter's result is assigned (`int r = f();`), `$target` is the left-hand side; when the emitter is used as a bare statement, it is a compiler-supplied temporary.  A body which mentions `$target` performs the store itself:  the usual `lhs = body` assignment is suppressed.
 
 ### 7.3.1 `$opref` and `$oprefReq`
 
 **Syntax**
 
 ```syntax
-$opref( ⟨op⟩ [, ⟨operandType⟩] )
-$oprefReq( ⟨op⟩ [, ⟨operandType⟩] )
+$opref( OP [, OPERAND-TYPE] )
+$oprefReq( OP [, OPERAND-TYPE] )
 ```
 
-**Description**
-
-`$opref` is a lookup, not a value: it substitutes a reference to one of a type's operators so that a
-shared runtime routine can be handed a type-aware operation. The type searched is the receiver's
-**element type** inside an `array<T>` emitter and the receiver's own type elsewhere. What is
-substituted depends on how the operator was declared:
+`$opref` is a lookup, not a value.  It substitutes a reference to one of a type's operators.  The type searched is the receiver's **element type** inside an `array<T>` emitter, and the receiver's own type elsewhere.  What is substituted depends on how the operator was declared:
 
 | The operator is | `$opref` substitutes |
 |---|---|
 | `static` | The name of the free routine; call it as `op(a, b)` |
 | an instance member | A routine that sends the operator to its first argument; call it as `op(a, b)` |
-| an emitter, or absent | `0` — an emitter has no address and is never referenceable |
+| an emitter, or absent | `0` |
 
-Either way the receiving routine calls the reference with both operands. Publishing an operator is
-opt-in: a type that declares none yields `0` and the runtime uses its default.
+When it substitutes `0`, the runtime uses its default.
 
-When a type publishes more than one referenceable overload of the operator, the reference is
-ambiguous and is a compile-time error; name the operand type to select one:
+When a type publishes more than one referenceable overload of the operator, the reference is ambiguous and is a compile-time error; name the operand type to select one:
 
 ```bgl
 class Money {
@@ -140,12 +105,7 @@ class Money {
 }
 ```
 
-`$oprefReq` resolves exactly as `$opref` does and substitutes `0` in the same cases, but additionally
-reports a **compile-time warning** when the lookup is empty. A library uses it where the default is
-not a sound fallback: absence of `==` still finds an element by identity, but absence of `<=>` orders a
-class by object address, so `sort()` uses `$oprefReq(<=>)`. No warning is raised for the built-in word
-types (`int`, `char`, `object`, …), for which word semantics are the correct answer, nor for a call
-that supplies its own comparator.
+`$oprefReq` resolves exactly as `$opref` does and substitutes `0` in the same cases; however, it also reports a **compile-time warning** when the lookup is empty.  No warning is raised for the built-in word types (`int`, `char`, `object`, …), nor for a call which supplies its own comparator.
 
 **Example**
 
@@ -159,16 +119,11 @@ emitter void sort()          { _bglArray.sortDefault($self, $prop, $oprefReq(<=>
 
 ### 7.3.2 Choosing `$self`, `$val` and `$target`
 
-**Description**
+Which of `$self`, `$val` and `$target` to use depends on the type:
 
-`$self` and `$val` differ only when the receiver is a property access.
-
-- A **value type** (`int`, `bool`, `string`, …) uses `$val`: the body acts on the value the property
-  holds, so `obj.score + 1` must substitute `obj.score`, not `obj`.
-- A **proxy member** (a storageless type such as `parentProp` whose operators act on the owning
-  object) uses `$self`: `o.parent == bar` must act on `o`, not on `o.parent`.
-- An `operator =` that performs a literal store uses `$target`, so `obj.prop = v` stores through the
-  dotted lvalue. A proxy `operator =` that redirects to a non-store I6 statement uses `$self`.
+- A **value type** (`int`, `bool`, `string`, …) uses `$val`:  the body acts on the value the property holds, so `obj.score + 1` must substitute `obj.score`, not `obj`.
+- A **proxy member** (a storageless type such as `parentProp` whose operators act on the owning object) uses `$self`:  `o.parent == bar` must act on `o`, not on `o.parent`.
+- An `operator =` that performs a literal store uses `$target`, so `obj.prop = v` stores through the dotted lvalue.  A proxy `operator =` that redirects to a non-store I6 statement uses `$self`.
 
 **Example**
 
@@ -192,45 +147,31 @@ extern class parentProp {
 **Syntax**
 
 ```syntax
-$i6Name( ⟨path⟩ )
-$i6Name( ⟨path⟩( ⟨type⟩ [, …] ) )
+$i6Name( PATH )
+$i6Name( PATH( TYPE [, …] ) )
 ```
 
-**Description**
+`$i6Name` substitutes the identifier Inform 6 knows a declaration by, which can differ from its Beguile name (an `asI6` clause, §3.11, or a mangled `static` method).
 
-Substitutes the identifier Inform 6 knows a declaration by. A body is raw I6, so calling a Beguile
-routine from one means writing that routine's *emitted* name — which is not the author's to know: an
-`asI6` clause renames it (§3.11), a `static` method emits as `_bgl_⟨class⟩_⟨method⟩`, and that mangling
-grows a parameter-type discriminator as soon as a second overload of the name is declared. A body
-that spells the name itself is therefore wrong the moment an unrelated overload appears. `$i6Name`
-asks the compiler for it instead.
-
-`⟨path⟩` is a Beguile path, resolved as an ordinary name would be, including through namespace
-aliases (`bgl.asm.readChar`). What is substituted depends on what the path names:
+`PATH` is a Beguile path, resolved as an ordinary name would be, including through namespace aliases (`bgl.asm.readChar`).  What is substituted depends on what the path names:
 
 | The path names | `$i6Name` substitutes |
 |---|---|
 | A global function | Its routine name, or its `asI6` name |
-| A `static` method | The free routine's name, `_bgl_⟨class⟩_⟨method⟩`, with the overload discriminator when the class declares more than one |
-| An instance method | Its property name — call it as `receiver.(⟨name⟩)(…)` |
+| A `static` method | The free routine's name, `_bgl_CLASS_METHOD`, with the overload discriminator when the class declares more than one |
+| An instance method | Its property name; call it as `receiver.(NAME)(…)` |
 | A data member | Its property name, or its `asI6` name |
 | An object, class or enum | Its emitted name, or its `asI6` name |
 | An enum value | The value's bare word |
 
-When the path names an overloaded method, the parenthesized type list selects one; omitting it where
-more than one candidate exists is a compile-time error naming the candidates. The same selection
-form appears in `$opref(op, T)` (§7.3.1) and `Type::operator op(T)` (§4.15).
+When the path names an overloaded method, the parenthesized type list selects one.  Omitting it where more than one candidate exists is a compile-time error naming the candidates.
 
 Two cases are compile-time errors rather than a substituted `0`:
 
-- **An emitter.** No routine and no constant is emitted for it, so there is nothing to name. Use
-  `$i6Expr` to expand it inline instead. (`$opref` yields `0` for the same situation only because a
-  missing operator has a sound fallback in word semantics; a missing *name* has none.)
-- **An unresolved path.** An empty substitution would reach Inform 6 as malformed text with nothing
-  pointing back at the cause.
+- **An emitter.**  Use `$i6Expr` to expand it inline instead (§7.3.4).
+- **An unresolved path.**
 
-A body is expanded only where it is used, so a `$i6Name` in an emitter that is never called is never
-resolved and never reports.
+A body is expanded only where it is used, so a `$i6Name` in an emitter that is never called is never resolved and never reports.
 
 **Example**
 
@@ -238,114 +179,76 @@ resolved and never reports.
 extern attribute light asBgl lit;
 object myHook asI6 hook;
 
-emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // → ($o has light)
-emitter int  readKey()            { $i6Name(bgl.asm.readChar)(1) }   // → _bgl_bglOpCodes_readChar(1)
+emitter bool isLit(object o)      { ($o has $i6Name(lit)) }          // -> ($o has light)
+emitter int  readKey()            { $i6Name(bgl.asm.readChar)(1) }   // -> _bgl_bglOpCodes_readChar(1)
 emitter int  scale(int a, int b)  { $i6Name(Money.scale(int, int))($a, $b) }
 ```
 
-> **When to reach for it.** A global function with no `asI6` clause emits under its own name, so a body
-> may simply write that name; `$i6Name` buys nothing there. Use it where the emitted identifier is
-> *not* the Beguile one: anything carrying an `asI6` clause, a member or method (which emit as property
-> names), and above all a `static` method — its `_bgl_⟨class⟩_⟨method⟩`
-> mangling gains a parameter-type discriminator as soon as a second overload of that name is
-> declared, so a spelling that is correct today is silently wrong after an unrelated edit elsewhere.
+> ***Note:** A global function with no `asI6` clause is emitted under its own name, so a body can simply write that name.  Use `$i6Name` where the emitted identifier is **not** the Beguile one:  anything carrying an `asI6` clause, a member or method (which are emitted as property names), and above all a `static` method, whose mangled name changes as soon as a second overload is declared.*
 
-**See also** §3.11 (`asI6`), §7.3.1 (`$opref`, the same lookup for operators), §4.15, §15.2
-(the same token in an `#i6` island).
+**See also** §3.11 (`asI6`), §7.3.1 (`$opref`, the same lookup for operators), §4.15, §16.2 (the same token in an `#i6` island).
 
 ### 7.3.4 `$i6Expr`
 
 **Syntax**
 
 ```syntax
-$i6Expr( ⟨expression⟩ )
+$i6Expr( EXPRESSION )
 ```
 
-**Description**
+`$i6Expr` substitutes the I6 which a Beguile expression emits.  This is how one emitter reaches another, since an emitter has no routine to call by name.  A body which names a global emitter as plain text is a compile-time error.
 
-Substitutes the I6 that a Beguile expression emits. This is how one emitter reaches another: an
-emitter has no routine, so a body cannot call one by name (§7.3.3) — it has to be *expanded*, and
-`$i6Expr` is what expands it. A body that names a global emitter as plain text is a compile-time
-error.
+The payload is ordinary Beguile, parsed and type-checked at the use site, and a callee's own `##if` gating (§7.4) comes with it.
 
-The payload is ordinary Beguile, parsed and type-checked at the use site, so it gets overload
-resolution, and a callee's own `##if` gating (§7.4) comes with it rather than being re-written by
-every caller.
+**Binding.**  The body's tokens stand for **typed values** inside the payload:  `$v` denotes a value of `v`'s declared type whose emitted text is the argument at that use site, and `$self`/`$val`/`$host` do likewise at the receiver's type.  A parameter declared `var` takes the type of the argument at that use site instead.
 
-**Binding.** The body's tokens stand for **typed values** inside the payload: `$v` denotes a value of
-`v`'s declared type whose emitted text is the argument at that use site, and `$self`/`$val`/`$host`
-likewise at the receiver's type. A parameter declared `var` takes the type of the argument at that
-use site instead, since `var` says only that any value is accepted. This is what lets one emitter
-forward to an overloaded one: `emitter void printLine(var v){ $i6Expr(print($v)); print "^"; }`
-reaches `print(string)` for a string argument and `print(bool)` for a bool. The payload may therefore mention only this emitter's own
-parameters and receiver; any other `$name` is a compile-time error. It may not mention a bare I6
-identifier either, since that is not a Beguile symbol — `$i6Expr(__glkHook(33, $a))` resolves only
-because `__glkHook` *is* a Beguile function.
+The payload can therefore mention only this emitter's own parameters and receiver; any other `$name` is a compile-time error.  It can't mention a bare I6 identifier either, only a Beguile symbol.
 
-**Extent.** Exactly one expression: either one that produces a value, or a single call that returns
-nothing, which is what lets an `emitter void` body chain. A `;`-separated list is not accepted —
-without locals, control flow or `return` it would look like a function body without being one.
-Multi-statement logic still belongs in a routine, which an emitter body can then reach by name
-(§7.3.3); a `superposed` routine (§3.12) costs nothing when no body references it.
+**Extent.**  The payload is exactly one expression:  either one which produces a value, or a single call which returns nothing.  A `;`-separated list is not accepted; multi-statement logic belongs in a routine, which an emitter body can reach by name (§7.3.3).
 
-**Termination.** Because a body is substituted rather than called, a `$i6Expr` chain that reaches a
-body already being expanded has no base case. Such a cycle is a compile-time error, as is a chain
-deeper than eight expansions.
+**Termination.**  A `$i6Expr` chain which reaches a body already being expanded is a compile-time error, as is a chain deeper than eight expansions.
 
-> **Substituted text is duplicated text.** A body that names `$v` twice already duplicates the
-> argument expression, evaluating its side effects twice. Chaining multiplies this: an outer body
-> passing `$self` into an inner one that names `$val` twice yields four copies of the receiver.
-> Prefer a routine where the argument is expensive or effectful.
+> ***Note:** A body which names `$v` twice already duplicates the argument expression, evaluating its side effects twice.  Chaining multiplies this:  an outer body passing `$self` into an inner one that names `$val` twice yields four copies of the receiver.  Prefer a routine where the argument is expensive or has side effects.*
 
 **Example**
 
 ```bgl
 emitter int twice(int v){ ($v * 2) }
-emitter int quad (int v){ $i6Expr(twice(twice($v))) }        // → ((v * 2) * 2)
+emitter int quad (int v){ $i6Expr(twice(twice($v))) }        // -> ((v * 2) * 2)
 
-// bgl.asm.add is an emitter — no routine exists for it, so only expansion can reach it
+// bgl.asm.add is an emitter: no routine exists for it, so only expansion can reach it
 emitter int sum(int a, int b){ $i6Expr(bgl.asm.add($a, $b)) }
 
 // the callee owns the target gating; this caller inherits it
-emitter void reseed(){ $i6Expr(bgl.util.random.seed(0)); }   // z-code → random(-0)
-                                                             // Glulx  → @setrandom 0
+emitter void reseed(){ $i6Expr(bgl.util.random.seed(0)); }   // z-code -> random(-0)
+                                                             // Glulx  -> @setrandom 0
 class Counter : object {
     int value;
     emitter int doubled(){ $i6Expr(bgl.asm.add($self.value, $self.value)) }
 }
 ```
 
-**See also** §7.3.3 (`$i6Name`, for a name where no expression is legal), §3.12 (`superposed`),
-§7.4, §15.2 (the same token in an `#i6` island).
+**See also** §7.3.3 (`$i6Name`, for a name where no expression is legal), §3.12 (`superposed`), §7.4, §16.2 (the same token in an `#i6` island).
 
 ## 7.4 Conditional Text: `##if`, `##else`, `##endif`
 
 **Syntax**
 
 ```syntax
-##if ⟨expression⟩
-    ⟨i6-text⟩
+##if EXPRESSION
+    I6-TEXT
 [ ##else
-    ⟨i6-text⟩ ]
+    I6-TEXT ]
 ##endif
 ```
 
-**Description**
+Inside an emitter body, the double-hash directives select which body text is substituted.  `EXPRESSION` accepts the same forms as `#if` (§14.2.5), with the same definedness-versus-value rule.  The directives are evaluated when the emitter is substituted, and are not valid in ordinary Beguile source, where the conditional is `#if`.  `##ifdef` and `##ifndef` don't exist at all:  use `##if SYMBOL` here, `#if SYMBOL` there.
 
-Inside an emitter body, the double-hash directives select which body text is substituted.
-`⟨expression⟩` accepts the same forms as `#if` (§14.2.5): symbols, comparisons, `&&`, `||`, `!` and
-parentheses, with the same definedness-versus-value rule. They are evaluated when the emitter is
-substituted, and are not valid in ordinary Beguile source, where the conditional is `#if` (§14.2.5).
-`##ifdef` and `##ifndef` do not exist at all: use `##if SYMBOL` here, `#if SYMBOL` there.
-As with `#if`, the condition runs to the end of its line, so the text it controls starts on the next
-line; text after the condition on the same line is a compile-time error.
+As with `#if`, the condition runs to the end of its line, so the text it controls starts on the next line.  Text after the condition on the same line is a compile-time error.
 
-Single-hash directives are raw I6 and pass through to the output, where they act as I6 compile-time
-conditionals. Any other `##name` (for instance an I6 action constant such as `##Take`) also passes
-through unchanged, so `$self == ##$v` substitutes the I6 action name of `$v`.
+Single-hash directives are raw I6 and pass through to the output, where they act as I6 compile-time conditionals.  Any other `##name` (for instance, an I6 action constant such as `##Take`) also passes through unchanged, so `$self == ##$v` substitutes the I6 action name of `$v`.
 
-One further double-hash form, `##beguilerSettings.key`, is recognized only in the raw-I6 directive
-bodies of §14.4.5; it is not substituted in emitter bodies.
+One further double-hash form, `##beguilerSettings.key`, is recognized only in the raw-I6 directive bodies of §14.4.5; it is not substituted in emitter bodies.
 
 **Example**
 
@@ -366,17 +269,12 @@ emitter void newline(){
 **Syntax**
 
 ```syntax
-emitter ⟨returnType⟩ ⟨name⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
+emitter RETURN-TYPE NAME( [ PARAMS ] ) { I6-TEMPLATE }
 ```
 
 The declaration is written at file scope.
 
-**Description**
-
-A global emitter is declared at file scope and is used like a global function, with its body
-substituted at each use site. `$self` has no meaning in a global emitter. Global emitters may be
-overloaded; the overload is selected by argument type. `print()` is a global emitter
-(§21.4).
+A global emitter is used like a global function.  `print()` is a global emitter (§21.4).
 
 **Example**
 
@@ -391,27 +289,19 @@ emitter void print(var val)          { print val; }
 **Syntax**
 
 ```syntax
-emitter ⟨type⟩ ⟨name⟩ { ⟨i6-template⟩ }
+emitter TYPE NAME { I6-TEMPLATE }
 ```
 
-**Description**
+An emitter without a parameter list is an **emitter value**:  a typed inline expansion used by its bare name, without `()`.  A typed value (`emitter int`, `emitter string`, …) can appear wherever an expression of that type is accepted; an `emitter void` value can be used only as a statement, terminated by `;`.  Emitter values can be declared at global scope, in class bodies, and in object bodies.  On a member, `$self` substitutes as it does for an emitter function.
 
-An emitter without a parameter list is an **emitter value**: a typed inline expansion used by bare
-name, without `()`. A typed value (`emitter int`, `emitter string`, …) may appear wherever an
-expression of that type is accepted; an `emitter void` value may be used only as a statement,
-terminated by `;`. Emitter values may be declared at global scope, in class bodies, and in object
-bodies; on a member, `$self` substitutes as for an emitter function.
-
-An emitter value and an emitter function are distinct declarations with distinct use:
+An emitter value and an emitter function are distinct declarations with distinct uses:
 
 | Declaration | Use |
 |---|---|
 | `emitter int foo() { … }` | `foo()` |
 | `emitter int foo { … }` | `foo` |
 
-Using a value with parentheses is a compile-time error, whether the name is bare, imported with
-`#using`, or qualified. A function is used only with parentheses. A type may therefore expose a value
-and a same-named zero-argument function as different members.
+Using a value with parentheses is a compile-time error.  A function is used only with parentheses.  A type can therefore expose a value and a zero-argument function of the same name as different members.
 
 **Example**
 
@@ -419,7 +309,8 @@ and a same-named zero-argument function as different members.
 emitter int  wordSize   { WORDSIZE }
 emitter void setBold    { style bold }
 
-int ws = wordSize;          // → WORDSIZE
+// … in a routine:
+int ws = wordSize;          // -> WORDSIZE
 setBold;                    // statement form
 ```
 
@@ -428,27 +319,21 @@ setBold;                    // statement form
 **Syntax**
 
 ```syntax
-emitter ⟨name⟩ {
-    ⟨returnType⟩ ⟨member⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
+emitter NAME {
+    RETURN-TYPE MEMBER( [ PARAMS ] ) { I6-TEMPLATE }
     …
 }
 ```
 
-**Description**
-
-An emitter namespace groups emitters under one name without declaring a class. It is written as
-`emitter` followed directly by the name (no `class` keyword) and a body. Members are called as
-`name.member(…)`.
+An emitter namespace groups emitters under one name without declaring a class.  Members are called as `name.member(…)`.
 
 - Every member is an emitter; the `emitter` keyword on a member is optional.
-- The namespace name is not a type and cannot declare a variable.
-- An emitter namespace cannot be inherited from or extended; either is a compile-time error.
+- The namespace name is not a type and can't declare a variable.
+- An emitter namespace can't be inherited from or extended; either is a compile-time error.
 
-An `emitter class` (§8.2.3) differs in that it *is* a type — its purpose is to declare variables of
-it — whereas an emitter namespace exists only to be called by name. `style` is a built-in emitter
-namespace; it coexists with the `style` struct of `<glulxWindow>` (§22.7.7), because a call
-`style.member(…)` reaches the namespace while the inline-object form `style { … }` builds a value of
-the class.
+An `emitter class` (§8.2.3), by contrast, *is* a type.
+
+`style` is a built-in emitter namespace.  It coexists with the `style` struct of `<glulxWindow>` (§22.7.7), since a call `style.member(…)` reaches the namespace while the inline-object form `style { … }` builds a value of the class.
 
 **Example**
 
@@ -458,77 +343,29 @@ emitter style {
     void roman()   { style roman; }
 }
 
+// … in a routine:
 print($"{style.italics()}Italic text{style.roman()}");
 ```
 
-**See also** §10 — namespaces in general (objects and emitter classes as containers, `alias`, `#using`);
-§10.3 — alias members on emitter classes, for composing namespaces hierarchically.
+**See also** §10 (namespaces in general:  objects and emitter classes as containers, `alias`, `#using`); §10.3 (alias members on emitter classes, for composing namespaces hierarchically).
 
-## 7.8 `operator auto()`
-
-**Syntax**
-
-```syntax
-⟨type⟩ operator auto() ;
-```
-
-**Description**
-
-When a variable is declared with `auto` (§3.6), its type is normally the resolved type of its
-initializer. A class that declares `operator auto()` overrides this: the declared return type is the
-type `auto` infers for a value of that class.
-
-- Takes no parameters and has no body; only the return type matters.
-- At most one per class; a duplicate is a compile-time error.
-- A type without `operator auto()` infers as itself.
-
-The literal pseudo-types declare it so that `auto x = 5;` infers `int` rather than `intLiteral`:
-
-| Literal type | `operator auto()` returns |
-|---|---|
-| `intLiteral` | `int` |
-| `charLiteral` | `char` |
-| `dictionaryWordLiteral` | `dictionaryWord` |
-
-**Example**
-
-<!-- doctest: skip -->
-```bgl
-primitive class intLiteral {
-    emitter int operator();     // implicit conversion to int
-    int operator auto();        // auto infers int
-}
-```
-
-**See also** §2.4 (literal pseudo-types), §5.9.1 (`auto` in `for-in`).
-
-## 7.9 Emitter Members on Enums and Bnums
+## 7.8 Emitter Members on Enums and Bnums
 
 **Syntax**
 
 ```syntax
-enum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
-bnum ⟨name⟩ { ⟨value⟩, …, ⟨emitter-member⟩ … }
-extend enum ⟨name⟩ { ⟨emitter-member⟩ … }
-extend bnum ⟨name⟩ { ⟨emitter-member⟩ … }
+enum NAME { VALUE, …, EMITTER-MEMBER … }
+bnum NAME { VALUE, …, EMITTER-MEMBER … }
+extend enum NAME { EMITTER-MEMBER … }
+extend bnum NAME { EMITTER-MEMBER … }
 
-⟨emitter-member⟩ ::= emitter ⟨type⟩ ⟨method⟩( [ ⟨params⟩ ] ) { ⟨i6-template⟩ }
-                   | emitter ⟨type⟩ ⟨property⟩ { ⟨i6-template⟩ }
+EMITTER-MEMBER ::= emitter TYPE METHOD( [ PARAMS ] ) { I6-TEMPLATE }
+                   | emitter TYPE PROPERTY { I6-TEMPLATE }
 ```
 
-**Description**
+An enum or bnum can host emitter members.  They are substituted at the use site with `$self` bound to the value and `$paramName` to each argument.  They are declared in the enum body, or added later with `extend enum` (`extend bnum` for a bnum), using the same member forms as an emitter class.  A member can be used on a bare value or on an enum-typed variable, and before the declaration that adds it.
 
-An enum or bnum value is a bare word, so an enum can host emitter members: substituted at the use
-site with `$self` bound to the value and `$paramName` to each argument. An emitter method is called
-with parentheses; an emitter value (§14.4.5) is read as a property, without them. They are declared
-in the enum body, or added later with `extend enum` (`extend bnum` for a bnum), using the same member
-forms as an emitter class.
-A member may be used on a bare value or on an enum-typed variable, and before the declaration that
-adds it.
-
-Only emitter methods and values may be attached. `operator` overloads, `static` members and plain
-members are compile-time errors in an enum body. A value with methods costs exactly what a
-plain value costs, and the methods are not reachable as a nameable type.
+Only emitter methods and values can be attached.  `operator` overloads, `static` members, and plain members are compile-time errors in an enum body.  The methods are not reachable as a nameable type.
 
 **Example**
 
@@ -542,16 +379,18 @@ extend enum eDirection {
     emitter int tenfold     { ($self * 10) }
 }
 
-int a = north.bump();       // → 101
+int a = north.bump();       // -> 101
 eDirection d = south;
-int b = d.bump();           // → 102
-int c = east.plus(10);      // → 13
-int e = west.tenfold;       // → 40
+int b = d.bump();           // -> 102
+int c = east.plus(10);      // -> 13
+int e = west.tenfold;       // -> 40
 ```
 
 **See also** §2.7 (enumerations).
 
-## 7.10 Emitters and Functions Compared
+## 7.9 Emitters and Functions Compared
+
+The following table lays the two side by side:
 
 | | Function | Emitter |
 |---|---|---|
@@ -559,9 +398,8 @@ int e = west.tenfold;       // → 40
 | Parameters in the body | Bare name (`myParam`) | `$myParam` |
 | Receiver in the body | `self` | `$self` / `$val` / `$host` |
 | Overloading | Supported, by parameter types (§6.4) | Supported, by parameter types |
-| Recursion | Supported | Not meaningful — a `$i6Expr` chain that revisits a body is an error (§7.3.4) |
-| In an `extern class` body | `static` only, with a body (§15.4.3) | Must have a body (or `;` for a pass-through conversion) |
+| Recursion | Supported | Not meaningful; a `$i6Expr` chain which revisits a body is an error (§7.3.4) |
+| In an `extern class` body | `static` only, with a body (§16.4.3) | Must have a body (or `;` for a pass-through conversion) |
 | At global scope | Yes | Yes |
 
-An emitter body is the primary route to I6 capabilities that have no Beguile syntax; for a raw-I6
-block inside a function body see `#i6` (§15.2).
+For a raw-I6 block inside a function body, see `#i6` (§16.2).

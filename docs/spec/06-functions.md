@@ -8,25 +8,21 @@
 - [6.5 `replace` and `replaced()`](#65-replace-and-replaced)
 - [6.6 `self`](#66-self)
 - [6.7 `Main`](#67-main)
+  - [6.7.1 `HandleGlkEvent`](#671-handleglkevent)
 - [6.8 Distributors](#68-distributors)
 <!-- /toc -->
-
 
 ## 6.1 Function Declarations
 
 **Syntax**
 
 ```syntax
-⟨returnType⟩ ⟨name⟩(⟨type⟩ ⟨param⟩, …) { ⟨body⟩ }
+RETURN-TYPE NAME(TYPE PARAM, …) { BODY }
 ```
 
-**Description**
+A function declared at global scope is a **global function**.  Functions of one name overload by parameter types (§6.4); however, the name can't be shared with any other kind of global (§3.1).
 
-A function has a return type, a name, a parenthesized parameter list and a block body (§5.2). A
-function declared at global scope is a **global function**; functions of one name overload by
-parameter types (§6.4), and the name must not be shared with any other kind of global (§3.8.3). Functions may also be declared as members of a class (§8.4)
-or object (§11.9). A function declared `extern` has no body and is defined in Inform 6 (§15.4.1); a
-function declared `emitter` has an I6 template body (§7.2).
+Functions can also be members of a class (§8.4) or an object (§11.9).  An `extern` function has no body, since it is defined in Inform 6 (§16.4.1); an `emitter` function has an I6 template for its body (§7.2).
 
 **Example**
 
@@ -39,15 +35,15 @@ bool Initialise() { location = foyer; rtrue; }
 
 ## 6.2 Return Types
 
-**Description**
+The return type determines what a function's `return` statements look like:
 
 | Return type | Meaning |
 |---|---|
-| `void` | No value. `return;` is permitted; `return expr;` is an error unless `expr` is `void` (§5.14). |
+| `void` | No value.  `return;` is allowed; `return expr;` is an error unless `expr` is `void` (§5.14). |
 | Any other type | Every path must end in `return expr;` with `expr` compatible with the type (§5.14). |
-| `array<T>` | Returns a typed array. A returned local array passes to the caller (§12.6). |
+| `array<T>` | Returns a typed array.  A returned local array passes to the caller (§12.6). |
 
-`rtrue`, `rfalse` and the return-path rules are specified in §5.14.
+`rtrue`, `rfalse`, and the return-path rules are in §5.14.
 
 **Example**
 
@@ -65,72 +61,28 @@ int  sign(int n)        { if (n < 0) return -1; }   // compile-time error: no re
 **Syntax**
 
 ```syntax
-( [ literal ] ⟨type⟩ ⟨name⟩ [ = ⟨default⟩ ], …)
-( literal ⟨type⟩ | ⟨type⟩ … ⟨name⟩, … )
+( [ literal ] TYPE NAME [ = DEFAULT ], …)
+( literal TYPE | TYPE … NAME, … )
 ()
 ```
 
-**Description**
+Parameters are local to the body.  A parameter with a default value is optional, and required parameters come before optional ones.  A call must supply between the required and the total number of arguments, or it is a compile-time error.  A default is one value, worked out at each call which leaves its argument out; one which needs statements to run first (a `?.` chain, `??`) is a compile-time error.  A parameter's name can be omitted (`void f(int) { … }`):  the argument is still passed, but the body can't read it.
 
-Parameters are local to the body. A parameter with a default value is optional; required parameters
-precede optional ones. A call must supply between the required count and the total count of
-arguments, or it is a compile-time error. A default is one value, worked out at each call that leaves
-its argument out; one that needs statements to run first (a `?.` chain, `??`) is a compile-time error.
+**Named arguments.**  An argument can be passed as `name: value`, in any order and mixed with positional arguments:  the positional ones fill the first unfilled parameters in order, and each named one fills its target.  It is an error to name a parameter the function doesn't have, to supply one both positionally and by name, or to omit a required one.
 
-**Named arguments.** An argument may be passed as `name: value`. Named arguments may appear in any
-order and may be mixed with positional arguments: positional arguments fill the first unfilled
-parameters in order, and named arguments fill their target parameter. It is an error to name a
-parameter the function does not have, to supply a parameter both positionally and by name, or to omit
-a required parameter.
-
-**Passing.** An argument is passed as its type's kind dictates (§2.10.3):
+**Passing.**  An argument is passed as its type's kind dictates (§2.10.3):
 
 - a primitive value is copied;
 - a reference-class parameter refers to the argument's instance;
-- a struct parameter owns an instance of its own, into which the argument is copied through the
-  class's copy operator; the class's `init` and `deinit`, if it has them, run at entry and exit (§8.5);
-- a parameter of a class that manages its own storage (`stringObj`) is given its own copy the same way
-  (§8.5);
+- a struct parameter owns an instance of its own, into which the argument is copied through the class's copy operator; the class's `init` and `deinit`, if it has them, run at entry and exit (§8.5);
+- a parameter of a class which manages its own storage (`stringObj`) is given its own copy the same way (§8.5);
 - a `ref` parameter of a struct or storage-managing class is bound to the argument itself (§3.7).
 
-So changes a function makes to a struct or `stringObj` parameter don't reach the caller, and
-changes through a reference-class or `ref` parameter do.
+> ***[Z-machine]:** A routine call passes at most five arguments natively; parameters beyond the fifth travel through compiler-emitted globals, which appear in the header when any routine declares more than five.*
 
-Parameter names may be omitted in non-emitter declarations inside an `extern class` (§15.4.3).
+**Literal parameters.**  A parameter whose type is qualified `literal` accepts only a value known at compile time.  For a data type, that is a literal, constant arithmetic, a `#define` value, an enum member, or a `const` initialized from one of these; a variable, a member read, or a call is a compile-time error.  For a function type, it is a named function, or a lambda whose captured variables (§4.14) are all `const` locals with such a value.
 
-**Literal parameters.** A parameter whose type is qualified `literal` accepts only a value known at
-compile time. For a data type, that is a literal, constant arithmetic, a `#define` value, an enum
-member or a `const` initialized from one of these; a variable, a member read or a call is a
-compile-time error. For a function type, it is a named function, or a lambda whose captured variables
-(§4.14) are all `const` locals with such a value.
-
-A function declares a `literal func` parameter when it keeps the function to call later, after the
-caller's locals have changed or gone: a callback registered for an event, or a hyperlink's action
-(§21.11). A function that calls its argument before returning, as `filter` and `sort` do, leaves the
-parameter unqualified, so a lambda passed to it may capture freely.
-
-In a union, `literal` qualifies the one member it precedes. An argument is checked when it fits a
-`literal` member and no other: in `literal func<void> | int`, a function must be literal and an `int`
-may be a variable. A `literal` parameter is itself literal inside the function, so it may be passed on
-to another `literal` parameter or stored; an unqualified parameter may not be passed to one.
-
-**Literal storage.** `literal` also qualifies a variable, a member or an array's element type, for
-values kept to use later, such as event handlers or a rulebook's rules. On a variable or member it
-covers the whole type:
-
-<!-- doctest: skip -->
-```bgl
-literal func<void> onStart = intro;              // a global
-class door { literal func<void> onOpen; }        // a member
-array<literal func<eVerdict>> rules = { r1 };    // the elements
-```
-
-An initializer, an assignment, a subscript write, `+=`, or an array method that stores its argument
-must then supply a literal value. Reading a `literal` variable or member yields a literal value, so it
-may be stored in another. In a generic class, a library marks the parameter of each method that stores
-an element `literal T`: `void push(literal T item)`. The mark applies only when the receiver's element
-type is `literal`, so `push` takes any value on an `array<func<void>>` and only a literal one on an
-`array<literal func<void>>`, while `indexOf`, which does not store, takes any value on either.
+In a union, `literal` qualifies the one member it precedes.  An argument is checked when it fits a `literal` member and no other:  in `literal func<void> | int`, a function must be literal, although an `int` can be a variable.  A `literal` parameter is itself literal inside the function.  `literal` on a variable, a member, or an array's element type is covered in §3.13.
 
 **Example**
 
@@ -144,77 +96,41 @@ string dir = "north";
 onClick(=> print(dir));                               // error: the lambda captures 'dir'
 ```
 
-> **Why `literal`, not closures.** A capturing lambda keeps its captured values in one slot per
-> lambda, not one per call, so a kept lambda reads whatever was captured last. Giving each call its own
-> copy would allocate memory that nothing could free. `literal` turns that runtime surprise into a
-> compile-time error at the call that would cause it.
+> ***Note:** A capturing lambda keeps its captured values in one slot per lambda, not one per call, so a kept lambda will read whatever was captured last.  `literal` turns that runtime surprise into a compile-time error, at the call that would cause it.*
 
 ## 6.4 Overload Resolution
 
-**Description**
+Functions and methods with the same name and different parameter-type signatures can coexist:  functions at global scope, emitter or not, and emitter and non-emitter methods on classes and objects, including `operator()`, `operator[]`, and `operator[]=`.
 
-Functions and methods with the same name and different parameter-type signatures may coexist:
-functions at global scope, emitter or not, and emitter and non-emitter methods on classes and
-objects, including `operator()`, `operator[]` and `operator[]=`.
+Two declarations of the same name must differ in their **parameters**.  The return type is not part of the signature.  Declaring the same name twice with the same parameter types is a compile-time error.
 
-Two declarations of the same name must differ in their **parameters** — the return type is not part
-of the signature, since a call is resolved before its result is used. Declaring the same name twice
-with the same parameter types is a compile-time error.
-
-Because Inform 6 has no overloading, each member of a set emits as its own routine or property under
-a mangled name (`add_2_int_int`); a name with a single definition keeps the name the author wrote.
-The mangled name is not part of the language: from raw I6, reach an overload through
-`$i6Name(add(int,int))` (§7.3.3) rather than by spelling it out.
+An overload's emitted name is not part of the language; from raw I6, reach it through `$i6Name(add(int,int))` (§7.3.3).
 
 A call is resolved in two steps:
 
-1. **Arity.** A candidate matches only if the argument count lies between its required and total
-   parameter counts.
-2. **Types.** Among candidates that match by arity, an exact type match for every argument wins over a
-   match through an implicit conversion (`operator()`, §9.4), which wins over a match through `var`.
-   A parameter of a value type (a struct, or a primitive class such as `float`) also takes an argument
-   that the type's `operator =` accepts, converted by it. A reference class's `operator =` converts no
-   argument: there is no instance to assign into.
-   A declared object is an exact match for its class, as a variable of that class is: for an object
-   of class `G` derived from `P`, `Show(G g)` wins over `Show(P p)`.
+1. **Arity.**  A candidate matches only if the argument count lies between its required and total parameter counts.
+2. **Types.**  Among the candidates that match by arity, an exact type match for every argument wins over a match through an implicit conversion (`operator()`, §9.4), which in turn wins over a match through `var`.  An overload which takes a union is chosen only if no more specific overload matches.  A parameter of a value type (a struct, or a primitive class such as `float`) also takes an argument that the type's `operator =` accepts, converted by it.  A reference class's `operator =` converts no argument.  A declared object is an exact match for its class, just as a variable of that class is.
 
-Two candidates that fit a call equally well and differ only in parameters left to their defaults make
-the call a compile-time error: with `F(int a)` beside `F(int a, int b = 0)`, `F(1)` could be either, and
-`F(1, 0)` says which.
+Two candidates which fit a call equally well, and differ only in parameters left to their defaults, make the call a compile-time error.
 
-Type compatibility itself is specified in §2.10.1.
-
-**A reference is not a call.** A bare function name used as a value (`func<int,int> f = twice;`)
-must name exactly one routine. An overloaded name names the set, and nothing in a reference says
-which member is meant, so it is a compile-time error; wrap the overload you want in a function of
-its own and reference that.
+Type compatibility itself is in §2.10.1, and an overloaded name used as a value is covered in §2.9.
 
 ## 6.5 `replace` and `replaced()`
 
 **Syntax**
 
 ```syntax
-replace ⟨returnType⟩ ⟨name⟩(⟨params⟩) { ⟨body⟩ }
-replaced(⟨args⟩)
+replace RETURN-TYPE NAME(PARAMS) { BODY }
+replaced(ARGS)
 ```
 
-**Description**
+`replace` replaces an already-declared global function.  If no matching function exists, the compiler will issue a warning and treat the declaration as a new function.
 
-`replace` replaces an already-declared global function. If no matching function exists, the compiler
-issues a warning and the declaration is treated as a new function.
+**Emitter functions.**  The body is swapped.  Matching is by name, return type, and the full parameter-type signature.  `replaced()` is not available in an emitter.
 
-**Emitter functions.** The body is swapped. Matching is by name, return type and full parameter-type
-signature, since emitters overload. `replaced()` is not available in an emitter.
+**Non-emitter functions.**  A replacement names the overload it replaces by its own parameter types; with a name that has only one definition, the parameters don't need to match it.  Replacements chain:  inside each replacement body, `replaced(args)` calls the immediately preceding definition, the one it directly replaced.  The arguments are type-checked against that predecessor's signature, which can differ from the replacement's own.  A predecessor that no replacement calls is not part of the program.
 
-**Non-emitter functions.** A replacement names the overload it replaces by its own parameter types;
-with a name that has one definition, the parameters need not match it. Replacements chain. Inside the replacement body, `replaced(args)` calls the
-immediately preceding definition; the arguments are type-checked against that predecessor's signature,
-which may differ from the replacement's own. Successive `replace` declarations form a chain in which
-each `replaced()` calls the version it directly replaced. A predecessor that no replacement calls is
-not part of the program.
-
-Replacing an `extern` routine defined by an I6 library works the same way in the source; the
-I6-side rules are in §15.6.
+Replacing an `extern` routine defined by an I6 library works the same way in the source; the I6-side rules are in §16.6.
 
 **Example**
 
@@ -222,7 +138,7 @@ I6-side rules are in §15.6.
 int step(int n) { return n; }
 replace int step(int n) { return replaced(n) + 100; }   // calls the original
 replace int step(int n) { return replaced(n) + 200; }   // calls the first replacement
-// step(5) → 305
+// step(5) -> 305
 ```
 
 **See also** §8.7.2 (`replace` for class and object members).
@@ -233,17 +149,12 @@ replace int step(int n) { return replaced(n) + 200; }   // calls the first repla
 
 ```syntax
 self
-self.⟨member⟩
+self.MEMBER
 ```
 
-**Description**
+Inside a class or object method, `self` is the receiver:  the instance the method was called on.  A bare member name in a method body resolves as `self.member` (§3.8.2).  `self` is not valid outside a method body.
 
-Inside a class method or an object method, `self` is the receiver: the instance the method was called
-on. A bare member name in a method body resolves as `self.member` (§3.8.2), so `self.` is optional and
-has the same effect. `self` is not valid outside a method body.
-
-`self` differs from Inform 6's `self`, which is the object that owns the running routine. In an
-emitter body, `$self` is the receiver (§7.3).
+Beguile's `self` differs from Inform 6's `self`, which is the object that owns the running routine.  In an emitter body, `$self` is the receiver (§7.3).
 
 **Example**
 
@@ -265,13 +176,7 @@ class Counter {
 void Main() { … }
 ```
 
-**Description**
-
-`Main` is the program's entry point. The compiler does not check for it: a program built without an
-IF library binding defines `Main` itself, and a missing `Main` is reported when Inform 6 runs. A
-second `Main` is a compile-time error, as for any function declared twice (§6.4). A library such as the Inform 6 Standard Library or PunyInform defines `Main` itself
-and calls a library-specific entry point, such as `Initialise`, that the program supplies instead
-(§23.3.1).
+`Main` is the program's entry point.  The compiler doesn't check for it:  a program built without an IF library binding defines `Main` itself, and a missing `Main` is reported when Inform 6 runs.
 
 **Example**
 
@@ -283,47 +188,51 @@ void Main() {
 
 **See also** §23.3.1 (entry point under a binding).
 
+### 6.7.1 `HandleGlkEvent`
+
+`HandleGlkEvent(event, context, buffer)` is an `extern default` entry point on Glulx, with the Inform 6 library's meaning:  `event` is the four-word Glk event, `context` is `0` while a line is being read and `1` while a key is awaited, and the return value is `0` to carry on, `2` to end the input, or `-1` to keep waiting.  The runtime wraps whatever `HandleGlkEvent` the program defines.  On a hyperlink event it renews the window's hyperlink request and calls a function target itself (§21.11); every other event goes to the program's function.  A program will behave the same with or without a library.
+
+A program declares it as `int HandleGlkEvent(var event, var context, var buffer)`.  You read the event's words with `bgl.asm.aload(event, n)` (§21.13.1):  word 0 is its type, an `eGlulxEventType` (`none`, `timer`, `charInput`, `lineInput`, `mouseInput`, `arrange`, `redraw`, `soundNotify`, `hyperlink`, `volumeNotify`), and for a hyperlink, word 2 is the link's value.
+
+<!-- doctest: compile -->
+```bgl
+#beguilerSettings { target = Glulx; }
+enum eLinks { wait = 2 }
+int HandleGlkEvent(var event, var context, var buffer){
+    if (bgl.asm.aload(event, 0) == (int)eGlulxEventType.hyperlink
+        && bgl.asm.aload(event, 2) == (int)eLinks.wait) print("[waiting]");
+    return 0;
+}
+void main(){ }
+```
+
+Note that a program's own `HandleGlkEvent` which prints at the prompt must cancel line input itself, as in Inform 6 (§21.11).
+
 ## 6.8 Distributors
 
 **Syntax**
 
 ```syntax
-distributor ⟨name⟩ ;
+distributor NAME ;
 ```
 
-**Description**
-
-A **distributor** is a function that may be called with several arguments, each of which becomes a
-call of its own, in the order written. The declaration names a function that already exists; it
-declares no parameters and no return type, because every call it produces is an ordinary call with
-one argument:
+A **distributor** is a function which can be called with several arguments, each of which becomes a call of its own, in the order written.  The declaration names a function which already exists, and declares no parameters and no return type:
 
 ```bgl
 void say(string line) { print(line); print("^"); }
 distributor say;
 
+// … in a routine:
 say("One.", "Two.", "Three.");     // say("One."); say("Two."); say("Three.");
 ```
 
-Each argument is resolved against the function's overloads separately (§6.4), so the arguments of one
-call may differ in type, and each reaches the overload for its own type. An argument is evaluated
-when its call is reached: the first call has returned before the second argument is read.
+Each argument is resolved against the function's overloads separately (§6.4).  An argument is evaluated when its call is reached:  the first call has returned before the second argument is read.
 
-A **distributed call** is a statement and has no value. It may be the whole body of a lambda
-(`() => print("a", n)`), which then returns nothing. Using one where a value is wanted is a
-compile-time error, as is naming an argument (§6.3). The function itself may return a value; each
-call's result is discarded, as for any call written as a statement. A call with one argument, or with none, is an
-ordinary call.
+A **distributed call** is a statement and has no value, although it can be the whole body of a lambda (`() => print("a", n)`).  Using one where a value is wanted is a compile-time error, as is naming an argument (§6.3).  The function itself can return a value; however, each call's result is discarded.  A call with one argument, or with none, is an ordinary call.
 
-A call with several arguments is the call as written when an overload accepts those arguments,
-and a distributed call otherwise. With `show(string)` and `show(string, int)` declared,
-`show("x", 4)` is one call of the second, and `show("p", "q", "r")` is three calls of the first. The
-same holds for parameters with defaults (§6.3): with `echo(string line, int times = 1)`,
-`echo("twice", 2)` is one call, and `echo("a", "b")` is two, each taking the default.
+A call with several arguments is the call as written when an overload accepts those arguments, and a distributed call otherwise.  The same holds for parameters with defaults (§6.3).
 
-Only one of the two readings can ever apply, because a distributor's overloads are restricted: no
-overload's second parameter may take a value that any overload's first parameter takes. Otherwise a
-call with two arguments could be one call or two, and the declaration is a compile-time error:
+A distributor's overloads are restricted:  no overload's second parameter can take a value which any overload's first parameter takes, or the declaration is a compile-time error:
 
 ```bgl
 void say(string line, string end = "^") { print(line, end); }
@@ -334,15 +243,11 @@ void echo(int n) { … }
 distributor echo;     // ERROR: 'times' takes an int, and echo(int) takes one first
 ```
 
-A second parameter of type `var` takes every value, so a function with one cannot be a distributor.
-The check covers every overload of the name, including one declared after the `distributor` line.
+A second parameter of type `var` takes every value, so a function with one can't be a distributor.  The check covers every overload of the name, including one declared after the `distributor` line.
 
-> **Note.** A mistyped call may be a distributed call. `echo("twice", "2")`, where `2` was meant, is
-> two calls, since each argument is acceptable as a first argument.
+> ***Note:** A mistyped call can be a distributed call.  `echo("twice", "2")`, where `2` was meant, is two calls, since each argument is acceptable as a first argument.*
 
-A distributor is declared at global scope, for a global function, or in the body of a class or an
-object, for a method of it; a class's distributors are inherited. Naming something that is not a function there is a
-compile-time error. The declaration may precede or follow the function, and the calls.
+A distributor is declared at global scope, for a global function, or in the body of a class or an object, for a method of it.  A class's distributors are inherited.  Naming something which is not a function there is a compile-time error.  The declaration can come before or after the function and the calls.
 
 ```bgl
 class journal : object {
@@ -352,15 +257,12 @@ class journal : object {
 }
 journal log { }
 
+// … in a routine:
 log.add("Entered the cave.", 3, "bats.");
 ```
 
-The receiver of a distributed method call is written once and used for every call, so it must not
-itself contain a call: `nextJournal().add("one", "two")` is a compile-time error. Store the call's
-result in a variable and distribute over that.
+The receiver of a distributed method call can't contain a call:  `nextJournal().add("one", "two")` is a compile-time error.
 
-`distributor` is a keyword only directly before a name and its `;`; elsewhere it is an ordinary name.
-
-> **Note.** `print` is a distributor (§21.4): `print("You have ", count, " coins.^");`.
+> ***Note:** `print` is a distributor (§21.4):  `print("You have ", count, " coins.^");`.*
 
 **See also** §6.4 (overload resolution), §21.4 (`print`).

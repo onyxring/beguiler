@@ -16,18 +16,18 @@
   - [23.3.10 Library Options and Debug Builds](#23310-library-options-and-debug-builds)
   - [23.3.11 Standard Library Properties](#23311-standard-library-properties)
   - [23.3.12 Collection at the Prompt](#23312-collection-at-the-prompt)
+  - [23.3.13 Parser State](#23313-parser-state)
 - [23.4 Differences Between the Bindings](#234-differences-between-the-bindings)
 - [23.5 Writing a Binding](#235-writing-a-binding)
-- [23.6 Standard Library Hooks](#236-standard-library-hooks)
 <!-- /toc -->
 
 ## 23.1 What a Binding Is
 
-A *binding* is a Beguile source file in `beguiLib/bindings/` that exposes one external Inform 6 library to Beguile's type system. It declares the library's attributes, globals, constants, routines and actions with `extern` declarations (§15.4), so that Beguile code can name them with type checking; it declares the library's additive properties; and it integrates the library with the runtime core: it declares the story-identity constants the library expects, runs `bglInit()` before the library's own `main`, and routes the core's `bgl.ui` window objects through the library's window handling.
+A *binding* is a Beguile source file in `beguiLib/bindings/` which exposes one external Inform 6 library to Beguile's type system.  It declares the library's attributes, globals, constants, routines, and actions as `extern` (§16.4), so your code can name them with type checking, and it declares the library's additive properties.  It also integrates the library with the runtime core:  it declares the story-identity constants the library expects, runs `bglInit()` before the library's own `main`, and routes the core's `bgl.ui` window objects through the library's window handling.
 
-A binding defines no behavior of its own. The library's I6 source is still included with `#includeI6` (§15.5); the binding only makes its names visible.
+A binding defines no behavior of its own; the library's I6 source is still included with `#includeI6` (§16.5).  Extensions written for one library, such as the standard library hooks, are covered in §22.9.
 
-Bindings are optional. A program that manages its own `extern` declarations, or that uses an IF library without a binding, does not include one. Different libraries need different bindings and are not used together.
+Bindings are optional.  Different libraries need different bindings and are not used together.
 
 **Syntax**
 
@@ -38,18 +38,18 @@ Bindings are optional. A program that manages its own `extern` declarations, or 
 
 ## 23.2 Available Bindings
 
+The following bindings are available:
+
 | File | Library | I6 includes it corresponds to | Target notes |
 |---|---|---|---|
-| `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library, version 6.12 | `parser`, `verblib`, `grammar` | Z-machine and Glulx. Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). An earlier library (6/10, 6/11) lacks some of what it declares. |
-| `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine. PunyInform uses no classes; objects are distinguished by attributes alone. |
+| `bindings/i6StandardLibrary.bgl` | The Inform 6 standard library, version 6.12 | `parser`, `verblib`, `grammar` | Z-machine and Glulx.  Declares the Glulx window globals (`gg_mainwin`, `gg_statuswin`, …). |
+| `bindings/punyInform.bgl` | PunyInform | `globals`, `puny` | Z-machine.  PunyInform uses no classes; objects are distinguished by attributes alone. |
 
 Each binding is `#once`-guarded.
 
-The standard-library binding requires release 6.12 of that library. Against an earlier release, such as
-6/10, the binding stops the build with an error naming the release it needs.
+The standard-library binding requires release 6.12 of that library.  Against an earlier release, such as 6/10, it will stop the build with an error naming the release it needs.
 
-**Include order.** Declarations are emitted in source order (§18.6), so the library's own includes sit
-where Inform 6 expects them. For the standard library:
+**Include order.**  The library's own includes must sit where Inform 6 expects them (§18.6).  For the standard library:
 
 ```bgl
 #include <bindings/i6StandardLibrary>
@@ -59,11 +59,9 @@ where Inform 6 expects them. For the standard library:
 #includeI6 "grammar"
 ```
 
-An entry point the program defines must come before `#includeI6 "grammar"`: `grammar` declares a stub
-for every entry point not yet defined, and a definition after it is then a duplicate routine. Verbs
-and `extend` blocks may go anywhere: the grammar they emit follows the library's.
+An entry point your program defines must come before `#includeI6 "grammar"`; a later definition is a duplicate routine.  Verbs and `extend` blocks can go anywhere.
 
-PunyInform's own includes are the reverse: the binding follows them, and the entry points go before them.
+PunyInform's own includes are the reverse:  the binding follows them, and the entry points go before them.
 
 <!-- doctest: skip -->
 ```bgl
@@ -73,38 +71,32 @@ PunyInform's own includes are the reverse: the binding follows them, and the ent
 #include <bindings/punyInform>
 ```
 
-An entry point of PunyInform (`NewRoom`, `DeathMessage`, `LibraryMessages`, `BeforeParsing`, `ParseNoun`,
-`ChooseObjects`, `InScope`, `UnknownVerb`, `PrintVerb`, …) must be defined before `#includeI6 "puny"`.
-PunyInform detects an entry point with `#Ifdef` while it is being read, and compiles the call to one only
-if the name is already defined; a definition after the include is a routine that nothing calls, and the
-only sign is the I6 warning `Routine "NewRoom" declared but not used`. The `punyInform` binding therefore
-declares none of the entry points: PunyInform has no stubs for them, so a declaration would give no
-default to override, and it would not check a definition's signature either.
+An entry point of PunyInform (`NewRoom`, `DeathMessage`, `LibraryMessages`, `BeforeParsing`, `ParseNoun`, `ChooseObjects`, `InScope`, `UnknownVerb`, `PrintVerb`, …) must be defined before `#includeI6 "puny"`.  A definition after the include is never called, and the only sign is the I6 warning `Routine "NewRoom" declared but not used`.  The `punyInform` binding declares none of the entry points.
 
 ## 23.3 What a Binding Provides
 
 ### 23.3.1 Entry Point and `bglInit()`
 
-Both libraries define `Main` themselves and call the program's `Initialise` routine (§6.7). A program using either binding therefore defines `Initialise`, not `Main`.
+Both libraries define `Main` themselves and call the program's `Initialise` routine (§6.7), so a program using either binding defines `Initialise`, not `Main`.
 
-Each binding wraps the library's `main` so that `bglInit()` (§21.2) runs before it. The program does not call `bglInit()` itself.
+Each binding wraps the library's `main` so that `bglInit()` (§21.2) runs before it; you don't call `bglInit()` yourself.
 
-Each binding performs the wrap only when the `autoInitialize` setting (§17.4) is true, which is its default. Set `autoInitialize = false` when another I6 extension already replaces `main` (Inform 6 forbids two replacements); the program is then responsible for calling `bglInit()`.
+The wrap is performed only when the `autoInitialize` setting (§15.4) is true, its default.  Set `autoInitialize = false` when another I6 extension already replaces `main`; your program must then call `bglInit()` itself.
 
 ### 23.3.2 `story` and `headline`
 
-Both libraries read the I6 constants `Story` and `Headline` while their own source is being included, for the banner. Each binding declares them from `#beguilerSettings` (§17.7) in an `#emitfirst` block, so that they precede the program's `#includeI6` of the library:
+Both libraries read the I6 constants `Story` and `Headline` for the banner.  Each binding declares them from `#beguilerSettings` (§15.7), ahead of the program's `#includeI6` of the library:
 
 | Constant | Taken from |
 |---|---|
 | `story` | `#beguilerSettings.title` |
 | `headline` | `#beguilerSettings.headline` |
 
-A program using a binding must not declare them again. The `release` and `serial` settings are emitted by the compiler as the I6 `Release` and `Serial` directives, independently of any binding (§17.3). The `i6StandardLibrary` binding also declares `story` and `headline` as `extern string`, so Beguile code can read them.
+A program using a binding must not declare them again.  The `i6StandardLibrary` binding also declares `story` and `headline` as `extern string`, so Beguile code can read them.
 
 ### 23.3.3 Capability Flags
 
-Each binding advertises itself with an order-independent symbol (`#declare`, §14.2.3), which any file — including a core file parsed before the binding — can test:
+Each binding advertises itself with an order-independent symbol (`#declare`, §14.2.3) which any file can test:
 
 | Binding | Symbol |
 |---|---|
@@ -119,32 +111,25 @@ Each binding advertises itself with an order-independent symbol (`#declare`, §1
 
 ### 23.3.4 Attributes, Globals, Constants and Routines
 
-A binding declares, as `extern`:
+A binding declares the following as `extern`:
 
 - the library's **attributes** (`light`, `container`, `scenery`, `static`, …; §21.5.1);
-- its **globals**: game state (`location`, `player`, `actor`, `score`, `turns`, …) and parser results (`noun`, `second`, `action`, `verb_word`, …). `action` is declared with type `verb`, so it compares directly with verb names (§13.3);
-- its **constants**: parser error codes, scope reasons, color and window constants;
-- its **objects**: `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
-- its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions: a program overrides one by defining a function of that name (§15.4.1). PunyInform's entry points are not declared (§23.2).
+- its **globals**:  game state (`location`, `player`, `actor`, `score`, `turns`, …) and parser results (`noun`, `second`, `action`, `verb_word`, …).  `action` is declared with type `verb` (§13.3);
+- its **constants**:  parser error codes, scope reasons, and color and window constants;
+- its **objects**:  `thedark`, `selfobj`, and (standard library only) the compass direction objects `n_obj` … `d_obj`;
+- its **routines** (`PlayerTo`, `TestScope`, `StartTimer`, `StatusLineHeight`, …), and, for the standard library, the optional entry points the library calls at defined moments (`AfterLife`, `NewRoom`, `TimePasses`, `InScope`, …) as `extern default` functions (§16.4.1).  PunyInform's entry points are not declared (§23.2).
 
-Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h` and `english.h`; in PunyInform's core files) as `extern var ⟨Name⟩(var a = 0, …)`, taking the routine's first locals as optional parameters: Inform 6 does not distinguish a routine's parameters from its locals, and one the call omits is `0`. A member named like any library routine is therefore renamed automatically (§8.1); a bare name that names both a library routine and something of the program's own means the program's, except a member reached only through `#using`, which loses to the routine with a warning (§10.4); and a program's own `extern` declaration of a library routine replaces the binding's.
+Beyond the routines it documents, each binding declares every other routine the library defines (in `parser.h`, `verblib.h`, and `english.h`; in PunyInform's core files) as `extern var NAME(var a = 0, …)`, taking the routine's first locals as optional parameters; an argument the call leaves out is `0`.  A member named like any library routine is renamed automatically (§16.9).  A member reached only through `#using` loses to a library routine of the same name, with a warning (§10.4).  A program's own `extern` declaration of a library routine replaces the binding's.
 
-Neither binding declares the library's object *properties* (`description`, `capacity`, `door_to`, `before`, …) as members of `object`; a class or object declares the properties it provides (§11.7.1), with the types given in §23.3.11. The one exception is `short_name`, which both bindings declare on `object`, since each library prints it as the object's name (§21.4). Both bindings also make the object's name and its `parent` positional, in that order (§8.3.5), so an object can open as an Inform 6 object header does: `object hook { "small brass hook", cloakroom; }`.
-
-A declaration on an `extern` class, the binding's or a program's `extend class object { … }` (§8.7.1),
-only gives a library property its type; it gives no object the property. An object holds a property
-only when its class, or the object itself, declares or sets it, so writing one on an object that
-doesn't hold it fails at run time, not when the program is compiled: `with_key = k;` in a class that
-never declares `with_key`, or `short_name` written from a pooled class's `create()`. Declare the
-property in the class that writes it (`object with_key;`, `string short_name;`).
+The library's object properties are covered in §23.3.11.
 
 ### 23.3.5 Additive Properties
 
-Additive properties belong to the library that defines them, so the binding declares them (§11.7.2). The `i6StandardLibrary` binding declares `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn`; the `punyInform` binding declares `before`, `after`, `life`, `describe`, `time_out` and `each_turn` (`orders` is an ordinary property in PunyInform). `name` is additive in the Inform 6 compiler itself and is declared by the core (§21.5.2), not by a binding.
+Additive properties belong to the library that defines them, so the binding declares them (§11.7.2).  The `i6StandardLibrary` binding declares `before`, `after`, `life`, `orders`, `describe`, `time_out`, and `each_turn`; the `punyInform` binding declares `before`, `after`, `life`, `describe`, `time_out`, and `each_turn` (`orders` is an ordinary property in PunyInform).  `name` is additive in the Inform 6 compiler itself and needs no binding (§11.7.2).
 
 ### 23.3.6 Verbs and Grammar Tokens
 
-A binding declares the library's actions as `extern verb`s with their claimed dictionary words, so that a program can compare `action` with them, launch them with `perform()`, and extend their grammar without colliding with the library's own `Verb` directives (§13.2.3):
+A binding declares the library's actions as `extern verb`s with their claimed dictionary words (§13.2.3):
 
 ```bgl
 extern verb Take { .take|.carry|.hold|.get|.pick|.peel }
@@ -152,15 +137,15 @@ extern verb Look { .look|.l }
 extern verb Receive { }                 // a fake action: no words or grammar of its own
 ```
 
-It also declares the `grammarToken` enum (§21.5.5) with the parser's token names — `NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE` — for use in grammar patterns.
+It also declares the `grammarToken` enum (§13.4.1) with the parser's token names (`NOUN`, `HELD`, `CREATURE`, `TOPIC`, `MULTI`, `MULTIHELD`, `MULTIEXCEPT`, `MULTIINSIDE`, `SPECIAL`, `ANYNUMBER`, `NUMBER`, `SCOPE`, `REVERSE`) for use in grammar patterns.
 
 ### 23.3.7 Shared Types
 
-Each binding declares `iString`, `iStringOrObject` and `iStringOrRoutine` (§21.5.10), with `print()` overloads for `iString` and `iStringOrRoutine`. Their behavior does not depend on either library; a program includes only one binding, so the two declarations never meet.
+Each binding declares `iString`, `iStringOrObject`, and `iStringOrRoutine` (§21.5.10), with `print()` overloads for `iString` and `iStringOrRoutine`.
 
 ### 23.3.8 Status Bar and Main Window
 
-The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar.id` (§21.10) are replaced by each binding with accessors that read and write the library's own status-line state, so that `bgl.ui.statusBar.height = 2` and the library's own status-line redraw agree:
+Each binding replaces the core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar.id` (§21.10) with accessors which read and write the library's own status-line state:
 
 | Member | `i6StandardLibrary` | `punyInform` |
 |---|---|---|
@@ -171,22 +156,20 @@ The core's `bgl.ui.statusBar.height` and `bgl.ui.mainWin.id` / `bgl.ui.statusBar
 
 ### 23.3.9 Banner Texts
 
-The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and merges its own banner into the library's `Banner` routine (§14.1.6), one that also names the Beguile version. A game changes the banner by replacing `Banner` (§6.5). The `punyInform` binding does the same for PunyInform.
+The `i6StandardLibrary` binding binds the library's banner texts (`INFORMV__TX`, `LIBRARYV__TX`, `LibRelease`) and merges its own banner into the library's `Banner` routine (§14.1.6), one which also names the Beguile version.  A game can change the banner by replacing `Banner` (§6.5).  The `punyInform` binding does the same for PunyInform.
 
 ### 23.3.10 Library Options and Debug Builds
 
-Parts of a library exist only when an I6 option constant is set, or only in a debug build. A binding
-declares such parts under the symbol that enables them, so a program that names one in a build that
-lacks it fails with a Beguile error instead of an Inform 6 one:
+Parts of a library exist only when an I6 option constant is set, or only in a debug build.  A binding declares such parts under the symbol which enables them, so a program naming one in a build that lacks it will fail with a Beguile error instead of an Inform 6 one:
 
 | Parts | Declared under |
 |---|---|
 | Debugging verbs (`tree`, `purloin`, `actions`, …) and debug-only globals and constants | `#if DEBUG` (§20.3) |
-| Standard library: `objects` and `places` | `#if !NO_PLACES` |
-| PunyInform routines: `NumberWord`, `LanguageNumber`, `Achieved` | `#if OPTIONAL_ALLOW_WRITTEN_NUMBERS`, `#if OPTIONAL_LANGUAGE_NUMBER`, `#if OPTIONAL_FULL_SCORE && TASKS_PROVIDED` |
-| PunyInform: `recording`, `replay`, `objects` and `places` | `#if OPTIONAL_EXTENDED_METAVERBS`; `objects` and `places` also `#if !NO_PLACES` |
+| Standard library:  `objects` and `places` | `#if !NO_PLACES` |
+| PunyInform routines:  `NumberWord`, `LanguageNumber`, `Achieved` | `#if OPTIONAL_ALLOW_WRITTEN_NUMBERS`, `#if OPTIONAL_LANGUAGE_NUMBER`, `#if OPTIONAL_FULL_SCORE && TASKS_PROVIDED` |
+| PunyInform:  `recording`, `replay`, `objects`, and `places` | `#if OPTIONAL_EXTENDED_METAVERBS`; `objects` and `places` also `#if !NO_PLACES` |
 
-A program sets a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
+You set a library option with `#defineI6` (§14.2.1), before the binding's `#include`:
 
 <!-- doctest: skip -->
 ```bgl
@@ -198,68 +181,40 @@ A program sets a library option with `#defineI6` (§14.2.1), before the binding'
 
 ### 23.3.11 Standard Library Properties
 
-**Description**
-
-A standard-library property is declared on the class or object that provides it, as an ordinary member
-(§8.3, §11.7.1). The library reads each one by name, so the member's name is the property's; its type
-says which of the library's forms it takes. Many properties accept either a value or a routine: declare
-the member as a value to give a value, or as a method to give a routine. A routine the library calls
-returns what the library expects of it, which the table gives as the method's return type.
+Neither binding declares the library's object properties (`description`, `capacity`, `door_to`, `before`, …) as members of `object`, except `short_name`, which both declare there (§21.4); when an object has both a `short_name` and an `instanceName` (§11.5.4), the library prints `short_name`.  A standard-library property is declared on the class or object providing it, as an ordinary member (§8.3, §11.7.1); declaring one on `extend class object` only gives it a type (§8.7.1).  The member's name is the property's, and its type says which of the library's forms it takes.  Many properties accept either a value or a routine (among them those typed `iString`, `iStringOrObject`, and `iStringOrRoutine`, §21.5.10):  declare the member as a value to give a value, or as a method to give a routine.  A routine the library calls returns what the library expects of it, given below as the method's return type.
 
 | Property | The library uses it to | Declare it as |
 |---|---|---|
-| `description` | describe the object (`examine`) or room (`look`) | `string description`, `void description()`, or `bool description()`: true when it printed the whole description (otherwise the library adds its own text, such as a switchable object's "currently switched on") |
+| `description` | describe the object (`examine`) or room (`look`) | `string description`, `void description()`, or `bool description()`:  true when it printed the whole description (otherwise the library adds its own text) |
 | `initial` | describe the object in a room before it is first moved | `string initial` or `void initial()` |
 | `when_open`, `when_closed`, `when_on`, `when_off` | describe an openable or switchable object in a room | `string` or a `void` method |
 | `inside_description` | describe the inside of an enterable object | `string` or a `void` method |
-| `short_name` | print the object's name (declared on `object` by the binding) | `string short_name`, an interpolated string (§2.4.3), or `bool short_name()`: true when it printed the whole name |
+| `short_name` | print the object's name | `string short_name`, an interpolated string (§2.9.1), or `bool short_name()`:  true when it printed the whole name |
 | `article`, `short_name_indef` | print the indefinite article / indefinite name | `string` or a `void` method |
 | `plural` | name several identical objects | `string plural` or a `void` method |
-| `parse_name` | match the player's words against the object | `int parse_name()`: the number of words matched, 0 for none, -1 to use `name` |
-| `n_to` … `d_to`, `in_to`, `out_to` | the room or door in that direction | `object n_to`, or `var n_to()` returning a room or door, `false` for "can't go", or `true` after printing its own refusal |
+| `parse_name` | match the player's words against the object | `int parse_name()`:  the number of words matched, 0 for none, -1 to use `name` |
+| `n_to` … `d_to`, `in_to`, `out_to` | the room or door in that direction | `object n_to`, or `var n_to()` returning a room or door to go there, `false` to refuse with the room's `cant_go` (or the library's own message), or `true` after printing its own refusal |
 | `cant_go` | refuse movement in a direction with no exit | `string cant_go` or `void cant_go()` |
 | `door_to` | the room on the other side of a door | `object door_to` or `object door_to()` |
 | `door_dir` | the direction a door leads | `property door_dir` (`door_dir = n_to;`) or `property door_dir()` |
-| `with_key` | the key that locks and unlocks the object | `object with_key` |
-| `found_in` | the rooms a floating object (a door, scenery) is in | `rawArray<object> found_in`, or `bool found_in()`: true when it is in `location` |
+| `with_key` | the key which locks and unlocks the object | `object with_key` |
+| `found_in` | the rooms a floating object (a door, scenery) is in | `rawArray<object> found_in`, or `bool found_in()`:  true when it is in `location` |
 | `capacity` | how many objects a container or supporter holds | `int capacity` |
 | `number`, `time_left` | a general-purpose number; turns left on the object's timer | `int` |
 | `daemon` | run every turn after `StartDaemon(obj)` | `void daemon()` |
-| `react_before`, `react_after` | intercept any action while the object is in scope | `bool react_before()`: true to stop the action |
-| `invent` | change how the object is listed in an inventory | `bool invent()`: true when it printed the whole entry |
+| `react_before`, `react_after` | intercept any action while the object is in scope | `bool react_before()`:  true to stop the action |
+| `invent` | change how the object is listed in an inventory | `bool invent()`:  true when it printed the whole entry |
 | `add_to_scope` | bring other objects into scope with this one | `rawArray<object> add_to_scope`, or `void add_to_scope()` calling `AddToScope(obj)` |
 | `list_together` | group similar objects in a list | `int list_together` (a group number) or `string list_together`; the library groups objects whose values are the same word, so a string is declared once, on their class, rather than repeated on each object |
 | `articles` | articles for a name in a language without inflection | `rawArray<string> articles` |
 
-The binding gives `found_in`, `add_to_scope` and `articles` their array types, so an object fills one
-without naming a type (`found_in = {study, attic};`) and declares a type only to use a different one.
+The binding gives `found_in`, `add_to_scope`, and `articles` their array types, so an object can fill one without naming a type (`found_in = {study, attic};`).
 
-The additive properties `before`, `after`, `life`, `orders`, `describe`, `time_out` and `each_turn` are
-declared by the binding (§23.3.5) and written as methods: `bool before()` returns true to stop the
-action, and the others follow the same table.
+> ***Note:** `null` is the same word as `false`, so a direction routine which returns `null` refuses with `cant_go` too.  A direction property given an interpolated string refuses the move, since the string returns `true` once printed.*
 
-**The player's words.** Inside `parse_name` (and other parsing routines) `NextWord()` returns the next
-word as a `dictionaryWord`, or `null` for a word not in the dictionary, and advances `wn`;
-`NextWordStopped()` returns -1 once the words run out. Both are declared by the binding.
+The additive properties (§23.3.5) are written as methods:  `bool before()` returns true to stop the action; `bool describe()`, called when the library lists the object in a room, returns true when it printed the object's paragraph itself, and the library then doesn't list it; the others follow the above table.
 
-**Telling objects apart.** When the parser asks whether two objects that share a `parse_name` can be
-told apart, it sets `parser_action` to `TheSame` and the objects in `parser_one` and `parser_two`; the
-routine answers -1 when they are the same and -2 when they differ (0 leaves it to their `name` words). A `parse_name` that matched a plural
-word sets `parser_action = PluralFound;`. The binding declares all three (PunyInform has `parser_action`
-only, for `PluralFound`).
-
-**The topic of Ask, Tell and Answer.** For Ask and Tell the parser puts the topic's first word (after a
-leading "the") in `second`; for Answer (`answer ⟨topic⟩ to ⟨character⟩`) it is in `noun`, and `second`
-is the character. Both are declared `object` by the binding, so a cast reinterprets the word:
-`(dictionaryWord)second == .weather` (§4.11). The whole topic is the words `consult_from` to
-`consult_from + consult_words - 1`, read with `wn = consult_from;` and `NextWord()`.
-
-**Numbers.** A `NUMBER` grammar token (§13.4.2) puts the number in `noun` or `second`, by its position
-among the line's value tokens, and in `parsed_number`. `noun` and `second` are declared `object`, so a
-cast reads the number: `(int)noun`.
-
-**Inventory listings.** `invent` is called twice for each entry; `inventory_stage` (1 or 2) says which:
-1 before the name is printed, 2 after it, for text that follows the name.
+**Inventory listings.**  `invent` is called twice for each entry, and `inventory_stage` (1 or 2) says which:  1 before the name is printed, 2 after it, for text following the name.
 
 **Example**
 
@@ -303,116 +258,51 @@ bool Initialise(){ location = hall; rfalse; }
 
 ### 23.3.12 Collection at the Prompt
 
-The core keeps one routine for the library to run before it reads the player's command, the global
-`_bglPromptHook` (0 until the program first allocates from the heap). Each binding runs it there, which
-is where heap arrays are collected (§12.6):
+The core keeps one routine for the library to run before it reads the player's command:  the global `_bglPromptHook` (0 until the program first allocates from the heap).  Each binding runs it there, which is where heap arrays are collected (§12.6):
 
 | Binding | Where |
 |---|---|
 | `i6StandardLibrary` | A `LibraryExtensions` object's `ext_afterprompt` (6.11 and later), so a program's own `AfterPrompt` still runs. |
-| `punyInform` | A replacement of `_ReadPlayerInput` that runs the hook, then the library's routine; a read with no prompt (`YesOrNo()`, menus) skips it. |
+| `punyInform` | A replacement of `_ReadPlayerInput` which runs the hook, then the library's routine; a read with no prompt (`YesOrNo()`, menus) skips it. |
+
+### 23.3.13 Parser State
+
+A program reads the parser's state through the globals a binding declares (§23.3.4).  A `NUMBER` token's value is in `noun` or `second` (§13.4.2).
+
+**The player's words.**  Inside `parse_name` (and other parsing routines) `NextWord()` returns the next word as a `dictionaryWord`, or `null` for a word not in the dictionary, and advances `wn`; `NextWordStopped()` returns -1 once the words run out.
+
+**Telling objects apart.**  When the parser asks whether two objects sharing a `parse_name` can be told apart, it sets `parser_action` to `TheSame` and the objects in `parser_one` and `parser_two`; the routine answers -1 when they are the same and -2 when they differ (0 leaves it to their `name` words).  A `parse_name` which matched a plural word sets `parser_action = PluralFound;`.  PunyInform has only `parser_action`, for `PluralFound`.
+
+**The topic of Ask, Tell, and Answer.**  For Ask and Tell the parser puts the topic's first word (after a leading "the") in `second`; for Answer (`answer TOPIC to CHARACTER`) it is in `noun`, and `second` is the character.  Both are declared `object`, so a cast reinterprets the word:  `(dictionaryWord)second == .weather` (§4.11).  The whole topic is the words `consult_from` to `consult_from + consult_words - 1`, which you can read with `wn = consult_from;` and `NextWord()`.
 
 ## 23.4 Differences Between the Bindings
 
+The two bindings differ in the following ways:
+
 | | `i6StandardLibrary` | `punyInform` |
 |---|---|---|
-| Directions | Direction *objects* `n_obj` … `d_obj`; a Go action has `noun == n_obj`. | No direction objects. `selected_direction` (a `property`) holds the direction property (`n_to`, `s_to`, … `in_to`, `out_to`) and `noun` is the shared `Directions` placeholder; `selected_direction_index` is `1..12`. The `FAKE_*_OBJ` constants are the parser's internal sentinels. |
-| Reacting objects | Any object may define `before`/`after`. | An object with `each_turn`, `react_before`, `react_after` or `add_to_scope` needs the `reactive` attribute, which the library sets for it at startup unless `OPTIONAL_MANUAL_REACTIVE` is defined; with that option the program gives `reactive` itself. |
+| Directions | Direction *objects* `n_obj` … `d_obj`; a Go action has `noun == n_obj`. | No direction objects.  `selected_direction` (a `property`) holds the direction property (`n_to`, `s_to`, … `in_to`, `out_to`) and `noun` is the shared `Directions` placeholder; `selected_direction_index` is `1..12`.  The `FAKE_*_OBJ` constants are the parser's internal sentinels. |
+| Reacting objects | Any object can define `before`/`after`. | An object with `each_turn`, `react_before`, `react_after`, or `add_to_scope` needs the `reactive` attribute, which the library sets for it at startup unless `OPTIONAL_MANUAL_REACTIVE` is defined; with that option the program gives `reactive` itself. |
 | Extra attributes | `door`, `absent`, `pluralname`, `male`, `female`, `neuter`, `switchable`, `on`, `scored`, `workflag`, … | The same, plus `reactive`. |
 | Pronouns | `itobj`, `himobj`, `herobj` | Also `themobj`. |
 | Status line | `StatusLineHeight()`, `gg_statuswin_cursize` | `_StatusLineHeight()`, `statusline_height`, `statusline_current_height` |
 | Colors | `CLR_*` constants | `CLR_*` plus the Ozmoo extended colors, and the `clr_on`/`clr_fg`/`clr_bg`/`clr_fgstatus` globals |
-| Verb sets | The standard library's actions, meta actions and debug actions. | PunyInform's; some claimed-word sets differ (`Drop` claims `throw`; `Shout`/`ShoutAt`; `Again`/`Oops`; `LookModeNormal`/`Short`/`Long` in place of `LMode1..3`). |
+| Verb sets | The standard library's actions, meta actions, and debug actions. | PunyInform's; some claimed-word sets differ (`Drop` claims `throw`; `Shout`/`ShoutAt`; `Again`/`Oops`; `LookModeNormal`/`Short`/`Long` in place of `LMode1..3`). |
 
 ## 23.5 Writing a Binding
 
 A binding for another library follows these rules:
 
 1. **Guard the file with `#once`** (§14.1.7), and declare the shared types (§23.3.7).
-2. **Advertise the library with `#declare`** (§14.2.3): a bare capability symbol that other files can test regardless of include order.
-3. **Declare names, not behavior.** Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb` and `extern` routines (§15.4). Give `action` the type `verb`. Declare each additive property the library defines (§11.7.2). Do not declare the library's object properties on `object`.
-4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them. A program's own verb can't take a fake action's name.
-5. **Declare the `grammarToken` enum** with the library's parser token names (§21.5.5).
-6. **Declare library-required constants in `#emitfirst`** (§14.4.2) using `##beguilerSettings.<key>` substitution (§14.4.5), so that they precede the program's `#includeI6` of the library (§23.3.2).
-7. **Run `bglInit()`.** Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).
-8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8), so that the core, the `<ui>` extension and `<glulxWindow>` operate on the library's windows.
-9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§15.4.1).
-10. **Declare optional parts under the symbol that enables them**: `#if DEBUG` for what exists only in a debug build, and `#if ⟨OPTION⟩` / `#if !⟨OPTION⟩` for what a library option constant adds or removes (§23.3.10).
+2. **Advertise the library with `#declare`** (§14.2.3):  a bare capability symbol which other files can test regardless of include order.
+3. **Declare names, not behavior.**  Use `extern attribute`, `extern object`, `extern int` / `bool` / `string`, `extern const`, `extern property`, `extern additive property`, `extern verb`, and `extern` routines (§16.4).  Give `action` the type `verb`.  Declare each additive property the library defines (§11.7.2).  Don't declare the library's object properties on `object`.
+4. **Declare every action as an `extern verb` with its claimed words** (§13.2.3), including fake actions with an empty body, `extern verb Name { }`, which claims no words, so that grammar added by a program extends the library's verbs instead of colliding with them.
+5. **Declare the `grammarToken` enum** with the library's parser token names (§13.4.1).
+6. **Declare library-required constants in `#emitfirst`** (§14.4.2) using `##beguilerSettings.KEY` substitution (§14.4.5), so that they precede the program's `#includeI6` of the library (§23.3.2).
+7. **Run `bglInit()`.**  Wrap the library's `main` with `#emitfirst { replace main _oldmain; }` and `#emitlast { [main; bglInit(); _oldmain(); ]; }`, gated on `#if bglAutoInitialize` so that `autoInitialize = false` disables it (§23.3.1).
+8. **Route the status bar** by replacing `bgl.ui.statusBar`'s `id` and `height` accessors, and `bgl.ui.mainWin.id`, with the library's own state (§23.3.8).
+9. **Declare the library's optional entry points** as `extern default` functions, so that a program overrides one by defining it (§16.4.1).
+10. **Declare optional parts under the symbol that enables them**:  `#if DEBUG` for what exists only in a debug build, and `#if OPTION` / `#if !OPTION` for what a library option constant adds or removes (§23.3.10).
 11. **Run `_bglPromptHook` when the turn's prompt is shown** (§23.3.12), when it is not 0, at a point where no Beguile routine is running.
 
-**See also** §11.7, §13.2.3, §14.4, §15.4, §17.7, §21.5.
-
-## 23.6 Standard Library Hooks
-
-**Purpose**
-
-Lets an extension change what the standard library does inside its own routines (reading the command,
-parsing, LOOK, GO, listing objects, and so on) without replacing those routines. Each hook is a call that
-a patch (§14.1.6) merges into the library. An object that defines the hook's method answers it.
-
-**Include**
-
-```syntax
-#include <extensions/stdlib/hooks>               // every group
-#include <extensions/stdlib/hooks/⟨group⟩>       // one group
-```
-
-**Description**
-
-The hooks come in seven groups, one per area of the library. Each group is its own extension, with its
-own patch, so a program carries only the calls of the groups it includes. `<extensions/stdlib/hooks>`
-includes all seven. Each group includes `<bindings/i6StandardLibrary>`, and the groups can be included
-in any combination and order.
-
-| Group | Routines it hooks | Hooks |
-|---|---|---|
-| `informLibrary` | `InformLibrary.play` (the play loop) | `ext_afterGamePrologueNotify`, `ext_playLoopRewriteParsedCommands`, `ext_playLoopAssignObjectVariables`, `ext_playLoopPerformSingleObjectAction`, `ext_playLoopPerformMultiObjectAction` |
-| `keyboard` | `KeyboardPrimitive`, `Keyboard` | `ext_keyboardPrimitiveNotify`, `ext_keyboardPrimitive`, `ext_keyboardGetInput`, `ext_beforePrompt`, `ext_keyboardPrepInput`, `ext_keyboardHandleComment`, `ext_keyboardHandleUndo`, `ext_keyboardHandleOops` |
-| `parser` | `Parser__parse`, `Adjudicate`, `R_Process` | `ext_forceLookAhead`, `ext_suppressParsingImplicitTake`, `ext_adjudicate`, `ext_redirectActionNotify` |
-| `standardLibrary` | `Identical`, `NounWord`, `NextWord`, `AfterRoutines`, `DisplayStatus`, `ActionPrimitive` | `ext_identical`, `ext_nounWord`, `ext_nextWord`, `ext_beforeAction`, `ext_afterAction`, `ext_afterRoutines`, `ext_displayStatus` |
-| `verbs` | `PlayerTo`, `GoSub`, `LookSub`, `ExamineSub` | `ext_lookSub`, `ext_examineSub`, `ext_preDescription`, `ext_postDescription`, `ext_goSub`, `ext_goSubNoDir`, `ext_playerToNotify` |
-| `writeAfterEntry` | `WriteAfterEntry` | `ext_sdPartInvBit`, `ext_sdFullInvBit`, `ext_sdConcealBit`, `ext_sdAlwaysBit`, `ext_sdRecurseBit`, `ext_sdIsOrAre`, `ext_sdNewLineBit`, `ext_sdDoList` |
-| `writeList` | `WriteListR` | `ext_forceSingular`, `ext_wlrPluralMany` |
-
-Each hook is an `extern property`, documented where its group declares it. The `verbs` group also
-declares `orSuppressNewlineAfterDescription`. The `writeAfterEntry` group also declares
-`_WAE_recurse_flag`, `_WAE_parenth_flag`, `_WAE_child_count` and `_WAE_eldest_child`, which describe
-the entry being written.
-
-A **library extension** is an object whose parent is the library's `LibraryExtensions` object. It
-answers a hook by defining a method with the hook's name. Extensions are asked in the order they are
-declared:
-
-- A hook that returns a value is asked of each extension in turn until one answers. False (or 0) lets
-  the library carry on as it would without the hook. `ext_identical` is the exception: true leaves it to
-  the library, and false says the two objects differ.
-- A hook whose name ends in `Notify`, and `ext_afterAction`, `ext_preDescription` and
-  `ext_postDescription`, are only told. Every extension is told, and what it returns is ignored.
-- A `keyboard` hook can also return -1, which starts reading the command again.
-
-Until an extension answers a hook, the library behaves exactly as it does without the group.
-
-**Example**
-
-<!-- doctest: compile -->
-```bgl
-#include <extensions/stdlib/hooks/verbs>
-
-object darkHooks {
-    parent = LibraryExtensions;
-    bool ext_lookSub(){ print("It's too dark to make anything out.^"); rtrue; }
-}
-```
-
-**Notes**
-
-The hooks exist only for the standard library, and the patches are made against version 6.12.8 (§23.2).
-A patch that no longer matches the library is a compile-time error (§14.1.6).
-
-A group that is included costs space even when nothing answers it. On the Z-machine each group adds
-between 88 and 344 bytes; all seven add about 1.7 KB. Include only the groups an extension answers.
-
-A group defines a hook's property only when Inform 6 code has not already defined it, and an Inform 6
-object in `LibraryExtensions` answers a hook like a Beguile one.
-
-**See also** §14.1.6, §15.4, §15.6.
+**See also** §11.7, §13.2.3, §14.4, §16.4, §15.7, §21.5.

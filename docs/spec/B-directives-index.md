@@ -1,12 +1,11 @@
 # Appendix B Directive Index
 
-Directive names are case-insensitive. Each entry points to its specification in §14; the semantics
-of islands and `extern`-related behavior are in §15.
+Directive names are case-insensitive.  Each entry points to its section in §14; islands and `extern`-related behavior are covered in §16.
 
 | Directive | Purpose | Entry |
 |---|---|---|
-| `#beguilerSettings { … }` | Configure the compiler and the I6 invocation | §14.7.1 (§17.1) |
-| `#beguilerSettings.prop` | Read a setting as a compile-time literal | §14.7.2 (§17.7) |
+| `#beguilerSettings { … }` | Configure the compiler and the I6 invocation | §14.7.1 (§15.1) |
+| `#beguilerSettings.prop` | Read a setting as a compile-time literal | §14.7.2 (§15.7) |
 | `#bgl` | Beguile island in raw I6 (in-routine or file-scope) | §14.5.2 |
 | `#bglDecl` | File-scope Beguile island, declarations only | §14.5.2 |
 | `#bglStmt` | File-scope Beguile island, statements only | §14.5.2 |
@@ -15,12 +14,13 @@ of islands and `extern`-related behavior are in §15.
 | `#defineI6` | `#define` that also emits the symbol to I6 as a `Constant` | §14.2.1 |
 | `#elif` | Alternative condition in an `#if` block | §14.2.5 |
 | `#else` | Fallback branch of an `#if` block | §14.2.5 |
+| `#emitAfterI6Include` | Emit this file's Inform 6 after a named `#includeI6` | §14.1.8 |
 | `#emitfirst` | Raw I6 at the beginning of the generated program | §14.4.2 |
 | `#emitlast` | Raw I6 at the end of the generated program | §14.4.3 |
 | `#endif` | Close an `#if` block | §14.2.5 |
 | `#error` | Halt compilation with a message | §14.3.3 |
 | `#exit` | Stop processing the current file | §14.3.4 |
-| `#i6` | I6 island in Beguile source (single-line or block) | §14.5.1 (§15.2) |
+| `#i6` | I6 island in Beguile source (single-line or block) | §14.5.1 (§16.2) |
 | `#if` | Conditional compilation | §14.2.5 |
 | `#include <name>` | Include a BLR library file | §14.1.1 |
 | `#include "path"` | Include a Beguile file by path | §14.1.2 |
@@ -35,11 +35,10 @@ of islands and `extern`-related behavior are in §15.
 | `#storedEmitFirst` | Named raw-I6 block, emitted at the top only when triggered | §14.4.4 |
 | `#storedEmitLast` | Named raw-I6 block, emitted at the end only when triggered | §14.4.4 |
 | `#undef` | Remove a symbol | §14.2.2 |
-| `#using` | Import a class's or object's members into file scope | §10.4 |
+| `#using` | Import a class's or object's members into file scope | §14.6.1 |
 | `#warning` | Report a warning and continue | §14.3.2 |
 
-The `##` prefix marks Beguile-level processing inside otherwise raw I6 text. These markers are not
-directives and are not valid in ordinary Beguile source:
+The `##` prefix marks Beguile-level processing inside otherwise raw I6 text.  These markers are not directives and are not valid in ordinary Beguile source:
 
 | Marker | Where | Purpose | Specified in |
 |---|---|---|---|
@@ -47,8 +46,7 @@ directives and are not valid in ordinary Beguile source:
 | `##else` | emitter bodies | Alternate branch of `##if` | §7.4 |
 | `##endif` | emitter bodies | Close a `##if` block | §7.4 |
 | `##beguilerSettings.key` | `#emitfirst`, `#emitlast`, `#storedEmitFirst`, `#storedEmitLast` bodies | Substitute a setting's value as an I6 literal | §14.4.5 |
-| `##ifdef`, `##ifndef` | — | Do not exist. `##if SYMBOL` in an emitter body, `#if SYMBOL` in Beguile source | §7.4, §14.2.5 |
-| `##Action` | raw I6 only | Not a Beguile marker: Inform 6's own action-constant syntax (`##Take`), valid wherever raw I6 is written. In Beguile source, compare `action` with the verb name instead | §13.3 |
+| `##ifdef`, `##ifndef` | - | Do not exist.  `##if SYMBOL` in an emitter body, `#if SYMBOL` in Beguile source | §7.4, §14.2.5 |
+| `##Action` | raw I6 only | Not a Beguile marker:  Inform 6's own action-constant syntax (`##Take`), valid wherever raw I6 is written | §13.3 |
 
-A single-hash directive inside an emitter body (`#ifdef`, `#iftrue`, …) is not a Beguile directive:
-it is passed through verbatim and becomes an I6 compile-time conditional (§7.4).
+A single-hash directive inside an emitter body (`#ifdef`, `#iftrue`, …) is not a Beguile directive:  it passes through verbatim and becomes an I6 compile-time conditional (§7.4).

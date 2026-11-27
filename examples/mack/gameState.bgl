@@ -1,0 +1,12 @@
+//===================================================================================================
+// gameState.bgl — mack's game-specific state surface (NOT reusable; belongs to this game).
+//---------------------------------------------------------------------------------------------------
+// The `gameState` instance + its task/state property constants are declared by the I6 `orGameState
+// gameState with maxScore 25, taskX …, …` directive in the staging island. These externs make that
+// instance and those task IDs referenceable from converted Beguile code. Also extends dialogueTopic with
+// the game-only topic properties (the blindStatue translator mechanic + the monkeys' loop-array).
+//===================================================================================================
+#once
+
+
+

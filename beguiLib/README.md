@@ -7,17 +7,13 @@ name (`#include <array>`); the rest are included by folder and name (`#include <
 | Folder | What it holds | Included |
 |---|---|---|
 | `core/` | The Beguile Language Runtime (BLR): the language's types and the VMs' mechanics, exposed as `bgl.*` namespace objects | always |
-| (root) | Opt-in language extensions: `<array>`, `<string>` (the earlier one archived as `<archive/string>`), `<buf>`, `<linq>`, `<ui>`, `<glulxWindow>`, `<glulxImage>` | by `#include` |
+| (root) | Opt-in language extensions: `<array>`, `<string>`, `<buf>`, `<linq>`, `<ui>`, `<glulxWindow>`, `<glulxImage>` | by `#include` |
 | `bindings/` | Bindings to the Inform 6 foundational libraries: `<bindings/i6StandardLibrary>`, `<bindings/punyInform>` | by `#include` |
 | `extensions/general/` | Official Beguile extensions that work with any library | by `#include` |
 | `extensions/stdlib/` | Official Beguile extensions to the Inform 6 standard library | by `#include` |
-| `extensions/puny/` | Official Beguile extensions to PunyInform | by `#include` |
-| `libraries/` | Beguile foundational libraries, which replace an Inform 6 one: `<libraries/bglStdLib>` | by `#include` |
 
-A folder depends only on the folders above it in this table, with two exceptions:
-
-- An extension for one library depends on that library's binding.
-- A foundational library depends on no binding.
+A folder depends only on the folders above it in this table, except that an extension for one library
+depends on that library's binding.
 
 `core/` refers to no library.
 

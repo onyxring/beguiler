@@ -1,12 +1,12 @@
 # Beguiler
 
-First some nomenclature:
+First some clarity around names:
 
 ***Beguile*** is a clean, type-aware language inspired by C++, C#, and TypeScript.  You write works of Interactive Fiction in it, which are then passed through the compiler to output Z-Machine and Glulx story files
 
 ***Beguiler*** is the *Beguile compiler* which transpiles *Beguile* source into I6 and instruments the [Inform 6][i6] compiler.  It can serve as either an I6 precompiler, or as a compiler for the full Beguile language. It also hosts a Beguile language server for the VS Code extension.
 
-***Beguilex*** is the *Beguile extension* for VS Code which you can find in the [Beguilex repo](https://github.com/onyxring/beguilex).  It provides syntax highlighting, diagnostics, hover, completion, embedded interpreters, run-time debugging support. It instruments Beguiler and is ***highly recommended***. Install it alongside this compiler for the full authoring experience.
+***Beguilex*** is the *Beguile extension* for VS Code, which ships with each Beguiler [Release](https://github.com/onyxring/beguiler/releases); its source is in the [Beguilex repo](https://github.com/onyxring/beguilex).  It provides syntax highlighting, diagnostics, hover, completion, embedded interpreters, run-time debugging support. It instruments Beguiler and is ***highly recommended***. Install it alongside this compiler for the full authoring experience.
 
 Here's the Beguile compilation pipeline:
 
@@ -31,7 +31,9 @@ This is **beta**. The language and compiler are stabilizing. Feedback and bug re
 
 If you are looking into Beguile, you should also use the associated VS Code extension, [Beguilex](https://github.com/onyxring/beguilex).  Although not strictly necessary, it handles all the commandline switches and let's you get down to building your stories quickly. Even if you decide to not write games in Beguile, the extension is still worth adding to your repertoire, since it lets you debug your I6 code as well.
 
-## Quick Start
+The extension comes with the compiler:  each [Release](https://github.com/onyxring/beguiler/releases) archive has a `beguilex` folder holding the `.vsix` that matches the compiler, and the `.vsix` is also attached to the release on its own.  Install it from VS Code's **Extensions** view (`...` menu, **Install from VSIX...**), or with `code --install-extension beguile-language-<version>.vsix`.
+
+## Getting It Installed
 
 ### Download the binaries...
 
@@ -62,7 +64,7 @@ Depending on which C++ compiler you have installed, you may need to substitute t
 ./beguiler -inform=path\to\inform\ myStory.bgl
 ```
 
-You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler in a number of ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
+You'll also need [Inform 6][i6] installed.  You can pass the path to Inform to Beguiler a few ways, but the easiest is to configure it in the Beguilex extension.  Otherwise, you can pass it via the `-inform=` switch, define it in your Beguile source code, or define it on your `PATH` environment variable.  Beguile invokes Inform to produce the final story file.
 
 Use [`Beguile Quick Start.md`](docs/quickStart.md) to get up and running quickly, and [`Beguile for the I6 Developer.md`](docs/Beguile%20for%20the%20I6%20Developer.md) for a guide aimed at existing Inform 6 authors. See [`docs/languageSpec.md`](docs/languageSpec.md) for the full language reference. At the moment, since this is a beta, much of these documents are actively being revised.
 

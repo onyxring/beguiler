@@ -1,0 +1,443 @@
+//===================================================================================================
+// topics.bgl — NPC conversation topics, converted from topics.inf to Beguile.
+//---------------------------------------------------------------------------------------------------
+// dialogueTopic data for dialogue.bgl. A topic = the words the player types (`name`) + a `quip`
+// response (a string, or a `bool quip(object actor, object talkingTo)` routine override). The I6
+// `->`/`->->` tree is kept with `parent = <group>`; dialogueTopic resolves context/knownBy up the
+// parent tree. Routine quips return false (the engine ignores the return and prints `^^` after); an
+// I6 bare-string early-exit (`"msg";` = print_ret) becomes `rtrue("msg^")`.
+//
+//===================================================================================================
+#using bgl.printRules;   // {italics} / {roman} in interpolated text
+
+// (The objects referenced here — monkeys/blindStatue/deafStatue/muteStatue/etchedEar/mama/
+// yellowMonkey/cliffWallSouth/grok/keys — are all native Beguile in the world-area files; the
+// two-pass compiler resolves them cross-file, so no forward declarations are needed.)
+
+// Game-only properties added to topics by this game.
+extend class dialogueTopic {
+    string humanTranslation;        // blindStatue translator mechanic: the English version...
+    string monkeyTranslation;       // ...and monkey-speak
+}
+
+// root of the SAY topics
+dialogueTopic knownBySelf { ""; knownBy = selfObj; }
+
+//------------------------------------------------------------------- SAY to the Monkeys ------------
+dialogueTopic contextMonkeys { "", knownBySelf; context = monkeys; }
+
+dialogueTopic topSayMonkeyKeys {
+    "", contextMonkeys;   // car keys, in monkey-speak
+    name = {.jeezee, .otch, .jay, .jar, .jowel};
+    bool quip() {
+        print("Carefully you repeat the statue’s nonsensical sounds to the hidden monkeys chittering above the jungle canopy: “Jeezee otch, jay jay jar jowel.”^^The screeching monkeys all grow silent, and an upside-down monkey appears from the canopy above. “Jera jera morkta limoth,” it says to you. Another hanging monkey appears, some distance from the other. “Jo martah zerlo tedet haz,” the second monkey says, and points adamantly to the cliff wall.^^You repeat the monkey syllables, memorizing them, as the monkeys disappear into the branches above. The chittering resumes.^");
+        achieved(taskSpeakWithMonkeys);
+        achieved(taskSayMonkeyWords);
+        return false;
+    }
+}
+dialogueTopic topSayMonkeyBanana {
+    "", contextMonkeys;   // banana, in monkey-speak
+    name = {.hua, .chichi, .bine, .oca, .muwato};
+    quip = "You ask about the banana and secret words in monkey-speak. “Hua chichi bine oca muwato.”^^The unseen army grows silent. A single monkey appears from the canopy, a different one from before. “Soopah yaho jheje,” it replies. “Fatha moortha sinjas.”  Then the monkey is gone and the jungle noises resume.";
+}
+dialogueTopic topSayMonkeyMama {
+    "", contextMonkeys;   // Mama Ciedue, in monkey-speak
+    name = {.toodas, .bojo};
+    quip = "“Bojo toodas,” you say to the canopy.^^The noises above never stop, but you make out the reply: “Cho co da.”";    
+}
+dialogueTopic topSayMonkeyHello {
+    "", contextMonkeys;   // Hello, in english
+    name = {.hello, .hi, .greetings, .greeting};
+    quip = "“Hello?” you call out to the monkeys above. There’s a momentary pause, as if the monkeys are trying to make sense of you, then they resume ignoring you altogether.";
+}
+dialogueTopic topSayMonkeyGrok {
+    "", contextMonkeys;   // grok, in monkey-speak
+    name = {.sparow, .fuptar, .jork, .nar};
+    quip = "“Sparow fuptar jork nar!” you cry out to the monkeys above.^^The chittering never stops, but a single monkey lowers itself from the treetops and points at the cliff wall. Then disappears into the canopy.";
+}
+dialogueTopic topSayMonkeyNest {
+    "", contextMonkeys;   // nest of the ancient, in monkey-speak
+    name = {.floorp, .juret, .nooxta, .jeeju};
+    quip = "“Floorp juret nooxta jeeju!” you say to the monkeys above.^^One monkey lowers itself and points at the cliff wall, then returns to the treetops.";
+}
+dialogueTopic topSayMonkeyCanopy {
+    "", contextMonkeys;   // canopy monkeys, in monkey-speak
+    name = {.shazo, .archima};
+    quip = "“Shazo archima,” you repeat, asking the canopy monkeys about themselves. A single monkey lowers from the canopy. It points one finger at itself and raises its eyebrows as if surprised by the question.  Then it shrugs and ascends into the treetops without answering.";
+}
+dialogueTopic topSayMonkeyMurk {
+    "", contextMonkeys;   // murk, in monkey-speak
+    name = {.filep, .jace, .shatop, .lope};
+    quip = "“Filep jace shatop lope,” you say, asking about the baby monkeys. Several monkeys lower from the treetops, each with proud smiles on their faces, but only one speaks. “Thray cha loo tars jhen dayt sootchach.” Then all monkeys disappear into the canopy.";    
+}
+dialogueTopic topSayMonkeyTranslate {
+    "", contextMonkeys;   // to translate 
+    name = {.gheezar, .oochap, .bootna};
+    quip = "“Gheezar gheezar oochap bootna,” you say to the monkeys.^^There’s an abrupt silence, then a single monkey lowers itself from the treetops with an irritated expression. “Oogok bayjooj yatai noodoach,” it says, then disappears back up into the canopy. The monkey chittering resumes.";    
+}
+dialogueTopic topSayMonkeyEcho {
+    "", contextMonkeys;
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz, .soopah, .yaho, .jheje, .fatha, .moortha, .sinjas, .cho, .co, .da, .jajoo, .baha, .hatze};
+    quip = "You repeat the monkeys’ own words back to them with perfect pronunciation.  An upside-down monkey drops below the canopy, nods his approval, then retreats.";
+}
+
+//------------------------------------------------------------------- SAY to the blindStatue --------
+dialogueTopic contextBlindStatue { "", knownBySelf; context = blindStatue; }
+
+dialogueTopic topBlindKeysGrok {
+    "", contextBlindStatue;   // to translate monkey-speak: keys are with grok
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz};
+    bool quip() {
+        topBananaSecretWords.knownBy = blindStatue;
+        print("You speak the two canopy monkeys’ responses into the statue’s ear. “Jera jera morkta limoth, jo martah zerlo tedet haz.”^^The statue translates:^^“Car keys...? You mean the shinys? Grok took them because he likes shinys. He keeps them in the nest of the ancients. You’ll need Blind Mama Ciedue’s flat banana and secret monkey words if you want your shinys back.”^^You consider this... Grok must be the name of the yellow monkey, but the flat banana? Secret monkey words? Feeling more confident, you speak into the translating statue’s ear: “Where is the flat banana and what are the secret monkey words?”^^The monkey statue pauses for a moment, then replies: “Hua chichi bine oca muwato.”^");
+        achieved(taskSayMonkeyWords);
+        return false;
+    }
+}
+dialogueTopic topBlindSecretWords {
+    "", contextBlindStatue;   // to translate monkey-speak: secret words?
+    name = {.soopah, .yaho, .jheje, .fatha, .moortha, .sinjas};
+    bool quip() {
+        print($"You repeat the monkeys’ words to the statue: “Soopah yaho jheje. Fatha moortha sinjas.”^^It responds: “You’re getting pretty good at talking Monkey, Man,” it translates. “But I can’t say the secret words because they’re {italics}SECRET{roman}. The flat banana knows them, if you can find it. Mama Ciedue can help.”^");
+        return false;
+    }
+}
+dialogueTopic topBlindMama {
+    "", contextBlindStatue;   // to translate monkey-speak: mama?
+    name = {.cho, .co, .da};
+    quip = "“Cho co da,” you say.^^“Dunno,” the statue translates. “She’s around. Maybe ask someone else and they’ll show you.”";
+}
+dialogueTopic topBlindNoUnderstand {
+    "", contextBlindStatue;   // to translate monkey-speak: we don’t understand
+    name = {.jajoo, .baha, .hatze};
+    bool quip() {
+        print("You think carefully, recalling the monkey’s nonsensical syllables and repeat them into the statue’s ear: “Jajoo jajoo baha hatze...”^^A moment passes as the statue, hands covering its eyes, considers. Then a string of words flows from its mouth, translating what the canopy monkeys said: “We don’t understand what you’re trying to say. We don’t talk Man. Come back when you talk Monkey.”^");
+        achieved(taskSayMonkeyWords);
+        return false;
+    }
+}
+dialogueTopic topBlindMoreFun {
+    "", contextBlindStatue;   // to translate monkey-speak: whats more fun
+    name = {.zachoo, .zaidsho, .nomi};
+    quip = "“Zachoo zaidsho nomi nomi,” you say to the statue.^^“What’s more fun than that?” it translates back to you.";
+}
+dialogueTopic topBlindOpenSesame {
+    "", contextBlindStatue;   // to translate monkey-speak: open sesame
+    name = {.ayee, .nuka, .bawh};
+    quip = "“Ayee ayee nuka bawh,” you say to the statue.^^“Open sesame,” it translates back to you.";
+}
+dialogueTopic topBlindPrevDeath {
+    "", contextBlindStatue;   // to translate monkey-speak: previous death
+    name = {.hachh, .ah, .ow, .ack, .hooow};
+    bool quip() {
+        print($"Some words come to mind and you speak them to the blind monkey statue: “Hachh ow ah ow ack hachh hooow!”^^Dutifully it translates: “Take that Man! That’s what you get for challenging Grok! A beating so hard you’ll remember it in the next life!”^^Beating?  Next life?  A wave of {italics}déjà vu{roman} washes over you. How did you even know the monkey words you asked?  Must be your imagination playing games with you.^");
+        return false;
+    }
+}
+dialogueTopic topBlindPrevWin {
+    "", contextBlindStatue;   // to translate monkey-speak: previous win
+    name = {.eek, .arck, .jarg};
+    quip = "I’m pretty sure I’m going to already have had this conversation with you, but you don’t need a translator to know this is bad.  Congratulations on your previous win, though.";
+}
+dialogueTopic topBlindFullMama {
+    "", contextBlindStatue;   // to translate monkey-speak
+    name = {.bojo, .toodas};
+    quip = "“Where is Mama Ciedue?” translates the statue.";
+}
+dialogueTopic topBlindFullKeys {
+    "", contextBlindStatue;   // to translate monkey-speak
+    name = {.jeezee, .otch, .jay, .jar, .jowel};
+    quip = "“Where are my car keys?” the statue says, translating your monkey words back into Man-speak.";
+}
+dialogueTopic topBlindFullOpenSesame {
+    "", contextBlindStatue;   // to translate open sesame
+    name = {.open, .sesame};
+    quip = "“Secret words,” the statue says. Nice try, though.";
+}
+dialogueTopic topBlindBanana {
+    "", contextBlindStatue;   // banana, in monkey-speak
+    name = {.hua, .chichi, .bine, .oca, .muwato};
+    quip = "You repeat the statue’s words back to it: “Hua chichi bine oca muwato.”^^The statue replies with your own words: “Tell me about the flat banana, and the secret words.”";
+}
+dialogueTopic topBlindGrok {
+    "", contextBlindStatue;   // grok, in monkey-speak
+    name = {.sparow, .fuptar, .jork, .nar};
+    quip = "“Sparow fuptar jork nar,” you give back to the statue.  It responds: “Where is the yellow monkey?”";
+}
+dialogueTopic topBlindNest {
+    "", contextBlindStatue;   // nest, in monkey-speak
+    name = {.floorp, .juret, .nooxta, .jeeju};
+    quip = "“Floorp juret nooxta jeeju,” you give back to the statue.  It responds: “Where is the nest of the ancients?”";
+}
+dialogueTopic topBlindBabies {
+    "", contextBlindStatue;   // monkey-babies, in monkey-speak
+    name = {.thray, .cha, .loo, .tars, .jhen, .dayt, .sootchach};
+    quip = "“Thray cha loo tars jhen dayt sootchach,” you say, repeating the monkey’s words to the statue. It translates: “They are a fine group. When Mama Ciedue is done teaching them, they will join us here in the canopy.”";
+}
+dialogueTopic topBlindOvaltine {
+    "", contextBlindStatue;   // to translate 
+    name = {.gheezar, .oochap, .bootna};
+    bool quip() {
+        print($"“Gheezar gheezar oochap bootna,” you say to the statue.^^It thinks for a moment, then translates: “Be sure to drink your Ovaltine.”^^{italics}A crummy commercial?{roman} you think to yourself.^");
+        return false;
+    }
+}
+dialogueTopic topBlindTeasers {
+    "", contextBlindStatue;   // to translate 
+    name = {.oogok, .bayjooj, .yatai, .noodoach};
+    quip = "“Oogok bayjooj yatai noodoach,” you say, repeating to the statue the monkeys’ response to your words.^^After a pause, it translates: “We think you are confused, Man. Monkeys are not teased; they are the teasers.”";
+}
+dialogueTopic topBlindHello {
+    "", contextBlindStatue;   // Hello, in english
+    name = {.hello, .hi, .greetings, .greeting};
+    quip = "“Hello!” you greet the statue, but it doesn’t respond. Perhaps it considers itself above such conversational fluff.";
+}
+
+//------------------------------------------------------------------- SAY to the deafStatue ---------
+dialogueTopic contextDeafStatue { "", knownBySelf; context = deafStatue; }
+
+dialogueTopic topDeafMonkeyWords {
+    "", contextDeafStatue;
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz, .soopah, .yaho, .jheje, .fatha, .moortha, .sinjas, .cho, .co, .da, .jajoo, .baha, .hatze};
+    quip = "You repeat the words you heard from the canopy monkeys to the statue, but it does not respond. Perhaps it cannot hear you with its paws covering its ears.";
+}
+dialogueTopic topDeafBlindWords {
+    "", contextDeafStatue;
+    name = {.jeezee, .otch, .jay, .jar, .jowel, .hua, .chichi, .bine, .oca, .muwato, .toodas, .bojo, .sparow, .fuptar, .jork, .nar, .floorp, .juret, .nooxta, .jeeju, .shazo, .archima, .filep, .jace, .shatop, .lope, .gheezar, .oochap, .bootna};
+    quip = "You repeat the words you heard from the blind statue to the deaf statue, but it does not respond. Perhaps it cannot hear you with its paws covering its ears.";
+}
+
+//------------------------------------------------------------------- SAY to the muteStatue ---------
+dialogueTopic contextMuteStatue { "", knownBySelf; context = muteStatue; }
+
+dialogueTopic topMuteBanana {
+    "", contextMuteStatue;   // to translate monkey-speak
+    name = {.hua, .chichi, .bine, .oca, .muwato};
+    bool quip() {
+        if(isAchieved(taskHiddenPathRevealed)) rtrue("You speak the monkey words, but nothing happens. The statue seems content with what it has already shown you.^");
+        print("You ask about the banana and secret words in monkey-speak: “Hua chichi bine oca muwato.”^^For a moment, nothing happens, then the statue begins to turn. With a low rumble, it rotates on a hidden pivot point until facing east. Its eyes come to life, shining a beam of light through the greenery and revealing a previously unseen path.^");
+        achieved(taskHiddenPathRevealed);
+        gameState.setTrue(taskHiddenPathRevealed);
+        muteStatue.state = banana;
+        muteStatue.name[0] = .beam;
+        muteStatue.name[1] = .light;
+        return false;
+    }
+}
+dialogueTopic topMuteMama {
+    "", contextMuteStatue;   // to translate monkey-speak
+    name = {.toodas, .bojo};
+    bool quip() {
+        if(isAchieved(taskHiddenPathRevealed)) rtrue("You speak the monkey words, but nothing happens. The statue seems content with what it has already shown you.^");
+        print("“Bojo toodas,” you say, asking about Mama Ciedue in monkey-speak.^^Somewhere beneath the surface you can feel the turning of unseen workings. The statue seems to come to life and rotates before coming to rest, facing east. From its eyes shines a beam of light through the greenery, revealing a previously unseen path.^");
+        achieved(taskHiddenPathRevealed);
+        gameState.setTrue(taskHiddenPathRevealed);
+        muteStatue.state = mama;
+        muteStatue.name[0] = .beam;
+        muteStatue.name[1] = .light;
+        return false;
+    }
+}
+dialogueTopic topMuteMonkeyWords {
+    "", contextMuteStatue;
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz, .soopah, .yaho, .jheje, .fatha, .moortha, .sinjas, .cho, .co, .da, .jajoo, .baha, .hatze};
+    quip = "You repeat the words you heard from the canopy monkeys to the statue, but it does not respond. Perhaps it has no way to respond to this with only its eyes.";
+}
+dialogueTopic topMuteBlindWords {
+    "", contextMuteStatue;
+    name = {.jeezee, .otch, .jay, .jar, .jowel, .sparow, .fuptar, .jork, .nar, .floorp, .juret, .nooxta, .jeeju, .shazo, .archima, .filep, .jace, .shatop, .lope, .gheezar, .oochap, .bootna};
+    quip = "You repeat the translation you got from the blind statue, but the mute statue does not respond. Perhaps it has no response to these specific words?";
+}
+
+//------------------------------------------------------------------- SAY to the etchedEar ----------
+dialogueTopic contextEtchedEar { "", knownBySelf; context = etchedEar; }
+
+dialogueTopic topEarSecretWords {
+    "", contextEtchedEar;   // secret words
+    name = {.ayee, .nuka, .bawh};
+    bool quip() {
+        print("“Ayee ayee nuka bawh,” you say into the ear.^^");
+        if(gameState.isTrue(stateBananaPlacedOnWall)) {
+            print("You step back as the wall lifts outward, swinging up like a garage door and revealing the large yellow monkey holding your car keys. He leaps down from a pile of shiny trinkets and beats on his chest in obvious challenge. Above, the canopy monkeys cheer.^");
+            if(tireIron.parent != player){
+                print($"^You look at Grok and shudder. {italics}I’d feel more confident if I had some kind of weapon,{roman} you think.^");
+            }
+            else if(murk.parent != player){
+                print("^You ready the tire iron, unsure of how prepared you are.^");
+            }
+            achieved(taskRevealThroneRoom);
+            yellowMonkey.remove();
+            cliffWallSouth.remove();
+            grok.parent = southOfRockWall;
+            keys.parent = southOfRockWall;
+            nestOfAncients.parent = southOfRockWall;
+            etchedEar.remove();
+            etchedEye.remove();
+            etchedMouth.remove();
+            liftedCarvings.parent = southOfRockWall;
+            gameState.setTrue(stateInCombat);
+            return false;
+        }
+        rtrue("Nothing happens. You get the feeling that the monkey ear, just a flat etching in the wall, can’t hear you. Your gaze drifts to the engraved monkey mouth, seemingly laughing at you.^");
+    }
+}
+dialogueTopic topEarMonkeyWords {
+    "", contextEtchedEar;
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz, .soopah, .yaho, .jheje, .fatha, .moortha, .sinjas, .cho, .co, .da, .jajoo, .baha, .hatze};
+    quip = "You repeat the canopy monkeys’ words to the etched ear, but it does nothing. Perhaps it listens for something specific?";
+}
+dialogueTopic topEarBlindWords {
+    "", contextEtchedEar;
+    name = {.jeezee, .otch, .jay, .jar, .jowel, .hua, .chichi, .bine, .oca, .muwato, .toodas, .bojo, .sparow, .fuptar, .jork, .nar, .floorp, .juret, .nooxta, .jeeju, .shazo, .archima, .filep, .jace, .shatop, .lope, .gheezar, .oochap, .bootna};
+    quip = "You speak the words you heard from the blind statue into the etched ear, but it does not respond. Perhaps it awaits different words.";
+}
+
+//------------------------------------------------------------------- ASK the blindStatue -----------
+dialogueTopic knownByBlindStatue { ""; knownBy = blindStatue; context = selfObj; }
+
+dialogueTopic topAskBlindMama {
+    "", knownByBlindStatue;   // Mama Ciedue
+    name = {.mama, .ciedue, .mother};
+    adjective = {.blind};
+    requireNoun = true;
+    quip = "“Where is Mama Ciedue?” you ask the statue.^^“Bojo toodas,” it translates.";
+    humanTranslation = "Where is Mama Ciedue?";
+    monkeyTranslation = "Bojo toodas";
+}
+dialogueTopic topAskBlindKeys {
+    "", knownByBlindStatue;   // car keys
+    name = {.keys, .key, .car, .jeep};
+    quip = "“Where are my car keys?” you ask of the blind statue, feeling foolish.^^After a pause, a string of unrecognized syllables comes from the statue’s mouth. “Jeezee otch, jay jay jar jowel.” You repeat the nonsensical sounds to yourself, hoping you will be able to remember them again later.";
+    humanTranslation = "Where are my car keys?";
+    monkeyTranslation = "Jeezee otch jay jay jar jowel";
+}
+dialogueTopic topAskBlindGrok {
+    "", knownByBlindStatue;   // grok
+    name = {.grok, .monkey};
+    adjective = {.yellow, .large, .hidden};
+    quip = "You ask the statue about the yellow monkey. It responds: “Sparow fuptar jork nar.”";
+}
+dialogueTopic topAskBlindNest {
+    "", knownByBlindStatue;   // nest of the ancients
+    name = {.nest, .ancients, .cave, .rock, .wall};
+    adjective = {.of, .the};
+    quip = "You ask the statue about the ancients and their nest. It responds: “Floorp juret nooxta jeeju.”";
+}
+dialogueTopic topAskBlindCanopy {
+    "", knownByBlindStatue;   // canopy monkeys
+    name = {.monkeys};
+    adjective = {.canopy, .tree};
+    quip = "“Tell me about the canopy monkeys,” you say. “Shazo archima,” the statue translates.";
+}
+dialogueTopic topAskBlindMurk {
+    "", knownByBlindStatue;   // murk
+    name = {.murk, .baby, .babies};
+    adjective = {.monkeys, .monkey};
+    quip = "“Tell me about the baby monkeys,” you say. “Filep jace shatop lope,” replies the statue.";
+}
+dialogueTopic topAskBlindWeapon {
+    "", knownByBlindStatue;   // a weapon
+    name = {.weapon, .weapons, .iron, .tire, .reflection, .shiny, .shinys, .club, .bar, .stick};
+    adjective = {.thing, .object, .something, .long, .a};
+    bool quip() {
+        print("“Is there anything around here I could use as a weapon?” you ask the statue.^^");
+        if(tireIron.parent != null) rtrue("“You found the long shiny already,” it answers, dropping the monkey-speak for once. “Hold on to it.”^");
+        print("For once, it skips the monkey-speak and answers you directly: “Something long and shiny lies on top of the tall rock, where Man can’t climb. Little monkeys climb anything.”^");
+        return false;
+    }
+}
+dialogueTopic topBananaSecretWords {
+    "", knownByBlindStatue;   // banana secret words
+    name = {.words, .secret, .banana, .flat, .carved};
+    knownBy = null;
+    context = selfObj;
+    quip = "“Where is the flat banana and what are the secret monkey words?”^^The statue replies with a phrase you’ve already heard: “Hua chichi bine oca muwato.”";
+}
+
+//------------------------------------------------------------------- ASK the monkeys ---------------
+dialogueTopic knownByMonkeys { ""; knownBy = monkeys; context = selfObj; }
+
+dialogueTopic topPaMCarKeys {
+    "", knownByMonkeys;   // car keys
+    name = {.key, .keys};
+    adjective = {.car, .jeep};
+    bool quip() {
+        if(topPaMCarKeys.hasBeenTold() == false)
+            print("“Where are my car keys?” you cry out in frustration.^^");
+        else
+            print("“Where are my car keys?” you ask to the hidden monkeys.^^");
+        print((string)bgl.util.loopArray.getNext(topAskMonkeysCatchAll, (property)monkeysSayingJajoo, loopEnd.repeatLast));
+        print("^");
+        achieved(taskSpeakWithMonkeys);
+        return false;
+    }
+}
+dialogueTopic topAskMonkeysCatchAll {
+    "", knownByMonkeys;   // various things
+    name = {.grok, .monkey, .nest, .ancients, .cave, .wall, .monkeys, .murk, .baby, .babies, .words, .mama, .ciedue, .mother, .trees};
+    adjective = {.blind, .yellow, .large, .hidden, .of, .the, .secret, .banana, .flat, .carved, .rock, .tree, .adult, .canopy};
+    array<var> monkeysSayingJajoo = {0,
+        "At your words, the chittering above ceases and there is silence. A single small monkey slowly lowers itself from the canopy, hanging upside-down by its tail. “Jajoo jajoo baha hatze,” the monkey replies matter-of-factly before disappearing back into the foliage. The chittering of the hidden monkeys resumes.^^You repeat to yourself the sounds the monkey made. “Jajoo jajoo baha hatze... jajoo jajoo baha hatze...” and struggle to keep the words in your mind. Hopefully you will be able to SAY the monkey sounds to someone or something again later (should that need ever come up).",
+        "The chittering above continues but you can still make out a reply, hesitant, as though trying to understand why you are still asking questions in Man-speak. “Jajoo jajoo baha hatze.”",
+        "An annoyed monkey voice responds: “Jajoo jajoo baha hatze.”",
+        "“Jajoo jajoo baha hatze.”"};
+    bool quip() {
+        print((string)bgl.util.loopArray.getNext(topAskMonkeysCatchAll, (property)monkeysSayingJajoo, loopEnd.repeatLast));
+        print("^");
+        achieved(taskSpeakWithMonkeys);
+        return false;
+    }
+}
+
+//------------------------------------------------------------------- ASK the muteStatue ------------
+dialogueTopic knownByMuteStatue { ""; knownBy = muteStatue; context = selfObj; }
+
+dialogueTopic topAskMuteKeys {
+    "", knownByMuteStatue;   // car keys
+    name = {.key, .keys};
+    adjective = {.car, .jeep};
+    quip = "“Where are my car keys?” you ask the statue and, for just a moment, you think it might react.  But it does nothing. Perhaps it doesn’t understand what you are asking.";
+}
+
+//------------------------------------------------------------------- ASK Mama Ciedue --------------
+dialogueTopic topMamaBanana {
+    "";   // banana, in monkey-speak to mama
+    name = {.hua, .chichi, .bine, .oca, .muwato};
+    context = mama;
+    knownBy = selfObj;
+    bool quip() {
+        print("You call out the memorized sounds, asking about the banana and secret words in monkey-speak. “Hua chichi bine oca muwato.”^");
+        if(gameState.isTrue(taskGlassesGivenToCiedue)){
+            if(gameState.isFalse(taskGetBanana)) rtrue("^Mama Ciedue steps back and raises her eyebrows, momentarily confused. She looks directly, and intentionally, above at the distant top of the column in silent answer. Then she resumes her imitation of your stance and produces a series of hoots and grunts, perhaps imitating what a human-speaking monkey must sound like to a monkey.^");
+            rtrue("^Mama Ciedue ignores the question, seemingly aware that you’ve already gotten the flat banana.^");
+        }
+        rtrue("^The blind monkey turns her head in your general direction, unable to see who is asking the question, and makes a series of dismissive monkey sounds before turning back to her babies.^");
+    }
+}
+dialogueTopic topMamaMonkeyWords {
+    "", topMamaBanana;
+    name = {.jera, .morkta, .limoth, .jo, .martah, .zerlo, .tedet, .haz, .soopah, .yaho, .jheje, .fatha, .moortha, .sinjas, .cho, .co, .da, .jajoo, .baha, .hatze};
+    bool quip() {
+        print("You repeat the canopy monkeys’ words to the adult monkey. ");
+        if(gameState.isTrue(taskGlassesGivenToCiedue)){
+            if(gameState.isFalse(taskBridgeRestored))
+                rtrue("^Mama Ciedue ignores you and watches her babies play on the vine, as if to say your game with her is now over.^");
+            rtrue("^Mama Ciedue frowns at you and ignores your words. This is not, her impression tells you, part of the game.^");
+        }
+        rtrue("^The blind monkey turns her head in your general direction, unable to see who is asking the question, and makes a series of dismissive monkey sounds before turning back to her babies.^");
+    }
+}
+dialogueTopic topMamaBlindWords {
+    "", topMamaBanana;
+    name = {.jeezee, .otch, .jay, .jar, .jowel, .toodas, .bojo, .sparow, .fuptar, .jork, .nar, .floorp, .juret, .nooxta, .jeeju, .shazo, .archima, .filep, .jace, .shatop, .lope, .gheezar, .oochap, .bootna};
+    bool quip() {
+        print("You speak the blind statue’s words to the adult monkey.");
+        if(gameState.isTrue(taskGlassesGivenToCiedue)){
+            if(gameState.isFalse(taskBridgeRestored))
+                rtrue("^She ignores you and watches her babies play. Your game with her is now over, it seems.^");
+            rtrue("^Mama Ciedue rolls her eyes and ignores your words. This is not part of her game.^");
+        }
+        rtrue("^The blind monkey turns her head in your general direction, unable to see who is asking the question, and makes a series of dismissive monkey sounds before turning back to her babies.^");
+    }
+}

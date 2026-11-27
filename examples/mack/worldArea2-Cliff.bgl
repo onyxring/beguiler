@@ -1,0 +1,779 @@
+#using bgl.printRules;   // a() / the() / cA() / cThe() — articles live here now
+
+//===================================================================================================
+// worldArea2-Cliff.bgl — the cliff / column / bridge area (fully native Beguile port).
+//---------------------------------------------------------------------------------------------------
+// Every object is native Beguile — no `#i6` bodies remain. Object-tree iteration that was `objectloop`
+// / `child`/`sibling` in the original I6 now uses `bgl.world.inParent(loc, pred)` (a snapshot array,
+// so mutating the tree mid-iteration is safe); `<<action>>` → `Action.perform(...)`; before-routine
+// bare action labels → explicit `switch(action)`. `class rock` is a native class (5 static instances);
+// its vagueQuantity/plural/pluralDescription/chooseobject come from <extensions/stdlib/vagueQuantity>,
+// <extensions/stdlib/betterChoice> and myGameBaseline.
+//===================================================================================================
+
+// farSide — the top-of-column room, a native Beguile object in worldArea3-Column.bgl (cliffEdge's e_to exit).
+
+//---------- Cliff Edge (upper) --------------------------------------------------------------------
+
+place cliffEdge {
+    "Cliff Edge";
+    place w_to() {
+        if(murk.parent == player && tireIron.parent == null){
+            eastOfRockWall.give(general);
+            print("As you step through the brush, Murk lets out a squeal. He points up to where the rock wall disappears into the treetops, hopping up and down on your shoulders excitedly.^");
+        }
+        return eastOfRockWall;
+    }
+    place d_to() {
+        if(gameState.isFalse(taskBridgeRestored)) {
+            if(hasnt(general)) {
+                print("You lower yourself, awkwardly, and find the ladder’s slats too narrowly spaced for your toes to easily fit between.^
+                    ^Halfway down, one foot slips causing you to panic and grasp wildly at the cliff face. Several rocks come free and drop before you recover.^
+                    ^Shaken, you reach the bottom, find your footing amidst the pile of fallen rocks, and wonder at how ill-suited the hanging rope and wood is for use as a ladder.^");
+                give(general);
+            }
+            else print("You grip the wooden slats and carefully lower yourself down.^");
+        }
+        else print("You dig your fingers into cracks in the rock wall and slowly make your way down to the ledge. It’s much harder than it was when the ladder was in place.^");
+
+        return ledge;
+    }
+    array<var> walkBridgeNaratives = {0,
+        "Your first step on the bridge is tentative, testing before fully committing your weight. It creaks, settling into place, but holds. With cautious urgency, you cross, trying not to look down at the endless drop.",
+        "There is a slight breeze as you cross and the bridge swings slightly, causing you to flail in momentary panic. When you make it to the other side, your heart is pounding.",
+        "The precarious bridge shudders and you hear the vine stretch under your weight as you cross.",
+        "The wood creaks under your weight as you cross the bridge."
+    };
+    place | bool e_to() {
+        if(gameState.isTrue(taskBridgeRestored)) {
+            print((string)bgl.util.loopArray.getNext(cliffEdge, (property)walkBridgeNaratives, loopEnd.repeatLast));
+            print("^");
+            return farSide;
+        }
+        rtrue("The column is too far to jump to and the drop from here would kill you.^");
+    }
+    u_look = "The sky here is clear and blue.";
+    d_look = "The drop is so steep it makes you dizzy. From here, the top of the jungle canopy far below seems like expansive green carpeting.  Closer, are two ledges: one on the cliff below you and the other on the column, facing it.";
+    void e_look() {
+        print("A rocky column rises from the distant jungle floor. Twenty feet from the edge. ");
+        if(gameState.isTrue(taskBridgeRestored)) print("A precarious wood and rope bridge connects it to this side.");
+        print("^");
+    }
+    cant_look = "The greenery is thick in that direction, blocking your view.";
+    void description() {
+        print("You stand at the top of a steep cliff, a fault line dividing the lower eastern jungle from the upper western by a hundred vertical feet. Far below, and into the horizon, the expanse is filled with dense jungle.^");
+        if(gameState.isFalse(taskBridgeRestored)) {
+            print("^Before you, just twenty feet from this edge, a narrow, free standing rock column rises from below, its top level with the cliff you stand on.  A curved, flat stone lies in the center of the column top.^");
+            print("^A strange stone ring, clearly not the product of nature, is embedded into the side of the column. ");
+            if(gameState.isTrue(stateVineIsOverAnchor)) print("A long vine loops through it. The two ends of the vine hang, one straight down to a ledge in the column, the other stretching across the gap to a ledge on this side, far below you.");
+            print("^");
+            print("^At your feet, you see part of a wood and rope ladder, anchored to the ground. The other end disappears over the cliff edge.");
+        }
+        else
+            print("^A rope bridge with narrowly spaced wooden slats stretches across the distant drop, precariously connecting this edge to a narrow rock column twenty feet from the edge.");
+    }
+    iString postImpression = $"^^You consider the column, trying to decide if it’s naturally occurring. “Butte,” you think they’re called, but this one is exaggerated, like something from a Bugs Bunny/Road Runner cartoon. {italics}How does something like that form in the jungle?{roman}";
+    array<array<var>> backdrops = {
+        {.butte, .rock, .column,
+            $"Near, and out of reach. Its sides are sheer; its flat top level with the cliff you stand on. {gameState.isFalse(taskBridgeRestored)
+                ? "A stone ring is anchored into the side of the column. A curved, flat stone lies in the center of its top."
+                : "A wood and rope bridge stretches from here to the column, attached precariously to an anchored stone ring."}",
+            "The column is too far to reach."},
+        {.ledge, .ledges, .cliff, "Two ledges, probably twenty feet down, face each other across the steep gap.", "The ledges are too far away to reach from here."},
+        {.edge, .fault, .line, .drop, "The cliff ends in a clean break, as if the land sheared along the fault line and the eastern half dropped a hundred feet.", "You stay well back from the edge."},
+        {.greenery, .trees, .foliage, "The greenery here, thick and impenetrable, blocks the north and south.", bdDefault},
+        {.horizon, .expanse, "Dense jungle runs unbroken to the horizon, a green expanse under a clear sky.", bdItsOutOfReach},
+        {.jungle, "The jungle below stretches to the horizon.", bdItsOutOfReach},
+        {.banana, .curved, .stone, .flat,
+            $"{gameState.isTrue(taskBridgeRestored) ? "You can’t see it anymore." : "It’s hard to make out from this side, but it definitely looks like a flat banana."}",
+            () => {
+                if(gameState.isTrue(taskBridgeRestored)) rtrue("You can’t see it anymore."); else rtrue("It’s too far to reach.");
+            }},
+        {.dirt, .ground, .tracks, "The ground is harder here than by the rock wall. There are no tracks to be seen.", "There is little to be gained by playing in the dirt."}
+    };
+    bool before() {
+        switch(action) {
+            case Insert, PutOn:
+                if(noun==vine && second==bridgeAnchor) { ThrowAt.perform(vine, bridgeAnchor); rtrue; }
+                if(second==bridgeAnchor) rtrue("The anchor is embedded in the far column, unreachable from here.^");
+            case ThrowAt:
+                if(noun==vine && second==bridgeAnchor){
+                    print("Grasping the vine several inches from the weighted end, you whirl it around to build up speed then release it.
+                        The knob sails through the air, missing the bridge anchor entirely and falling.^^Determined, you pull the
+                        vine back and try again. It takes a few more attempts, but on your fourth try your aim is true. The knob just clears the
+                        anchor rim before falling. Approximately half of the vine feeds through your fingers after it, until stopping. A thump echoes from below.
+                        ^^Looking down, you do a quick estimation of vine length and distance, then let the other end of the vine drop to the ledge below you.^");
+                    vine.remove();
+                    ledgeVine.parent = ledge;
+                    cliffVine.parent = cliffEdge;
+                    gameState.setTrue(stateVineIsOverAnchor);
+                    rtrue;
+                }
+            case Jump: rtrue("No. Dying would interfere with you getting your car keys back.^");
+        }
+        rfalse;
+    }
+}
+
+thing bridge {
+    parent = cliffEdge;
+    name = {.bridge, .ladder, .wooden, .wood, .rope};
+    short_name = $"{gameState.isTrue(taskBridgeRestored) ? "bridge" : "ladder"}";
+    bool describe() { rtrue; }
+    description = $"It is a series of wooden slats, narrowly spaced and bound between two pieces of ancient rope. The wood looks to have been treated
+        in something, sap maybe. The slats remain strong with only minor deterioration. The rope, though, hasn’t aged as well. It’s thin and questionable{gameState.isFalse(taskBridgeRestored)
+        ? ", hanging over the cliff edge in a way which feels unintended, creating a ladder of sorts."
+        : ". It stretches to the eastern column, creating a bridge of sorts."}^";
+    bool before() {
+        switch(action) {
+            case Pull, Take:
+                if(gameState.isFalse(taskBridgeRestored)) rtrue("It’s far too heavy to pull up.^");
+                else rtrue("No. It may be not-so-securely attached to the column, but it’s still too heavy.^");
+            case Climb:
+                if(gameState.isTrue(taskBridgeRestored)) rtrue("It no longer hangs over the edge, so you can’t climb down it. Now it spans the chasm, a bridge in its own right.^");
+                else { Go.perform(d_obj); rtrue; }
+            case Enter:
+                if(gameState.isFalse(taskBridgeRestored)) rtrue("Once people may have crossed the bridge, but now it hangs over the edge, acting more as a ladder.^");
+                else { Go.perform(e_obj); rtrue; }
+        }
+        rfalse;
+    }
+}
+
+extend Pull {
+    grammar += { {.pull, .up, NOUN, withI6Synonyms}, {.pull, NOUN, .up, withI6Synonyms} };
+}
+
+extend Enter {
+    grammar += { {.go, .across|.over, NOUN, withI6Synonyms} };
+}
+
+bigThing bridgeAnchor {
+    "bridge anchor", cliffEdge;
+    attributes = {concealed};
+    name = {.anchor, .embedded, .ring, .hoop, .hook};
+    adjective = {.bridge, .stone};
+    bool requireNoun = true;   // this lets the backdrop "stone" work
+    void description() {
+        if(gameState.isTrue(taskBridgeRestored)) {
+            print("The bridge rests on the far anchor with a little support from the vine which lifted it into place. It’s not exactly secure, but it seems to be holding.^");
+            return;
+        }
+        if(gameState.isTrue(stateVineIsOverAnchor)) {
+            print("The vine loops through the embedded anchor ring. One end hangs straight down the side of the column; the other stretches back across the gap to this side, resting on the ledge below you.^");
+            return;
+        }
+        print("The stone ring is of an unfamiliar design. It’s clearly something made long ago, not naturally occurring, and is embedded in the far column in a way which might serve as an anchor for something heavy.^");
+    }
+    bool before() {
+        switch(action) {
+            case Take: rtrue("The anchor, embedded in the far column, is unreachable from here.^");
+        }
+        rfalse;
+    }
+}
+
+//---------- Ledge (lower, western cliff face) -----------------------------------------------------
+place ledge {
+    "Ledge";
+    place u_to() {
+        if(gameState.isFalse(taskBridgeRestored)) {
+            print("Using the narrow slats you carefully climb the ill-constructed ladder");
+
+            // Drop any rocks the player is carrying onto the ledge (safe to move during iteration —
+            // inParent returns a snapshot).
+            var count = 0;
+            for(object c in bgl.world.inParent(selfobj, (object o) => o.is(rock))) {
+                c.parent = self;
+                count = count + 1;
+            }
+
+            if(count > 0) {
+                print(", dropping the moderately heavy rock");
+                if(count > 1) print("s");
+                print(" first");
+            }
+            print(".^");
+
+            if(hasnt(general)) {
+                print($"^You momentarily slip as your toe misses the narrow space between slats. {italics}This isn’t a ladder,{roman} you think as you right yourself and continue the climb. {italics}It’s a practical joke in usability.{roman} Then you reach the top and look across to the ring embedded into the column with realization. {italics}It’s not a ladder at all,{roman} you think, imagining it stretched across the gap and connected to the far column. {italics}But how to get that heavy bridge up here, and attached all the way over there?{roman}^");
+                give(general);
+            }
+        }
+        else print("You dig your fingers into cracks in the rock wall and slowly make your way up to the cliff top. It’s difficult, but you make it.^");
+        return cliffEdge;
+    }
+    u_look = "Above, you can see the edges of the tops of the cliff wall and column. Beyond that is blue-sky.";
+    d_to = "No. You doubt even a monkey could climb down that.";
+    d_look = "Although this ledge is lower than the cliff top, the jungle floor is still so far down it makes you dizzy.";
+    e_to = "There’s no way to jump to the column from here.";
+    void e_look() { Examine.perform(farLedge); }
+    w_to = "The cliff wall stands that way.";
+    w_look = "The rock wall has cracks all along its surface.";
+    cant_go = "The ledge doesn’t extend in that direction.";
+    cant_look = "The ledge doesn’t extend in that direction.";
+    bool before() {
+        switch(action) {
+            case Jump: Go.perform(e_obj); rtrue;
+            case ThrowAt:
+                if(backdropEngine.getKeyword() == .far) { ThrowAt.perform(noun, barrel); rtrue; }
+                if(noun == vine) {
+                    if(backdropEngine.getKeyword() == .ring) rtrue("You can’t see the anchor ring from down here, but you toss the vine’s knob at where you remember it being anyway. It falls short and you pull it back to you. You’ll need to get closer to throw the vine through the ring.^");
+                    rtrue("You start to throw the vine then stop, considering. You look at the vine, then up to where you know the anchor ring is, just out of sight. Maybe there’s a better use for this...^");
+                }
+                if(noun == murk) rtrue("You consider throwing the baby monkey across the gap, but look at the long fall down. The consequences of missing make you reconsider.^");
+                if(noun == dehydratedBananas) rtrue("No. These bananas don’t weigh a lot. You’re pretty sure they’d just disappear to the jungle floor far below.^");
+        }
+        rfalse;
+    }
+    void description() {
+        print("You are on a ledge, carved artificially into the western cliff wall.");
+        if(gameState.isFalse(taskBridgeRestored)) print(" A wooden ladder hangs from above, swaying gently against the rocky surface.");
+        print("^^Twenty feet from the edge, a column rises from the jungle floor. Another ledge, similar to this one, juts from the column and faces you. ");
+
+        if(gameState.isFalse(taskBridgeRestored)) {
+            print("Ancient barrels sit on both ledges, one here beside the foot of the ladder, one there among the monkeys, each a gentle nudge from a plummeting barrel demise. Each has a hook on its side for a rope, though the hook on yours has broken off.^");
+            if(gameState.isTrue(stateVineIsOverAnchor)) {
+                print("^Two ends of the long vine hang from above, draped over the out-of-sight anchor. One end hangs over this ledge; the other hangs over the far ledge. ");
+
+                if(gameState.isFalse(stateNearVineIsTied))
+                    print("Both sway freely in the breeze.");
+                else{
+                    print("Here, the vine is tied to the end of the ladder; there the vine ");
+                    if(gameState.isFalse(stateFarVineIsTied))
+                        print("hangs loosely.");
+                    else
+                        print("is tied to the distant barrel.");
+                }
+                print("^");
+            }
+        }
+        if(gameState.isTrue(taskBridgeRestored)) print("^");
+        print("^Across the gap, on the far ledge, ");
+        if(gameState.isTrue(taskBridgeRestored)) {
+            print("a single vine stretches from the top of the cliff to the hanging barrel far below. A troop of baby monkeys swing and play on it.^^A bespectacled Mama Ciedue watches her children playing on the vine proudly. She ignores you.^^Far above, you can see the former ladder, now a bridge, stretching across the gap and connecting the upper cliff to the top of the far column.");
+        }else{
+            if(gameState.isFalse(taskGlassesGivenToCiedue)) {
+                if(mama.has(general)) print("Mama Ciedue");
+                else print("a lone adult monkey");
+                print(" squints over a pile of dancing, medium-sized baby monkeys. Here, you stand over a pile of motionless, medium-sized rocks.");
+            }
+            else{
+                print("Mama Ciedue watches you through a pair of glasses, matching your stance and mimicking your movements. ");
+                    if(gameState.isFalse(taskBridgeRestored)){
+                        switch(numRocksIn(barrel)){
+                            case 0,1,2: print("A pile of medium-sized babies plays at her feet, a display of gleeful chaos. On this side, a pile of medium-sized rocks
+                                    rests at your feet, a display of stationary order.");
+                            case 3,4: print("A few medium-sized babies jump at her feet, arms high in the universal “pick me up” gesture. Others merrily play inside
+                                    the barrel on that ledge. Here, a few medium-sized rocks lie at your feet; a few more lie inside the closer barrel.");
+                            case 5: print("Her babies fill the far barrel, a rolling jumble of energy and monkey delight. Here, the rocks fill the barrel, a
+                                    stationary jumble of motionless apathy.");
+                        }
+                    }else print("Her troop of babies, all grinning, climb and swing playfully on the long vine which stretches from above, to the suspended barrel far below.");
+            }
+        }
+    }
+    iString postImpression = $"^^You look around, taking the ledge in, and wonder: {italics}Who carved these ledges and what purpose did the barrels serve?{roman} It’s all very strange.";
+    array<var> monkeysMessages = {0,
+        "Across the gap, the baby monkeys jump around, chittering gleefully.",
+        "“Murk! Murk!” one of the monkeys cries.",
+        $"{numRocksIn(barrel) < 4 ? "The monkeys take turns flipping in the air." : "A single baby monkey jumps from the barrel, flips in the air, then dives back into the crowd of its siblings."}",
+        "“Meep!” cries another baby monkey.",
+        $"{numRocksIn(barrel) < 4 ? "One baby monkey performs a handstand; another grabs the first’s feet and does a handstand on top of that one." : "Two legs rise out of the barrel, then drop back down under the tangle of baby monkeys."}",
+        "“Marp!”",
+        $"{numRocksIn(barrel) < 4 ? "The baby monkeys take turns somersaulting over each other." : "The baby monkeys in the barrel bounce over each other, occasionally popping over the edge with big smiles."}",
+        "“Meem!”"
+    };
+    bool each_turn() {
+        if(bgl.util.random.get(5) == 1){
+            if(gameState.isFalse(taskBridgeRestored)){
+                print("^");
+                print((iStringOrRoutine)bgl.util.loopArray.getNext(self, (property)monkeysMessages));
+                print("^");
+                rtrue;
+            }
+        }
+        rfalse;
+    }
+    array<array<var>> backdrops = {
+        {.crack, .cracks, .wall, .cliff, .face, .surface, "The rock wall is sheer and crumbly, with cracks running along its surface.",
+            () => {
+                if(action == Climb) { Go.perform(u_obj); rtrue; }
+                rtrue("The wall, though crumbly, is sturdy and resists.");
+            }},
+        {.breeze, .wind, .light,
+            $"The breeze is mild, and floral, and refreshing. {gameState.isFalse(taskBridgeRestored) ? "The hanging ladder taps occasionally against the cliff wall in response to it." : ""}",
+            "The wind is insubstantial."},
+        {.ring, .anchor, "You can’t really see the anchor from down here, but you know it’s there.", "It’s too far up there to reach, even if you could get a good look at it."},
+        {.dirt, .ground, .tracks, "The ground is harder here than by the rock wall. There are no tracks to be seen.", "The dirt floor isn’t of much use to you."},
+        {.jungle, .floor, .canopy, .treetops, "Far below, the canopy spreads like green carpeting; the jungle floor is somewhere beneath it.", bdItsOutOfReach},
+        {.gap, .chasm, .drop, "Twenty feet of empty air separate this ledge from the one on the column.", "You keep well back from the edge."},
+        {.column, .butte, .pillar, "The column rises from below, moderately thick around, but proportionally very narrow. The ledge on it mirrors this one in more ways than one.", bdItsOutOfReach},
+        {.hook, .far, () => { describeFarBarrel(); rtrue; }, "You can’t reach the far barrel’s hook from here."},
+        {.rocks, .rock, .pile, "The rocks went over the edge with the barrel. Only grit and pebbles are left on the ledge.", "There’s nothing left here worth picking up."},
+        {.far, .barrel,
+            () => { describeFarBarrel(); rtrue; },
+            () => {
+                if(action == Search) { describeFarBarrel(); rtrue; }
+                rtrue("You can’t reach the far barrel from here.");
+            }}
+    };
+}
+
+//---------- rock class + instances + numRocksIn helper (native Beguile) ---------------------------
+// objectloop counting → bgl.world.inParent(loc, pred); chooseobject disambiguation uses
+// <betterChoice>; vagueQuantity/plural/pluralDescription are
+// properties of <extensions/stdlib/vagueQuantity> and the library.
+class rock : object {
+    string short_name = "medium-sized rock";
+    string description = "A rock. Medium in size. About the same as a baby monkey.";
+    string pluralDescription = "It’s a collection of rocks, fallen from the cliff wall. They’re all of medium size and weight, about the same as a baby monkey.";
+    rawArray<dictionaryWord> name = {.rock, .medium-sized, .medium, .sized, ..rocks, ..pile, .of};
+    string plural = "rocks";
+    rawArray<var> vagueQuantity = {2, "a couple of", 3, "a few", 5, "a pile of", true};
+    bool before() {
+        switch(action) {
+            case Take:
+                if(bgl.world.inParent(player, (object o) => o.is(rock)).length >= 2)
+                    rtrue("The rocks are too big to carry more than a couple at a time.^");
+            case ThrowAt:
+                if(noun.is(rock) && noun.parent == selfobj){
+                    noun.parent = ledge;
+                    print("The rock sails over the gap, falling short of the far ledge due to its weight. It disappears into the distance below. On a completely unrelated note, another piece of the rock wall falls and lands on the ledge at your feet.^");
+                    if(gameState.isTrue(taskGlassesGivenToCiedue)) print("^Mama Ciedue watches as the rock falls out of sight, then puts her baby down. She looks at you and shrugs.^");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+    bool after() {
+        switch(action) {
+            case Take:
+                if(multiflag) print("Taken. "); else print("You pick up a medium-sized rock. ");
+                if(gameState.isTrue(taskGlassesGivenToCiedue)){
+                    // c==4 here, plus the one just picked up == five, so this is the first rock picked up
+                    if(bgl.world.inParent(location, (object o) => o.is(rock)).length == 4)
+                        print("In response, Mama Ciedue looks around for one of her own but there aren’t any. Instead, she picks up a medium-sized baby monkey.");
+                    else
+                        print("Mama Ciedue picks up a medium-sized baby monkey.");
+                }
+                print("^");
+                rtrue;
+            case Drop:
+                if(multiflag) print("Dropped. "); else print("You drop the medium-sized rock. ");
+                if(gameState.isTrue(taskGlassesGivenToCiedue))
+                    print("Mama Ciedue drops a medium-sized baby monkey. It cartwheels away.");
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code != chooseCode.askingForHint){
+            // during take-all, skip barrel rocks when others are on the ground
+            if(action_to_be == Take && parent == barrel && numRocksIn(location) > 0) return chooseAnswer.exclude;
+            if((action_to_be == Insert || action_to_be == PutOn) && parent == location && numRocksIn(player) == 0
+                && bgl.world.inParent(location, (object o) => o.is(rock))[0] == self) return chooseAnswer.include;
+            return chooseAnswer.defer;
+        }
+        if(action_to_be == Examine) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+}
+
+// numRocksIn(loc) — count rock-class objects directly in loc.
+int numRocksIn(object loc) {
+    return bgl.world.inParent(loc, (object o) => o.is(rock)).length;
+}
+
+// Five rocks start on the lower ledge (was I6 `rock ->;rock ->;…`).
+rock rock1 { parent = ledge; }
+rock rock2 { parent = ledge; }
+rock rock3 { parent = ledge; }
+rock rock4 { parent = ledge; }
+rock rock5 { parent = ledge; }
+
+//---------- far ledge + inhabitants (children of ledge) -------------------------------------------
+bigThing farLedge {
+    "far ledge", ledge;
+    attributes = {concealed};
+    name = {.ledge, .ledges};
+    adjective = {.far, .other, .opposite, .distant, .facing, .column};
+    bool requireNoun = true;
+    void description() {
+        print("The far ledge juts from the column, facing this one across the gap: the same carved shelf, the same ancient barrel near its lip.");
+        if(gameState.isTrue(taskBridgeRestored)) print(" The barrel is gone now; the vine hangs past the ledge to where it swings far below.");
+        else print(" The monkeys have it to themselves.");
+    }
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code == chooseCode.askingForHint) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+}
+
+bigThing nearLedge {
+    "ledge", ledge;
+    attributes = {concealed};
+    name = {.ledge, .ledges, .edge, .lip, .shelf};
+    adjective = {.near, .this, .my, .narrow, .carved};
+    bool requireNoun = true;
+    void description() {
+        print("The ledge is a narrow shelf carved into the cliff wall, a few paces wide. Its twin juts from the column twenty feet across the gap, at exactly the same height.");
+    }
+    bool before() {
+        switch(action) {
+            case Climb, Enter: rtrue("You’re already standing on it.^");
+        }
+        rfalse;
+    }
+}
+
+setting babyMonkeys {
+    "baby monkeys", ledge;
+    attributes = {concealed, animate, pluralname};
+    name = {.monkeys, .babies, .troop, .baby};
+    adjective = {.monkey, .dancing, .playing, .cartwheeling, .swinging, .of, .cohort, .medium-sized, .medium, .sized};
+    void description() {
+        var num;
+        if(gameState.isFalse(taskBridgeRestored)){
+            num = numRocksIn(barrel);
+            if(num==0) print("The cohort of medium-sized baby monkeys dance and flip, playing joyfully with no cares in the world.");
+            if(num==1) print("One peeks out from the barrel. The rest jump around, chittering gleefully.");
+            if(num==2) print("Two peek out from the barrel. The rest wrestle and play.");
+            if(num==3) print("Several baby monkeys bounce energetically in the barrel. A few, outside, jump up and down, wanting their mother to put them there too.");
+            if(num==4) print("Several baby monkeys bounce energetically in the barrel. One sole monkey on the outside jumps up and down, wanting its mother to put it there too.");
+            if(num==5) print("The baby monkeys fill the barrel, which shudders as they play within it.");
+        }
+        else print("The baby monkeys play on the long vine, swinging and climbing over one another.");
+        print("^");
+    }
+    bool orders() { rtrue("The monkeys ignore you, too busy playing.^"); }
+    bool before() {
+        switch(action) {
+            case Take: rtrue("If you could reach them, I suppose the baby monkeys might care for that.^");
+        }
+        rfalse;
+    }
+}
+
+bigThing mama {
+    "Mama Ciedue", ledge;
+    attributes = {concealed, proper, animate, female};
+    name = {.mama, .Ciedue, .blind, .monkey, .adult, .mother};
+    void description() {
+        if(gameState.isFalse(taskGlassesGivenToCiedue)) {
+            if(has(general)) print("Mama Ciedue"); else print("The lone adult monkey");
+            print(" tends over her pile of cartwheeling babies. She struggles to see them through scrunched eyes, unaware of anything else.");
+        }else{
+            if(gameState.isFalse(taskBridgeRestored)) {
+                print("Across the gap, Mama Ciedue watches you through a pair of glasses, matching your stance and mimicking your movements.");
+            }else{
+                print("Across the gap, Mama Ciedue watches her children swing on the vine, ignoring you.");
+            }
+        }
+        descriptionEvent();
+        print("^");
+    }
+    void descriptionEvent() {
+        if(gameState.isTrue(taskGlassesGivenToCiedue)) return; // too much progress already for this to make sense
+        if(has(general) && action != reviewObj) return;
+        print($"^^Focused on what you see on the other ledge, you absently knock a rock over, making a sound. The adult monkey reacts, stepping away from her
+            children to the edge, and searches for the source of the sound. She clearly doesn’t see you, though you’re barely more than a stone’s throw
+            away. The name the canopy monkeys spoke before comes back to you: “Blind Mama Ciedue”. You consider that for a moment, watching her.^^{italics}She’s not
+            blind{roman}, you think, {italics}just nearsighted.{roman}");
+        give(general);
+    }
+    bool orders() {
+        if(gameState.isFalse(taskGlassesGivenToCiedue)) rtrue("The lone adult monkey squints, looking around for the source of your voice, but sees nothing.^");
+        rtrue("Mama Ciedue strikes a commanding pose and imitates you with human-sounding gibberish noises, as though ordering you to do something.^");
+    }
+    bool react_before() {
+        if(action == Give && second == mama) { ThrowAt.perform(noun, mama); rtrue; }
+
+        if(gameState.isFalse(taskGlassesGivenToCiedue)) {
+            switch(action){
+                case Sing, Laugh, Hoot, VagueTalk: rtrue("You talk to yourself. At the sound, the adult monkey looks out across the chasm, unseeing, trying to find the source of the sound, then turns back to her babies.^");
+                case Show: rtrue("The adult monkey doesn’t see you. She seems to squint a lot.^");        // show vine to mama
+                case WaveHands: rtrue("You wave, feeling foolish. The monkey does not notice.^");        // wave / wave at mama
+                case Wave: rtrue($"You wave {the(noun)}. There is no response from the monkey.^");        // wave vine
+                case Think: rtrue("You consider the problem before you, a fuzzy idea starting to form in your mind.^");
+            }
+        }
+        else{
+            if(gameState.isTrue(taskBridgeRestored)) rfalse;
+            switch(action){
+                case Sing: rtrue("You sound like a monkey. So does Mama Ciedue.^");
+                case Laugh: rtrue("You laugh at Mama Ciedue. Mama Ciedue laughs at you.^");
+                case Hoot: rtrue("You hoot like a monkey. Mama Ciedue hoots back, sounding like a monkey.^");
+                case VagueTalk: rtrue("You mutter something vague and unintelligible. Mama Ciedue responds in kind.^");
+                case Jump: rtrue("You jump up and down, trying to get Mama Ciedue’s attention. She jumps up and down, trying to get your attention.^");
+                case Listen: rtrue("You pause to listen. Mama Ciedue does the same.^");
+                case Pray: rtrue("You pray to the gods of the jungle. Mama Ciedue prays to the gods of the jungle. You both pray for different things.^");
+                case Think: rtrue("You think about Mama Ciedue. She thinks about you. You both think about the same thing: “How do we get across this chasm?”^");
+                case Wait: rtrue("You wait. So does Mama Ciedue. Time passes for you both.^");
+                case Dance: rtrue("You do a little jig. Mama Ciedue’s jig is just as little.^");
+                case Show:
+                    if(noun.is(rock))
+                        rtrue("You show Mama Ciedue a medium-sized rock. Mama Ciedue shows you a medium-sized baby monkey in return.^");
+                    else
+                        rtrue($"You show Mama Ciedue {the(noun)}. Mama Ciedue shows you something imaginary in mime.");
+                case WaveHands: rtrue("You wave, feeling foolish. Mama Ciedue waves, looking foolish.^");
+                case Wave:
+                    if(noun.is(rock))
+                        rtrue("You wave the medium-sized rock. Mama Ciedue waves a medium-sized baby monkey.^");
+                    else
+                        rtrue($"You wave {the(noun)}. Mama Ciedue waves an empty paw.");
+            }
+        }
+        rfalse;
+    }
+    bool before() {
+        if(action == Touch || action == Take || action == Pet)
+            rtrue("Mama Ciedue is across the gap, unreachable.^");
+
+        if(gameState.isTrue(taskBridgeRestored)) rfalse;
+
+        if(gameState.isFalse(taskGlassesGivenToCiedue)) {
+            switch(action){
+                case SayTopic, TellTopic, AskTopic, UnrecognizedTopicWords, Talk:
+                    rtrue("At your sound, Mama Ciedue looks out across the chasm, unseeing.  For a moment, she searches to identify the source of the sound, then gives up and turns back to her babies.^");   // talk to mama
+            }
+        }
+        rfalse;
+    }
+    bool iDunno() {  // fires when a topic is recognized but doesn't make it through qualification
+        if(gameState.isFalse(taskGlassesGivenToCiedue))
+            rtrue("At your sound, Mama Ciedue starts and looks out across the chasm, unseeing, trying to find the source of the sound, then turns back to her babies.^");
+        rtrue("You talk to Mama Ciedue. She responds with gibberish noises, sounding a lot like a monkey imitating a human.^");
+    }
+}
+
+bigThing barrel {
+    "barrel", ledge;
+    attributes = {concealed, open, container, searchable};
+    name = {.barrel, .barrels};
+    adjective = {.wood, .wooden};
+    void description() {
+        print("The twin barrels each sit very close to their respective edges. They are strange, insofar as barrels can be strange. Plain, wooden, and crafted with
+            unfamiliar precision. Both are open. They seem old but are treated in something to protect from decay. A single hook adorns each; however, the hook on the nearby barrel hangs broken and useless.");
+        switch(numRocksIn(barrel)){
+            case 1: print("^^One medium-sized rock rests at the bottom of this barrel. One medium-sized monkey baby peeks out, over the edge of the far barrel.");
+            case 2: print("^^A couple of medium-sized rocks lie at the bottom of this barrel. A couple of medium-sized monkey babies hop up and down happily from inside the far barrel.");
+            case 3,4: print("^^A few medium-sized rocks line the bottom of this barrel. A few medium-sized monkey babies jump and play energetically in the far barrel.");
+            case 5: print("^^Rocks fill the nearest barrel. Baby monkeys and smiles fill the other.");
+        }
+        print("^");
+    }
+    bool each_turn() {
+        if(numRocksIn(barrel)==5 && hasnt(general)){
+            give(general);
+            print("^Mama Ciedue steps back and considers the barrel full of her babies. Then she lets out a shrill sound of monkey laughter, slaps her own leg, and points at it. “Zachoo zaidsho nomi nomi!” she says.^");
+            achieved(taskAllStonesInBarrel);
+        }
+        rfalse;
+    }
+    bool before() {
+        switch(action) {
+            case Receive:
+                if((verb)receive_action == PutOn){
+                     print($"(actually {italics}IN{roman} the barrel)^");
+                     Insert.perform(noun, second);
+                     rtrue;
+                }
+                if(noun.is(rock) == false) { print($"You consider putting {the(noun)} in the barrel but think better of it. That doesn’t {italics}quite{roman} line up with the fuzzy idea starting to formulate in your mind.^"); rtrue; }
+
+                // keep the rock count in the near barrel aligned with the babies in the far barrel —
+                // easier for the player than figuring out the glasses puzzle after rocks are placed.
+                if(gameState.isFalse(taskGlassesGivenToCiedue)) { print($"It seems like a good idea, but... You look across the chasm at the blind monkey and her empty barrel, then up to where you know the anchor ring is, then to the hanging ladder. If only there was a way to add weight to the {italics}far{roman} barrel...^"); rtrue; }
+
+            case Empty:
+                if(noun.children.length == 0) rtrue("There is nothing in the barrel.^");
+                for(object o in bgl.world.inParent(noun)) o.parent = location;
+                print("You reach deep into the barrel, pulling out its contents and tossing it to the ground.");
+                if(gameState.isTrue(taskGlassesGivenToCiedue)) print(" When you right yourself, you see Mama Ciedue righting herself as well. Her barrel is as empty as yours.");
+                print("^");
+                rtrue;
+
+            case Push:
+                if(gameState.isFalse(stateFarVineIsTied)){
+                    if(numRocksIn(barrel)==0) print("You consider pushing the barrel over the ledge but pause, considering the barrel across the chasm and the hanging ladder here. No, you’ll only get one chance at this.");
+                    else{
+                        print("You put your hand on the barrel and begin to wiggle it toward the edge. Mama Ciedue considers her barrel, ");
+                        if(numRocksIn(barrel)==1)
+                            print("with a single baby monkey peeking out, ");
+                        else
+                            print("filled with baby monkeys, ");
+
+                        if(gameState.isTrue(stateVineIsOverAnchor))
+                            print("then looks at the vine hanging loose over her. ");
+                        else
+                            print("unsecured. ");
+
+                        print("She holds her paw up and shakes her head at you. You stop.");
+                    }
+                    print("^");
+                    rtrue;
+                }
+
+                // vine tied but barrel not full: refuse the push
+                if(numRocksIn(barrel) != 5) rtrue("You wiggle the barrel and consider pushing it over the edge, but pause. You do a quick estimation of the weight of the ladder and the weight of the far barrel, tied to the rope.  No, you’re pretty sure it isn’t heavy enough. You’ll need to convince Mama Ciedue to add more weight on her side.^");
+
+                print("You put your shoulder into it and push the barrel of rocks over the ledge. It falls, disappearing through the treetops far below, and crashes invisibly against the jungle floor.^^
+                    Imitating you, Mama Ciedue pushes the barrel of baby monkeys over the ledge. They squeal as it drops, pulling the vine and drawing the ladder on this side up into the air, away from the wall, and across the gap.^^
+                    Then the vine jerks taut with a clack from above. The ladder presses against the elevated anchor, holding but not quite locking into place.^^
+                    After a moment, the baby monkeys appear from below, climbing the vine. They swing on it and slide back down, delighted with their new toy. “Murk!” one cries.^^Far above, the once-ladder-now-bridge stretches across the gap, connecting the upper cliff edge to the column.^");
+
+                barrel.remove();
+                ladder.remove();
+                barrelHook.remove();
+                gameState.setTrue(taskBridgeRestored);
+                achieved(taskBridgeRestored);
+                rtrue;
+        }
+        rfalse;
+    }
+    bool after() {
+        switch(action) {
+            case Receive:
+                if(noun.is(rock)) {
+                    if(multiflag) print("Into the nearby barrel. Across the gap, a baby monkey goes into the far one."); else print("You drop the rock into the nearby barrel. Mama Ciedue does the same to a baby monkey in the far barrel.");
+                }else{
+                    print($"Mama Ciedue casts around for {a(noun)} and finds nothing. Instead, she imitates you, putting an imaginary object in her barrel.");
+                }
+                print("^");
+                rtrue;
+            case LetGo:
+                if(noun.is(rock)) {
+                    print("You take a rock from the nearby barrel. Mama Ciedue reaches into her barrel and pulls out a baby monkey.");
+                }else{
+                    print($"You take {the(noun)} from the nearby barrel. Mama Ciedue reaches into her barrel and pulls out an imaginary {printName(noun)}.");
+                }
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+void describeFarBarrel() {
+    if(gameState.isTrue(taskBridgeRestored)) {
+        print("The far barrel hangs far below now, on the end of the vine, the baby monkeys’ new swing.");
+    } else {
+        print("The far barrel sits at the lip of the opposite ledge, twin to the one beside you, except that its hook is whole");
+        if(gameState.isTrue(stateFarVineIsTied)) print(" and the vine is tied through it");
+        print(".");
+        switch(numRocksIn(barrel)) {
+            case 0: print(" It’s empty.");
+            case 1: print(" A single baby monkey peeks out of it.");
+            case 2, 3, 4: print(" Baby monkeys tumble around inside it.");
+            case 5: print(" It’s packed with baby monkeys.");
+        }
+    }
+}
+
+bigThing barrelHook {
+    "broken hook", ledge;
+    attributes = {concealed};
+    name = {.hook, .hooks, .stub};
+    adjective = {.broken, .near, .barrel, .my, .this, .jagged};
+    bool requireNoun = true;
+    string description = "The hook on this barrel has snapped off, leaving a jagged stub. Nothing would stay tied to it now. Across the gap, the far barrel’s hook is still whole.";
+    bool before() {
+        switch(action) {
+            case Take, Pull, Turn: rtrue("There’s only a jagged stub left, fixed firmly to the barrel.^");
+        }
+        rfalse;
+    }
+}
+
+extend Push {
+    grammar += { {.push, NOUN, .off|.over, NOUN, withI6Synonyms}, {.push, NOUN, .off|.over, withI6Synonyms} };
+}
+
+bigThing ladder {
+    "ladder", ledge;
+    attributes = {concealed};
+    name = {.bridge, .ladder, .slats};
+    adjective = {.hanging, .heavy, .ancient, .wood, .wooden, .rope};
+    description = $"It is a series of ancient wooden slats, bound between two pieces of ancient, and deteriorating rope. The slats look like they’ve been treated
+        in some sappy coating and remain strong despite their obvious age.{gameState.isTrue(stateNearVineIsTied)
+        ? " The vine, stretching from above, is tied securely to the bottom slat."
+        : " The last slat on the ladder is notched, obviously designed to be tied to a piece of rope or rope-like thing."}";
+    bool before() {
+        switch(action) {
+            case Take, Pull: rtrue("The hanging ladder is far too heavy to lift. You look across to the anchor. You’ll need to find a way to hoist this heavy thing over to it.^");
+            case Climb: Go.perform(u_obj); rtrue;
+        }
+        rfalse;
+    }
+    string postImpression = "^^You test its weight and decide there’s no way you could pull it up by yourself.";
+}
+
+//---------- vines (floating backdrops / objects, no parent) ---------------------------------------
+backdrop cliffVine {
+    "vine";
+    array<array<var>> backdrops = {
+        {.vine, .rope, .vines, .ropes,
+            $"{gameState.isFalse(taskBridgeRestored) ? "It stretches down to the ledges below in two directions; one to the far column, the other to the ledge below you. "
+                                                     : "It stretches down on the far side, seemingly with enough weight to hold the bridge in place."}",
+            "You can’t reach the vine from here."}
+    };
+}
+
+bigThing ledgeVine {
+    "vine";
+    attributes = {concealed};
+    name = {.vine, .rope};
+    void description() {
+        if(gameState.isTrue(taskBridgeRestored))
+            print("On the far side, the long vine stretches down from above.  Baby monkeys climb up and down on it.");
+        else{
+            print("It’s a long vine of medium thickness, strong enough to serve as a rope and do rope-specific things with. It hangs down from above");
+            if(gameState.isTrue(stateNearVineIsTied)) print(", tied to the bottom of the hanging ladder");
+            print(". There’s another vine hanging over the far ledge");
+            if(gameState.isTrue(stateFarVineIsTied)) print(", tied to a hook on the distant barrel");
+            print(".");
+        }
+        print("^");
+    }
+    bool before() {
+        if(action == Examine || action == ExamineMulti) rfalse;
+        if(gameState.isTrue(taskBridgeRestored)) rtrue("This side of the vine is no longer reachable, securing the bridge above. The far vine is unreachable.^");
+
+        switch(action) {
+            case Take: rtrue("The vine, draped over an anchor above and hanging between the two ledges, is no longer in a state to just be taken, but you might still be able to do something with it.^");
+            case Pull:
+                print("You tug on the vine; the vine over the other ledge jitters in response.");
+                if(gameState.isTrue(taskGlassesGivenToCiedue)) print(" Mama Ciedue tugs on her vine; the vine over this ledge jitters in response.");
+                print("^");
+                rtrue;
+            case Climb, Swing: rtrue("No, you’re not Tarzan. There’ll be no climbing vines or swinging over certain death by the likes of you.^");
+            case Tie:
+                if(second == null) rtrue("Good idea. But to what?^");
+                if(second == ladder){
+                    gameState.setTrue(stateNearVineIsTied);
+                    print("You tie the vine to the end of the ladder.");
+                    if(gameState.isTrue(taskGlassesGivenToCiedue)) {
+                        print(" Across the chasm, Mama Ciedue takes her vine and looks around for a ladder. Not seeing one, she focuses on her barrel and threads the vine through the hook, tying it in place.^");
+                        gameState.setTrue(stateFarVineIsTied);
+                    }
+                    else print("^");
+                    rtrue;
+                }
+                if(second == barrel || second == barrelHook) rtrue("You start to tie the vine to the barrel, but the attached hook, something seemingly designed for a piece of rope, is broken and the vine won’t stay in place. You look around for something else that could take a knot.^");
+                if(second.is(rock)) rtrue("You begin to loop the vine around a rock, hoping to secure it, but the rock slips easily through your attempted wrap.^");
+            case Untie:
+                if(gameState.isTrue(stateNearVineIsTied)){
+                    print("You untie the vine from the ladder.");
+                    if(gameState.isTrue(stateFarVineIsTied)) {
+                        gameState.setFalse(stateFarVineIsTied);
+                        print(" On the other ledge, Mama Ciedue unties her vine from the barrel’s hook.");
+                    }
+                    gameState.setFalse(stateNearVineIsTied);
+                    print("^");
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+}

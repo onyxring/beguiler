@@ -1,0 +1,1214 @@
+#using bgl.printRules;   // a() / the() / cA() / cThe() — articles live here now
+#using bgl.english;      // they(…) and the other pronouns
+
+// Shared "can't go that way" message, reused across this area's rooms.
+
+const string foliageBlocks = "The dense foliage blocks travel in that direction.";
+
+//------------ Map ------------------------------------------------------------------------------------------------------
+
+place southOfRockWall {
+    "South of Rock Wall";
+    ne_to = eastOfRockWall;
+    nw_to = westOfRockWall;
+    n_to = "The cliff wall blocks your way.";
+    n_look = "You can’t see further than the rocky cliff wall.";
+    s_to = "No. The Jeep is useless without keys. No reason to go that way until you recover them.";
+    bool   s_look() { return redirectCommand("x jeep"); }
+    bool   d_look() { return redirectCommand("x dirt"); }
+    bool   u_look() { return redirectCommand("x canopy"); }
+    cant_go = foliageBlocks;
+    cant_look = "The greenery is thick in that direction, blocking your view.";
+    remoteDescription = "The trail curves in that direction, disappearing around the rock wall.";
+    description = "You are at the base of a tall rock wall which disappears into the thick tree cover above. The light is
+                dim here; the jungle canopy blocks out the sky and shrouds the ground in shadow. Tracks in the soil create
+                a lightly beaten path curving northeast and northwest around the wall. Beyond the thin, southern brush
+                line is your Jeep.";
+    string postImpression = "^^Although there are no visible monkeys, you can hear them: a constant din of hoots and screeches
+                from the jungle canopy far above you. On the air is the musty scent of wildlife.";
+
+    array<array<var>> backdrops = {
+        {.canopy, .cover, .roof, .treetops, .leaves, .shadow, .shadows, "The canopy, high above, blots out the sky. From it, you can hear the hoots and growls of wildlife.", bdItsOutOfReach},
+        {.dirt, .tracks, .path, .ground, .trail, .soil, "You’re no expert but suspect these to be monkey tracks.", bdDirt},
+        {.rock, .wall, .monolith, .tower, "Here, the rock wall is gone, lifted away like an open garage.", "There is nothing to interact with."},
+        {.jeep, .car, .brush, .line, .white, "Through the brush you can barely make out your white Jeep. Useless without keys.",
+            () => { if(action == WalkTo) { Go.perform(s_obj); return bdRedirected; } rtrue("Your Jeep is out of reach, but rest assured: you won’t forget where it is this time!"); }},
+        {.shrubbery, .shrubs, .plants, .greenery, .foliage, "The foliage is pervasive, growing everywhere, from every crevice.", bdDefault},
+        {.vines, "Thick vines hang from the trees and drape the incline you climbed on your way in.", bdDefault},
+        {.tree, .trees, "The trees are thin, very tall. Not something a human could climb but packed densely together.",
+            "Other than blocking off directions, the trees don’t do much for you."},
+        {.glove, .box, .compartment, "You can’t see the glove box from here, but remember it hanging open. There was quite a bit of stuff in it which you suspect the monkeys pulled out.", bdItsOutOfReach},
+        {.mouth, "Interesting idea. If only you’d seen a mouth around here someplace.", bdDescr},
+        {.eye, "Interesting idea. If only you’d seen an eye around here someplace.", bdDescr},
+        {.ear, "Interesting idea. If only you’d seen an ear around here someplace.", bdDescr},
+        {.monkey, "There is not an individual monkey here to examine.", "There is no single monkey present. Just an army of monkeys above."},
+    };
+    array<var> grokPreventsYouMessage = {0,  // Loop array
+        "Grok blocks your path, grunting aggressively with an angry scowl on his monkey face.",
+        "As you turn to run, Grok grabs you by the neck and throws you to the ground, howling.^^You stand.",
+        "“I give up!” you cry. “You can keep the keys!” You try running but Grok will have none of it. He bats you across the head with his monstrous paw. Your ears ring and your vision dims."
+    };
+    array<var> monkeysAboveMessage = {0,
+        "From above comes the constant chittering of monkeys.",
+        "A tail drops below the tree line, momentarily visible before disappearing again into the canopy.",
+        "The treetops above bustle with hidden activity.",
+        "There is movement from above. The leaves rustle and you can tell there are monkeys doing things just out of sight.",
+        () => {
+            if (gameState.isFalse(stateMonkeyEyeSeen))
+                print("Ambient monkey sounds come from the trees above.^");
+            else
+                print("From deep within the rocky cliff wall, you hear a muted clanging, like a pair of cymbals crashing together repeatedly. After a moment, it stops.^");
+        },
+        "You hear the soft murmur of monkeys casually conversing."
+    };
+    array<var> seriousHints = {0,
+        "From above comes the constant chittering of monkeys. You wonder what they might say if you could speak to them.",
+        "The monkeys above chatter incessantly, but you can’t make out what they are saying. If only there was a way to ask them about your car keys.",
+        "You can hear the monkeys conversing above. You imagine what it would be like to talk monkey."
+    };
+
+    bool before() {
+        switch(action) {
+            case Listen:
+                if(noun == etchedEar && gameState.isTrue(stateBananaPlacedOnWall)) rtrue("You put your ear to the dark ear hole. Faintly, from somewhere behind the wall, comes the jingle of keys. The hole seems made less for listening than for speaking into.^");
+                rtrue("The normal jungle sounds, insects and small animals, are drowned out by the active, constant chittering of monkeys, hidden in the treetops above.^");
+            case Go:
+                if (gameState.isTrue(stateInCombat)) {
+                    print((string)bgl.util.loopArray.getNext(self, (property)grokPreventsYouMessage));
+                    print("^");
+                    rtrue;
+                }
+                if (noun == u_obj) { Climb.perform(cliffWallSouth); rtrue; }
+        }
+        rfalse;
+    }
+
+    bool each_turn() {
+        if(bgl.util.random.get(3) == 1 && gameState.isFalse(stateInCombat)) {
+            var msg;
+            if(turns > SERIOUS_HINTS_MARK && isAchieved(taskSpeakWithMonkeys) == false)
+                msg = bgl.util.loopArray.getNext(self, (property)seriousHints);
+            else
+                msg = bgl.util.loopArray.getNext(self, (property)monkeysAboveMessage);
+            print("^");
+            PrintOrRunVar(msg);
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+bigThing srwFoliage {
+    "foliage", southOfRockWall;
+    name = {.foliage, .leaves, .greenery, .plants, .plant, .life, .shrubbery, .shrubs, .bushes, .bush};
+    describe = "^The greenery here is thick and lush.";
+    string description = "The foliage is pervasive, growing everywhere, from every crevice.";
+}
+
+setting cliffWallSouth {
+    "wall", southOfRockWall;
+    name = {.cliff, .wall, .carvings, .etchings, .engravings, .tower, .monolith, .base};
+    adjective = {.rock, .tall, .rocky, .of, .the};
+    void description() {
+        print("The wall has strange carvings, faded by years of erosion. If you concentrate, you can make
+                            out three surviving engravings: ");
+        if (gameState.isFalse(stateBananaPlacedOnWall))
+            print("a strange monkey mouth, a strange monkey eye, and a not-so-strange monkey ear.");
+        else
+            print("a not-so-strange monkey mouth, a not-so-strange monkey eye, and a strange monkey ear.");
+        if (isAchieved(taskInspectWall) == false) {
+            print("^"); achieved(taskInspectWall);
+        }
+        //give self general;
+        etchedEar.parent = southOfRockWall;
+        etchedEye.parent = southOfRockWall;
+        etchedMouth.parent = southOfRockWall;
+    }
+    postImpression = $"^{italics}Huh{roman}. You ponder for a moment. The etchings are clearly very old. Several centuries, maybe more. {italics}What people made these and where did they go?{roman}";
+    bool before() {
+        switch(action) {
+            case Climb:  rtrue("It’s far too sheer to climb. At least, for a human.^");
+            case Push:   rtrue("You push on the cliff wall, testing it, but it stands in place. Immovable. Like a rock wall.^");
+            case Attack: rtrue("You pound on the cliff wall without effect.^");
+        }
+        rfalse;
+    }
+}
+
+// Conversation hint: mack uses ASK/TELL/SAY, not SPEAK/TALK/SHOUT. Returns true (callers `return ConvoError()`).
+bool ConvoError() {
+    print($"[This game doesn’t use SPEAK, TALK, or SHOUT; however, {italics}does{roman} support “ASK {italics}character{roman} ABOUT {italics}topic{roman}”, “TELL {italics}character{roman} ABOUT {italics}topic{roman}”, and “SAY {italics}topic{roman} TO {italics}character{roman}” for conversations. As an example, I’ll do one of these at the next prompt for you...]^");
+    rtrue;
+}
+
+setting monkeys {
+    "monkeys", southOfRockWall;
+    attributes = {pluralname, animate};
+    name = {.monkeys, .army};
+    adjective = {.monkey, .hidden, .unseen, .of, .score, .tree, .brown, .small, .canopy};
+    bool requireNoun = true;
+    string description = "The monkeys are high above the jungle canopy. You can hear them, a constant chittering, and see an
+                    occasional tail drop for a fleeting moment. It is impossible to tell just how many monkeys are up there.";
+    bool before() {
+        switch(action) {
+            case Examine:
+                rtrue("The monkeys are high above, not visible.^");
+            case Talk:
+                playerCommands.pushCommand("ask monkeys about car keys");
+                return ConvoError();
+            case Take:
+                rtrue("You can’t see the monkeys, much less reach them.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        rtrue("The monkeys don’t seem particularly inclined to do what you tell them.^");
+    }
+    bool react_before() {
+        switch(action) {
+            case Talk, TellTopic, SayTopic, AskTopic, UnrecognizedTopicWords:
+                if(gameState.isTrue(stateInCombat)) rtrue("I don’t think you can talk your way out of this now.^");
+        }
+        rfalse;
+    }
+    string iDunno = "The monkeys do not respond. They either don’t understand you or aren’t interested in what you have to say.";
+}
+
+setting yellowMonkey {
+    "yellow monkey";
+    attributes = {animate};
+    name = {.grok, .monkey, .ape};
+    adjective = {.yellow, .large, .big, .huge, .angry, .mean, .scary};
+    string description = "The yellow monkey isn’t actually here. You can’t see him without looking through the eye hole in the rock wall.";
+    bool react_before() {
+        switch(action) {
+            case Show:
+                if(second == self) rtrue("There doesn’t seem to be a monkey here to show anything to.^");
+        }
+        rfalse;
+    }
+    bool before() {
+        if(isDialogueAction(action)) rtrue("The yellow monkey doesn’t seem to hear you through the cliff wall.  Perhaps he’s too distracted, playing with your car keys.^");
+        if(action != Examine) rtrue("The large yellow monkey is on the other side of the cliff wall.^");
+        rfalse;
+    }
+    bool orders() { rtrue("The yellow monkey doesn’t seem to hear you, or perhaps he just doesn’t care.^"); }
+    string iDunno = "The yellow monkey doesn’t seem to hear you, or perhaps he just doesn’t care.";
+}
+
+setting etchedEar {
+    "monkey ear";
+    attributes = {talkable};
+    name = {.ear, .hole, .darkness};
+    adjective = {.monkey, .etching, .carving, .etched, .engraved, .strange, .very, .not, .so, .dark};
+    bool requireNoun = true;
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code == chooseCode.askingForHint && gameState.isFalse(stateBananaPlacedOnWall) && _isMatched(etchedEye)) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+    description = $"It is a carving of a monkey ear, {gameState.isFalse(stateBananaPlacedOnWall)
+        ? "mostly flat.^^Not so strange."
+        : "mostly flat except for an ear hole.^^Very strange."}^";
+    bool react_before() {
+        if(second != self || noun == ambientThings) rfalse;   // a finger: ambientThings answers
+        switch(action) {
+            case Insert:
+                if(gameState.isTrue(stateBananaPlacedOnWall))
+                    print("You can’t put things in the ear. Except maybe words.");
+                else
+                    print("You can’t put things in the ear, it’s just an etching.");
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+    bool before() {
+        switch(action) {
+            case Push:
+                rtrue("You push on the ear, looking for some hidden button. But no, it’s just an etching.^");
+            case Talk:
+                playerCommands.pushCommand("ask ear about car keys");
+                return ConvoError();
+        }
+        rfalse;
+    }
+    bool orders() {
+        if(gameState.isFalse(stateBananaPlacedOnWall))
+            rtrue("The etched monkey ear doesn’t obey. It’s as though it doesn’t hear you at all.^");
+        else
+            rtrue("Your words flow into the ear hole and do nothing else.^");
+    }
+    string iDunno = "You speak to the etched ear, but it doesn’t respond to your words.";
+}
+
+setting etchedEye {
+    "monkey eye";
+    name = {.eye, .circle, .hole};
+    adjective = {.monkey, .etching, .carving, .etched, .engraved, .strange, .very, .not, .so};
+    bool requireNoun = true;
+    object add_to_scope = monkeyLight;
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code == chooseCode.askingForHint && gameState.isTrue(stateBananaPlacedOnWall) && _isMatched(etchedEar)) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+    description = $"The eye is a perfectly round {gameState.isTrue(stateBananaPlacedOnWall)
+        ? "circle, etched into the stone wall. Light no longer shines from it.^^Not so strange."
+        : "hole, carved deep into the stone wall. There seems to be a bit of light, flickering from the eye like there’s movement on the other side.^^Very strange."}^";
+    bool before() {
+        switch(action) {
+            case Search:
+                Examine.perform(monkeyLight); rtrue;
+            case Push:
+                rtrue("You push on the small circle of eye to no effect.^");
+        }
+        rfalse;
+    }
+    bool react_before() {
+        if(second != self || noun == ambientThings) rfalse;   // a finger: ambientThings answers
+        switch(action) {
+            case Insert:
+                if(gameState.isTrue(stateBananaPlacedOnWall))
+                    print("You can’t put things in the eye, it’s just an etching.");
+                else
+                    print("You can’t put things in the eye, it’s just a hole to look through.");
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+setting monkeyLight {
+    "light";
+    name = {.light, .cave};
+    void description() {
+        if(gameState.isTrue(stateBananaPlacedOnWall))
+            print("You look closely at the eye. It’s just an etched circle.^^Not so strange.^");
+        else {
+            print("You look through the eye and can clearly make out an inner cave room on the other side of the wall. The large yellow monkey, perched on a pile of shiny items, holds your car keys between his fingers. He jingles them and hoots in an unmistakable monkey laugh.");
+            print($" You shudder at how imposing the monkey is. {italics}I wouldn’t want to face him alone,{roman} you think. {italics}Or unarmed.{roman}^");
+            gameState.setTrue(stateMonkeyEyeSeen);
+            yellowMonkey.parent = southOfRockWall;
+        }
+    }
+    bool before() {
+        switch(action) {
+            case Search:
+                Examine.perform(monkeyLight); rtrue;
+        }
+        rfalse;
+    }
+}
+
+// "hole" names both the eye and the ear; it means the eye while light shines through it, the ear once the banana opens it.
+bool _isMatched(object obj) {
+    for(int i = 0; i < number_matched; i++)
+        if(match_list[i] == (int)obj) return true;
+    return false;
+}
+
+setting etchedMouth {
+    "monkey mouth";
+    attributes = {container};
+    name = {.mouth, .smile, .slot, .carving, .etching};
+    adjective = {.monkey, .etched, .engraved, .strange, .very, .not, .so};
+    bool requireNoun = true;
+    description = $"It is a broad, {gameState.isFalse(stateBananaPlacedOnWall)
+        ? "three-dimensional smile, carved into the rock wall, about an inch deep.^^Very strange."
+        : "two-dimensional smile, etched into the flat rock wall.^^Not so strange."}^";
+    int time_left = 0;
+    void time_out() {
+        if(gameState.isTrue(stateInCombat)) return;
+        if(location == southOfRockWall) print("^After a moment, the stone banana drops away from the wall; there is a rumbling sound and the point of darkness in the ear disappears. A point of light opens in the eye.^");
+        banana.parent = southOfRockWall;
+        gameState.setFalse(stateBananaPlacedOnWall);
+    }
+    bool before() {
+        switch(action) {
+            case Empty:
+                if(gameState.isTrue(stateBananaPlacedOnWall))
+                    rtrue("It’s just an etching of a monkey mouth. Nothing actually in it.^");
+                else
+                    rtrue("The engraved monkey mouth is only an inch deep. There’s nothing actually in it.^");
+            case Receive:
+                if(noun == banana){
+                    banana.remove();
+                    gameState.setTrue(stateBananaPlacedOnWall);
+                    StartTimer(self, 3);
+                    rtrue("You put the stone banana on the monkey smile, and it snaps into place. For a moment, you feel a deep rumbling from the rock, like hidden gears turning. The point of light, which had been shining through the eye hole, vanishes. A point of darkness in the ear hole opens.^");
+                }
+                else rtrue("The engraved monkey mouth is about an inch deep; more indentation than container. It would take an object of a very specific shape to fit into it.^");
+            case KissThing:
+                rtrue("You kiss the engraved monkey mouth. It does not kiss you back.^");
+            case TellTopic, AskTopic, SayTopic, UnrecognizedTopicWords:
+                rtrue("Speaking to the monkey mouth does nothing. It is just an engraving, after all.^");
+            case Search:
+                Examine.perform(etchedMouth); rtrue;
+            case Push:
+                rtrue("You push on the engraved mouth with your hand. It does nothing.^");
+        }
+        rfalse;
+    }
+}
+
+//----------
+place westOfRockWall {
+    "West of Rock Wall";
+    ne_to = northOfRockWall;
+    se_to = southOfRockWall;
+    e_to = "The immovable rock wall blocks that direction.";
+    e_look = "A rocky wall lies that way.";
+    bool   u_look() { return redirectCommand("x canopy"); }
+    d_look = "The ground is dirt, with a side of monkey droppings.";
+    cant_look = "The greenery is thick in that direction, blocking your view.";
+    cant_go = foliageBlocks;
+    remoteDescription = "The path curves around the rock wall.";
+    description = "This area of the jungle lies west of the rock wall, which is covered in greenery. Thick rainforest surrounds you and blocks out
+                        the sky. The path disappears into the foliage to the southeast and extends into a clearing to the northeast.^^Just to the
+                        side of the trail is a pile of monkey droppings.";
+    array<array<var>> backdrops = {
+        {.canopy, .cover, .roof, .treetops, .leaves, .sky, "The canopy, high above, blots out the sky.", "The canopy is far above you, too high to interact with."},
+        {.dirt, .tracks, .path, .ground, .trail, "The animal tracks in the dirt form a shallow path disappearing around the rock wall in the northeast and southeast directions.", bdDirt},
+        {.clearing, "Your view of the clearing is obscured by the foliage. All you can really make out is a space with marginally fewer trees.", ""},
+        {.monkeys, .monkey, .army, .canopy, "The monkeys are somewhere high in the canopy, off to the southeast. You can hear their chittering, but you can’t see them from here.", "The monkeys are high in the canopy, well out of reach."}
+    };
+    bool before() {
+        switch(action) {
+            case Go: if(noun == u_obj) { Climb.perform(cliffWallEastAndWest); rtrue; }
+            case Listen: if(noun == null || noun == self || backdropEngine.getKeyword() == .monkeys) rtrue("The chatter of the canopy monkeys drifts through the trees from somewhere to the southeast.^");
+        }
+        rfalse;
+    }
+    array<var> seriousHints = {0,
+        "You can hear the chittering of the canopy monkeys coming from the southeast. You wonder what they might say if you could speak to them.",
+        "There’s a rustle in the trees above, like things moving around unseen. They seem to be moving toward the area where you first arrived.",
+        "You hear a commotion, generally from above, but coming from the southeast.  The monkeys up there seem to be congregating."
+    };
+    bool each_turn() {
+        if(playerInteractingWith == monkeys && blindStatue.parent == self) playerInteractingWith = blindStatue;   // a bare SAY here goes to the statue
+        if(bgl.util.random.get(3) == 1 && turns > SERIOUS_HINTS_MARK && isAchieved(taskSpeakWithMonkeys) == false) {
+            var msg = bgl.util.loopArray.getNext(self, (property)seriousHints);
+            print("^");
+            PrintOrRunVar(msg);
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+setting monkeyDroppings {
+    "droppings", westOfRockWall;
+    attributes = {pluralname};
+    name = {.droppings, .poo, .poop, .refuse, .pile, .vegetation};
+    adjective = {.monkey};
+    bool requireNoun = true;
+    description = $"It’s a pile of monkey droppings mixed with half-eaten vegetation.{dehydratedBananas.hasnt(moved) ? " Some kind of wrapper protrudes from it, half buried." : ""}";
+    string postImpression = "^^You look up at the canopy wondering what it hides. A ridiculous part of your brain imagines a monkey-sized room, with
+                a disposal chute dropping refuse into this pile.";
+    bool before() {
+        switch(action) {
+            case Search:
+                Examine.perform(monkeyDroppings); rtrue;
+            case Take:
+                rtrue("Yuck! You consider taking the pile of droppings, then decide against it.^");
+            case Smell:
+                rtrue("Blech! It’s definitely not a pile of chocolate.^");
+            case Taste:
+                rtrue("You taste nothing unexpected. That is, it’s terrible. Which is expected. Because it’s monkey poop.^");
+            case Eat:
+                rtrue("Not a chance.^");
+        }
+        rfalse;
+    }
+}
+
+thing dehydratedBananas {
+    "pack of dehydrated bananas", westOfRockWall;
+    attributes = {concealed};
+    name = {.pack, .package, .wrapper, .dried, .dehydrated, .bananas, .candy, .snack, .snacks, .of};
+    void description() {
+        if(has(concealed))
+            print("Looks like a candy wrapper, but it’s hard to tell with it buried in monkey droppings.^");
+        else {
+            if(hasnt(general)){   // first-impression add-on doesn't work here (it plays out even when concealed)
+                print("You are surprised to recognize the pack of snacks. This is yours! Obviously, it was pilfered from your Jeep by the canopy monkeys. ");
+                give(general);
+            }
+            print("It’s unopened, dirty, and a bit smelly. On the side it reads: “Dehydrated Bananas”.^");
+        }
+    }
+    void readDescription() {
+        if(has(concealed))
+            print("You’re not sure if it can be read, buried in monkey droppings.");
+        else
+            print("It says, “Dehydrated Bananas.”");
+        print("^");
+    }
+    bool before() {
+        switch(action) {
+            case Eat, Open:
+                rtrue("Eh. On second thought, you’re not really hungry. Better to save it for when you are.^");
+            case Rub:
+                rtrue("You rub the package, accomplishing nothing more than moving filth around.^");
+            case Smell:
+                rtrue("Yuck! Perhaps the inside smells good, but the outside is just plain gross.^");
+            case Pull, Take:
+                if(has(concealed)){
+                    ungive(concealed);
+                    parent = player;
+                    rtrue("You pull the wrapper from the pile of droppings and recognize the familiar package.^");
+                }
+            case ThrowAt:
+                rtrue("No. The snack may be useful. No reason to throw it away.^");
+            case Taste:
+                rtrue("You touch the outside of the package to your tongue. It’s disgusting.^");
+        }
+        rfalse;
+    }
+}
+
+bigThing blindStatue {
+    "statue";
+    attributes = {concealed, talkable};
+    name = {.statue, .statues, .mizaru};
+    adjective = {.blind, .stone, .monkey};
+    string statueInitial = "A statue of a monkey sits here, cross-legged, paws covering its eyes.";
+    string description = "It’s a large, free-standing rock statue of a monkey sitting cross-legged
+            with its paws covering its eyes, leaving only its ears and mouth free.";
+    string postImpression = "^^You consider the statue for a moment.  It seems to listen, taking sound in, words on the precipice of its stone lips.";
+    bool react_before() {
+        switch(action) {
+            case Show:
+                if(second == self) rtrue("It wouldn’t do any good. The statue’s paws cover its eyes.^");
+            case Insert, PutOn:
+                if(second != self) rfalse;
+                if(noun.parent != player) rfalse;
+                noun.parent = location;
+                print($"You try to balance {the(noun)} on the statue, but {they(noun, "fall", "falls", "fell")} to the ground.^");
+                rtrue;
+        }
+        rfalse;
+    }
+    bool before() {
+        switch(action) {
+            case Touch:
+                rtrue("The stone the statue is carved from is rough to the touch.^");
+            case Talk:
+                playerCommands.pushCommand("ask statue about car keys");
+                return ConvoError();
+            case KissThing:
+                rtrue("You do so, then imagine the blind statue might wonder who just kissed it.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        rtrue("You command the statue but it does nothing, putting out a you’re-not-the-boss-of-me vibe.^");
+    }
+    string iDunno = "The blind statue sits quietly, perhaps pondering what you say, but does not answer.";
+}
+
+//----------
+place eastOfRockWall {
+    "East of Rock Wall";
+    nw_to = northOfRockWall;
+    sw_to = southOfRockWall;
+    w_to = "The rock cliff wall blocks your way due west.";
+    w_look = "A rocky cliff wall lies that way.";
+    place | bool e_to() {
+        if(gameState.isTrue(taskHiddenPathRevealed))
+            return cliffEdge;
+        print(foliageBlocks);
+        print("^");
+        rtrue;
+    }
+    bool e_look() {
+        if(gameState.isTrue(taskHiddenPathRevealed))
+            rtrue("The greenery is thick in that direction, but the statue’s glowing eyes shine through it, revealing a hidden path.^");
+        rtrue("The greenery is thick in that direction, blocking your view.^");
+    }
+    bool   u_look() { return redirectCommand("x canopy"); }
+    bool   d_look() { return redirectCommand("x dirt"); }
+    cant_look = "The greenery is thick in that direction, blocking your view.";
+    cant_go = foliageBlocks;
+    remoteDescription = "The path disappears around the rock wall.";
+    bool before() {
+        switch(action) {
+            case Go: if(noun == u_obj) { Climb.perform(cliffWallEastAndWest); rtrue; }
+            case Listen: if(noun == null || noun == self || backdropEngine.getKeyword() == .monkeys) rtrue("The chatter of the canopy monkeys drifts through the trees from somewhere to the southwest.^");
+        }
+        rfalse;
+    }
+    description = "The canopy above is sparse and bits of blue sky shine through. The towering rock wall, covered in greenery, blocks travel to the west. The path curves northwest in one direction and southwest in the other.";
+    array<array<var>> backdrops = {
+        {.canopy, .cover, .roof, .treetops, .leaves, .blue, .sky, "The blue sky, far above, peeks through the canopy.", bdItsOutOfReach},
+        {.dirt, .tracks, .path, .ground, .trail, "The ground is jungle-level dirty, forming a path disappearing around the rock wall in the northwest and southwest directions.", bdDirt},
+        {.monkeys, .monkey, .army, .canopy, "The monkeys are somewhere high in the canopy, off to the southwest. You can hear their chittering, but you can’t see them from here.", "The monkeys are high in the canopy, well out of reach."}
+    };
+    array<var> seriousHints = {0,
+        "You can hear the chittering of the canopy monkeys coming from the southwest. You wonder what they might say if you could speak to them.",
+        "There’s a rustle in the trees above, like things moving around unseen. They seem to be moving toward the area where you first arrived.",
+        "You hear a commotion, generally from above, but coming from the southwest. The monkeys up there seem to be congregating."
+    };
+    bool each_turn() {
+        if(bgl.util.random.get(3) == 1 && turns > SERIOUS_HINTS_MARK && isAchieved(taskSpeakWithMonkeys) == false) {
+            var msg = bgl.util.loopArray.getNext(self, (property)seriousHints);
+            print("^");
+            PrintOrRunVar(msg);
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+bigThing muteStatue {
+    "statue";
+    attributes = {concealed, talkable};
+    name = {.ignore, .ignore, .statue, .iwazaru, .statues};
+    adjective = {.of, .mute, .stone, .monkey};
+    string iDunno = "The statue doesn’t respond to your words. Maybe it does not understand? Or maybe, with its mouth covered, it can only answer with its eyes? Or maybe both.";
+    void statueInitial() {
+        print("A statue of a monkey sits here, cross-legged, ");
+        if(state == banana || state == mama)
+            print("its back to you as it faces the east.");
+        else
+            print("paws covering its mouth.");
+        if(state > 0) {
+            print(" The statue’s eyes are ablaze and emit a red beam of light which shines ");
+            if(state == banana || state == mama) print("east, illuminating a hard to see path");
+            if(state == grok) print("southwest");
+            print(".");
+        }
+        print("^");
+    }
+    void description() {
+        print("It’s a large, free-standing rock statue of a monkey sitting cross-legged with its paws covering its mouth, leaving only its eyes and ears free.");
+        if(state > 0) {
+            print(" The statue stares ");
+            if(state == banana || state == mama) print("east, highlighting an overgrown trail which would otherwise be invisible");
+            if(state == grok) print("southwest");
+            print(". Its glowing red eyes emit a focused ray of light in the same direction.");
+        }
+    }
+    void postImpression() {
+        if(state == 0) noLf("^^You consider the statue for a moment.  It seems to listen, taking sound in, its stone eyes looking meaningfully at nothing.");
+    }
+    var state = 0;
+    bool before() {
+        switch(action) {
+            case Touch:
+                rtrue("The stone the statue is carved from is rough to the touch.^");
+            case Talk:
+                playerCommands.pushCommand("ask statue about car keys");
+                return ConvoError();
+            case KissThing:
+                rtrue("You start to kiss the monkey statue, but think about it covering its mouth and decide it may not appreciate it.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        rtrue("The mute statue doesn’t respond, but something in its meaningful stare makes you think it wants to.^");
+    }
+    bool react_before() {
+        switch(action) {
+            case Show:
+                if(state > 0)
+                    rtrue("The statue is too busy lighting the way with glowing eyes to appreciate what you are trying to show it.^");
+                else {
+                    print($"The statue seems uninterested in {the(noun)}. You imagine even a little annoyed, like you are blocking its view of the jungle.^");
+                    rtrue;
+                }
+            case Insert, PutOn:
+                if(second != self) rfalse;
+                if(noun.parent != player) rfalse;
+                noun.parent = location;
+                print($"You try to balance {the(noun)} on the statue, but {they(noun, "fall", "falls", "fell")} to the ground.^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+//----------
+place northOfRockWall {
+    "North of Rock Wall";
+    se_to = eastOfRockWall;
+    sw_to = westOfRockWall;
+    s_to = "The rock cliff wall, covered in vines, prevents travel to the south.";
+    s_look = "A rocky cliff wall lies that way.";
+    bool   u_look() { return redirectCommand("x canopy"); }
+    bool   d_look() { return redirectCommand("x dirt"); }
+    cant_look = "The greenery is thick in that direction, blocking your view.";
+    cant_go = foliageBlocks;
+    remoteDescription = "The trail disappears around the rock wall.";
+    array<array<var>> backdrops = {
+        {.canopy, .cover, .roof, .treetops, .leaves, .sky, "The canopy, high above, is thin, but still blots out the sky.", bdItsOutOfReach},
+        {.clearing, .area, "The clearing is little more than a gap in the trees, open to the thin canopy above.", bdDefault},
+        {.dirt, .tracks, .path, .ground, .trail, "The ground is rainforest dirty. Animal tracks in the dirt form a lightly trodden path disappearing around the rock wall in the southeast and southwest directions.", bdDirt}
+    };
+    description = "This is an open clearing with a thin canopy above. The trail curves southwest in one direction and
+            southeast in the other. The rock wall, covered in vines, bars the south.";
+    bool before() {
+        switch(action) {
+            case Go: if(noun == u_obj) { Climb.perform(cliffWallNorth); rtrue; }
+        }
+        rfalse;
+    }
+    array<var> seriousHints = {0,
+        "You can barely hear the chittering of the canopy monkeys coming from the south. You wonder what they might say if you could speak to them.",
+        "There’s a rustle in the trees above, like things moving around unseen. They seem to be moving toward the area where you first arrived.",
+        "You hear a commotion, generally from above, but coming from the south. The monkeys up there seem to be congregating."
+    };
+    bool each_turn() {
+        if(bgl.util.random.get(3) == 1 && turns > SERIOUS_HINTS_MARK && isAchieved(taskSpeakWithMonkeys) == false) {
+            var msg = bgl.util.loopArray.getNext(self, (property)seriousHints);
+            print("^");
+            PrintOrRunVar(msg);
+            rtrue;
+        }
+        rfalse;
+    }
+}
+
+setting cliffWallNorth {
+    "wall", northOfRockWall;
+    attributes = {supporter};
+    name = {.cliff, .wall, .ivy, .vines, .tower, .monolith};
+    adjective = {.rock, .tall, .rocky, .climbing};
+    bool description() {
+        print("The wall is covered in interweaving vines which climb up the rock. ");
+        if(gameState.isFalse(taskVineDetachedFromWall)) {
+            if(vine.parent == null){
+                print("As you look, you can see a vine of medium thickness, somewhat distinct from the rest. You tug at it, barely, and it pulls away to hang loose from the rest of the vinery.");
+                vine.parent = northOfRockWall;
+            } else
+                print("^^One vine hangs down, larger and separate from the rest, waving loosely whenever the trees above rustle.");
+        }
+        print("^");
+        rfalse;
+    }
+    bool before() {
+        switch(action) {
+            case Climb:
+                if(gameState.isTrue(taskVineDetachedFromWall))
+                    rtrue("Not a chance. With the long vine removed, the cliff is too sheer to climb. At least, for a human.^");
+                if(vine.parent == location) { Climb.perform(vine); rtrue; }
+                rtrue("The wall is too steep to climb, but maybe with a little preparation?^");
+            case Receive:
+                return murkClimbsWall();
+        }
+        rfalse;
+    }
+}
+
+thing vine {
+    "vine";
+    name = {.vine, .rope, .knob};
+    description = $"{gameState.isFalse(taskVineDetachedFromWall)
+        ? "It hangs down, apart from the interweaving mesh of other vines."
+        : "It’s a long vine of medium thickness, strong enough to serve as a rope and do rope-specific things with. One end of the vine is thicker than the rest, ending in a somewhat heavy knob."}";
+    bool describe() {
+        print("^");
+        if(gameState.isFalse(taskVineDetachedFromWall)) rtrue("A single vine hangs down from above, seemingly separate from the other vines climbing the rock face.^");
+        rtrue("A long, loose vine lies on the ground.^");
+    }
+    void postImpression() { if(gameState.isFalse(taskVineDetachedFromWall)) print("^^You give it a tug, finding it tightly anchored. It may even be strong enough to climb."); }
+    array<var> takeMsg = {0,
+        "You pull on the vine, bringing all your weight to bear. It feels strongly anchored, but you think you might feel it stretch, just a bit.^",
+        "You pull on the vine a second time with all your strength. No. You’re sure of it this time. You can feel it give.^",
+        "With a final jerk, you feel the vine pull free. It falls to the ground, a large, weighted knob at the end hitting the ground with a thump.^"
+    };
+    bool before() {
+        switch(action) {
+            case ThrowAt:
+                if(second == null) rtrue("There’s no reason to throw the vine away. Maybe at something.^");
+                rtrue("You swing the vine around, trying to throw it at something, but it just falls to the ground. You pick it up again.^");
+            case Take, Pull:
+                if(gameState.isFalse(taskVineDetachedFromWall)) {
+                    var msg = bgl.util.loopArray.getNext(self, (property)takeMsg);
+                    print((string)msg);
+                    if(bgl.util.loopArray.isComplete(self, (property)takeMsg)) {
+                        gameState.setTrue(taskVineDetachedFromWall);
+                        ungive(concealed);
+                    }
+                    rtrue;
+                } else rfalse;
+            case Climb:
+                if(gameState.isFalse(taskVineDetachedFromWall)) {
+                    print($"You grab hold and pull on the hanging vine, testing against your weight. {italics}It seems strong{roman}, you think. You put your foot into the edges of the cliff
+                        rock for added support and, with a bit of effort, begin to hoist yourself up. Gaining confidence, you begin to scale the cliff wall in earnest,
+                        rising several feet above the ground.");
+                    print("^^With a snap from far above, the vine gives way and you fall. The wind is knocked from you as you hit
+                        the dirt. The vine follows, coiling around you, until its thick knobby end bounces off your face. Above, you
+                        can just make out monkey laughter mixed with the other sounds of the rainforest.^^You get up, wobbly.^");
+                    ungive(concealed);
+                    gameState.setTrue(taskVineDetachedFromWall);
+                }
+                else {
+                    if(gameState.isTrue(stateVineIsOverAnchor))
+                        print("Although the rope is draped over the anchor, it doesn’t seem like something you can straight up climb. Maybe if you were a monkey.^");
+                    else
+                        print("You can’t climb the vine, it’s not attached to anything climbable.^");
+                }
+                rtrue;
+            case Cut:
+                rtrue("If you were to cut the vine down here, you’d end up with just a short piece, too small to be useful.^");
+            case Tie:
+                if(second.is(rock)) rtrue("You try looping the vine around a rock, attempting to secure it, but the rock slips easily through the wrap.^");
+                switch(second){
+                    case ladder: rtrue("That seems like it would probably work, except... you test the weight of the ladder and realize it’s too heavy. There’s no way to pull it up the side of the cliff, even if you could stretch it across the chasm.  There’s got to be another way to realize the fuzzy, half-baked plan you have in your head.^");
+                    case barrel, barrelHook: rtrue("Noting the broken hook on the barrel, you consider how you might still tie the vine to it, then give up.^");
+                    case bridgeAnchor: rtrue("You can’t reach the anchor to tie the vine to it, but... You heft the vine’s knobby end. Perhaps if your aim were true?^");
+                    default: rtrue("You get the feeling that this vine will be useful, but tying it that way doesn’t seem like a good idea.^");
+                }
+            case Swing:
+                if(gameState.isFalse(taskVineDetachedFromWall))
+                    rtrue("You try to swing on the vine, but it’s too close to the cliff wall. You end up just pulling on it, testing its strength. It seems strong enough to climb.^");
+                rtrue("You swing the vine around, trying to throw it at something, but it just falls to the ground. You pick it up again.^");
+        }
+        rfalse;
+    }
+    void detachFromWall() { give(general); ungive(concealed); }
+    bool isAttachedToWall() { if(has(general)) rfalse; rtrue; }
+}
+
+bigThing deafStatue {
+    "statue";
+    attributes = {concealed, talkable};
+    name = {.statue, .kikazaru, .statues};
+    adjective = {.deaf, .stone, .monkey};
+    string statueInitial = "A statue of a monkey sits here, cross-legged, paws covering its ears.";
+    description = $"It’s a large, free-standing rock statue of a monkey sitting cross-legged with its paws covering its ears, leaving only its eyes and mouth free.{eyeglasses.hasnt(moved)
+        ? " A familiar pair of eyeglasses is perched on the statue’s face. With ears hidden by its paws, the glasses hang imperfectly." : ""}";
+    string postImpression = "^^You consider the statue for a moment.  It seems to watch, taking the world in, words on the precipice of its stone lips.";
+    string iDunno = "You start to speak to the statue, then decide against it. It wouldn’t be able to hear anyway, since its paws cover its ears.";
+    bool before() {
+        switch(action) {
+            case TellTopic, SayTopic, AskTopic, Talk:
+                rtrue("You start to speak to the statue, then decide against it. It wouldn’t be able to hear anyway, since its paws cover its ears.^");
+            case Touch:
+                rtrue("The stone the statue is carved from is rough to the touch.^");
+            case KissThing:
+                rtrue("You kiss the monkey statue. You imagine that it might appreciate the gesture.^");
+        }
+        rfalse;
+    }
+    bool orders() {
+        rtrue("You start to speak to the statue, then decide against it. It wouldn’t be able to hear anyway, since its paws cover its ears.^");
+    }
+    bool react_before() {
+        switch(action) {
+            case Show:
+                if(second != self) rfalse;
+                if(noun == banana || noun == symbols) {
+                    print("You hold the banana up, in view of the statue’s lifeless eyes. It stares blankly at the etchings in motionless scrutiny.
+                    After a moment, it replies: “Ayee ayee nuka bawh.”^");
+                    achieved(taskStatueReadSecretWords);
+                    rtrue;
+                }
+                rtrue("Although it never moves, you feel like the statue is considering what you show it. Yet it does nothing.^");
+            case Insert, PutOn:
+                if(second != self) rfalse;
+                if(noun.parent != player) rfalse;
+                noun.parent = location;
+                print($"You try to balance {the(noun)} on the statue, but {they(noun, "fall", "falls", "fell")} to the ground.^");
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+
+//------------------------------------------------------------------------------------------------------------------------
+// Floating objects, or things with no location.
+// foliage (the multi-room greenery hiding the statues), grok, the game-over routine, and the two
+// backdrop instances (ambientThings, statuesFeatures) are all native Beguile — the backdrops'
+// inline handler routines are `array<var>` lambdas.
+
+bigThing foliage {
+    "foliage";
+    found_in = {westOfRockWall, eastOfRockWall, northOfRockWall};
+    name = {.foliage, .leaves, .greenery, .plants, .plant, .life};
+    bool describe() {
+        object statue = statueFromLocation(location);
+        print("^");
+        if(statue == null || statue.parent == null)
+            rtrue("The greenery here is thick and lush.^");
+        PrintOrRun(statue, (property)statueInitial);
+        rtrue;
+    }
+    string description = "The foliage is pervasive, growing everywhere, from every crevice.";
+    var statueFromLocation(object loc) {
+        if(loc == null) loc = location;
+        switch(loc){
+            case westOfRockWall: return blindStatue;
+            case eastOfRockWall: return muteStatue;
+            case northOfRockWall: return deafStatue;
+        }
+        rfalse;
+    }
+    array<var> pullAwayMessage = {0,
+        "You run your fingers through the foliage and find a rough texture underneath. Grabbing a handful of leaves, you pull it away uncovering a large stone monkey statue.",
+        "You probe the greenery and find a rocky shape, similar to what you found before. Pulling the leaves away reveals another stone monkey statue, almost like the last one, but not quite the same.",
+        "You tear at the vines, sure you know what’s underneath, and uncover a third stone monkey statue."
+    };
+    bool before() {
+        switch(action) {
+            case Examine, Search, Pull:
+                object statue = statueFromLocation(location);
+                if(statue == null) rfalse;
+                if(statue.parent != null) rtrue("You find nothing else hidden in the greenery here.^"); // already revealed
+                print((string)bgl.util.loopArray.getNext(self, (property)pullAwayMessage));
+                print("^");
+                statue.parent = location;
+                MoveFloatingObjects();  // bring the things attached to the statue into scope as well
+                if(location == northOfRockWall) eyeglasses.parent = northOfRockWall;
+                switch(statue) {
+                    case blindStatue: achieved(taskBlindStatueRevealed);
+                    case muteStatue:  achieved(taskMuteStatueRevealed);
+                    case deafStatue:  achieved(taskDeafStatueRevealed);
+                }
+                rtrue;
+        }
+        rfalse;
+    }
+}
+
+// ambientThings — a standalone backdrop (clothes/hair) that's always in scope. Its `backdrops`
+// are plain rows (dict-words + string + bdDefault); the react_before body
+// (RunRoutines delegation + <<enter>> + topic actions) is native Beguile too.
+backdrop ambientThings {
+    bool found_in() { rtrue; }
+    array<array<var>> backdrops = {
+        {.clothes, "Dirty. Like your hair.", bdDefault},
+        {.hair, "Dirty. Like your clothes.", bdDefault},
+        {.hand, .finger, .fingers, "Dirty. Like the rest of you.", bdDefault}
+    };
+    bool react_before() {
+        // Delegate to the room's own react_before, then its before; if either handled the action, stop.
+        var retval = RunRoutines(location, (property)react_before);
+        if (retval == false) retval = RunRoutines(location, (property)before);
+        if (retval == true) rtrue;
+
+        switch(action) {
+            case PutOn, Insert:
+                if (noun == actor) { Enter.perform(second); rtrue; }
+                if (noun == self && backdropEngine.getKeyword() == .hand) {
+                    if (second == etchedMouth) rtrue("You run a finger along the carved smile. It’s about an inch deep and shaped for something very particular. Not a finger.^");
+                    if (second == etchedEye) {
+                        if (gameState.isFalse(stateBananaPlacedOnWall)) rtrue("You start to poke a finger into the eye hole, then think better of it. Something on the other side is moving around.^");
+                        rtrue("It’s just an etched circle now. Your finger finds only stone.^");
+                    }
+                    if (second == etchedEar) {
+                        if (gameState.isTrue(stateBananaPlacedOnWall)) rtrue("You stick a finger into the dark ear hole. Nothing happens. It seems to want words, not fingers.^");
+                        rtrue("It’s just a flat etching. There’s nowhere to put a finger.^");
+                    }
+                }
+            case Listen:
+                rtrue("All around you is the chittering of jungle life.^");
+            case Smell:
+                if (noun == monkeyDroppings || noun == dehydratedBananas) rfalse;
+                rtrue("You identify the musky odor of animals mingling with the scents of new life and decay.^");
+        }
+        rfalse;
+    }
+}
+
+// statuesFeatures — a per-statue backdrop whose per-keyword description handlers are inline
+// **lambdas** in the rows (each hoists to an I6 routine the backdrop engine runs); apostrophe
+// dict words use `.monkey's` (emits I6 `'monkey^s'`). Each row is
+// <dict-words> <description-lambda> <interact-value>, where the interact-value is the
+// `ignoreStatueParts` string or (for the mouth) another lambda.
+const string ignoreStatueParts = "There is very little you can do with the individually carved parts of the statue.";
+
+backdrop statuesFeatures {
+    "statue’s features";
+    bool found_in() {
+        object statue = foliage.statueFromLocation(location);
+        if(statue == null) rfalse;         // in a location with no statue
+        if(statue.parent == null) rfalse;  // location has a statue, but not yet revealed
+        rtrue;                          // near a visible statue; bring this into scope
+    }
+    // A bare "monkeys" means the canopy monkeys; "monkeys eye" still means the statue's eye.
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code == chooseCode.askingForHint && match_length == 1 && (dictionaryWord)WordValue(match_from) == .monkeys) return excludeFromChoice(self);
+        return chooseAnswer.defer;
+    }
+    array<array<var>> backdrops = {
+        {.eyes, .eye, .monkey's, .statue's, .monkeys, .statues, .statue, .monkey,
+            $"{location == westOfRockWall ? "The statue’s eyes are covered by its paws. Only its ears and mouth are visible."
+             : location == eastOfRockWall ? (muteStatue.state == 0 ? "The statue’s eyes gaze pointedly at nothing, but you get the impression they want to."
+                                                                   : "The statue’s eyes glow, emitting the focused beam of light.")
+             : location == northOfRockWall ? "The empty eyes gaze at nothing, waiting to see." : ""}",
+            ignoreStatueParts},
+        {.ears, .ear, .monkey's, .statue's, .monkeys, .statues, .statue, .monkey,
+            $"{location == eastOfRockWall ? "The monkey statue’s ears listen, perhaps for a monkey question."
+             : location == westOfRockWall ? "The monkey statue’s ears listen, attuned to the sounds of the jungle."
+             : location == northOfRockWall ? "The monkey statue’s ears are hidden, covered by its paws. Only its eyes and mouth are visible." : ""}",
+            ignoreStatueParts},
+        {.mouth, .may, .lips, .teeth, .monkey's, .monkeys, .statues, .statue's, .statue, .monkey,
+            $"{location == northOfRockWall || location == westOfRockWall ? "The statue’s mouth was carved in a particular shape, giving the impression the monkey is on the verge of saying something."
+             : location == eastOfRockWall ? "The mouth is hidden, covered by the statue’s paws. Only its eyes and ears are visible." : ""}",
+            () => {
+                switch(action){
+                    case KissThing: return redirectCommand("kiss statue");
+                    default:
+                        print(ignoreStatueParts); print("^");
+                        return true;
+                }
+            }},
+        {.paw, .paws, .hands, .arms, .arm, .monkey's, .statue's, .statue, .monkey,
+            $"The paws of the monkey statue cover its {location == westOfRockWall ? "eyes" : location == northOfRockWall ? "ears" : location == eastOfRockWall ? "mouth" : ""}.",
+            ignoreStatueParts}
+    };
+    bool react_before() {
+        if(second != self) rfalse;
+        if(action_to_be == Insert && backdropEngine.getKeyword() == .mouth){
+            if(location == eastOfRockWall) rtrue("The statue has no mouth; its paws are covering it.^");
+            if(noun == banana) rtrue("The statue’s mouth isn’t the right shape to take the flat banana, which is curved and about an inch thick.^");
+            rtrue("The particular shape of the statue’s carved mouth isn’t suitable for putting things in.^");
+        }
+        rfalse;
+    }
+}
+
+bigThing grok {
+    "Grok";
+    attributes = {proper, animate};
+    name = {.grok, .yellow, .monkey, .ape, .primate, .large};
+    string description = "The larger yellow monkey stands just a few inches shorter than you, but he is quite a bit wider and looks seventy pounds heavier.";
+    bool describe() { print("^"); rtrue("Grok is here, fists raised like a professional boxer, standing between you and the open cave.^"); }
+    int damageSelf = 0;
+    int damagePlayer = 0;
+    array<var> attackGrokSuccess = {0,
+        "You swat at Grok with the tire iron, connecting in the ribs. Grok grunts and staggers back, shaken.^^The booing of dozens of canopy monkeys drifts down.",
+        "You swing the tire iron and land a solid blow. Grok reels.^^Sounds of monkey outrage filter down.",
+        "You strike with the tire iron, putting all of your weight into it, and connect with a solid “THWACK” across Grok’s noggin. Grok shakes his head."
+    };
+    array<var> attackGrokFail = {0,
+        "You swing with your fist as hard as you can, landing a solid blow. Grok laughs at you.",
+        "You jump at the ape, hoping to force him to the ground. Grok sidesteps and you land in the dirt. You stand to the sounds of monkey cheers from the canopy.",
+        "You throw a solid punch which the ape bats away. Grok smiles, evilly, and gives you a knowing eyebrow flash.^^The canopy monkeys laugh."
+    };
+    array<var> grokAttack = {0,
+        "Hopping lightly between his feet, Grok raises his paws like a professional boxer. Lightning quick, he jabs, striking you in the face. You lurch back, fireworks momentarily filling your vision.^^“Oooooo!” comes an appreciative murmur from above.",
+        "Foregoing any finesse, Grok springs forward and delivers a one-two: his left paw boxing you in the ear followed by his right paw smacking you in the nose. You stumble to your knees but get back to your feet.^^Hoots and jeers come from the canopy.",
+        "The monkeys’ hoots crescendo and Grok lifts his head, roaring. With one, angry leap he grabs you by the throat and slaps you, open paw, then backhands you. He repeats this twice more before pushing you away. The world spins and your ears ring."
+    };
+    bool orders() {
+        rtrue("You try to assert authority by telling Grok what to do. He laughs dismissively.^");
+    }
+    bool before() {
+        switch(action) {
+            case Take:
+                rtrue("Even if Grok weren’t seventy pounds larger than you, you don’t suppose he would care for that.^");
+            case Attack:
+                if(second != tireIron)
+                    print((string)bgl.util.loopArray.getAny(self, (property)attackGrokFail));
+                else {
+                    print((string)bgl.util.loopArray.getNext(self, (property)attackGrokSuccess));
+                    damageSelf = damageSelf + 1;
+                    if(damageSelf >= 3) {
+                        storyEnds(true);
+                    }
+                }
+                print("^");
+                rtrue;
+        }
+        rfalse;
+    }
+    void each_turn() {
+        print("^");
+        if(damagePlayer >= 2) {
+            if(grok.hasnt(general) && murk.parent == player) {
+                print("The large monkey winds his arm, as if preparing the Twisker Sock from a Popeye cartoon. For an instant, you see your life flash before your eyes and know this is it,
+                but at the last moment, Murk leaps from your shoulders onto Grok’s face. You feel the whoosh as his ape fist just misses your nose.^^Murk hops back to your shoulder and chitters at Grok in defiance.^");
+                grok.give(general);
+                return;
+            } else {
+                print((string)bgl.util.loopArray.getNext(self, (property)grokAttack));
+                storyEnds(false);
+                return;
+            }
+        }
+        print((string)bgl.util.loopArray.getNext(self, (property)grokAttack));
+        print("^");
+        damagePlayer = damagePlayer + 1;
+    }
+}
+
+void storyEnds(bool didWin) {
+    if(didWin) {
+        print("^^He steps back, clearly disoriented, and sits down hard on the ground. You imagine a ring of birds circling his head as your car keys slip from his paw and land, jingling at your feet.  “Yes!” you cry out victoriously and snatch them up.^");
+        achieved(taskDefeatGrok);
+        print("^But your triumph is short lived.^^The screeching from above escalates with harsh tones and dozens of angry monkeys rain down from the canopy and begin advancing
+        on you ominously. “Arck arck eek jarg jarg!” the monkeys chant and you don’t need a translator to know this is bad.^^
+        “Enough of this monkey business!” you exclaim as you turn and run south toward your car, gripping your keys victoriously.^^
+        “Murk! Murk!” you can hear in the distance behind you.");
+        deadflag = 2;
+    }
+    else {
+        print("^^You fall to the ground, consciousness fading, and the trees erupt in cheering monkey howls. Above you, you see Grok, jingling your car keys
+                mockingly and dancing a victory dance.^");
+        if(tireIron.parent != player) print($"^{italics}If only,{roman} you think, {italics}I’d had a weapon...{roman}^");
+        else if(murk.parent != player) print($"^{italics}If only,{roman} you think, {italics}I’d had someone to help...{roman}^");
+        print($"^Hundreds of excited screeches erupt from above, a swarm of invisible monkeys cheering hysterically. They rain down, laughing and beating their chests with their little fists. One climbs
+                on you and points a finger at your nose.^^{bold}“Hachh ow ah ow ack hachh hooow!”{roman} it screams.^^Your vision tunnels to blackness.^");
+        deadflag = 1;
+    }
+}
+
+//=================================================================== converted objects (Beguile) ===
+// The rooms (south/west/east/northOfRockWall), the etched* carvings, the statues, foliage, vine,
+// and grok are now real Beguile objects above — their forward-decls are gone. Only cross-file I6
+// objects still referenced from Beguile code need declaring here.
+// cliffEdge/ledge/ladder/barrel/bridgeAnchor/rock (worldArea2) and symbols (worldArea3) are all
+// native Beguile now; the two-pass compiler resolves them cross-file, so no externs are needed here.
+extern verb   Swing;    // game action (##Swing) — no grammar here; used only in switch(action)
+
+// tireIron — first I6→Beguile conversion (was worldArea1-Ring.inf:874). Pure data: name +
+// impression/description strings. `~` (I6 quote) and `^` (I6 newline) pass through regular strings.
+thing tireIron {
+    "tire iron";
+    name           = {.bar, .tire, .iron, .club, .baton};   // type inferred from `thing.name`
+    preImpression  = "You recognize the bar. It’s the tire iron from your jeep. Clearly your glasses and snacks weren’t the only thing the monkeys took. “Well I’ll be a monke...” you start to exclaim, then trail off, glancing up at the canopy self-consciously.^^";
+    description    = "It’s a solid piece of metal, about three feet long, with a heavy, flat end.";
+    postImpression = " Might serve as a weapon, if you need one.";
+}
+
+// keys — Tier 1: a `before()` that refuses Take. The I6 `before[; take: "msg"; ]` becomes a
+// Beguile `switch(action)`; the bare-string print becomes `rtrue("msg")` (print + return true).
+setting keys {
+    "car keys";
+    attributes  = {pluralname};
+    description = "You can’t really see them. Grok is keeping them clutched tightly in his paw.";
+    bool before() {
+        switch(action) {
+            case Take:
+                rtrue("Grok is keeping a tight grip on them. You think you may need to win them back in victorious battle.^");
+        }
+        rfalse;
+    }
+}
+
+// The opened wall: the cave Grok came out of, placed by the ear's secret words (topics.bgl).
+bigThing nestOfAncients {
+    "nest of the ancients";
+    name = {.nest, .ancients, .cave, .opening, .trinkets, .pile, .hoard, .items, .shinys,
+            .treasure, .bottle, .caps, .cap, .buttons, .button, .hubcap, .spoon};
+    adjective = {.of, .shiny, .open, .bent};
+    bool describe() { print("^"); rtrue("Where the rock wall stood, an opening gapes into the nest of the ancients: a shallow cave with a pile of shiny trinkets heaped at the back.^"); }
+    string description = "Bottle caps, buttons, a hubcap, a bent spoon: a monkey’s idea of treasure, heaped at the back of the cave. Nothing in the pile matters as much as the keys in Grok’s paw.";
+    bool before() {
+        switch(action) {
+            case Examine, ExamineMulti, Search: rfalse;
+            case Take, Touch, Pull, Push, Turn, Rub, Remove: rtrue("The treasure is out of reach, with Grok standing between you and the nest.^");
+        }
+        rtrue("Not with Grok standing between you and the nest.^");
+    }
+}
+
+// The carvings went up with the wall; they stand in for the ear, eye, mouth and light once it lifts.
+setting liftedCarvings {
+    "carvings";
+    name = {.ear, .eye, .mouth, .smile, .slot, .hole, .light, .darkness, .circle,
+            .carving, .carvings, .etching, .etchings, .engravings};
+    adjective = {.monkey, .etched, .engraved, .carved};
+    attributes = {pluralname};
+    bool before() {
+        rtrue("The carvings went up with the wall, which is flipped up like a garage door, out of reach.^");
+    }
+}
+// trees — Tier 1: `found_in` object-list scenery + a two-case `before()`.
+setting trees {
+    "trees";
+    found_in    = {southOfRockWall, eastOfRockWall, northOfRockWall, westOfRockWall};
+    description = "The trees are tall and thin. Collectively, they form a thick canopy above.";
+    name        = {.tree, .trees, .forest, .rainforest, .jungle};
+    bool before() {
+        switch(action) {
+            case Take:
+                rtrue("What are you, a lumberjack?^");
+            case Climb:
+                rtrue("The trees, while tall, are too thin for a human to climb. Perhaps if you were a monkey.^");
+        }
+        rfalse;
+    }
+}
+
+// eyeglasses — clothing item the monkeys stole; the multi-action `before()` is the interesting part.
+// I6→Beguile idiom map:  `has clothing concealed` → attributes list;  `self in player` → self.parent
+// == player;  `give self ~concealed` → self.ungive(concealed);  `move self to player` → self.parent =
+// player;  `remove eyeglasses` → eyeglasses.remove();  `give, throwAt:` (shared label) → `case Give,
+// ThrowAt:`.  Bare-string-in-before → rtrue("…").
+thing eyeglasses {
+    "pair of glasses";
+    attributes     = {clothing, concealed, pluralname};
+    string article = "a";
+    name           = {.glasses, .spectacles, .pair, .eyeglasses, .sunglasses};
+    adjective      = {.eye, .of};
+    preImpression  = "These are yours! Stolen from your Jeep by the canopy monkeys. ";
+    description    = "One of the lenses is cracked but they are still functional.";
+    postImpression = " You don’t need them anymore, though. LASIK surgery made them useless for you but you never bothered to throw them away.";
+    bool before() {
+        switch(action) {
+            case Wear:
+                if(parent == player)
+                    rtrue("You put your glasses on and everything becomes blurry. You take them off again.^");
+            case Take:
+                if(has(concealed)) {
+                    ungive(concealed);
+                    parent = player;
+                    rtrue("You take the familiar pair of glasses off the statue.^");
+                }
+            case Give, ThrowAt:
+                if(second == mama || (second == null && location == ledge)) {
+                    eyeglasses.remove();
+                    print("You throw the glasses, and they sail through the air toward the far ledge. Mama Ciedue snaps to attention as they land at her feet. She looks down at them, then out from her ledge, squinting as though searching for something far away and seeing nothing. She scoops them up, scrutinizes them closely, and begins to open and close the arms experimentally. Through trial and error, she fits them on her face. When she sees you, her eyes go wide.^^She fixes her gaze at you and ignores her cartwheeling children. Her posture changes to match your own.^");
+                    achieved(taskGlassesGivenToCiedue);
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+}
+
+
+// cliffWallEastAndWest — floating supporter scenery (found_in two rooms). Putting Murk on it triggers
+// murkClimbsWall(). `has supporter` → attributes; `receive:` → `case Receive:` (fake action, now in
+// the i6StandardLibrary binding).
+setting cliffWallEastAndWest {
+    "wall";
+    attributes  = {supporter};
+    name        = {.cliff, .wall, .ivy, .tower, .monolith};
+    adjective   = {.rock, .tall, .climbing, .rocky};
+    description = "The wall is covered in ivy which climbs up the rock.";
+    found_in    = {westOfRockWall, eastOfRockWall};
+    bool before() {
+        switch(action) {
+            case Receive:
+                return murkClimbsWall();
+            case Climb:
+                rtrue("It’s too steep, and the ivy could never hold your weight.^");
+        }
+        rfalse;
+    }
+}
+
+// murkClimbsWall — helper for the wall's `receive`: putting Murk on the wall fetches the tire iron the
+// first time.
+bool murkClimbsWall() {
+    if(noun != murk)
+        rtrue("You’re not sure how to put things on the wall. A monkey might be able to climb it.^");
+    if(tireIron.parent == null) {
+        tireIron.parent = location;
+        murk.parent = location;
+        murk.give(general);
+        print("“Murk!” The baby monkey climbs swiftly up the cliff wall and disappears into the treetops. You wait, remembering how tall the rock monolith looked.^^Time passes, and just as you are about to move on, a long heavy bar falls through the leaves and lands at your feet making you jump in surprise.^^Shortly, the baby monkey reappears from above, hanging on the wall with a big smile on his face, and extends both arms out for you.^");
+        achieved(taskGetTireIron);
+    }
+    else {
+        murk.parent = player;
+        rtrue("You put Murk on the wall again but he leaps immediately off, not wanting to go back, and climbs back up your shoulder.^");
+    }
+    rtrue;
+}

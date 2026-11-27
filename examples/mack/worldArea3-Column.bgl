@@ -1,0 +1,369 @@
+#using bgl.printRules;   // a() / the() / cA() / cThe() — articles live here now
+
+//===================================================================================================
+// worldArea3-Column.bgl — the top-of-butte finale area (native Beguile port).
+//---------------------------------------------------------------------------------------------------
+// farSide (the room), plus the free-floating murk / banana / symbols objects (no parent — moved into
+// rooms at runtime). before/react_before/orders/life bare-action-label routines → `switch(action)`;
+// `<<action a b>>` → `Action.perform(a,b)`; `X in Y`→`X.parent == Y`; `move`/`remove`/`give ~attr` →
+// object members. READ is a distinct action (orDistinctRead) with per-object readDescription.
+//===================================================================================================
+
+//---------- Top of Butte ---------------------------------------------------------------------------
+
+place farSide {
+    "Top of Butte";
+    place w_to() {
+        if(murk.parent == self) print("The little monkey chitters mournfully at being left behind.^^");
+        print((string)bgl.util.loopArray.getNext(cliffEdge, (property)walkBridgeNaratives, loopEnd.repeatLast));
+        print("^");
+        return cliffEdge;
+    }
+    bool w_look() { return redirectCommand("x tower"); }
+    cant_go = "The drop from here would kill you.";
+    d_to = "No. It’s far too steep. You’d have to be a monkey to climb down that.";
+    d_look = "The jungle floor is so far down it makes you dizzy.  No way you could climb down that, even with a really long rope.";
+    u_look = "Clear skies, except for that towering monolith.";
+    bool e_look() { return redirectCommand("x jungle"); }
+    cant_look = "The jungle stretches to the horizon in all directions.";
+    void preImpression() {
+        print("You step silently off the wobbly bridge, struck by the breathtaking view. Far below, the dense jungle stretches to the
+                horizon. From this vantage, purposefully arranged shapes are recognizable under the greenery. It is clear there was once
+                a sprawling city down there, now reclaimed by time and the relentless vegetation.^^“Murk!”^^You start at the sound and turn
+                to a fleeting glimpse of an unnoticed baby monkey as it disappears over the side. With a sigh, you check your surroundings.^^");
+    }
+    description = "At the top of this narrow butte, all directions end in a vertical drop. The wooden bridge, held
+                    loosely in place by the vine, stretches westward across the gap to the jutting cliff.";
+    void postImpression() {
+        print(" Beyond that, you see what you could not when you were closer: the rock wall towers
+                    above the treetops, a solitary monolith with near-vertical sides. There’s a slight, but real, reflection of light at the top.");
+        murkHiddenTurn = turns;
+    }
+    array<array<var>> backdrops = {
+        {.light, .reflection, .shiny, .object, .top,
+            $"{tireIron.parent == null ? "It’s too small for detail, but the sun is definitely reflecting off of something shiny at the top of the monolith."
+                                       : "There is no reflection anymore. Looks like it was indeed your tire iron."}",
+            $"{tireIron.parent == null ? bdItsOutOfReach : "There is no reflection anymore. Looks like it was indeed your tire iron."}"},
+        {.bridge, .wooden, "The wooden bridge is old and rickety, held in place by the vine. And hope. It spans the drop to the west, connecting this butte to the other side.", "Now that the bridge is in place, there’s little you can do with it except, perhaps, taking your life into your own hands and trying to cross it again."},
+        {.ledge, .jutting, .ledges, "The two ledges are far below. The distant one, where you worked to restore the bridge, is empty now.  Ledge, barrel, and vine all gone.  You can’t quite see the nearer ledge or the adult monkey.  Or her troop of babies.", "Far beneath you; out of reach."},
+        {.jungle, .view, .shapes, .city, .foliage, "The distant jungle floor, dense and green, stretching to the horizon. You can make out the shapes of a city, long abandoned, beneath it.", "The jungle is far beneath you, out of reach."},
+        {.tower, .monolith, .rock, .walls, .wall, .towering,
+            $"The rock wall you previously circled rises above the treetops. Vertically imposing from this perspective, it was hidden by the canopy up close.{tireIron.parent == null ? " There’s a small reflection at the top." : ""}",
+            "It’s much too far away to reach from here."},
+        {.butte, .summit, .column, () => { Look.perform(); rtrue; }, "There’s nothing up here to do but admire the view."},
+        {.gap, .drop, .edge, .edges, .chasm, .side, .sides, "Every edge drops straight down to the treetops far below. To the west, the bridge spans the gap to the cliff.", "You keep well back from the edge."},
+        {.cliff, "Across the gap to the west, the cliff juts out of the jungle, the bridge strung between it and you.", "It’s across the gap, out of reach."},
+        {.vine, .rope, "The vine runs from the end of the bridge down over the edge, taut with the weight of the barrel hanging below.", "The vine is holding the bridge in place. Best leave it alone."},
+        {.stone, .flat, .curved, .banana,
+            () => {
+                if(gameState.isFalse(stateLiberatedBanana)) rtrue("The flat stone you saw from the cliff is nowhere to be found.");
+                rtrue("The stone banana isn’t here anymore.");
+            },
+            bdDescr},
+        {.face, .mouth, .arms, .arm, .paws, .paw, .murk's,
+            () => {
+                if(murk.parent != location && murk.parent != player) rtrue("You can’t see any such thing.");
+                if(gameState.isFalse(stateLiberatedBanana)) rtrue("The baby monkey’s little face is all wide eyes and suspicion. His arms stay wrapped tightly around the flat stone.");
+                rtrue("Murk’s little face is one big grin, and his arms reach for you whenever you look his way.");
+            },
+            bdDefault},
+        {.dirt, .ground, .tracks, "The ground is harder here than by the rock wall. There are no tracks to be seen.", bdDirt}
+    };
+    bool react_before() {
+        switch(action) {
+            case Drop:
+                if(noun == dehydratedBananas){
+                    print("You drop the dehydrated bananas into the dirt.^");
+                    dehydratedBananas.parent = self;
+                    if(murk.parent == location) murk.bananaExchange();
+                    rtrue;
+                }
+        }
+        rfalse;
+    }
+    int murkHiddenTurn = 0;
+    array<var> murkReturns = {0,
+        $"After a moment, the baby monkey crawls back from over the edge. “Murk!” he says, sitting cross-legged and watching you warily. You notice a curved, flat stone nestled under his arm.^
+            ^{italics}Murk...{roman} You consider the little guy for a moment. {italics}That must be his name.{roman}",
+        "The little monkey pops his head over the edge and watches you skeptically. Then he crawls back to the top, holding the flat stone.",
+        "“Murk!” The monkey reappears from over the edge with the flat stone, keeping his distance.",
+        "Murk clambers over the edge, curved stone in hand."
+    };
+    bool each_turn() {
+        if(murk.parent == null && turns > murkHiddenTurn + 2) {
+            murk.parent = self;
+            SetPronoun(.it, murk);
+            print("^");
+            if(gameState.isFalse(stateLiberatedBanana)) {
+                print((iStringOrRoutine)bgl.util.loopArray.getNext(self, (property)murkReturns, loopEnd.repeatLast));
+                print("^");
+                if(dehydratedBananas.parent == self){
+                    murk.bananaExchange();
+                }
+                rtrue;
+            }
+            else
+                rtrue("The little monkey pops back up with an intensely curious look on his face. He dumps the remaining contents of the now open dehydrated bananas into his mouth, chews vigorously, and swallows. With a big smile, he tosses the empty wrapper over the edge and holds his arms up to you.^");
+        }
+        rfalse;
+    }
+}
+
+//---------- Murk (the baby monkey) — free-floating, appears/moves at runtime -----------------------
+thing murk {
+    "baby monkey";
+    attributes = {animate};
+    name = {.murk, .monkey};
+    adjective = {.baby, .little, .small};
+    bool describe() {
+        print("^");
+        if(gameState.isFalse(stateLiberatedBanana))
+            print("There is a baby monkey here, sitting next to the edge, grasping a curved, flat stone, and watching you skeptically.");
+        else{
+            if(has(general) && (parent == eastOfRockWall || parent == northOfRockWall || parent == westOfRockWall))
+                print("Murk hangs on the wall, intertwined in the climbing foliage. His arms are stretched out toward you.");
+            else
+                print("Murk jumps up and down impatiently at your feet, arms held high.");
+        }
+        print("^");
+        rtrue;
+    }
+    void description() {
+        print("It’s a baby monkey, bustling with energy.");
+        if(gameState.isFalse(stateLiberatedBanana))
+            print(" He clutches a curved, flat stone to his chest, watching you with a wary expression.");
+        else {
+            print(" He watches you expectantly, a broad smile on his face.");
+            if(tireIron.parent == null) print(" Every so often he cranes his neck toward the top of the rock wall, as if something up there has caught his eye.");
+        }
+        print("^");
+    }
+    void add_to_scope() {
+        if(gameState.isFalse(stateLiberatedBanana)) AddToScope(banana);
+    }
+    chooseAnswer chooseobject(chooseCode code) {
+        if(code != chooseCode.askingForHint){
+            if(action_to_be == Take && parent != player) return chooseAnswer.include;
+        }
+        return chooseAnswer.defer;
+    }
+    bool canFetch() {
+        if(murk.parent != player && murk.parent != location) rfalse;
+        if(tireIron.parent != null) rfalse;
+        return location == eastOfRockWall || location == westOfRockWall || location == northOfRockWall;
+    }
+    bool heardWallWord() {
+        for(int w = 1; w <= num_words; w++) {
+            switch((dictionaryWord)WordValue(w)) {
+                case .wall, .cliff, .monolith, .tower, .top, .up, .climb, .reflection, .shiny, .light, .iron, .bar, .weapon, .fetch:
+                    rtrue;
+            }
+        }
+        rfalse;
+    }
+    bool before() {
+        if((action == Drop || action == ThrowAt) && canFetch() && (second == null || second == cliffWallEastAndWest || second == cliffWallNorth)) { murkClimbsWall(); rtrue; }
+        if(action == Talk || action == AskTopic || action == TellTopic || action == SayTopic || action == UnrecognizedTopicWords || action == AskTo) {
+            if(canFetch() && heardWallWord()) {
+                print("Murk doesn’t understand a word, but his eyes follow your waving hand up the wall.^^");
+                murkClimbsWall();
+                rtrue;
+            }
+            if(gameState.isTrue(stateLiberatedBanana) && tireIron.parent == null)
+                rtrue("Murk tilts his head, listening politely. He doesn’t understand words, but he watches your hands closely, as though waiting for you to point at something. Every so often, he glances up toward the top of the rock wall.^");
+        }
+        switch(action) {
+            case Take:
+                if(murk.parent != player){
+                    if(gameState.isFalse(stateLiberatedBanana)){
+                        murk.remove();
+                        farSide.murkHiddenTurn = turns;
+                        rtrue("You reach for the monkey, but it jumps away, disappearing over the edge.^");
+                    }else{
+                        murk.parent = selfobj;
+                        rtrue("As you reach to take the monkey, he leaps onto your arm and climbs up to perch on your shoulders. Tiny monkey hands grasp your hair.^");
+                    }
+                }
+                else rtrue("Murk is hanging from your shoulders.^");
+            case Pet:
+                if(gameState.isFalse(stateLiberatedBanana)) { Take.perform(murk); rtrue; }
+                else {
+                    print("Murk smiles as you pet him, then ");
+                    if(murk.parent == player)
+                        print("reaches up to pat your head.");
+                    else
+                        rtrue("extends his arms to you, wanting to be picked up.^");
+                    print("^");
+                    rtrue;
+                }
+            case Drop, ThrowAt:
+                if(murk.parent == player){
+                    murk.parent = location;
+                    murk.ungive(general);
+                    rtrue("Murk grabs hold of your shirt, clearly not wanting to be put down, but you pull him free and drop him.  He raises his arms and hops up and down for attention.^");
+                }
+            case Attack: rtrue("No... He’s a baby.^");
+            case Kiss:
+                if(gameState.isFalse(stateLiberatedBanana)) { Take.perform(murk); rtrue; }
+                rtrue("You give Murk a kiss on his furry head.^");
+        }
+        rfalse;
+    }
+    string iDunno = "You try talking to the baby monkey, but he doesn’t seem interested. Perhaps he’s too young to understand words, even monkey words?";
+    bool react_before() {
+        if(action == Point && canFetch()
+            && (noun == null || noun == u_obj || noun == cliffWallEastAndWest || noun == cliffWallNorth || noun == trees
+                || (noun == backdropEngine && backdropEngine.getKeyword() == .canopy))) {
+            print("You point up at the top of the wall. Murk’s eyes follow your finger.^^");
+            noun = murk;
+            murkClimbsWall();
+            rtrue;
+        }
+        if(action == Point && location == farSide && murk.parent == player && tireIron.parent == null
+            && noun == backdropEngine && (backdropEngine.getKeyword() == .light || backdropEngine.getKeyword() == .tower))
+            rtrue("You point at the glint atop the distant monolith. Murk follows your finger, then chitters and bounces on your shoulders.^");
+        if(second != self) rfalse;
+        switch(action) {
+            case Show:
+                if(noun == dehydratedBananas) rtrue("Murk eyes the package with raised eyebrows, but attempts to look uninterested.^");
+                if(noun == banana) rtrue("The baby monkey looks at the banana and frowns at you. “All trades are final. No refunds,” he says with his eyes.^");
+                rtrue($"The baby monkey looks at {the(noun)} with no interest.");
+            case Give:
+                if(noun == banana) rtrue("The baby monkey looks at the banana and frowns at you. “All trades are final. No refunds,” he says with his eyes.^");
+        }
+        rfalse;
+    }
+    bool react_after() {
+        if(action != Examine || murk.parent != player || tireIron.parent != null) rfalse;
+        if(noun == cliffWallEastAndWest || noun == cliffWallNorth
+            || (noun == backdropEngine && location == farSide && (backdropEngine.getKeyword() == .light || backdropEngine.getKeyword() == .tower)))
+            print("^Murk follows your gaze and chitters, bouncing on your shoulders.^");
+        rfalse;
+    }
+    object lastLocation = null;
+    int lingerTurns = 0;
+    bool each_turn() {
+        object from = lastLocation;
+        lastLocation = location;
+        if(location != eastOfRockWall || murk.parent != player || tireIron.parent != null) rfalse;
+        if(from != location) {
+            lingerTurns = 0;
+            if(from == cliffEdge) rfalse;
+        } else {
+            lingerTurns++;
+            if(lingerTurns % 4 != 0) rfalse;
+        }
+        rtrue("^Murk tugs at your hair and points up the rock wall, toward the treetops, chittering urgently.^");
+    }
+    bool orders() {
+        if(location == northOfRockWall || location == westOfRockWall || location == eastOfRockWall){
+            if(action == goUp || (action == Go && noun == u_obj) ){
+                print("“Go up!” you say, pointing.^^");
+                noun = murk;
+                murkClimbsWall();
+                rtrue;
+            }
+            if(action == Climb && (noun == u_obj || noun == cliffWallNorth || noun == cliffWallEastAndWest || noun == null)){
+                print("“Climb!” you say, pointing.^^");
+                noun = murk;
+                murkClimbsWall();
+                rtrue;
+            }
+        }
+        rtrue("Murk doesn’t seem to understand your words. Nor does he seem to care.^");
+    }
+    bool bananaExchange() {
+        murk.remove();
+        farSide.murkHiddenTurn = turns;
+        dehydratedBananas.remove();
+        banana.parent = farSide;
+        print("^Murk sniffs at the package then looks at the flat stone in his hands. He considers for a moment before tossing the stone to the ground, grabbing the package, then disappearing with it over the edge.^");
+        gameState.setTrue(stateLiberatedBanana);
+        rtrue;
+    }
+    bool life() {
+        switch(action) {
+            case Give:
+                if(noun == dehydratedBananas) {
+                    print("You hold your dried bananas out, offering them to the baby monkey.^");
+                    return bananaExchange();
+                }
+        }
+        rfalse;
+    }
+}
+
+verb Point {
+    grammar = {
+        {.point|.gesture},
+        {.point|.gesture, NOUN},
+        {.point|.gesture, .at|.to|.toward|.towards, NOUN},
+    };
+    void handler() {
+        if(noun == null) print("You point vaguely at nothing in particular.");
+        else print($"You point at {the(noun)}.");
+        if(murk.parent == player || murk.parent == location) print(" Murk follows your finger with great interest.");
+        print("^");
+    }
+}
+
+//---------- The carved banana (Murk's stone) -------------------------------------------------------
+thing banana {
+    "carved banana";
+    name = {.banana, .stone, .carved, .flat, .fruit, .carving};
+    adjective = {.smile};   // not really an adjective, but we want the smile on the wall to take precedence
+    string initial = "In the middle of the circular area lies a curved stone, half buried in soil.";
+    description = $"{gameState.isFalse(stateLiberatedBanana)
+        ? "It’s hard to tell since the baby monkey holds it defiantly to his chest, but it looks like a flat stone carving of a banana, about an inch thick and curved."
+        : "It’s a flat stone carving about an inch thick and curved. It’s weathered by time, but you think it might have been meant to resemble a banana... or maybe a smile. There are symbols engraved on one side.^^Very strange."}^";
+    void add_to_scope() {
+        if(gameState.isTrue(stateLiberatedBanana)) AddToScope(symbols);
+    }
+    bool before() {
+        switch(action) {
+            case Read:
+                Read.perform(symbols);
+                rtrue;
+            case Take:
+                if(gameState.isFalse(stateLiberatedBanana)) rtrue("The baby monkey clutches the stone tightly, refusing to let it go.^");
+        }
+        rfalse;
+    }
+    bool after() {
+        switch(action) {
+            case Take: achieved(taskGetBanana, true);
+        }
+        rfalse;
+    }
+}
+
+extend Examine {
+    grammar += { {.turn, NOUN, .over, withI6Synonyms}, {.turn, .over, NOUN, withI6Synonyms}, {.flip, NOUN}, {.flip, NOUN, .over}, {.flip, .over, NOUN} };
+}
+
+//---------- The engraved symbols on the banana's back ----------------------------------------------
+thing symbols {
+    "symbols";
+    attributes = {pluralname};
+    name = {.symbols, .engravings, .carvings, .etchings, .writing, .letters, .glyphs, .runes, .markings};
+    bool description() {
+        PronounNotice(banana);
+        print("The symbols are a series of strange, ancient glyphs. You can’t make heads or tails of them.^");
+        rtrue;
+    }
+    bool readDescription() {
+        PronounNotice(banana);
+        print("The symbols are old, and not in English. You can’t read them.^");
+        rtrue;
+    }
+    bool before() {
+        switch(action) {
+            case Take: rtrue("You can’t take the symbols. They are carved into the stone.^");
+            case Give: Give.perform(banana, second); rtrue;
+            case Drop: Drop.perform(banana); rtrue;
+            case Insert: Insert.perform(banana, second); rtrue;
+            case PutOn: PutOn.perform(banana, second); rtrue;
+        }
+        rfalse;
+    }
+}
