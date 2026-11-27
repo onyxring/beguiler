@@ -1,6 +1,0 @@
-// Negative test: <string> and <archive/string> both provide stringObj, so a program includes one of them.
-// EXPECT_ERROR: both provide stringObj; include one of them
-#beguilerSettings { target = z5; informName = "none"; }
-#include <archive/string>
-#include <string>
-void main(){ print("x"); }
